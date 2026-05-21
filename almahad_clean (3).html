@@ -1,0 +1,1466 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>منصة معهد فني صحي بني سويف</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;600;700;900&family=Tajawal:wght@300;400;500;700;800&display=swap" rel="stylesheet">
+<script>
+// ① استبدال window.fetch قبل تحميل Supabase
+(function() {
+  var _orig = window.fetch;
+  window.fetch = async function(input, init) {
+    var res = await _orig.call(this, input, init);
+    var text = '';
+    try { text = await res.text(); } catch(e) {}
+    var hdrs = {};
+    try { res.headers.forEach(function(v,k){ hdrs[k]=v; }); } catch(e) {}
+    return {
+      ok: res.ok,
+      status: res.status,
+      statusText: res.statusText,
+      url: res.url,
+      headers: {
+        get:     function(k){ return hdrs[(k||'').toLowerCase()]||null; },
+        has:     function(k){ return (k||'').toLowerCase() in hdrs; },
+        entries: function(){ return Object.entries(hdrs)[Symbol.iterator](); },
+        forEach: function(cb){ Object.keys(hdrs).forEach(function(k){ cb(hdrs[k],k); }); }
+      },
+      text:  function(){ return Promise.resolve(text); },
+      json:  function(){
+        try{ return Promise.resolve(JSON.parse(text)); }
+        catch(e){ return Promise.reject(e); }
+      },
+      clone: function(){ return this; },
+      body: null,
+      bodyUsed: true
+    };
+  };
+})();
+
+// ② تحميل Supabase بعد تثبيت الـ fetch المعدّل
+window._supabaseReady = new Promise(function(resolve) {
+  var s = document.createElement('script');
+  s.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js';
+  s.onload = function() { resolve(window.supabase); };
+  s.onerror = function() { console.error('فشل تحميل مكتبة Supabase'); resolve(null); };
+  document.head.appendChild(s);
+});
+</script>
+<style>
+:root {
+  --primary: #0a3d62;
+  --primary-light: #1a5276;
+  --accent: #e74c3c;
+  --accent2: #f39c12;
+  --gold: #d4ac0d;
+  --teal: #17a589;
+  --light: #eaf4fb;
+  --white: #ffffff;
+  --dark: #1a1a2e;
+  --gray: #f0f4f8;
+  --text: #2c3e50;
+  --shadow: 0 8px 32px rgba(10,61,98,0.15);
+  --radius: 18px;
+  --font: 'Cairo', 'Tajawal', sans-serif;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+body {
+  font-family: var(--font);
+  background: #f0f6ff;
+  color: var(--text);
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* ===== SCROLLBAR ===== */
+::-webkit-scrollbar { width: 7px; }
+::-webkit-scrollbar-track { background: #e8f0fe; }
+::-webkit-scrollbar-thumb { background: var(--primary); border-radius: 10px; }
+
+/* ===== PAGES ===== */
+.page { display: none; animation: fadeIn .4s ease; }
+.page.active { display: block; }
+@keyframes fadeIn { from { opacity:0; transform:translateY(20px); } to { opacity:1; transform:translateY(0); } }
+
+/* ===== TOP NAV ===== */
+.topnav {
+  background: linear-gradient(135deg, var(--primary) 0%, #1a5276 60%, #154360 100%);
+  color: #fff;
+  padding: 0 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 64px;
+  position: sticky;
+  top: 0;
+  z-index: 1000;
+  box-shadow: 0 4px 24px rgba(10,61,98,0.3);
+}
+.topnav .logo {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 1.15rem;
+  font-weight: 900;
+  letter-spacing: -0.5px;
+  cursor: pointer;
+}
+.topnav .logo .icon { font-size: 2rem; }
+.breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: .82rem;
+  opacity: .85;
+  flex-wrap: wrap;
+}
+.breadcrumb span { cursor: pointer; transition: color .2s; }
+.breadcrumb span:hover { color: var(--accent2); text-decoration: underline; }
+.breadcrumb .sep { opacity: .5; }
+
+/* ===== HOME PAGE ===== */
+.hero {
+  background: linear-gradient(135deg, var(--primary) 0%, #1b2a4a 50%, #0d2137 100%);
+  color: #fff;
+  padding: 60px 20px 80px;
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+}
+.hero::before {
+  content:'';
+  position: absolute; inset: 0;
+  background: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.04'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+}
+.hero-badge {
+  display: inline-block;
+  background: rgba(255,255,255,0.12);
+  border: 1px solid rgba(255,255,255,0.25);
+  border-radius: 50px;
+  padding: 6px 22px;
+  font-size: .82rem;
+  margin-bottom: 20px;
+  backdrop-filter: blur(10px);
+}
+.hero h1 {
+  font-size: clamp(1.8rem, 5vw, 3rem);
+  font-weight: 900;
+  line-height: 1.3;
+  margin-bottom: 14px;
+  text-shadow: 0 2px 20px rgba(0,0,0,0.3);
+}
+.hero h1 span { color: var(--accent2); }
+.hero p {
+  font-size: 1rem;
+  opacity: .85;
+  max-width: 600px;
+  margin: 0 auto 10px;
+  line-height: 1.8;
+}
+.hero .creator-badge {
+  display: inline-block;
+  background: linear-gradient(135deg, var(--gold), var(--accent2));
+  color: #000;
+  border-radius: 50px;
+  padding: 8px 28px;
+  font-size: .85rem;
+  font-weight: 700;
+  margin-top: 22px;
+  box-shadow: 0 4px 20px rgba(212,172,13,0.4);
+}
+
+/* ===== STATS ===== */
+.stats-row {
+  display: flex;
+  justify-content: center;
+  gap: 18px;
+  flex-wrap: wrap;
+  padding: 28px 20px;
+  background: var(--white);
+  border-bottom: 1px solid #e3eaf5;
+}
+.stat-card {
+  text-align: center;
+  padding: 18px 28px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, var(--light), #dceefb);
+  box-shadow: 0 2px 12px rgba(10,61,98,0.08);
+  min-width: 130px;
+}
+.stat-card .num { font-size: 2rem; font-weight: 900; color: var(--primary); }
+.stat-card .lbl { font-size: .78rem; color: #666; margin-top: 2px; }
+
+/* ===== SECTION TITLES ===== */
+.section-title {
+  text-align: center;
+  padding: 40px 20px 10px;
+}
+.section-title h2 {
+  font-size: 1.7rem;
+  font-weight: 900;
+  color: var(--primary);
+  position: relative;
+  display: inline-block;
+}
+.section-title h2::after {
+  content:'';
+  display: block;
+  width: 60px;
+  height: 4px;
+  background: linear-gradient(90deg, var(--accent), var(--accent2));
+  border-radius: 2px;
+  margin: 8px auto 0;
+}
+.section-title p { color: #666; font-size: .9rem; margin-top: 10px; }
+
+/* ===== CARDS GRID ===== */
+.cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 22px;
+  padding: 24px 28px 48px;
+  max-width: 1300px;
+  margin: 0 auto;
+}
+
+/* ===== DEPARTMENT CARD ===== */
+.dept-card {
+  background: var(--white);
+  border-radius: var(--radius);
+  overflow: hidden;
+  box-shadow: var(--shadow);
+  cursor: pointer;
+  transition: transform .3s, box-shadow .3s;
+  border: 2px solid transparent;
+  position: relative;
+}
+.dept-card:hover {
+  transform: translateY(-8px);
+  box-shadow: 0 20px 50px rgba(10,61,98,0.2);
+  border-color: var(--primary);
+}
+.dept-card .card-top {
+  padding: 28px 20px 20px;
+  background: linear-gradient(135deg, var(--primary), #1a5276);
+  color: #fff;
+  text-align: center;
+}
+.dept-card .card-icon { font-size: 2.8rem; margin-bottom: 10px; display: block; }
+.dept-card .card-title { font-size: 1.05rem; font-weight: 700; }
+.dept-card .card-sub { font-size: .78rem; opacity: .8; margin-top: 4px; }
+.dept-card .card-body { padding: 18px 20px; }
+.dept-card .tag-row {
+  display: flex; gap: 6px; flex-wrap: wrap;
+}
+.tag {
+  background: var(--light);
+  color: var(--primary);
+  border-radius: 30px;
+  padding: 4px 12px;
+  font-size: .73rem;
+  font-weight: 600;
+}
+.dept-card .btn-enter {
+  display: block;
+  width: calc(100% - 40px);
+  margin: 0 20px 20px;
+  padding: 11px;
+  background: linear-gradient(135deg, var(--primary), var(--teal));
+  color: #fff;
+  border: none;
+  border-radius: 10px;
+  font-family: var(--font);
+  font-size: .88rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: opacity .2s;
+  text-align: center;
+}
+.dept-card .btn-enter:hover { opacity: .88; }
+
+/* ===== HOME SECTION LABELS ===== */
+.home-section-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 1300px;
+  margin: 28px auto 0;
+  padding: 0 28px;
+  font-size: 1rem;
+  font-weight: 800;
+  color: var(--primary);
+  letter-spacing: -0.3px;
+}
+.home-section-label::after {
+  content: '';
+  flex: 1;
+  height: 2px;
+  background: linear-gradient(90deg, #d0e6f7 0%, transparent 100%);
+  border-radius: 2px;
+  margin-right: 8px;
+}
+.home-section-icon {
+  font-size: 1.2rem;
+  background: linear-gradient(135deg, var(--light), #dceefb);
+  border-radius: 10px;
+  padding: 6px 10px;
+  box-shadow: 0 2px 8px rgba(10,61,98,0.1);
+}
+
+/* ===== HOME CARDS GRID ===== */
+.home-cards-grid {
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  max-width: 1300px;
+  margin: 0 auto;
+}
+@media(max-width: 600px) {
+  .home-cards-grid { grid-template-columns: 1fr; }
+  .home-section-label { margin-top: 20px; }
+}
+
+/* ===== SECTION CONTENT PAGE ===== */
+.content-page {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 30px 20px 80px;
+}
+.content-header {
+  background: linear-gradient(135deg, var(--primary), var(--teal));
+  border-radius: var(--radius);
+  padding: 28px 30px;
+  color: #fff;
+  margin-bottom: 28px;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+.content-header .ch-icon { font-size: 2.5rem; }
+.content-header h2 { font-size: 1.25rem; font-weight: 900; }
+.content-header p { font-size: .85rem; opacity: .85; margin-top: 4px; }
+
+.content-area {
+  background: var(--white);
+  border-radius: var(--radius);
+  padding: 30px;
+  box-shadow: var(--shadow);
+  min-height: 300px;
+}
+
+/* ===== VIDEO PLACEHOLDER ===== */
+.video-placeholder {
+  background: linear-gradient(135deg, #0d1f2d, #1a3a5c);
+  border-radius: 14px;
+  height: 240px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  margin-bottom: 20px;
+  cursor: pointer;
+  transition: opacity .2s;
+}
+.video-placeholder:hover { opacity: .9; }
+.video-placeholder .play-btn {
+  width: 70px; height: 70px;
+  background: rgba(255,255,255,0.15);
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 2rem;
+  margin-bottom: 14px;
+  border: 3px solid rgba(255,255,255,0.3);
+  backdrop-filter: blur(10px);
+}
+.video-placeholder p { font-size: .9rem; opacity: .8; }
+
+/* ===== RESOURCES ===== */
+.resources-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 14px;
+  margin-top: 20px;
+}
+.resource-item {
+  background: var(--light);
+  border-radius: 12px;
+  padding: 16px 18px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+  transition: background .2s, transform .2s;
+  border: 1px solid #d5e8f5;
+}
+.resource-item:hover { background: #d5e8f5; transform: scale(1.02); }
+.resource-item .ri-icon { font-size: 1.6rem; }
+.resource-item .ri-info h5 { font-size: .85rem; font-weight: 700; color: var(--primary); }
+.resource-item .ri-info p { font-size: .72rem; color: #666; margin-top: 2px; }
+
+/* ===== SUMMARY BOX ===== */
+.summary-box {
+  background: linear-gradient(135deg, #eaf4fb, #dceefb);
+  border-radius: 14px;
+  padding: 24px 26px;
+  margin-bottom: 20px;
+  border-right: 5px solid var(--primary);
+}
+.summary-box h3 { font-size: 1rem; font-weight: 800; color: var(--primary); margin-bottom: 12px; }
+.summary-box ul { padding-right: 18px; }
+.summary-box ul li { font-size: .88rem; color: var(--text); margin-bottom: 7px; line-height: 1.7; }
+
+/* ===== AI ASSISTANT ===== */
+.ai-widget {
+  position: fixed;
+  bottom: 24px;
+  left: 24px;
+  z-index: 9999;
+}
+.ai-toggle {
+  width: 60px; height: 60px;
+  background: linear-gradient(135deg, var(--accent), #c0392b);
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.6rem;
+  cursor: pointer;
+  box-shadow: 0 6px 24px rgba(231,76,60,0.5);
+  transition: transform .3s;
+  border: 3px solid #fff;
+}
+.ai-toggle:hover { transform: scale(1.1) rotate(10deg); }
+.ai-panel {
+  position: absolute;
+  bottom: 74px;
+  left: 0;
+  width: 340px;
+  background: #fff;
+  border-radius: 20px;
+  box-shadow: 0 20px 60px rgba(10,61,98,0.2);
+  overflow: hidden;
+  display: none;
+  border: 1.5px solid #d5e8f5;
+}
+.ai-panel.open { display: flex; flex-direction: column; animation: fadeIn .3s ease; }
+.ai-panel-head {
+  background: linear-gradient(135deg, var(--primary), var(--teal));
+  color: #fff;
+  padding: 16px 18px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.ai-panel-head .ai-avatar {
+  width: 38px; height: 38px;
+  background: rgba(255,255,255,0.2);
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.3rem;
+}
+.ai-panel-head .ai-name { font-weight: 700; font-size: .95rem; }
+.ai-panel-head .ai-status { font-size: .72rem; opacity: .8; }
+.ai-messages {
+  flex: 1;
+  height: 260px;
+  overflow-y: auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.msg { max-width: 85%; }
+.msg.bot { align-self: flex-start; }
+.msg.user { align-self: flex-end; }
+.msg-bubble {
+  padding: 10px 14px;
+  border-radius: 14px;
+  font-size: .84rem;
+  line-height: 1.6;
+}
+.msg.bot .msg-bubble { background: var(--light); color: var(--text); border-bottom-right-radius: 4px; }
+.msg.user .msg-bubble { background: linear-gradient(135deg, var(--primary), var(--teal)); color: #fff; border-bottom-left-radius: 4px; }
+.ai-input-row {
+  display: flex;
+  gap: 8px;
+  padding: 12px 14px;
+  border-top: 1px solid #e3eaf5;
+}
+.ai-input {
+  flex: 1;
+  border: 1.5px solid #d5e8f5;
+  border-radius: 10px;
+  padding: 9px 13px;
+  font-family: var(--font);
+  font-size: .84rem;
+  outline: none;
+  direction: rtl;
+}
+.ai-input:focus { border-color: var(--primary); }
+.ai-send {
+  background: var(--primary);
+  color: #fff;
+  border: none;
+  border-radius: 10px;
+  width: 40px;
+  font-size: 1.1rem;
+  cursor: pointer;
+  transition: background .2s;
+}
+.ai-send:hover { background: var(--teal); }
+
+/* ===== BREADCRUMB NAV ===== */
+.back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--white);
+  border: 1.5px solid #d5e8f5;
+  border-radius: 30px;
+  padding: 9px 20px;
+  color: var(--primary);
+  font-family: var(--font);
+  font-size: .85rem;
+  font-weight: 600;
+  cursor: pointer;
+  margin-bottom: 24px;
+  transition: all .2s;
+  box-shadow: 0 2px 10px rgba(10,61,98,0.08);
+}
+.back-btn:hover { background: var(--primary); color: #fff; border-color: var(--primary); }
+
+/* ===== LINKS PAGE ===== */
+.links-page {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 30px 20px 60px;
+}
+.links-page .page-header {
+  text-align: center;
+  margin-bottom: 32px;
+}
+.links-page .page-header h2 {
+  font-size: 1.6rem;
+  font-weight: 900;
+  color: var(--primary);
+}
+.links-page .page-header p {
+  color: #666;
+  font-size: .9rem;
+  margin-top: 6px;
+}
+.link-card {
+  background: var(--white);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  margin-bottom: 14px;
+  overflow: hidden;
+  border: 2px solid transparent;
+  transition: transform .3s, box-shadow .3s, border-color .3s;
+}
+.link-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 16px 40px rgba(10,61,98,0.18);
+}
+.link-card .lc-top {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 18px 22px 14px;
+}
+.link-card .lc-icon {
+  font-size: 2rem;
+  width: 52px;
+  height: 52px;
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.link-card .lc-info h3 {
+  font-size: .98rem;
+  font-weight: 700;
+  color: var(--primary);
+  margin-bottom: 3px;
+}
+.link-card .lc-info p {
+  font-size: .78rem;
+  color: #666;
+}
+.link-card .lc-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 22px 16px;
+  flex-wrap: wrap;
+}
+.link-card .lc-url {
+  font-size: .72rem;
+  color: #999;
+  direction: ltr;
+  text-align: left;
+  word-break: break-all;
+  flex: 1;
+}
+.link-card .lc-btn {
+  display: inline-flex;
+  align-items: center;
+  padding: 9px 20px;
+  border-radius: 10px;
+  font-family: var(--font);
+  font-size: .82rem;
+  font-weight: 700;
+  text-decoration: none;
+  transition: opacity .2s, transform .2s;
+  white-space: nowrap;
+  color: #fff;
+}
+.link-card .lc-btn:hover { opacity: .87; transform: translateY(-1px); }
+.link-card.lc-blue   { border-color: #d5e8f5; }
+.link-card.lc-blue   .lc-icon { background: linear-gradient(135deg, #1a3a5c, #2471a3); color: #fff; }
+.link-card.lc-blue   .lc-btn  { background: linear-gradient(135deg, #1a3a5c, #2471a3); }
+.link-card.lc-green  { border-color: #d0f0e8; }
+.link-card.lc-green  .lc-icon { background: linear-gradient(135deg, #0b6e4f, #17a589); color: #fff; }
+.link-card.lc-green  .lc-btn  { background: linear-gradient(135deg, #0b6e4f, #17a589); }
+.link-card.lc-purple { border-color: #e8d5f5; }
+.link-card.lc-purple .lc-icon { background: linear-gradient(135deg, #6c3483, #8e44ad); color: #fff; }
+.link-card.lc-purple .lc-btn  { background: linear-gradient(135deg, #6c3483, #8e44ad); }
+.link-card.lc-orange { border-color: #fde8cc; }
+.link-card.lc-orange .lc-icon { background: linear-gradient(135deg, #9a3e00, #e67e22); color: #fff; }
+.link-card.lc-orange .lc-btn  { background: linear-gradient(135deg, #9a3e00, #e67e22); }
+.links-section-title {
+  color: var(--primary);
+  margin-bottom: 15px;
+  border-right: 4px solid var(--accent2);
+  padding-right: 12px;
+  font-size: 1rem;
+  font-weight: 800;
+}
+.links-section-title.teal  { border-color: var(--teal); }
+.links-section-title.accent { border-color: var(--accent); }
+@media(max-width:600px) {
+  .link-card .lc-footer { flex-direction: column; align-items: flex-start; }
+  .link-card .lc-btn { width: 100%; justify-content: center; }
+}
+
+/* ===== SELECTOR PAGE ===== */
+.selector-page {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 30px 20px 60px;
+}
+.selector-page .page-header {
+  text-align: center;
+  margin-bottom: 36px;
+}
+.selector-page .page-header h2 { font-size: 1.6rem; font-weight: 900; color: var(--primary); }
+.selector-page .page-header p { color: #666; font-size: .9rem; margin-top: 6px; }
+
+/* ===== FOOTER ===== */
+footer {
+  background: linear-gradient(135deg, var(--dark), #0a1628);
+  color: rgba(255,255,255,0.7);
+  text-align: center;
+  padding: 30px 20px;
+  font-size: .82rem;
+  line-height: 2;
+}
+footer strong { color: var(--accent2); }
+
+/* ===== LOADING ===== */
+.loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 40px;
+  color: var(--primary);
+  font-size: .9rem;
+}
+.spinner {
+  width: 24px; height: 24px;
+  border: 3px solid #d5e8f5;
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: spin .8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ===== RESPONSIVE ===== */
+@media(max-width:600px) {
+  .topnav { height: 56px; padding: 0 14px; }
+  .cards-grid { padding: 16px 14px 40px; gap: 14px; }
+  .content-page, .selector-page { padding: 16px 12px 50px; }
+  .ai-panel { width: 290px; }
+  .content-area { padding: 18px; }
+}
+</style>
+</head>
+<body>
+
+<!-- TOP NAV -->
+<nav class="topnav">
+  <div class="logo" onclick="goHome()">
+    <span class="icon">🏥</span>
+    <div>
+      <div style="font-size:.72rem;opacity:.7;font-weight:400">معهد فني صحي بني سويف</div>
+      <div>المنصة التعليمية</div>
+    </div>
+  </div>
+  <div class="breadcrumb" id="breadcrumb"></div>
+</nav>
+
+<!-- ==================== PAGE: HOME ==================== -->
+<div id="page-home" class="page active">
+  <div class="hero">
+    <div class="hero-badge">🎓 منصة تعليمية متكاملة بالذكاء الاصطناعي</div>
+    <h1>منصة <span>معهد فني صحي</span><br>بني سويف</h1>
+    <p>تجربة تعليمية متطورة تجمع بين الشرح التفاعلي، الأسئلة الذكية، والذكاء الاصطناعي لضمان تفوقك الدراسي</p>
+    <div class="creator-badge">✨ تم إنشاء هذه المنصة بواسطة عبدالرحمن رأفت محمد — شعبة تسجيل طبي وإحصاء — دفعة 2025</div>
+  </div>
+
+  <div class="stats-row">
+    <div class="stat-card"><div class="num">2</div><div class="lbl">فرقة دراسية</div></div>
+    <div class="stat-card"><div class="num">18</div><div class="lbl">شعبة متخصصة</div></div>
+    <div class="stat-card"><div class="num">200+</div><div class="lbl">مادة دراسية</div></div>
+    <div class="stat-card"><div class="num">6</div><div class="lbl">أقسام لكل مادة</div></div>
+    <div class="stat-card"><div class="num">AI</div><div class="lbl">مساعد ذكي</div></div>
+  </div>
+
+  <div class="section-title">
+    <h2>اختر مرحلتك الدراسية</h2>
+    <p>ابدأ رحلتك التعليمية باختيار القسم المناسب لك</p>
+  </div>
+
+  <!-- DYNAMIC HOME SECTIONS — مُحمَّلة بالكامل من Supabase -->
+  <div id="dynamic-home-sections">
+    <div class="loading" style="padding:60px 20px">
+      <div class="spinner"></div>
+      جاري تحميل الأقسام...
+    </div>
+  </div>
+
+  <footer>
+    <strong>منصة معهد فني صحي بني سويف</strong><br>
+    تم إنشاء هذه المنصة بواسطة <strong>عبدالرحمن رأفت محمد</strong><br>
+    شعبة تسجيل طبي وإحصاء — دفعة 2025<br>
+    جميع الحقوق محفوظة © 2025
+  </footer>
+</div>
+
+<!-- ==================== PAGE: LINKS ==================== -->
+<div id="page-links" class="page">
+  <div class="links-page">
+    <button class="back-btn" onclick="goHome()">← العودة للرئيسية</button>
+    <div class="page-header">
+      <h2>🔗 روابط وجروبات مهمة</h2>
+      <p>أهم الروابط والجروبات الرسمية والمهمة لطلاب المعاهد الفنية الصحية</p>
+    </div>
+
+    <div style="margin-bottom: 30px;">
+      <h3 class="links-section-title">📌 روابط هامة</h3>
+      <div class="link-card lc-blue">
+        <div class="lc-top"><div class="lc-icon">🏥</div><div class="lc-info"><h3>وزارة الصحة المصرية</h3><p>الصفحة الرسمية لوزارة الصحة والسكان على فيسبوك</p></div></div>
+        <div class="lc-footer"><span class="lc-url">facebook.com/egypt.mohp</span><a class="lc-btn" href="https://www.facebook.com/egypt.mohp?locale=ar_AR" target="_blank" rel="noopener">زيارة الصفحة 🌐</a></div>
+      </div>
+      <div class="link-card lc-green">
+        <div class="lc-top"><div class="lc-icon">📋</div><div class="lc-info"><h3>تكليف المعاهد الفنية الصحية</h3><p>قناة متابعة أخبار التكليف (واتساب)</p></div></div>
+        <div class="lc-footer"><span class="lc-url">whatsapp.com/channel/0029Vb74o669xVJX4TcXlg1m</span><a class="lc-btn" href="https://whatsapp.com/channel/0029Vb74o669xVJX4TcXlg1m" target="_blank" rel="noopener">فتح القناة 📲</a></div>
+      </div>
+      <div class="link-card lc-purple">
+        <div class="lc-top"><div class="lc-icon">🎓</div><div class="lc-info"><h3>جروب التخصصية</h3><p>جروب التخصصية على تيليجرام</p></div></div>
+        <div class="lc-footer"><span class="lc-url">t.me/+T7xQgK4mvsFlMTRk</span><a class="lc-btn" href="https://t.me/+T7xQgK4mvsFlMTRk" target="_blank" rel="noopener">فتح الجروب ✈️</a></div>
+      </div>
+      <div class="link-card lc-orange">
+        <div class="lc-top"><div class="lc-icon">📢</div><div class="lc-info"><h3>كل ما يخص المعاهد الفنية الصحية</h3><p>جروب غير رسمي لطلاب المعاهد (تيليجرام)</p></div></div>
+        <div class="lc-footer"><span class="lc-url">t.me/+NzuSKf0oV7FkNDg8</span><a class="lc-btn" href="https://t.me/+NzuSKf0oV7FkNDg8" target="_blank" rel="noopener">فتح الجروب ✈️</a></div>
+      </div>
+    </div>
+
+    <div style="margin-bottom: 30px;">
+      <h3 class="links-section-title teal">🏛️ المعاهد الفنية الصحية التابعة لوزارة الصحة (12 معهدًا)</h3>
+      <div class="link-card lc-blue"><div class="lc-top"><div class="lc-icon">🏥</div><div class="lc-info"><h3>المعهد الفني الصحي بإمبابة</h3><p>الصفحة الرسمية على فيسبوك</p></div></div><div class="lc-footer"><span class="lc-url">facebook.com/profile.php?id=100070811356042</span><a class="lc-btn" href="https://www.facebook.com/profile.php?id=100070811356042&mibextid=ZbWKwL" target="_blank" rel="noopener">زيارة الصفحة 🌐</a></div></div>
+      <div class="link-card lc-green"><div class="lc-top"><div class="lc-icon">🏥</div><div class="lc-info"><h3>المعهد الفني الصحي بالإسكندرية</h3><p>الصفحة الرسمية على فيسبوك</p></div></div><div class="lc-footer"><span class="lc-url">facebook.com/profile.php?id=100064007596801</span><a class="lc-btn" href="https://www.facebook.com/profile.php?id=100064007596801&mibextid=ZbWKwL" target="_blank" rel="noopener">زيارة الصفحة 🌐</a></div></div>
+      <div class="link-card lc-purple"><div class="lc-top"><div class="lc-icon">🏥</div><div class="lc-info"><h3>المعهد الفني الصحي بطنطا</h3><p>الصفحة الرسمية على فيسبوك</p></div></div><div class="lc-footer"><span class="lc-url">facebook.com/profile.php?id=100064043640292</span><a class="lc-btn" href="https://www.facebook.com/profile.php?id=100064043640292&mibextid=ZbWKwL" target="_blank" rel="noopener">زيارة الصفحة 🌐</a></div></div>
+      <div class="link-card lc-orange"><div class="lc-top"><div class="lc-icon">🏥</div><div class="lc-info"><h3>المعهد الفني الصحي ببنها</h3><p>الصفحة الرسمية على فيسبوك</p></div></div><div class="lc-footer"><span class="lc-url">facebook.com/BHTI1994</span><a class="lc-btn" href="https://www.facebook.com/BHTI1994?mibextid=ZbWKwL" target="_blank" rel="noopener">زيارة الصفحة 🌐</a></div></div>
+      <div class="link-card lc-blue"><div class="lc-top"><div class="lc-icon">🏥</div><div class="lc-info"><h3>المعهد الفني الصحي بالمنصورة</h3><p>الصفحة الرسمية على فيسبوك</p></div></div><div class="lc-footer"><span class="lc-url">facebook.com/mansoura.ht.institute</span><a class="lc-btn" href="https://www.facebook.com/mansoura.ht.institute?mibextid=ZbWKwL" target="_blank" rel="noopener">زيارة الصفحة 🌐</a></div></div>
+      <div class="link-card lc-green"><div class="lc-top"><div class="lc-icon">🏥</div><div class="lc-info"><h3>المعهد الفني الصحي بالزقازيق</h3><p>الصفحة الرسمية على فيسبوك</p></div></div><div class="lc-footer"><span class="lc-url">facebook.com/zhtif</span><a class="lc-btn" href="https://www.facebook.com/zhtif?mibextid=ZbWKwL" target="_blank" rel="noopener">زيارة الصفحة 🌐</a></div></div>
+      <div class="link-card lc-purple"><div class="lc-top"><div class="lc-icon">🏥</div><div class="lc-info"><h3>المعهد الفني الصحي ببورسعيد</h3><p>الصفحة الرسمية على فيسبوك</p></div></div><div class="lc-footer"><span class="lc-url">facebook.com/Portsaid.h.technical.institute</span><a class="lc-btn" href="https://www.facebook.com/Portsaid.h.technical.institute?mibextid=ZbWKwL" target="_blank" rel="noopener">زيارة الصفحة 🌐</a></div></div>
+      <div class="link-card lc-orange"><div class="lc-top"><div class="lc-icon">🏥</div><div class="lc-info"><h3>المعهد الفني الصحي بالإسماعيلية</h3><p>الصفحة الرسمية على فيسبوك</p></div></div><div class="lc-footer"><span class="lc-url">facebook.com/profile.php?id=100064169527721</span><a class="lc-btn" href="https://www.facebook.com/profile.php?id=100064169527721&mibextid=ZbWKwL" target="_blank" rel="noopener">زيارة الصفحة 🌐</a></div></div>
+      <div class="link-card lc-blue"><div class="lc-top"><div class="lc-icon">🏥</div><div class="lc-info"><h3>المعهد الفني الصحي ببني سويف</h3><p>الصفحة الرسمية على فيسبوك</p></div></div><div class="lc-footer"><span class="lc-url">facebook.com/htibeniseuf</span><a class="lc-btn" href="https://www.facebook.com/htibeniseuf?mibextid=ZbWKwL" target="_blank" rel="noopener">زيارة الصفحة 🌐</a></div></div>
+      <div class="link-card lc-green"><div class="lc-top"><div class="lc-icon">🏥</div><div class="lc-info"><h3>المعهد الفني الصحي بأسيوط</h3><p>الصفحة الرسمية على فيسبوك</p></div></div><div class="lc-footer"><span class="lc-url">facebook.com/TH123HEALth</span><a class="lc-btn" href="https://www.facebook.com/TH123HEALth?mibextid=ZbWKwL" target="_blank" rel="noopener">زيارة الصفحة 🌐</a></div></div>
+      <div class="link-card lc-purple"><div class="lc-top"><div class="lc-icon">🏥</div><div class="lc-info"><h3>المعهد الفني الصحي بسوهاج</h3><p>الصفحة الرسمية على فيسبوك</p></div></div><div class="lc-footer"><span class="lc-url">facebook.com/profile.php?id=100069363183058</span><a class="lc-btn" href="https://www.facebook.com/profile.php?id=100069363183058&mibextid=ZbWKwL" target="_blank" rel="noopener">زيارة الصفحة 🌐</a></div></div>
+      <div class="link-card lc-orange"><div class="lc-top"><div class="lc-icon">🏥</div><div class="lc-info"><h3>المعهد الفني الصحي بأسوان</h3><p>الصفحة الرسمية على فيسبوك</p></div></div><div class="lc-footer"><span class="lc-url">facebook.com/profile.php?id=100057560074688</span><a class="lc-btn" href="https://www.facebook.com/profile.php?id=100057560074688&mibextid=ZbWKwL" target="_blank" rel="noopener">زيارة الصفحة 🌐</a></div></div>
+    </div>
+
+    <div style="margin-bottom: 30px;">
+      <h3 class="links-section-title accent">🎓 المعاهد التابعة لوزارة التعليم العالي</h3>
+      <div class="link-card lc-blue"><div class="lc-top"><div class="lc-icon">🏛️</div><div class="lc-info"><h3>المعهد الفني الصحي بالوادي الجديد</h3><p>الصفحة الرسمية على فيسبوك</p></div></div><div class="lc-footer"><span class="lc-url">facebook.com/profile.php?id=61550650958448</span><a class="lc-btn" href="https://www.facebook.com/profile.php?id=61550650958448&mibextid=ZbWKwL" target="_blank" rel="noopener">زيارة الصفحة 🌐</a></div></div>
+      <div class="link-card lc-green"><div class="lc-top"><div class="lc-icon">🏛️</div><div class="lc-info"><h3>المعهد الفني الصحي بجنوب الوادي (قنا)</h3><p>الصفحة الرسمية على فيسبوك</p></div></div><div class="lc-footer"><span class="lc-url">facebook.com/qenamti</span><a class="lc-btn" href="https://www.facebook.com/qenamti?mibextid=ZbWKwL" target="_blank" rel="noopener">زيارة الصفحة 🌐</a></div></div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== PAGE: DYNAMIC SECTION ==================== -->
+<div id="page-dynamic-section" class="page">
+  <div class="selector-page">
+    <button class="back-btn" onclick="navigateBack()">← رجوع</button>
+    <div class="page-header">
+      <h2 id="dynamic-section-title">القسم</h2>
+      <p id="dynamic-section-sub"></p>
+    </div>
+    <div id="dynamic-section-resources-container"></div>
+    <div class="cards-grid" id="dynamic-section-grid">
+      <div class="loading"><div class="spinner"></div> جاري التحميل...</div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== PAGE: CONTENT ==================== -->
+<div id="page-content" class="page">
+  <div class="content-page">
+    <button class="back-btn" onclick="navigateBack()">← رجوع</button>
+    <div class="content-header">
+      <div class="ch-icon" id="content-icon">📖</div>
+      <div>
+        <h2 id="content-title">عنوان القسم</h2>
+        <p id="content-subtitle">معلومات إضافية</p>
+      </div>
+    </div>
+    <div id="chapter-resources-container"></div>
+    <div class="content-area" id="content-area"></div>
+  </div>
+</div>
+
+<!-- ==================== AI ASSISTANT ==================== -->
+<div class="ai-widget">
+  <div class="ai-panel" id="ai-panel">
+    <div class="ai-panel-head">
+      <div class="ai-avatar">🤖</div>
+      <div>
+        <div class="ai-name">المساعد الذكي</div>
+        <div class="ai-status">🟢 متاح الآن — 24/7</div>
+      </div>
+    </div>
+    <div class="ai-messages" id="ai-messages">
+      <div class="msg bot">
+        <div class="msg-bubble">مرحباً! أنا مساعدك الذكي. اسألني عن أي مادة أو فصل وسأساعدك فوراً 🎓</div>
+      </div>
+    </div>
+    <div class="ai-input-row">
+      <input class="ai-input" id="ai-input" type="text" placeholder="اكتب سؤالك هنا..." onkeydown="if(event.key==='Enter')sendAI()">
+      <button class="ai-send" onclick="sendAI()">➤</button>
+    </div>
+  </div>
+  <div class="ai-toggle" onclick="toggleAI()" title="المساعد الذكي">🤖</div>
+</div>
+
+<script>
+// ==================== SUPABASE SETUP ====================
+var _supabaseUrl = "https://xiqeaohemuxgujrcnpzd.supabase.co";
+var _supabaseKey = "sb_publishable_xzg8wn0ETQniEItj2Etfmw__klmgUWg";
+
+window._supabaseReady.then(function(lib) {
+  if (!lib) {
+    console.error("❌ مكتبة Supabase لم تُحمَّل");
+    renderHomeFallback();
+    return;
+  }
+  if (!window._db) {
+    window._db = lib.createClient(_supabaseUrl, _supabaseKey, {
+      auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
+    });
+  }
+  window.supabase = window._db;
+  window._db.from('site_sections').select('id').limit(1)
+    .then(function(res) {
+      if (res.error) console.error("❌ Supabase Connection Failed:", res.error.message);
+      else console.log("✅ Supabase Connected");
+    })
+    .catch(function(err) {
+      console.error("❌ Supabase Connection Failed:", err.message || String(err));
+    });
+  renderHomeSections();
+});
+
+// ==================== STATE ====================
+// navigationStack: مصفوفة من { label, action } — كل خطوة مضغوطة في الـ breadcrumb
+let state = {
+  navigationStack: [], // [{ label:'اسم القسم', snapshot: fn يعيد لهذه الصفحة }]
+};
+
+// ==================== HELPERS ====================
+function toValidId(value) {
+  if (value === null || value === undefined) return null;
+  const raw = typeof value === 'object' ? null : String(value).replace(/[^0-9]/g, '');
+  if (!raw || raw === '') return null;
+  const num = Number(raw);
+  return (Number.isFinite(num) && num > 0) ? num : null;
+}
+
+function showLoading(containerId) {
+  const el = document.getElementById(containerId);
+  if (el) el.innerHTML = `<div class="loading"><div class="spinner"></div> جاري التحميل من قاعدة البيانات...</div>`;
+}
+
+function showError(containerId, msg) {
+  const el = document.getElementById(containerId);
+  if (el) el.innerHTML = `<div style="text-align:center;padding:40px;color:#e74c3c"><div style="font-size:2rem;margin-bottom:10px">⚠️</div><p>${msg || 'حدث خطأ في تحميل البيانات'}</p></div>`;
+}
+
+// ==================== NAVIGATION ====================
+function showPage(id) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  window.scrollTo(0, 0);
+  updateBreadcrumb();
+}
+
+function goHome() {
+  state.navigationStack = [];
+  showPage('page-home');
+}
+
+// الرجوع خطوة واحدة للخلف
+function navigateBack() {
+  if (state.navigationStack.length === 0) { goHome(); return; }
+  // إزالة الخطوة الأخيرة (الحالية) وتنفيذ الخطوة اللي قبلها
+  state.navigationStack.pop();
+  if (state.navigationStack.length === 0) { goHome(); return; }
+  const prev = state.navigationStack[state.navigationStack.length - 1];
+  prev.restore();
+}
+
+// الانتقال المباشر لأي خطوة في الـ breadcrumb
+function navigateTo(index) {
+  if (index < 0) { goHome(); return; }
+  // احذف كل ما بعد index
+  state.navigationStack = state.navigationStack.slice(0, index + 1);
+  const step = state.navigationStack[index];
+  step.restore();
+}
+
+// بناء الـ breadcrumb من الـ stack
+function updateBreadcrumb() {
+  const bc = document.getElementById('breadcrumb');
+  // الرئيسية دايمًا أول خطوة
+  let parts = [`<span onclick="goHome()" style="cursor:pointer">🏠 الرئيسية</span>`];
+  state.navigationStack.forEach((step, i) => {
+    const isLast = i === state.navigationStack.length - 1;
+    if (isLast) {
+      // الخطوة الحالية — نص فقط بدون ضغط
+      parts.push(`<span class="sep">›</span><span style="color:#fff;font-weight:700">${step.label}</span>`);
+    } else {
+      // خطوة سابقة — قابلة للضغط
+      parts.push(`<span class="sep">›</span><span onclick="navigateTo(${i})" style="cursor:pointer">${step.label}</span>`);
+    }
+  });
+  bc.innerHTML = parts.join('');
+}
+
+// ==================== SUPABASE DATA LAYER ====================
+async function loadSections(parentId) {
+  try {
+    if (!window.supabase) return [];
+    let query = window.supabase.from('site_sections').select('*').order('display_order', { ascending: true });
+    if (parentId === null || parentId === undefined) {
+      query = query.is('parent_id', null);
+    } else {
+      const safeId = toValidId(parentId);
+      if (safeId === null) { console.warn('[loadSections] invalid parentId blocked:', parentId); return []; }
+      query = query.eq('parent_id', safeId);
+    }
+    const { data, error } = await query;
+    if (error) { console.error('[loadSections] error:', error.message); return []; }
+    console.log(`[loadSections] parentId=${parentId ?? 'null'} → ${data?.length ?? 0} rows`);
+    return data || [];
+  } catch (err) {
+    console.error('[loadSections] unexpected error:', err?.message || String(err));
+    return [];
+  }
+}
+
+async function loadSectionContent(sectionId) {
+  try {
+    if (!window.supabase) return [];
+    const safeId = toValidId(sectionId);
+    if (safeId === null) { console.warn('[loadSectionContent] invalid sectionId blocked:', sectionId); return []; }
+    const { data, error } = await window.supabase
+      .from('section_content').select('*').eq('section_id', safeId).order('display_order', { ascending: true });
+    if (error) { console.error('[loadSectionContent] error:', error.message); return []; }
+    return data || [];
+  } catch (err) {
+    console.error('[loadSectionContent] unexpected error:', err?.message || String(err));
+    return [];
+  }
+}
+
+async function loadSectionResources(sectionId) {
+  try {
+    if (!window.supabase) return [];
+    const safeId = toValidId(sectionId);
+    if (safeId === null) { console.warn('[loadSectionResources] invalid sectionId blocked:', sectionId); return []; }
+    const { data, error } = await window.supabase
+      .from('section_resources').select('*').eq('section_id', safeId).order('id');
+    if (error) { console.error('[loadSectionResources] error:', error.message); return []; }
+    return data || [];
+  } catch (err) {
+    console.error('[loadSectionResources] unexpected error:', err?.message || String(err));
+    return [];
+  }
+}
+
+// ==================== SECTION DISPLAY MAP ====================
+const SECTION_DISPLAY_MAP = {
+  'ما بعد الثانوية':      { icon:'🎓', color:'linear-gradient(135deg,#0b6e4f,#17a589)',  tags:['تأهيل مسبق','الإعداد للمعهد','قريباً'],        btnLabel:'ادخل القسم ←',         action: () => alert('قريباً') },
+  'الفرقة الأولى':        { icon:'📘', color:'linear-gradient(135deg,#1a3a5c,#17a589)',  tags:['شعبة فنية صحية','شعبة تمريض'],                  btnLabel:'ادخل الفرقة الأولى ←', action: (sec) => openDynamicSection(sec) },
+  'الفرقة الثانية':       { icon:'📗', color:'linear-gradient(135deg,#6c3483,#1a5276)', tags:['16 شعبة متخصصة','مواد متقدمة'],                 btnLabel:'ادخل الفرقة الثانية ←',action: (sec) => openDynamicSection(sec) },
+  'ما بعد الفرقة الثانية':{ icon:'🏆', color:'linear-gradient(135deg,#7d3200,#d4ac0d)', tags:['تكليف حكومي','توظيف','تطوير مهني'],             btnLabel:'ادخل القسم ←',         action: () => alert('قريباً') },
+  'روابط وجروبات مهمة':   { icon:'🔗', color:'linear-gradient(135deg,#154360,#2471a3)', tags:['واتساب','تيليجرام','لينكات رسمية'],              btnLabel:'ادخل القسم ←',         action: (sec) => {
+    state.navigationStack.push({ label: 'روابط وجروبات مهمة', restore: () => showPage('page-links') });
+    showPage('page-links');
+  } },
+  'كورس الإنجليزي':       { icon:'🇬🇧', color:'linear-gradient(135deg,#1a3a5c,#c0392b)', tags:['إنجليزي طبي','مصطلحات','محادثة'],             btnLabel:'ادخل الكورس ←',        action: (sec) => openDynamicSection(sec) },
+  'كورس ICDL':            { icon:'💻', color:'linear-gradient(135deg,#0e3d6e,#0097b2)', tags:['ويندوز','أوفيس','إنترنت'],                      btnLabel:'ادخل الكورس ←',        action: (sec) => openDynamicSection(sec) },
+  'معادلة كلية الهندسة':  { icon:'🏗️', color:'linear-gradient(135deg,#1c2833,#e67e22)', tags:['رياضيات','فيزياء','تأهيل معادلة'],             btnLabel:'ادخل القسم ←',         action: (sec) => openDynamicSection(sec) },
+};
+
+// ==================== BUILD SECTION CARD ====================
+function buildSectionCard(sec) {
+  const display = SECTION_DISPLAY_MAP[sec.title] || {
+    icon: sec.icon || '📁',
+    color: sec.gradient_color || 'linear-gradient(135deg,#1a3a5c,#17a589)',
+    tags: (sec.tags || '').split(',').map(t => t.trim()).filter(Boolean),
+    btnLabel: 'ادخل القسم ←',
+    action: (s) => openDynamicSection(s),
+  };
+  const tagsHtml = (display.tags || []).map(t => `<span class="tag">${t}</span>`).join('');
+  return `
+    <div class="dept-card" onclick="window.__sectionAction_${sec.id}(window.__sectionData_${sec.id})" data-section-id="${sec.id}">
+      <div class="card-top" style="background:${display.color}">
+        <span class="card-icon">${display.icon}</span>
+        <div class="card-title">${sec.title}</div>
+        <div class="card-sub">${sec.subtitle || ''}</div>
+      </div>
+      <div class="card-body"><div class="tag-row">${tagsHtml}</div></div>
+      <button class="btn-enter">${display.btnLabel}</button>
+    </div>`;
+}
+
+function buildSubSectionCard(sec) {
+  const display = SECTION_DISPLAY_MAP[sec.title] || {};
+  const icon  = display.icon  || sec.icon           || '📁';
+  const color = display.color || sec.gradient_color || 'linear-gradient(135deg,#1a3a5c,#17a589)';
+  const tags  = (sec.tags || '').split(',').map(t => t.trim()).filter(Boolean)
+                  .map(t => `<span class="tag">${t}</span>`).join('');
+  return `
+    <div class="dept-card" onclick="window.__sectionAction_${sec.id}(window.__sectionData_${sec.id})" data-section-id="${sec.id}">
+      <div class="card-top" style="background:${color}">
+        <span class="card-icon">${icon}</span>
+        <div class="card-title">${sec.title}</div>
+        <div class="card-sub">${sec.subtitle || ''}</div>
+      </div>
+      <div class="card-body"><div class="tag-row">${tags}</div></div>
+      <button class="btn-enter">ادخل ←</button>
+    </div>`;
+}
+
+// ==================== HOME: RENDER DYNAMIC SECTIONS ====================
+async function renderHomeSections() {
+  const sections = await loadSections(null);
+  if (!sections || sections.length === 0) {
+    console.warn('[Supabase] لا توجد بيانات في site_sections');
+    renderHomeFallback();
+    return;
+  }
+  _registerSectionHandlers(sections);
+  const grouped = {};
+  sections.forEach(sec => {
+    const cat = sec.category || 'أخرى';
+    if (!grouped[cat]) grouped[cat] = [];
+    grouped[cat].push(sec);
+  });
+  const rowIcons = { 'المراحل الدراسية':'📚', 'خدمات وموارد إضافية':'🌐', 'أخرى':'📌' };
+  let html = '';
+  for (const [cat, items] of Object.entries(grouped)) {
+    html += `
+      <div class="home-section-label">
+        <span class="home-section-icon">${rowIcons[cat] || '📌'}</span>
+        <span>${cat}</span>
+      </div>
+      <div class="cards-grid home-cards-grid">${items.map(sec => buildSectionCard(sec)).join('')}</div>`;
+  }
+  document.getElementById('dynamic-home-sections').innerHTML = html;
+}
+
+function renderHomeFallback() {
+  const fallback = [
+    { id:'f1', title:'ما بعد الثانوية',       subtitle:'تجهيز وتأهيل قبل الدراسة',          category:'المراحل الدراسية' },
+    { id:'f2', title:'الفرقة الأولى',         subtitle:'السنة الدراسية الأولى',              category:'المراحل الدراسية' },
+    { id:'f3', title:'الفرقة الثانية',        subtitle:'السنة الدراسية الثانية',             category:'المراحل الدراسية' },
+    { id:'f4', title:'ما بعد الفرقة الثانية', subtitle:'التوظيف والتكليف والتطوير',         category:'المراحل الدراسية' },
+    { id:'f5', title:'روابط وجروبات مهمة',    subtitle:'كل لينكات وجروبات المعهد',           category:'خدمات وموارد إضافية' },
+    { id:'f6', title:'كورس الإنجليزي',        subtitle:'تعلم الإنجليزية الطبية والعامة',    category:'خدمات وموارد إضافية' },
+    { id:'f7', title:'كورس ICDL',             subtitle:'تعلم أساسيات الكمبيوتر والبرامج',   category:'خدمات وموارد إضافية' },
+    { id:'f8', title:'معادلة كلية الهندسة',   subtitle:'كورسات وشرح وتأهيل لمعادلة هندسة', category:'خدمات وموارد إضافية' },
+  ];
+  _registerSectionHandlers(fallback);
+  const grouped = {};
+  fallback.forEach(s => { if (!grouped[s.category]) grouped[s.category] = []; grouped[s.category].push(s); });
+  const rowIcons = { 'المراحل الدراسية':'📚', 'خدمات وموارد إضافية':'🌐' };
+  let html = '';
+  for (const [cat, items] of Object.entries(grouped)) {
+    html += `
+      <div class="home-section-label">
+        <span class="home-section-icon">${rowIcons[cat] || '📌'}</span>
+        <span>${cat}</span>
+      </div>
+      <div class="cards-grid home-cards-grid">${items.map(sec => buildSectionCard(sec)).join('')}</div>`;
+  }
+  document.getElementById('dynamic-home-sections').innerHTML = html;
+}
+
+function _registerSectionHandlers(sections) {
+  sections.forEach(sec => {
+    const display = SECTION_DISPLAY_MAP[sec.title];
+    window[`__sectionData_${sec.id}`] = sec;
+    window[`__sectionAction_${sec.id}`] = (display && display.action)
+      ? display.action
+      : (s) => openDynamicSection(s);
+  });
+}
+
+// ==================== DYNAMIC SECTION PAGE ====================
+
+/**
+ * _renderDynamicSectionPage — يرسم صفحة قسم ديناميكي بالكامل (بدون تعديل الـ stack)
+ * يُستخدم من openDynamicSection ومن restore عند الرجوع
+ */
+async function _renderDynamicSectionPage(sec) {
+  document.getElementById('dynamic-section-title').textContent = sec.title;
+  document.getElementById('dynamic-section-sub').textContent = sec.subtitle || '';
+
+  showLoading('dynamic-section-grid');
+
+  // عرض الصفحة فوراً ثم نحمّل البيانات
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.getElementById('page-dynamic-section').classList.add('active');
+  window.scrollTo(0, 0);
+  updateBreadcrumb();
+
+  // موارد القسم
+  const resourcesEl = document.getElementById('dynamic-section-resources-container');
+  if (resourcesEl) {
+    resourcesEl.innerHTML = '';
+    loadSectionResources(sec.id).then(res => { resourcesEl.innerHTML = buildResourcesHTML(res); });
+  }
+
+  const children = await loadSections(sec.id);
+
+  if (children.length === 0) {
+    const content = await loadSectionContent(sec.id);
+    if (content.length > 0) {
+      renderResourceCards('dynamic-section-grid', content);
+    } else {
+      document.getElementById('dynamic-section-grid').innerHTML = `
+        <div style="text-align:center;padding:40px;color:#999;grid-column:1/-1">
+          <div style="font-size:2.5rem;margin-bottom:12px">🚧</div>
+          <p>هذا القسم قيد الإعداد — سيتم إضافة المحتوى قريباً</p>
+        </div>`;
+    }
+    return;
+  }
+
+  children.forEach(child => {
+    window[`__sectionData_${child.id}`] = child;
+    window[`__sectionAction_${child.id}`] = (s) => openDynamicSubSection(s);
+  });
+  document.getElementById('dynamic-section-grid').innerHTML =
+    children.map(child => buildSubSectionCard(child)).join('');
+}
+
+/**
+ * openDynamicSection — يُضاف للـ stack ويُفتح القسم
+ */
+async function openDynamicSection(sec) {
+  if (!sec || !sec.id) { alert('قريباً'); return; }
+  const numId = toValidId(sec.id);
+  if (numId === null) { alert('قريباً'); return; }
+
+  // أضف الخطوة الحالية للـ stack مع snapshot لإعادة رسمها عند الرجوع
+  const secCopy = { ...sec }; // نسخة ثابتة
+  state.navigationStack.push({
+    label: sec.title,
+    restore: () => _renderDynamicSectionPage(secCopy),
+  });
+
+  await _renderDynamicSectionPage(sec);
+}
+
+/**
+ * openDynamicSubSection — فتح قسم فرعي (يُضاف للـ stack)
+ */
+async function openDynamicSubSection(sec) {
+  if (!sec || !sec.id) return;
+
+  // إذا كان له أبناء — افتحه كقسم كامل
+  const children = await loadSections(sec.id);
+  if (children.length > 0) {
+    await openDynamicSection(sec);
+    return;
+  }
+
+  // قسم نهائي — اعرض محتواه في صفحة content
+  const content = await loadSectionContent(sec.id);
+  const secCopy = { ...sec };
+
+  // أضف للـ stack مع restore يُعيد رسم صفحة content
+  state.navigationStack.push({
+    label: sec.title,
+    restore: async () => {
+      await _openContentPage(secCopy);
+    },
+  });
+
+  await _openContentPage(sec);
+}
+
+/**
+ * _openContentPage — يرسم صفحة المحتوى النهائي
+ */
+async function _openContentPage(sec) {
+  const content = await loadSectionContent(sec.id);
+
+  document.getElementById('content-icon').textContent = sec.icon || '📁';
+  document.getElementById('content-title').textContent = sec.title;
+  // العنوان الفرعي = اسم القسم الأب من آخر خطوة في الـ stack قبل الأخيرة
+  const parentLabel = state.navigationStack.length >= 2
+    ? state.navigationStack[state.navigationStack.length - 2].label
+    : '';
+  document.getElementById('content-subtitle').textContent = sec.subtitle || parentLabel || '';
+
+  if (content.length === 0) {
+    document.getElementById('content-area').innerHTML = `
+      <div style="text-align:center;padding:40px;color:#999">
+        <div style="font-size:2.5rem;margin-bottom:12px">🚧</div>
+        <p>المحتوى قيد الإعداد — سيتم إضافته قريباً</p>
+      </div>`;
+  } else {
+    renderDynamicContent(content);
+  }
+
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.getElementById('page-content').classList.add('active');
+  window.scrollTo(0, 0);
+  updateBreadcrumb();
+
+  const chResEl = document.getElementById('chapter-resources-container');
+  if (chResEl) {
+    const resources = await loadSectionResources(sec.id);
+    chResEl.innerHTML = buildResourcesHTML(resources);
+  }
+}
+
+// ==================== CONTENT RENDERING ====================
+
+/**
+ * renderDynamicContent — يعرض عناصر section_content داخل content-area
+ */
+function renderDynamicContent(contentItems) {
+  const area = document.getElementById('content-area');
+  let html = '';
+  contentItems.forEach(item => {
+    if (item.content_type === 'video') {
+      html += `
+        <div class="video-placeholder" ${item.url ? `onclick="window.open('${item.url}','_blank')"` : ''}>
+          <div class="play-btn">▶</div>
+          <p>${item.title || 'فيديو شرح'}</p>
+          ${item.description ? `<p style="font-size:.75rem;opacity:.6;margin-top:6px">${item.description}</p>` : ''}
+        </div>`;
+    } else if (item.content_type === 'text') {
+      html += `
+        <div class="summary-box">
+          <h3>${item.title || ''}</h3>
+          <p style="font-size:.9rem;line-height:1.9;color:#444">${item.body || item.description || ''}</p>
+        </div>`;
+    } else {
+      // link, pdf, or any other type
+      const icon = item.icon || (item.content_type === 'pdf' ? '📄' : item.content_type === 'link' ? '🔗' : '📌');
+      html += `
+        <div class="resource-item" ${item.url ? `onclick="window.open('${item.url}','_blank')"` : ''} style="${item.url ? 'cursor:pointer' : ''}">
+          <div class="ri-icon">${icon}</div>
+          <div class="ri-info">
+            <h5>${item.title || ''}</h5>
+            ${item.description ? `<p>${item.description}</p>` : ''}
+          </div>
+          ${item.url ? '<div style="margin-right:auto;color:var(--teal);font-size:1rem">↗</div>' : ''}
+        </div>`;
+    }
+  });
+  area.innerHTML = `<div style="display:flex;flex-direction:column;gap:14px">${html}</div>`;
+}
+
+/**
+ * renderResourceCards — يعرض عناصر محتوى على هيئة link-cards في grid
+ */
+function renderResourceCards(containerId, items) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  let html = items.map(item => `
+    <div class="link-card lc-blue" style="cursor:${item.url ? 'pointer' : 'default'}"
+         ${item.url ? `onclick="window.open('${item.url}','_blank')"` : ''}>
+      <div class="lc-top">
+        <div class="lc-icon">${item.icon || '📌'}</div>
+        <div class="lc-info">
+          <h3>${item.title || ''}</h3>
+          <p>${item.description || ''}</p>
+        </div>
+      </div>
+      ${item.url ? `<div class="lc-footer"><span class="lc-url">${item.url}</span><a class="lc-btn" href="${item.url}" target="_blank" rel="noopener">فتح ↗</a></div>` : ''}
+    </div>`).join('');
+  container.innerHTML = html || `<div style="grid-column:1/-1;text-align:center;padding:30px;color:#999">لا يوجد محتوى حالياً</div>`;
+}
+
+// ==================== RESOURCES HTML BUILDER ====================
+function getResourceIcon(resource) {
+  if (resource.icon && resource.icon.trim()) return resource.icon.trim();
+  const t = resource.title || '';
+  if (t.includes('انجليز') || t.includes('إنجليز')) return '🇬🇧';
+  if (t.includes('عربي')) return '🇪🇬';
+  if (t.includes('شرح')) return '📘';
+  if (t.includes('ملخص')) return '📄';
+  if (t.includes('أسئلة') || t.includes('اسئلة')) return '✅';
+  return '📄';
+}
+
+function buildResourcesHTML(resources) {
+  if (!resources || resources.length === 0) return '';
+  const cards = resources.map(r => {
+    const icon = getResourceIcon(r);
+    const desc = r.description ? `<p style="font-size:.72rem;color:#777;margin-top:2px;line-height:1.4">${r.description}</p>` : '';
+    const clickHandler = r.file_url ? `onclick="window.open('${r.file_url.replace(/'/g,"\\'")}','_blank')"` : '';
+    return `
+      <div class="resource-item" ${clickHandler} style="${r.file_url ? 'cursor:pointer' : 'cursor:default'}">
+        <div class="ri-icon" style="font-size:1.7rem;min-width:36px;text-align:center">${icon}</div>
+        <div class="ri-info">
+          <h5 style="font-size:.88rem;font-weight:700;color:var(--primary)">${r.title || 'مورد'}</h5>
+          ${desc}
+        </div>
+        ${r.file_url ? '<div style="margin-right:auto;color:var(--teal);font-size:1rem">↗</div>' : ''}
+      </div>`;
+  }).join('');
+  return `
+    <div style="margin-bottom:28px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
+        <span style="font-size:1.1rem;background:linear-gradient(135deg,var(--light),#dceefb);border-radius:10px;padding:5px 10px;box-shadow:0 2px 8px rgba(10,61,98,0.1)">📚</span>
+        <span style="font-size:1rem;font-weight:800;color:var(--primary)">الملفات والموارد</span>
+        <span style="flex:1;height:2px;background:linear-gradient(90deg,#d0e6f7,transparent);border-radius:2px;margin-right:4px"></span>
+      </div>
+      <div class="resources-row" style="grid-template-columns:repeat(auto-fill,minmax(220px,1fr))">${cards}</div>
+    </div>`;
+}
+
+// ==================== AI ASSISTANT ====================
+const AI_RESPONSES = [
+  "بالطبع! هذا الموضوع مهم جداً في تخصصك. دعني أشرح لك بطريقة مبسطة...",
+  "سؤال ممتاز! المفهوم الذي تسأل عنه يرتبط ارتباطاً وثيقاً بما درسته في هذا الفصل...",
+  "يمكنني مساعدتك في فهم هذا المحتوى. النقطة الأساسية التي يجب فهمها هي...",
+  "من منظور تخصصك المهني، هذه المعلومة تُطبق في السياق التالي...",
+  "بناءً على أدائك في الاختبارات، أنصحك بالتركيز على هذه النقاط الأساسية...",
+  "سأساعدك في تبسيط هذا المفهوم. تخيل أن الأمر يشبه...",
+  "هذا سؤال يتكرر كثيراً في الامتحانات! الإجابة المختصرة هي...",
+  "لديك فهم جيد للموضوع! دعنا نعمق الفهم أكثر بإضافة تفاصيل مهمة..."
+];
+let aiIdx = 0;
+
+function toggleAI() {
+  document.getElementById('ai-panel').classList.toggle('open');
+}
+
+function sendAI() {
+  const input = document.getElementById('ai-input');
+  const msg = input.value.trim();
+  if (!msg) return;
+  const messages = document.getElementById('ai-messages');
+  messages.innerHTML += `<div class="msg user"><div class="msg-bubble">${msg}</div></div>`;
+  input.value = '';
+  messages.scrollTop = messages.scrollHeight;
+  setTimeout(() => {
+    const resp = AI_RESPONSES[aiIdx % AI_RESPONSES.length];
+    aiIdx++;
+    messages.innerHTML += `<div class="msg bot"><div class="msg-bubble">${resp}</div></div>`;
+    messages.scrollTop = messages.scrollHeight;
+  }, 800);
+}
+
+// ==================== SUPABASE DIAGNOSTICS ====================
+async function runSupabaseDiagnostics() {
+  console.group('🔍 Supabase Diagnostics');
+  const db = window.supabase;
+  if (!db) { console.error('❌ window.supabase غير معرّف'); console.groupEnd(); return; }
+  try {
+    const { data: all, error: e1 } = await db.from('site_sections').select('id, title, parent_id').limit(50);
+    if (e1) {
+      console.error('❌ خطأ في الاستعلام العام:', e1.message);
+    } else if (!all || all.length === 0) {
+      console.warn('⚠️ الجدول site_sections فارغ — شغّل printSeedSQL() للحصول على SQL الإدراج');
+    } else {
+      console.log('✅ الجدول فيه بيانات:', all);
+      const { data: roots, error: e2 } = await db.from('site_sections').select('id, title').is('parent_id', null);
+      if (e2) console.error('❌ خطأ parent_id IS NULL:', e2.message);
+      else if (!roots || roots.length === 0) console.warn('⚠️ لا توجد أقسام جذرية — تحقق من parent_id و RLS');
+      else console.log('✅ الأقسام الجذرية:', roots);
+    }
+  } catch (err) {
+    console.error('❌ استثناء غير متوقع:', err.message);
+  }
+  console.info('📋 لفحص RLS: Authentication → Policies → site_sections — تأكد من وجود SELECT للـ anon role');
+  console.groupEnd();
+}
+
+function printSeedSQL() {
+  const sql = `
+-- ============================================================
+-- SQL: إدراج البيانات الافتراضية في site_sections
+-- ============================================================
+CREATE TABLE IF NOT EXISTS site_sections (
+  id            BIGSERIAL PRIMARY KEY,
+  title         TEXT NOT NULL,
+  subtitle      TEXT,
+  icon          TEXT,
+  gradient_color TEXT,
+  tags          TEXT,
+  category      TEXT,
+  parent_id     BIGINT REFERENCES site_sections(id),
+  display_order INT DEFAULT 0,
+  created_at    TIMESTAMPTZ DEFAULT NOW()
+);
+ALTER TABLE site_sections ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "allow_public_read" ON site_sections;
+CREATE POLICY "allow_public_read" ON site_sections FOR SELECT USING (true);
+
+INSERT INTO site_sections (title, subtitle, icon, gradient_color, tags, category, parent_id, display_order) VALUES
+  ('ما بعد الثانوية',       'تجهيز وتأهيل قبل الدراسة',           '🎓', 'linear-gradient(135deg,#0b6e4f,#17a589)',  'تأهيل مسبق,الإعداد للمعهد,قريباً',        'المراحل الدراسية',    NULL, 1),
+  ('الفرقة الأولى',         'السنة الدراسية الأولى',               '📘', 'linear-gradient(135deg,#1a3a5c,#17a589)',  'شعبة فنية صحية,شعبة تمريض',               'المراحل الدراسية',    NULL, 2),
+  ('الفرقة الثانية',        'السنة الدراسية الثانية',              '📗', 'linear-gradient(135deg,#6c3483,#1a5276)',  '16 شعبة متخصصة,مواد متقدمة',              'المراحل الدراسية',    NULL, 3),
+  ('ما بعد الفرقة الثانية', 'التوظيف والتكليف والتطوير',          '🏆', 'linear-gradient(135deg,#7d3200,#d4ac0d)',  'تكليف حكومي,توظيف,تطوير مهني',            'المراحل الدراسية',    NULL, 4),
+  ('روابط وجروبات مهمة',   'كل لينكات وجروبات المعهد',            '🔗', 'linear-gradient(135deg,#154360,#2471a3)',  'واتساب,تيليجرام,لينكات رسمية',            'خدمات وموارد إضافية', NULL, 5),
+  ('كورس الإنجليزي',       'تعلم الإنجليزية الطبية والعامة',     '🇬🇧', 'linear-gradient(135deg,#1a3a5c,#c0392b)',  'إنجليزي طبي,مصطلحات,محادثة',             'خدمات وموارد إضافية', NULL, 6),
+  ('كورس ICDL',            'تعلم أساسيات الكمبيوتر والبرامج',    '💻', 'linear-gradient(135deg,#0e3d6e,#0097b2)',  'ويندوز,أوفيس,إنترنت',                     'خدمات وموارد إضافية', NULL, 7),
+  ('معادلة كلية الهندسة',  'كورسات وشرح وتأهيل لمعادلة هندسة',  '🏗️', 'linear-gradient(135deg,#1c2833,#e67e22)',  'رياضيات,فيزياء,تأهيل معادلة',             'خدمات وموارد إضافية', NULL, 8);
+-- ============================================================`;
+  console.group('📄 SQL لإدخال البيانات في Supabase:');
+  console.log(sql);
+  console.groupEnd();
+}
+
+window.runDiagnostics = runSupabaseDiagnostics;
+window.printSeedSQL  = printSeedSQL;
+
+// ==================== INIT ====================
+updateBreadcrumb();
+</script>
+</body>
+</html>
