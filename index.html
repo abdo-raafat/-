@@ -403,13 +403,25 @@ body {
 .summary-box {
   background: linear-gradient(135deg, #eaf4fb, #dceefb);
   border-radius: 14px;
-  padding: 24px 26px;
+  padding: 28px 30px;
   margin-bottom: 20px;
   border-right: 5px solid var(--primary);
 }
-.summary-box h3 { font-size: 1rem; font-weight: 800; color: var(--primary); margin-bottom: 12px; }
+.summary-box h3 { font-size: 1.15rem; font-weight: 900; color: var(--primary); margin-bottom: 16px; border-bottom: 2px solid #b8d9f0; padding-bottom: 12px; }
 .summary-box ul { padding-right: 18px; }
-.summary-box ul li { font-size: .88rem; color: var(--text); margin-bottom: 7px; line-height: 1.7; }
+.summary-box ul li { font-size: 1rem; color: var(--text); margin-bottom: 9px; line-height: 1.9; }
+
+/* ===== PREFORMATTED TEXT DISPLAY ===== */
+.preformatted-text {
+  white-space: pre-wrap;
+  font-family: var(--font);
+  font-size: 1.05rem;
+  line-height: 2;
+  color: #2c3e50;
+  direction: rtl;
+  text-align: right;
+  word-break: break-word;
+}
 
 /* ===== AI ASSISTANT ===== */
 .ai-widget {
@@ -711,6 +723,9 @@ footer strong { color: var(--accent2); }
     </div>
   </div>
   <div class="breadcrumb" id="breadcrumb"></div>
+  <div id="user-box">
+    <button class="chatgpt-login-btn" onclick="loginWithGoogle()">🔐 دخول</button>
+  </div>
 </nav>
 
 <!-- ==================== PAGE: HOME ==================== -->
@@ -871,7 +886,7 @@ window._supabaseReady.then(function(lib) {
   }
   if (!window._db) {
     window._db = lib.createClient(_supabaseUrl, _supabaseKey, {
-      auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
+      auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
     });
   }
   window.supabase = window._db;
@@ -1015,10 +1030,10 @@ async function loadSectionResources(sectionId) {
 
 // ==================== SECTION DISPLAY MAP ====================
 const SECTION_DISPLAY_MAP = {
-  'ما بعد الثانوية':      { icon:'🎓', color:'linear-gradient(135deg,#0b6e4f,#17a589)',  tags:['تأهيل مسبق','الإعداد للمعهد','قريباً'],        btnLabel:'ادخل القسم ←',         action: () => alert('قريباً') },
+  'ما بعد الثانوية':      { icon:'🎓', color:'linear-gradient(135deg,#0b6e4f,#17a589)',  tags:['تأهيل مسبق','الإعداد للمعهد','قريباً'],        btnLabel:'ادخل القسم ←',         action: (sec) => openDynamicSection(sec) },
   'الفرقة الأولى':        { icon:'📘', color:'linear-gradient(135deg,#1a3a5c,#17a589)',  tags:['شعبة فنية صحية','شعبة تمريض'],                  btnLabel:'ادخل الفرقة الأولى ←', action: (sec) => openDynamicSection(sec) },
   'الفرقة الثانية':       { icon:'📗', color:'linear-gradient(135deg,#6c3483,#1a5276)', tags:['16 شعبة متخصصة','مواد متقدمة'],                 btnLabel:'ادخل الفرقة الثانية ←',action: (sec) => openDynamicSection(sec) },
-  'ما بعد الفرقة الثانية':{ icon:'🏆', color:'linear-gradient(135deg,#7d3200,#d4ac0d)', tags:['تكليف حكومي','توظيف','تطوير مهني'],             btnLabel:'ادخل القسم ←',         action: () => alert('قريباً') },
+  'ما بعد الفرقة الثانية':{ icon:'🏆', color:'linear-gradient(135deg,#7d3200,#d4ac0d)', tags:['تكليف حكومي','توظيف','تطوير مهني'],             btnLabel:'ادخل القسم ←',         action: (sec) => openDynamicSection(sec) },
   'روابط وجروبات مهمة':   { icon:'🔗', color:'linear-gradient(135deg,#154360,#2471a3)', tags:['واتساب','تيليجرام','لينكات رسمية'],              btnLabel:'ادخل القسم ←',         action: (sec) => {
     state.navigationStack.push({ label: 'روابط وجروبات مهمة', restore: () => showPage('page-links') });
     showPage('page-links');
@@ -1232,75 +1247,155 @@ async function openDynamicSubSection(sec) {
  * _openContentPage — يرسم صفحة المحتوى النهائي
  */
 async function _openContentPage(sec) {
-  const content = await loadSectionContent(sec.id);
+  const content   = await loadSectionContent(sec.id);
+  const resources = await loadSectionResources(sec.id);
 
   document.getElementById('content-icon').textContent = sec.icon || '📁';
   document.getElementById('content-title').textContent = sec.title;
-  // العنوان الفرعي = اسم القسم الأب من آخر خطوة في الـ stack قبل الأخيرة
   const parentLabel = state.navigationStack.length >= 2
-    ? state.navigationStack[state.navigationStack.length - 2].label
-    : '';
+    ? state.navigationStack[state.navigationStack.length - 2].label : '';
   document.getElementById('content-subtitle').textContent = sec.subtitle || parentLabel || '';
 
-  if (content.length === 0) {
-    document.getElementById('content-area').innerHTML = `
-      <div style="text-align:center;padding:40px;color:#999">
-        <div style="font-size:2.5rem;margin-bottom:12px">🚧</div>
-        <p>المحتوى قيد الإعداد — سيتم إضافته قريباً</p>
-      </div>`;
-  } else {
-    renderDynamicContent(content);
+  // الموارد دايماً تتعرض جوه content-area بشكل كبير وواضح
+  // لو في section_content كمان — يتعرض فوق الموارد
+  const area = document.getElementById('content-area');
+  let html = '';
+
+  if (content.length > 0) {
+    html += buildContentHTML(content);
   }
+
+  if (resources.length > 0) {
+    html += buildResourcesInsideArea(resources);
+  }
+
+  if (html === '') {
+    html = `<div style="text-align:center;padding:60px 20px;color:#bbb">
+      <div style="font-size:3rem;margin-bottom:14px">🚧</div>
+      <p style="font-size:1rem;font-weight:600">المحتوى قيد الإعداد — سيتم إضافته قريباً</p>
+    </div>`;
+  }
+
+  area.innerHTML = html;
+
+  // إخفاء الـ container الخارجي للموارد (مش محتاجينه دلوقتي)
+  const chResEl = document.getElementById('chapter-resources-container');
+  if (chResEl) chResEl.innerHTML = '';
 
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.getElementById('page-content').classList.add('active');
   window.scrollTo(0, 0);
   updateBreadcrumb();
-
-  const chResEl = document.getElementById('chapter-resources-container');
-  if (chResEl) {
-    const resources = await loadSectionResources(sec.id);
-    chResEl.innerHTML = buildResourcesHTML(resources);
-  }
 }
 
 // ==================== CONTENT RENDERING ====================
+// ==================== CONTENT RENDERING ====================
+
 
 /**
- * renderDynamicContent — يعرض عناصر section_content داخل content-area
+ * renderPreformatted — يعرض النص كما هو مع الحفاظ على التنسيق والأيقونات
  */
-function renderDynamicContent(contentItems) {
-  const area = document.getElementById('content-area');
+function renderPreformatted(text) {
+  if (!text) return '';
+  // Escape HTML special chars except we want to keep emojis and unicode
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+/**
+ * buildContentHTML — يبني HTML لعناصر section_content
+ */
+function buildContentHTML(contentItems) {
   let html = '';
   contentItems.forEach(item => {
     if (item.content_type === 'video') {
       html += `
-        <div class="video-placeholder" ${item.url ? `onclick="window.open('${item.url}','_blank')"` : ''}>
+        <div class="video-placeholder" ${item.url ? `onclick="window.open('${item.url}','_blank')"` : ''} style="margin-bottom:18px">
           <div class="play-btn">▶</div>
-          <p>${item.title || 'فيديو شرح'}</p>
-          ${item.description ? `<p style="font-size:.75rem;opacity:.6;margin-top:6px">${item.description}</p>` : ''}
+          <p style="font-size:1rem;font-weight:700">${item.title || 'فيديو شرح'}</p>
+          ${item.description ? `<p style="font-size:.82rem;opacity:.7;margin-top:6px">${item.description}</p>` : ''}
         </div>`;
     } else if (item.content_type === 'text') {
+      const rawText = item.body || item.description || '';
       html += `
-        <div class="summary-box">
-          <h3>${item.title || ''}</h3>
-          <p style="font-size:.9rem;line-height:1.9;color:#444">${item.body || item.description || ''}</p>
+        <div class="summary-box" style="margin-bottom:18px">
+          <h3 style="font-size:1.15rem">${item.title || ''}</h3>
+          <div class="preformatted-text">${renderPreformatted(rawText)}</div>
         </div>`;
     } else {
-      // link, pdf, or any other type
       const icon = item.icon || (item.content_type === 'pdf' ? '📄' : item.content_type === 'link' ? '🔗' : '📌');
       html += `
-        <div class="resource-item" ${item.url ? `onclick="window.open('${item.url}','_blank')"` : ''} style="${item.url ? 'cursor:pointer' : ''}">
-          <div class="ri-icon">${icon}</div>
+        <div class="resource-item" ${item.url ? `onclick="window.open('${item.url}','_blank')"` : ''} style="${item.url ? 'cursor:pointer' : ''};margin-bottom:10px;padding:18px 22px;">
+          <div class="ri-icon" style="font-size:2rem">${icon}</div>
           <div class="ri-info">
-            <h5>${item.title || ''}</h5>
-            ${item.description ? `<p>${item.description}</p>` : ''}
+            <h5 style="font-size:1rem;font-weight:800;color:var(--primary)">${item.title || ''}</h5>
+            ${item.description ? `<p style="font-size:.85rem;margin-top:3px">${item.description}</p>` : ''}
           </div>
-          ${item.url ? '<div style="margin-right:auto;color:var(--teal);font-size:1rem">↗</div>' : ''}
+          ${item.url ? '<div style="margin-right:auto;color:var(--teal);font-size:1.3rem">↗</div>' : ''}
         </div>`;
     }
   });
-  area.innerHTML = `<div style="display:flex;flex-direction:column;gap:14px">${html}</div>`;
+  return `<div style="display:flex;flex-direction:column;gap:4px;margin-bottom:24px">${html}</div>`;
+}
+
+// دالة قديمة للتوافق
+function renderDynamicContent(contentItems) {
+  document.getElementById('content-area').innerHTML = buildContentHTML(contentItems);
+}
+
+/**
+ * buildResourcesInsideArea — يبني الموارد داخل content-area بشكل كبير وواضح
+ */
+function buildResourcesInsideArea(resources) {
+  const cards = resources.map(r => {
+    const icon = getResourceIcon(r);
+    const clickHandler = r.file_url ? `onclick="window.open('${r.file_url.replace(/'/g,"\\'")}','_blank')"` : '';
+    const hasLink = !!r.file_url;
+    return `
+      <div ${clickHandler} style="
+        display:flex;align-items:center;gap:18px;
+        background:${hasLink ? 'linear-gradient(135deg,#eaf4fb,#dceefb)' : '#f8fbff'};
+        border:2px solid ${hasLink ? '#b8d9f0' : '#e3eaf5'};
+        border-radius:16px;padding:20px 24px;
+        cursor:${hasLink ? 'pointer' : 'default'};
+        transition:transform .2s,box-shadow .2s;
+        margin-bottom:12px;
+      "
+      ${hasLink ? 'onmouseover="this.style.transform=\'translateY(-3px)\';this.style.boxShadow=\'0 8px 24px rgba(10,61,98,.15)\'"' : ''}
+      ${hasLink ? 'onmouseout="this.style.transform=\'\';this.style.boxShadow=\'\'"' : ''}
+      >
+        <div style="
+          font-size:2.2rem;
+          width:60px;height:60px;
+          background:linear-gradient(135deg,var(--primary),var(--teal));
+          border-radius:16px;
+          display:flex;align-items:center;justify-content:center;
+          flex-shrink:0;box-shadow:0 4px 14px rgba(10,61,98,.2);
+        ">${icon}</div>
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:1.05rem;font-weight:800;color:var(--primary);margin-bottom:4px;line-height:1.4">${r.title || 'مورد'}</div>
+          ${r.description ? `<pre class="preformatted-text" style="font-size:.98rem;margin-top:8px">${renderPreformatted(r.description)}</pre>` : ''}
+        </div>
+        ${hasLink ? `<div style="
+          background:linear-gradient(135deg,var(--primary),var(--teal));
+          color:#fff;border-radius:12px;padding:10px 18px;
+          font-size:.85rem;font-weight:700;white-space:nowrap;
+          box-shadow:0 3px 10px rgba(10,61,98,.25);
+        ">فتح ↗</div>` : ''}
+      </div>`;
+  }).join('');
+
+  return `
+    <div>
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:18px">
+        <span style="font-size:1.3rem;background:linear-gradient(135deg,var(--light),#dceefb);border-radius:12px;padding:8px 12px;box-shadow:0 2px 8px rgba(10,61,98,0.1)">📚</span>
+        <span style="font-size:1.1rem;font-weight:900;color:var(--primary)">الملفات والموارد</span>
+        <span style="flex:1;height:2px;background:linear-gradient(90deg,#b8d9f0,transparent);border-radius:2px"></span>
+      </div>
+      ${cards}
+    </div>`;
 }
 
 /**
@@ -1467,225 +1562,354 @@ updateBreadcrumb();
 
 <script>
 
-const SUPABASE_URL =
-'https://xiqeaohemuxgujrcnpzd.supabase.co';
+const SUPABASE_URL = 'https://xiqeaohemuxgujrcnpzd.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_xzg8wn0ETQniEItj2Etfmw__klmgUWg';
 
-const SUPABASE_KEY =
-'sb_publishable_xzg8wn0ETQniEItj2Etfmw__klmgUWg';
-
-window.supabase = supabase.createClient(
-SUPABASE_URL,
-SUPABASE_KEY
-);
-<script>
-// LOGIN
-
-async function loginWithGoogle(){
-
-await window.supabase.auth.signInWithOAuth({
-
-provider:'google',
-
-options:{
-
-redirectTo:
-'https://bdatyabdo016-svg.github.io/-/'
-
-}
-
+window.supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
+  auth: {
+    detectSessionInUrl: true,
+    persistSession: true,
+    autoRefreshToken: true
+  }
 });
+</script>
 
+<script>
+// ==================== AUTH FUNCTIONS ====================
+
+window.loginWithGoogle = async function() {
+  if (!window.supabase) { alert('جاري التحميل، حاول مجدداً'); return; }
+  const redirectTo = window.location.origin + window.location.pathname;
+  const { error } = await window.supabase.auth.signInWithOAuth({
+    provider: 'google',
+    options: { redirectTo: redirectTo, skipBrowserRedirect: false }
+  });
+  if (error) alert('خطأ في تسجيل الدخول: ' + error.message);
+};
+
+window.logoutUser = async function() {
+  await window.supabase.auth.signOut();
+  location.reload();
+};
+
+function _renderUserBox(user) {
+  const box = document.getElementById('user-box');
+  if (!box) return;
+  if (!user) {
+    box.innerHTML = '<button class="chatgpt-login-btn" onclick="loginWithGoogle()">🔐 دخول</button>';
+    return;
+  }
+  const isAdmin = user.email === 'bdatyabdo010@gmail.com';
+  if (isAdmin) {
+    box.innerHTML =
+      '<div class="user-card">'
+      + '<span class="user-email">👤 ' + user.email + '</span>'
+      + '<button style="background:rgba(255,255,255,.2);color:#fff;border:1.5px solid rgba(255,255,255,.35);padding:6px 12px;border-radius:16px;cursor:pointer;font-size:12px;font-family:inherit;" onclick="toggleAdminPanel()">⚙️ تحكم</button>'
+      + '<button class="logout-btn" onclick="logoutUser()">خروج</button>'
+      + '</div>';
+    adminLoadSections();
+  } else {
+    box.innerHTML =
+      '<div class="user-card">'
+      + '<span class="user-email">👤 ' + user.email + '</span>'
+      + '<button class="logout-btn" onclick="logoutUser()">خروج</button>'
+      + '</div>';
+  }
 }
 
-// LOGOUT
+window.checkUser = async function() {
+  if (!window.supabase) return;
 
-async function logoutUser(){
+  // استمع لتغييرات الـ Auth — ده بيشتغل تلقائياً بعد Google OAuth redirect
+  window.supabase.auth.onAuthStateChange(function(event, session) {
+    _renderUserBox(session ? session.user : null);
+  });
 
-await window.supabase.auth.signOut();
+  // اقرأ الـ session الحالية
+  const { data: { session } } = await window.supabase.auth.getSession();
+  _renderUserBox(session ? session.user : null);
+};
 
-location.reload();
-
-}
-
-// CHECK USER
-
-async function checkUser(){
-
-const {
-data:{user}
-} = await window.supabase.auth.getUser();
-
-if(user){
-
-document.getElementById('user-box').innerHTML = `
-
-<div class="user-card">
-
-<div class="user-email">
-
-${user.email}
-
-</div>
-
-<button class="logout-btn"
-onclick="logoutUser()">
-
-تسجيل الخروج
-
-</button>
-
-</div>
-
-`;
-
-
-// ADMIN PANEL
-
-if(user.email === 'bdatyabdo010@gmail.com'){
-
-document.getElementById('admin-panel').style.display = 'block';
-
-}
-
-}
-
-}
-
-// RUN FUNCTION
-
-checkUser();
+document.addEventListener('DOMContentLoaded', function() { window.checkUser(); });
 
 </script>
 
 <style>
 
-#user-box{
-
-position:fixed;
-top:20px;
-left:20px;
-z-index:999999;
-
+#user-box {
+  /* مش fixed — هيتحط جوه الـ navbar */
 }
 
-.chatgpt-login-btn{
+.chatgpt-login-btn {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  background: rgba(255,255,255,0.15);
+  border: 1.5px solid rgba(255,255,255,0.35);
+  color: #fff;
+  padding: 7px 14px;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  backdrop-filter: blur(8px);
+  transition: background .2s;
+  white-space: nowrap;
+  font-family: 'Cairo','Tajawal',sans-serif;
+}
+.chatgpt-login-btn:hover { background: rgba(255,255,255,0.25); }
 
-display:flex;
-align-items:center;
-gap:12px;
-
-background:#fff;
-
-border:1px solid #e5e7eb;
-
-padding:12px 18px;
-
-border-radius:14px;
-
-font-size:15px;
-font-weight:600;
-
-cursor:pointer;
-
-box-shadow:
-0 4px 12px rgba(0,0,0,.08);
-
+.user-card {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
-.user-card{
-
-background:#fff;
-
-padding:14px;
-
-border-radius:14px;
-
-box-shadow:
-0 4px 12px rgba(0,0,0,.1);
-
+.user-email {
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  max-width: 130px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: .9;
 }
 
-.user-email{
-
-margin-bottom:10px;
-
-font-weight:bold;
-
+.logout-btn {
+  background: rgba(255,255,255,0.15);
+  color: #fff;
+  border: 1.5px solid rgba(255,255,255,0.3);
+  padding: 6px 12px;
+  border-radius: 16px;
+  cursor: pointer;
+  font-size: 12px;
+  font-family: 'Cairo','Tajawal',sans-serif;
+  white-space: nowrap;
+  transition: background .2s;
 }
-
-.logout-btn{
-
-background:#111827;
-color:white;
-
-border:none;
-
-padding:10px 14px;
-
-border-radius:10px;
-
-cursor:pointer;
-
-}
+.logout-btn:hover { background: rgba(255,255,255,0.28); }
 
 </style>
 
-<div id="user-box">
+<!-- ADMIN PANEL -->
+<div id="admin-panel" style="display:none;position:fixed;top:80px;left:20px;z-index:999999;background:white;border-radius:18px;box-shadow:0 8px 40px rgba(0,0,0,.22);width:320px;font-family:'Cairo','Tajawal',sans-serif;direction:rtl;overflow:hidden;max-height:90vh;overflow-y:auto;">
+  <div style="background:linear-gradient(135deg,#0a3d62,#17a589);padding:16px 20px;color:#fff;display:flex;align-items:center;justify-content:space-between;">
+    <div style="font-weight:900;font-size:1rem;">⚙️ لوحة التحكم</div>
+    <button onclick="document.getElementById('admin-panel').style.display='none'" style="background:rgba(255,255,255,.2);border:none;color:#fff;border-radius:50%;width:28px;height:28px;cursor:pointer;font-size:.9rem;">✕</button>
+  </div>
+  <div style="padding:18px;">
+    <!-- Tab buttons -->
+    <div style="display:flex;gap:6px;margin-bottom:16px;">
+      <button onclick="adminTab('add')" id="tab-add" style="flex:1;padding:8px;border:none;border-radius:10px;background:#0a3d62;color:#fff;font-family:inherit;font-size:.8rem;font-weight:700;cursor:pointer;">➕ إضافة محتوى</button>
+      <button onclick="adminTab('list')" id="tab-list" style="flex:1;padding:8px;border:none;border-radius:10px;background:#eaf4fb;color:#0a3d62;font-family:inherit;font-size:.8rem;font-weight:700;cursor:pointer;">📋 المحتوى الحالي</button>
+    </div>
 
-<button
-class="chatgpt-login-btn"
-onclick="loginWithGoogle()"
->
+    <!-- ADD TAB -->
+    <div id="admin-tab-add">
+      <div style="margin-bottom:12px;">
+        <label style="font-size:.8rem;font-weight:700;color:#0a3d62;display:block;margin-bottom:5px;">📁 اختر القسم</label>
+        <select id="admin-section-select" style="width:100%;padding:9px 12px;border:1.5px solid #d5e8f5;border-radius:10px;font-family:inherit;font-size:.82rem;outline:none;background:#f8fbff;" onchange="adminLoadSectionPath()">
+          <option value="">— جاري تحميل الأقسام —</option>
+        </select>
+        <div id="admin-section-path" style="font-size:.72rem;color:#888;margin-top:4px;"></div>
+      </div>
 
-🔐 Continue with Google
+      <div style="margin-bottom:12px;">
+        <label style="font-size:.8rem;font-weight:700;color:#0a3d62;display:block;margin-bottom:5px;">🏷️ نوع المحتوى</label>
+        <select id="admin-content-type" onchange="adminToggleFields()" style="width:100%;padding:9px 12px;border:1.5px solid #d5e8f5;border-radius:10px;font-family:inherit;font-size:.82rem;outline:none;background:#f8fbff;">
+          <option value="video">🎬 فيديو</option>
+          <option value="text">📝 نص / شرح</option>
+          <option value="link">🔗 رابط</option>
+          <option value="pdf">📄 PDF</option>
+        </select>
+      </div>
 
-</button>
+      <div style="margin-bottom:12px;">
+        <label style="font-size:.8rem;font-weight:700;color:#0a3d62;display:block;margin-bottom:5px;">📌 العنوان</label>
+        <input id="admin-content-title" type="text" placeholder="مثال: شرح الدرس الأول" style="width:100%;padding:9px 12px;border:1.5px solid #d5e8f5;border-radius:10px;font-family:inherit;font-size:.82rem;outline:none;box-sizing:border-box;">
+      </div>
 
+      <div id="admin-url-field" style="margin-bottom:12px;">
+        <label style="font-size:.8rem;font-weight:700;color:#0a3d62;display:block;margin-bottom:5px;">🔗 الرابط (URL)</label>
+        <input id="admin-content-url" type="url" placeholder="https://..." style="width:100%;padding:9px 12px;border:1.5px solid #d5e8f5;border-radius:10px;font-family:inherit;font-size:.82rem;outline:none;box-sizing:border-box;direction:ltr;">
+        <div style="font-size:.7rem;color:#888;margin-top:3px;" id="admin-url-hint">للفيديو: رابط يوتيوب أو أي رابط فيديو</div>
+      </div>
+
+      <div id="admin-body-field" style="margin-bottom:12px;display:none;">
+        <label style="font-size:.8rem;font-weight:700;color:#0a3d62;display:block;margin-bottom:5px;">📝 النص / الشرح</label>
+        <textarea id="admin-content-body" rows="4" placeholder="اكتب النص أو الشرح هنا..." style="width:100%;padding:9px 12px;border:1.5px solid #d5e8f5;border-radius:10px;font-family:inherit;font-size:.82rem;outline:none;resize:vertical;box-sizing:border-box;"></textarea>
+      </div>
+
+      <div style="margin-bottom:16px;">
+        <label style="font-size:.8rem;font-weight:700;color:#0a3d62;display:block;margin-bottom:5px;">💬 وصف (اختياري)</label>
+        <input id="admin-content-desc" type="text" placeholder="وصف مختصر..." style="width:100%;padding:9px 12px;border:1.5px solid #d5e8f5;border-radius:10px;font-family:inherit;font-size:.82rem;outline:none;box-sizing:border-box;">
+      </div>
+
+      <button onclick="adminSaveContent()" style="width:100%;padding:12px;background:linear-gradient(135deg,#0a3d62,#17a589);color:#fff;border:none;border-radius:12px;font-family:inherit;font-size:.9rem;font-weight:800;cursor:pointer;transition:opacity .2s;">💾 حفظ المحتوى</button>
+      <div id="admin-msg" style="margin-top:10px;text-align:center;font-size:.82rem;min-height:20px;"></div>
+    </div>
+
+    <!-- LIST TAB -->
+    <div id="admin-tab-list" style="display:none;">
+      <div style="margin-bottom:10px;">
+        <select id="admin-list-section" style="width:100%;padding:9px 12px;border:1.5px solid #d5e8f5;border-radius:10px;font-family:inherit;font-size:.82rem;outline:none;background:#f8fbff;" onchange="adminLoadContentList()">
+          <option value="">اختر القسم لعرض محتواه</option>
+        </select>
+      </div>
+      <div id="admin-content-list" style="max-height:350px;overflow-y:auto;"></div>
+    </div>
+  </div>
 </div>
-  <div id="admin-panel"
-style="
-display:none;
-position:fixed;
-top:80px;
-left:20px;
-z-index:999999;
-background:white;
-padding:20px;
-border-radius:15px;
-box-shadow:0 0 20px rgba(0,0,0,.2);
-width:250px;
-">
 
-<h2>لوحة التحكم</h2>
+<style>
+#admin-panel select:focus, #admin-panel input:focus, #admin-panel textarea:focus {
+  border-color: #0a3d62 !important;
+  box-shadow: 0 0 0 3px rgba(10,61,98,.1);
+}
+</style>
 
-<button onclick="alert('إضافة كورس')">
-إضافة كورس
-</button>
+<script>
+// ==================== ADMIN PANEL LOGIC ====================
 
-<br><br>
+async function adminLoadSections() {
+  if (!window.supabase) return;
+  try {
+    const { data } = await window.supabase.from('site_sections').select('id, title, parent_id, subtitle').order('display_order');
+    if (!data) return;
+    window._adminSections = data;
+    const selAdd  = document.getElementById('admin-section-select');
+    const selList = document.getElementById('admin-list-section');
+    const opts = data.map(s => `<option value="${s.id}">${s.title}${s.subtitle ? ' — ' + s.subtitle : ''}</option>`).join('');
+    if (selAdd)  selAdd.innerHTML  = '<option value="">— اختر القسم —</option>' + opts;
+    if (selList) selList.innerHTML = '<option value="">اختر القسم لعرض محتواه</option>' + opts;
+  } catch(e) { console.error('adminLoadSections error:', e); }
+}
 
-<button onclick="alert('إضافة فصل')">
-إضافة فصل
-</button>
+function adminLoadSectionPath() {
+  const id = document.getElementById('admin-section-select').value;
+  if (!id || !window._adminSections) { document.getElementById('admin-section-path').textContent = ''; return; }
+  const sec = window._adminSections.find(s => String(s.id) === String(id));
+  if (!sec) return;
+  let path = sec.title;
+  if (sec.parent_id) {
+    const parent = window._adminSections.find(s => String(s.id) === String(sec.parent_id));
+    if (parent) path = parent.title + ' › ' + path;
+  }
+  document.getElementById('admin-section-path').textContent = '📍 ' + path;
+}
 
-<br><br>
+function adminToggleFields() {
+  const type = document.getElementById('admin-content-type').value;
+  const urlField  = document.getElementById('admin-url-field');
+  const bodyField = document.getElementById('admin-body-field');
+  const hint      = document.getElementById('admin-url-hint');
+  if (type === 'text') {
+    urlField.style.display  = 'none';
+    bodyField.style.display = '';
+  } else {
+    urlField.style.display  = '';
+    bodyField.style.display = 'none';
+    if (type === 'video') hint.textContent = 'للفيديو: رابط يوتيوب أو أي رابط فيديو';
+    else if (type === 'pdf') hint.textContent = 'رابط مباشر لملف PDF';
+    else hint.textContent = 'رابط الصفحة أو المصدر';
+  }
+}
 
-<button onclick="alert('إضافة امتحان')">
-إضافة امتحان
-</button>
+async function adminSaveContent() {
+  const sectionId = document.getElementById('admin-section-select').value;
+  const type      = document.getElementById('admin-content-type').value;
+  const title     = document.getElementById('admin-content-title').value.trim();
+  const url       = document.getElementById('admin-content-url').value.trim();
+  const body      = document.getElementById('admin-content-body').value.trim();
+  const desc      = document.getElementById('admin-content-desc').value.trim();
+  const msgEl     = document.getElementById('admin-msg');
 
-<br><br>
+  if (!sectionId) { msgEl.style.color='#e74c3c'; msgEl.textContent = '❌ اختر القسم أولاً'; return; }
+  if (!title)     { msgEl.style.color='#e74c3c'; msgEl.textContent = '❌ أدخل العنوان'; return; }
+  if (type !== 'text' && !url) { msgEl.style.color='#e74c3c'; msgEl.textContent = '❌ أدخل الرابط'; return; }
+  if (type === 'text' && !body) { msgEl.style.color='#e74c3c'; msgEl.textContent = '❌ أدخل النص'; return; }
 
-<button onclick="alert('إدارة الطلاب')">
-إدارة الطلاب
-</button>
+  msgEl.style.color='#0a3d62'; msgEl.textContent = '⏳ جاري الحفظ...';
 
-<br><br>
+  try {
+    const record = {
+      section_id: Number(sectionId),
+      content_type: type,
+      title: title,
+      description: desc || null,
+      url: (type !== 'text' && url) ? url : null,
+      body: (type === 'text' && body) ? body : null,
+      display_order: Date.now()
+    };
+    const { error } = await window.supabase.from('section_content').insert([record]);
+    if (error) throw error;
+    msgEl.style.color='#17a589'; msgEl.textContent = '✅ تم الحفظ بنجاح!';
+    document.getElementById('admin-content-title').value = '';
+    document.getElementById('admin-content-url').value   = '';
+    document.getElementById('admin-content-body').value  = '';
+    document.getElementById('admin-content-desc').value  = '';
+    setTimeout(() => { msgEl.textContent = ''; }, 3000);
+  } catch(e) {
+    msgEl.style.color='#e74c3c';
+    msgEl.textContent = '❌ خطأ: ' + (e.message || 'فشل الحفظ');
+  }
+}
 
-<button onclick="alert('الاشتراكات')">
-الاشتراكات
-</button>
+async function adminLoadContentList() {
+  const sectionId = document.getElementById('admin-list-section').value;
+  const listEl    = document.getElementById('admin-content-list');
+  if (!sectionId) { listEl.innerHTML = ''; return; }
+  listEl.innerHTML = '<div style="text-align:center;padding:20px;color:#888">⏳ جاري التحميل...</div>';
+  try {
+    const { data, error } = await window.supabase.from('section_content').select('*').eq('section_id', sectionId).order('display_order');
+    if (error) throw error;
+    if (!data || data.length === 0) {
+      listEl.innerHTML = '<div style="text-align:center;padding:20px;color:#aaa;font-size:.82rem">لا يوجد محتوى لهذا القسم بعد</div>';
+      return;
+    }
+    const icons = { video:'🎬', text:'📝', link:'🔗', pdf:'📄' };
+    listEl.innerHTML = data.map(item => `
+      <div style="background:#f8fbff;border:1.5px solid #d5e8f5;border-radius:12px;padding:12px 14px;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;gap:10px;">
+        <div style="display:flex;align-items:center;gap:8px;flex:1;min-width:0;">
+          <span style="font-size:1.2rem;">${icons[item.content_type]||'📌'}</span>
+          <div style="min-width:0;">
+            <div style="font-size:.82rem;font-weight:700;color:#0a3d62;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${item.title}</div>
+            <div style="font-size:.7rem;color:#999;">${item.content_type}</div>
+          </div>
+        </div>
+        <button onclick="adminDeleteContent(${item.id})" style="background:#fef0f0;border:1px solid #fcc;color:#e74c3c;border-radius:8px;padding:5px 10px;cursor:pointer;font-size:.75rem;white-space:nowrap;font-family:inherit;">🗑️ حذف</button>
+      </div>`).join('');
+  } catch(e) {
+    listEl.innerHTML = '<div style="color:#e74c3c;font-size:.8rem;padding:10px;">❌ ' + (e.message||'خطأ') + '</div>';
+  }
+}
 
-</div>
+async function adminDeleteContent(id) {
+  if (!confirm('هل تريد حذف هذا العنصر؟')) return;
+  try {
+    const { error } = await window.supabase.from('section_content').delete().eq('id', id);
+    if (error) throw error;
+    adminLoadContentList();
+  } catch(e) { alert('خطأ في الحذف: ' + e.message); }
+}
+
+function adminTab(tab) {
+  document.getElementById('admin-tab-add').style.display  = tab === 'add'  ? '' : 'none';
+  document.getElementById('admin-tab-list').style.display = tab === 'list' ? '' : 'none';
+  document.getElementById('tab-add').style.background  = tab === 'add'  ? '#0a3d62' : '#eaf4fb';
+  document.getElementById('tab-add').style.color       = tab === 'add'  ? '#fff'    : '#0a3d62';
+  document.getElementById('tab-list').style.background = tab === 'list' ? '#0a3d62' : '#eaf4fb';
+  document.getElementById('tab-list').style.color      = tab === 'list' ? '#fff'    : '#0a3d62';
+  if (tab === 'list') adminLoadContentList();
+}
+
+function toggleAdminPanel() {
+  const p = document.getElementById('admin-panel');
+  p.style.display = p.style.display === 'none' ? 'block' : 'none';
+}
+
+// نهاية لوحة التحكم
+</script>
 </body>
 </html>
