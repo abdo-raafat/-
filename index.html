@@ -1463,21 +1463,22 @@ window.printSeedSQL  = printSeedSQL;
 // ==================== INIT ====================
 updateBreadcrumb();
 </script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
 <script>
 
-const SUPABASE_URL = 'https://xiqeaohemuxgujrcnpzd.supabase.co';
+const SUPABASE_URL =
+'https://xiqeaohemuxgujrcnpzd.supabase.co';
 
-const SUPABASE_KEY = 'sb_publishable_xzg8wn0ETQniEItj2Etfmw__klmgUWg';
+const SUPABASE_KEY =
+'sb_publishable_xzg8wn0ETQniEItj2Etfmw__klmgUWg';
 
-const supabaseClient = supabase.createClient(
+window.supabase = supabase.createClient(
 SUPABASE_URL,
 SUPABASE_KEY
 );
 
-
-// =======================
-// GOOGLE LOGIN
-// =======================
+// LOGIN
 
 async function loginWithGoogle(){
 
@@ -1487,7 +1488,8 @@ provider:'google',
 
 options:{
 
-redirectTo:'https://bdatyabdo016-svg.github.io/-/'
+redirectTo:
+'https://bdatyabdo016-svg.github.io/-/'
 
 }
 
@@ -1495,33 +1497,23 @@ redirectTo:'https://bdatyabdo016-svg.github.io/-/'
 
 }
 
-
-// =======================
 // LOGOUT
-// =======================
 
 async function logoutUser(){
 
-await supabaseClient.auth.signOut();
+await window.supabase.auth.signOut();
 
 location.reload();
 
 }
 
-
-// =======================
 // CHECK USER
-// =======================
 
 async function checkUser(){
 
 const {
-
 data:{user}
-
-} = await supabaseClient.auth.getUser();
-
-console.log(user);
+} = await window.supabase.auth.getUser();
 
 if(user){
 
@@ -1535,22 +1527,14 @@ ${user.email}
 
 </div>
 
-<button class="logout-btn" onclick="logoutUser()">
+<button class="logout-btn"
+onclick="logoutUser()">
 
 تسجيل الخروج
 
 </button>
 
 </div>
-
-`;
-<h3>${user.email}</h3>
-
-<button onclick="logoutUser()">
-
-تسجيل الخروج
-
-</button>
 
 `;
 
@@ -1561,6 +1545,7 @@ ${user.email}
 checkUser();
 
 </script>
+
 <style>
 
 #user-box{
@@ -1578,7 +1563,7 @@ display:flex;
 align-items:center;
 gap:12px;
 
-background:#ffffff;
+background:#fff;
 
 border:1px solid #e5e7eb;
 
@@ -1589,88 +1574,46 @@ border-radius:14px;
 font-size:15px;
 font-weight:600;
 
-color:#111827;
-
 cursor:pointer;
-
-transition:all .25s ease;
 
 box-shadow:
 0 4px 12px rgba(0,0,0,.08);
 
 }
 
-.chatgpt-login-btn:hover{
-
-transform:translateY(-2px);
-
-background:#f9fafb;
-
-box-shadow:
-0 8px 24px rgba(0,0,0,.12);
-
-}
-
-.chatgpt-login-btn svg{
-
-width:22px;
-height:22px;
-
-}
-
 .user-card{
 
-background:#ffffff;
+background:#fff;
 
-padding:14px 18px;
+padding:14px;
 
-border-radius:16px;
+border-radius:14px;
 
 box-shadow:
-0 4px 15px rgba(0,0,0,.1);
-
-font-family:Arial;
-
-min-width:240px;
+0 4px 12px rgba(0,0,0,.1);
 
 }
 
 .user-email{
 
-font-size:14px;
-font-weight:600;
-color:#111827;
+margin-bottom:10px;
 
-margin-bottom:12px;
-
-word-break:break-word;
+font-weight:bold;
 
 }
 
 .logout-btn{
-
-width:100%;
 
 background:#111827;
 color:white;
 
 border:none;
 
-padding:10px;
+padding:10px 14px;
 
 border-radius:10px;
 
-font-size:14px;
-
 cursor:pointer;
-
-transition:.2s;
-
-}
-
-.logout-btn:hover{
-
-opacity:.9;
 
 }
 
@@ -1683,22 +1626,11 @@ class="chatgpt-login-btn"
 onclick="loginWithGoogle()"
 >
 
-<svg viewBox="0 0 48 48">
-
-<path fill="#EA4335" d="M24 9.5c3.54 0 6.7 1.22 9.2 3.6l6.85-6.85C35.9 2.38 30.4 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
-
-<path fill="#4285F4" d="M46.1 24.55c0-1.57-.14-3.09-.4-4.55H24v8.62h12.4c-.54 2.9-2.18 5.36-4.64 7.02l7.19 5.59C43.98 37.09 46.1 31.4 46.1 24.55z"/>
-
-<path fill="#FBBC05" d="M10.54 28.41A14.5 14.5 0 0 1 9.5 24c0-1.53.37-2.98 1.04-4.41l-7.98-6.19A23.93 23.93 0 0 0 0 24c0 3.84.92 7.47 2.56 10.59l7.98-6.18z"/>
-
-<path fill="#34A853" d="M24 48c6.48 0 11.92-2.13 15.89-5.81l-7.19-5.59c-2 1.34-4.56 2.15-8.7 2.15-6.26 0-11.57-4.22-13.46-9.91l-7.98 6.18C6.51 42.62 14.62 48 24 48z"/>
-
-</svg>
-
-<span>Continue with Google</span>
+🔐 Continue with Google
 
 </button>
 
 </div>
+  </script>
 </body>
 </html>
