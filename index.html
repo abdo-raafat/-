@@ -697,6 +697,7 @@ footer strong { color: var(--accent2); }
   .content-area { padding: 18px; }
 }
 </style>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js"></script>
 </head>
 <body>
 
@@ -1462,5 +1463,89 @@ window.printSeedSQL  = printSeedSQL;
 // ==================== INIT ====================
 updateBreadcrumb();
 </script>
+<script>
+
+const SUPABASE_URL = 'https://xiqeaohemuxgujrcnpzd.supabase.co';
+
+const SUPABASE_KEY = 'sb_publishable_xzg8wn0ETQniEItj2Etfmw__klmgUWg';
+
+const supabaseClient = supabase.createClient(
+SUPABASE_URL,
+SUPABASE_KEY
+);
+
+
+// =======================
+// GOOGLE LOGIN
+// =======================
+
+async function loginWithGoogle(){
+
+await supabaseClient.auth.signInWithOAuth({
+
+provider:'google'
+
+});
+
+}
+
+
+// =======================
+// LOGOUT
+// =======================
+
+async function logoutUser(){
+
+await supabaseClient.auth.signOut();
+
+location.reload();
+
+}
+
+
+// =======================
+// CHECK USER
+// =======================
+
+async function checkUser(){
+
+const {
+
+data:{user}
+
+} = await supabaseClient.auth.getUser();
+
+console.log(user);
+
+if(user){
+
+document.getElementById('user-box').innerHTML = `
+
+<h3>${user.email}</h3>
+
+<button onclick="logoutUser()">
+
+تسجيل الخروج
+
+</button>
+
+`;
+
+}
+
+}
+
+checkUser();
+
+</script>
+<div id="user-box">
+
+<button onclick="loginWithGoogle()">
+
+تسجيل الدخول بجوجل
+
+</button>
+
+</div>
 </body>
 </html>
