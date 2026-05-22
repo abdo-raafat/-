@@ -1514,6 +1514,7 @@ async function checkUser(){
 const {
 data:{user}
 } = await window.supabase.auth.getUser();
+
 if(user){
 
 document.getElementById('user-box').innerHTML = `
@@ -1540,13 +1541,17 @@ onclick="logoutUser()">
 
 // ADMIN PANEL
 
-if(user.email === 'bdatyabdo016@gmail.com'){
+if(user.email === 'bdatyabdo010@gmail.com'){
 
 document.getElementById('admin-panel').style.display = 'block';
 
 }
 
 }
+
+}
+
+// RUN FUNCTION
 
 checkUser();
 
