@@ -677,7 +677,7 @@ img, video, iframe, embed, object { max-width: 100%; }
 
 /* ===== SELECTOR PAGE ===== */
 .selector-page {
-  max-width: 900px;
+  max-width: 960px;
   margin: 0 auto;
   padding: 30px 20px 60px;
 }
@@ -1119,7 +1119,7 @@ footer strong { color: var(--accent2); }
       <p id="dynamic-section-sub"></p>
     </div>
     <div id="dynamic-section-resources-container"></div>
-    <div class="cards-grid" id="dynamic-section-grid">
+    <div id="dynamic-section-grid" class="cards-grid">
       <div class="loading"><div class="spinner"></div> جاري التحميل...</div>
     </div>
   </div>
@@ -1500,40 +1500,68 @@ function _registerSectionHandlers(sections) {
  * يُستخدم من openDynamicSection ومن restore عند الرجوع
  */
 async function _renderDynamicSectionPage(sec) {
-  window._currentDynamicSec = sec; // حفظ للتحديث التلقائي
+  window._currentDynamicSec = sec;
   document.getElementById('dynamic-section-title').textContent = sec.title;
   document.getElementById('dynamic-section-sub').textContent = sec.subtitle || '';
 
   showLoading('dynamic-section-grid');
 
-  // عرض الصفحة فوراً ثم نحمّل البيانات
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.getElementById('page-dynamic-section').classList.add('active');
   window.scrollTo(0, 0);
   updateBreadcrumb();
 
-  // موارد القسم
+  // نظّف resources container — مش بنستخدمه منفرداً بعد الآن
   const resourcesEl = document.getElementById('dynamic-section-resources-container');
-  if (resourcesEl) {
-    resourcesEl.innerHTML = '';
-    loadSectionResources(sec.id).then(res => { resourcesEl.innerHTML = buildResourcesHTML(res); });
-  }
+  if (resourcesEl) resourcesEl.innerHTML = '';
 
   const children = await loadSections(sec.id);
 
   if (children.length === 0) {
-    const content = await loadSectionContent(sec.id);
-    if (content.length > 0) {
-      renderResourceCards('dynamic-section-grid', content);
+    // قسم نهائي — نجيب section_content + resources مع بعض
+    const [content, resources] = await Promise.all([
+      loadSectionContent(sec.id),
+      loadSectionResources(sec.id)
+    ]);
+
+    const grid = document.getElementById('dynamic-section-grid');
+    grid.style.display = 'block';
+    grid.style.padding = '0';
+    grid.style.margin = '0';
+
+    let innerHtml = '';
+    if (content.length > 0)   innerHtml += buildContentHTML(content);
+    if (resources.length > 0) innerHtml += buildResourcesInsideArea(resources);
+
+    if (innerHtml !== '') {
+      grid.innerHTML = `
+        <div style="
+          background:#fff;border-radius:18px;
+          padding:28px 28px 20px;
+          box-shadow:0 8px 32px rgba(10,61,98,0.12);
+          min-height:200px;
+        ">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px;padding-bottom:16px;border-bottom:2px solid #eaf4fb;">
+            <span style="font-size:1.3rem;background:linear-gradient(135deg,var(--light),#dceefb);border-radius:12px;padding:8px 12px;box-shadow:0 2px 8px rgba(10,61,98,0.1)">📚</span>
+            <span style="font-size:1.1rem;font-weight:900;color:var(--primary)">الملفات والموارد</span>
+            <span style="flex:1;height:2px;background:linear-gradient(90deg,#b8d9f0,transparent);border-radius:2px"></span>
+          </div>
+          ${innerHtml}
+        </div>`;
     } else {
-      document.getElementById('dynamic-section-grid').innerHTML = `
-        <div style="text-align:center;padding:40px;color:#999;grid-column:1/-1">
-          <div style="font-size:2.5rem;margin-bottom:12px">🚧</div>
-          <p>هذا القسم قيد الإعداد — سيتم إضافة المحتوى قريباً</p>
+      grid.innerHTML = `
+        <div style="text-align:center;padding:60px 20px;color:#bbb">
+          <div style="font-size:3rem;margin-bottom:14px">🚧</div>
+          <p style="font-size:1rem;font-weight:600">المحتوى قيد الإعداد — سيتم إضافته قريباً</p>
         </div>`;
     }
     return;
   }
+
+  // يوجد أقسام فرعية — عودة للـ grid العادي
+  const grid = document.getElementById('dynamic-section-grid');
+  grid.style.display = '';
+  grid.style.padding = '';
 
   children.forEach(child => {
     window[`__sectionData_${child.id}`] = child;
@@ -1665,11 +1693,37 @@ function buildContentHTML(contentItems) {
     if (item.content_type === 'video') {
       const safeUrl = (item.url || '').replace(/'/g,"\\'");
       const safeTitle = (item.title || 'فيديو شرح').replace(/'/g,"\\'");
+      const hasLink = !!item.url;
       html += `
-        <div class="video-placeholder" ${item.url ? `onclick="openResource('${safeUrl}','${safeTitle}','video')"` : ''} style="margin-bottom:18px">
-          <div class="play-btn">▶</div>
-          <p style="font-size:1rem;font-weight:700">${item.title || 'فيديو شرح'}</p>
-          ${item.description ? `<p style="font-size:.82rem;opacity:.7;margin-top:6px">${item.description}</p>` : ''}
+        <div ${hasLink ? `onclick="openResource('${safeUrl}','${safeTitle}','video')"` : ''} style="
+          display:flex;align-items:center;gap:18px;
+          background:${hasLink ? 'linear-gradient(135deg,#0d1f2d,#1a3a5c)' : '#1a1a2e'};
+          border:2px solid ${hasLink ? '#2471a3' : '#2c3e50'};
+          border-radius:16px;padding:20px 24px;
+          cursor:${hasLink ? 'pointer' : 'default'};
+          transition:transform .2s,box-shadow .2s;
+          margin-bottom:12px;
+        "
+        ${hasLink ? 'onmouseover="this.style.transform=\'translateY(-3px)\';this.style.boxShadow=\'0 8px 24px rgba(10,61,98,.3)\'"' : ''}
+        ${hasLink ? 'onmouseout="this.style.transform=\'\';this.style.boxShadow=\'\'"' : ''}
+        >
+          <div style="
+            width:60px;height:60px;
+            background:rgba(255,255,255,0.12);
+            border-radius:16px;border:2px solid rgba(255,255,255,0.2);
+            display:flex;align-items:center;justify-content:center;
+            font-size:2rem;flex-shrink:0;
+          ">▶</div>
+          <div style="flex:1;min-width:0;">
+            <div style="font-size:1.05rem;font-weight:800;color:#fff;margin-bottom:4px;line-height:1.4">${item.title || 'فيديو شرح'}</div>
+            ${item.description ? `<div style="font-size:.85rem;color:rgba(255,255,255,.65);margin-top:4px">${item.description}</div>` : ''}
+          </div>
+          ${hasLink ? `<div style="
+            background:linear-gradient(135deg,#e74c3c,#c0392b);
+            color:#fff;border-radius:12px;padding:10px 18px;
+            font-size:.85rem;font-weight:700;white-space:nowrap;
+            box-shadow:0 3px 10px rgba(231,76,60,.4);
+          ">▶ عرض</div>` : ''}
         </div>`;
     } else if (item.content_type === 'text') {
       const rawText = item.body || item.description || '';
@@ -1679,22 +1733,47 @@ function buildContentHTML(contentItems) {
           <div class="preformatted-text">${renderPreformatted(rawText)}</div>
         </div>`;
     } else {
-      const icon = item.icon || (item.content_type === 'pdf' ? '📄' : item.content_type === 'link' ? '🔗' : '📌');
-      const safeUrl = (item.url || '').replace(/'/g,"\\'");
+      // pdf / link / etc — نفس ديزاين buildResourcesInsideArea
+      const typeIcon = item.content_type === 'pdf' ? '📄'
+                     : item.content_type === 'link' ? '🔗'
+                     : item.icon || '📌';
+      const safeUrl   = (item.url || '').replace(/'/g,"\\'");
       const safeTitle = (item.title || '').replace(/'/g,"\\'");
-      const safeType = (item.content_type || '').replace(/'/g,"\\'");
+      const safeType  = (item.content_type || '').replace(/'/g,"\\'");
+      const hasLink   = !!item.url;
       html += `
-        <div class="resource-item" ${item.url ? `onclick="openResource('${safeUrl}','${safeTitle}','${safeType}')"` : ''} style="${item.url ? 'cursor:pointer' : ''};margin-bottom:10px;padding:18px 22px;">
-          <div class="ri-icon" style="font-size:2rem">${icon}</div>
-          <div class="ri-info">
-            <h5 style="font-size:1rem;font-weight:800;color:var(--primary)">${item.title || ''}</h5>
-            ${item.description ? `<p style="font-size:.85rem;margin-top:3px">${item.description}</p>` : ''}
+        <div ${hasLink ? `onclick="openResource('${safeUrl}','${safeTitle}','${safeType}')"` : ''} style="
+          display:flex;align-items:center;gap:18px;
+          background:${hasLink ? 'linear-gradient(135deg,#eaf4fb,#dceefb)' : '#f8fbff'};
+          border:2px solid ${hasLink ? '#b8d9f0' : '#e3eaf5'};
+          border-radius:16px;padding:20px 24px;
+          cursor:${hasLink ? 'pointer' : 'default'};
+          transition:transform .2s,box-shadow .2s;
+          margin-bottom:12px;
+        "
+        ${hasLink ? 'onmouseover="this.style.transform=\'translateY(-3px)\';this.style.boxShadow=\'0 8px 24px rgba(10,61,98,.15)\'"' : ''}
+        ${hasLink ? 'onmouseout="this.style.transform=\'\';this.style.boxShadow=\'\'"' : ''}
+        >
+          <div style="
+            font-size:2.2rem;width:60px;height:60px;
+            background:linear-gradient(135deg,var(--primary),var(--teal));
+            border-radius:16px;display:flex;align-items:center;justify-content:center;
+            flex-shrink:0;box-shadow:0 4px 14px rgba(10,61,98,.2);
+          ">${typeIcon}</div>
+          <div style="flex:1;min-width:0;">
+            <div style="font-size:1.05rem;font-weight:800;color:var(--primary);margin-bottom:4px;line-height:1.4">${item.title || ''}</div>
+            ${item.description ? `<div style="font-size:.85rem;color:#666;margin-top:4px">${item.description}</div>` : ''}
           </div>
-          ${item.url ? '<div style="margin-right:auto;color:var(--teal);font-size:1.3rem">▶</div>' : ''}
+          ${hasLink ? `<div style="
+            background:linear-gradient(135deg,var(--primary),var(--teal));
+            color:#fff;border-radius:12px;padding:10px 18px;
+            font-size:.85rem;font-weight:700;white-space:nowrap;
+            box-shadow:0 3px 10px rgba(10,61,98,.25);
+          ">عرض ▶</div>` : ''}
         </div>`;
     }
   });
-  return `<div style="display:flex;flex-direction:column;gap:4px;margin-bottom:24px">${html}</div>`;
+  return `<div style="display:flex;flex-direction:column;gap:0;margin-bottom:24px">${html}</div>`;
 }
 
 // دالة قديمة للتوافق
@@ -1797,32 +1876,8 @@ function getResourceIcon(resource) {
 
 function buildResourcesHTML(resources) {
   if (!resources || resources.length === 0) return '';
-  const cards = resources.map(r => {
-    const icon = getResourceIcon(r);
-    const desc = r.description ? `<p style="font-size:.72rem;color:#777;margin-top:2px;line-height:1.4">${r.description}</p>` : '';
-    const safeUrl = (r.file_url || '').replace(/'/g,"\\'").replace(/"/g,'&quot;');
-    const safeTitle = (r.title || 'مورد').replace(/'/g,"\\'");
-    const safeType = (r.resource_type || '').replace(/'/g,"\\'");
-    const clickHandler = r.file_url ? `onclick="openResource('${safeUrl}','${safeTitle}','${safeType}')"` : '';
-    return `
-      <div class="resource-item" ${clickHandler} style="${r.file_url ? 'cursor:pointer' : 'cursor:default'}">
-        <div class="ri-icon" style="font-size:1.7rem;min-width:36px;text-align:center">${icon}</div>
-        <div class="ri-info">
-          <h5 style="font-size:.88rem;font-weight:700;color:var(--primary)">${r.title || 'مورد'}</h5>
-          ${desc}
-        </div>
-        ${r.file_url ? '<div style="margin-right:auto;color:var(--teal);font-size:1rem">▶</div>' : ''}
-      </div>`;
-  }).join('');
-  return `
-    <div style="margin-bottom:28px">
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
-        <span style="font-size:1.1rem;background:linear-gradient(135deg,var(--light),#dceefb);border-radius:10px;padding:5px 10px;box-shadow:0 2px 8px rgba(10,61,98,0.1)">📚</span>
-        <span style="font-size:1rem;font-weight:800;color:var(--primary)">الملفات والموارد</span>
-        <span style="flex:1;height:2px;background:linear-gradient(90deg,#d0e6f7,transparent);border-radius:2px;margin-right:4px"></span>
-      </div>
-      <div class="resources-row" style="grid-template-columns:repeat(auto-fill,minmax(220px,1fr))">${cards}</div>
-    </div>`;
+  // ✅ نفس ديزاين buildResourcesInsideArea — موحّد في كل الأقسام
+  return buildResourcesInsideArea(resources);
 }
 
 // ==================== AI ASSISTANT ====================
@@ -2002,13 +2057,12 @@ const ResourceViewer = (function() {
       return m ? `https://www.dailymotion.com/embed/video/${m[1]}` : url;
     }
     if (type === 'gdrive_pdf') {
-      // تحويل رابط Drive لـ رابط تحميل مباشر يُعرض كـ PDF في iframe
+      // الرابط وصل هنا بعد normalizeUrl — يعني هو بالفعل /preview
+      // لكن نعمل fallback لو لأي سبب لسه مش /preview
       const m = url.match(/\/d\/([a-zA-Z0-9_-]+)/);
-      if (m) {
-        const fileId = m[1];
-        // رابط مباشر بدون Google login — يعمل مع الملفات العامة
-        return `https://drive.google.com/uc?export=download&id=${fileId}`;
-      }
+      if (m) return `https://drive.google.com/file/d/${m[1]}/preview`;
+      const m2 = url.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+      if (m2) return `https://drive.google.com/file/d/${m2[1]}/preview`;
       return url;
     }
     if (type === 'pdf') {
@@ -2078,8 +2132,8 @@ const ResourceViewer = (function() {
       }
 
       case 'gdrive_pdf': {
-        // رابط Google Drive المباشر — نعرضه كـ PDF في iframe
-        const directUrl = toEmbedUrl(url, 'gdrive_pdf');
+        // رابط Google Drive /preview — يعمل داخل iframe بدون Google UI أو login
+        const previewUrl = toEmbedUrl(url, 'gdrive_pdf');
         return `
           <div class="rv-loading" id="rv-loading-indicator">
             <div class="spinner-lg"></div>
@@ -2087,9 +2141,10 @@ const ResourceViewer = (function() {
           </div>
           <iframe
             class="rv-pdf-frame"
-            src="${escUrl(directUrl)}#toolbar=1"
+            src="${escUrl(previewUrl)}"
             style="display:none"
             id="rv-pdf-iframe"
+            allow="autoplay"
             onload="
               document.getElementById('rv-loading-indicator').style.display='none';
               this.style.display='block';
@@ -2150,9 +2205,31 @@ const ResourceViewer = (function() {
   function escUrl(u) { return (u || '').replace(/"/g, '%22').replace(/'/g, '%27'); }
   function escHtml(s) { return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
+  // ── تطبيع الرابط: تحويل أي Google Drive رابط لـ /preview مباشرة ──
+  function normalizeUrl(url) {
+    if (!url) return url;
+    if (!/drive\.google\.com/.test(url)) return url;
+
+    // استخرج الـ File ID من أي صيغة ممكنة
+    const m = url.match(/\/d\/([a-zA-Z0-9_-]+)/);
+    if (m) {
+      // دايماً نرجع /preview — بغض النظر عن أي صيغة كانت (/view, /edit, /uc?export=...)
+      return `https://drive.google.com/file/d/${m[1]}/preview`;
+    }
+    // صيغة id= في query string
+    const m2 = url.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+    if (m2) {
+      return `https://drive.google.com/file/d/${m2[1]}/preview`;
+    }
+    return url;
+  }
+
   // ── الدالة الرئيسية: open ────────────────────────────────────────
   function open(url, title, resourceType) {
     if (!url) return;
+
+    // ✅ تطبيع الرابط أولاً — يحوّل كل صيغ Drive لـ /preview
+    url = normalizeUrl(url);
 
     // إزالة أي modal موجود
     close();
@@ -2271,30 +2348,59 @@ const ResourceViewer = (function() {
   }
 
   function _showGdriveFallback(url) {
-    // fallback: Google Docs Viewer
     const body = document.getElementById('rv-body');
     if (!body) return;
     const m = url.match(/\/d\/([a-zA-Z0-9_-]+)/);
-    const gdocsUrl = m
-      ? `https://docs.google.com/viewer?srcid=${m[1]}&pid=explorer&efh=false&a=v&chrome=false&embedded=true`
-      : `https://docs.google.com/viewer?url=${encodeURIComponent(url)}&embedded=true`;
+    const m2 = url.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+    const fileId = m ? m[1] : (m2 ? m2[1] : null);
+
+    if (fileId) {
+      // المحاولة الثانية: Google Docs Viewer مع srcid — أكثر استقراراً من /preview في بعض المتصفحات
+      const gdocsUrl = `https://docs.google.com/viewer?srcid=${fileId}&pid=explorer&efh=false&a=v&chrome=false&embedded=true`;
+      body.innerHTML = `
+        <div class="rv-loading" id="rv-loading-indicator">
+          <div class="spinner-lg"></div>
+          <p>جاري المحاولة عبر Google Docs Viewer...</p>
+        </div>
+        <iframe
+          class="rv-pdf-frame"
+          src="${gdocsUrl}"
+          style="display:none"
+          id="rv-pdf-iframe"
+          onload="
+            document.getElementById('rv-loading-indicator').style.display='none';
+            this.style.display='block';
+          "
+          onerror="ResourceViewer._showGdriveFinalFallback('${escUrl(url)}')"
+        ></iframe>`;
+    } else {
+      _showGdriveFinalFallback(url);
+    }
+  }
+
+  function _showGdriveFinalFallback(url) {
+    // آخر محاولة: زر تحميل مباشر
+    const body = document.getElementById('rv-body');
+    if (!body) return;
+    const m = url.match(/\/d\/([a-zA-Z0-9_-]+)/);
+    const downloadUrl = m
+      ? `https://drive.google.com/uc?export=download&id=${m[1]}`
+      : url;
     body.innerHTML = `
-      <div class="rv-loading" id="rv-loading-indicator">
-        <div class="spinner-lg"></div>
-        <p>جاري المحاولة عبر Google Docs...</p>
-      </div>
-      <iframe
-        class="rv-pdf-frame"
-        src="${gdocsUrl}"
-        style="display:none"
-        id="rv-pdf-iframe"
-        onload="
-          document.getElementById('rv-loading-indicator').style.display='none';
-          this.style.display='block';
-        "
-      ></iframe>
-      <div style="text-align:center;padding:12px;background:#f8fbff;border-top:1px solid #e3eaf5">
-        <p style="font-size:.8rem;color:#666;margin-bottom:8px">لو الملف مش بيظهر، الضغط على تحميل أو فتح خارجي</p>
+      <div class="rv-fallback-wrap" style="text-align:center;padding:40px 20px;">
+        <div style="font-size:3rem;margin-bottom:16px">📄</div>
+        <p style="font-size:1rem;font-weight:700;color:#0a3d62;margin-bottom:8px">تعذّر عرض الملف داخل الصفحة</p>
+        <p style="font-size:.85rem;color:#666;margin-bottom:20px">تأكد أن الملف مشاركته مفتوحة (Anyone with the link)، ثم جرّب تحميله مباشرة.</p>
+        <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;">
+          <a href="${escUrl(downloadUrl)}" download
+             style="background:linear-gradient(135deg,#0a3d62,#17a589);color:#fff;border-radius:10px;padding:11px 22px;font-size:.9rem;font-weight:700;text-decoration:none;">
+            ⬇️ تحميل الملف
+          </a>
+          <a href="${escUrl(url)}" target="_blank" rel="noopener"
+             style="background:#eaf4fb;color:#0a3d62;border:1.5px solid #b8d9f0;border-radius:10px;padding:11px 22px;font-size:.9rem;font-weight:700;text-decoration:none;">
+            ↗ فتح في Google Drive
+          </a>
+        </div>
       </div>`;
   }
 
@@ -2308,7 +2414,7 @@ const ResourceViewer = (function() {
     }
   }
 
-  return { open, close, detectType, _reload, _showPdfFallback, _showGdriveFallback, _toggleFullscreen };
+  return { open, close, detectType, _reload, _showPdfFallback, _showGdriveFallback, _showGdriveFinalFallback, _toggleFullscreen };
 })();
 
 // ==================== تحديث دوال الـ resources لتستخدم ResourceViewer ====================
@@ -2859,7 +2965,7 @@ function adminToggleFields() {
     urlField.style.display  = '';
     bodyField.style.display = 'none';
     if (type === 'video') hint.textContent = 'للفيديو: رابط يوتيوب أو أي رابط فيديو';
-    else if (type === 'pdf') hint.textContent = 'رابط مباشر لملف PDF';
+    else if (type === 'pdf') hint.textContent = 'رابط مباشر لـ PDF أو رابط Google Drive (سيتم تحويله تلقائياً)';
     else hint.textContent = 'رابط الصفحة أو المصدر';
   }
 }
@@ -2878,6 +2984,16 @@ async function adminSaveContent() {
   if (type !== 'text' && !url) { msgEl.style.color='#e74c3c'; msgEl.textContent = '❌ أدخل الرابط'; return; }
   if (type === 'text' && !body) { msgEl.style.color='#e74c3c'; msgEl.textContent = '❌ أدخل النص'; return; }
 
+  // ✅ تطبيع رابط Google Drive: /view → نحتفظ بالرابط الأصلي (ResourceViewer يتعامل معه)
+  // لكن لو كان /view نحوّله لـ /preview مباشرة عند الحفظ لضمان التوافق
+  let normalizedUrl = url;
+  if (/drive\.google\.com/.test(url)) {
+    normalizedUrl = url
+      .replace(/\/view(\?.*)?$/, '/preview')   // /view → /preview
+      .replace(/\/edit(\?.*)?$/, '/preview')   // /edit → /preview
+      .replace(/[?&]usp=[^&]*/g, '');          // إزالة usp= غير الضروري
+  }
+
   msgEl.style.color='#0a3d62'; msgEl.textContent = '⏳ جاري الحفظ...';
 
   try {
@@ -2886,7 +3002,7 @@ async function adminSaveContent() {
       content_type: type,
       title: title,
       description: desc || null,
-      url: (type !== 'text' && url) ? url : null,
+      url: (type !== 'text' && normalizedUrl) ? normalizedUrl : null,
       body: (type === 'text' && body) ? body : null,
       display_order: Date.now()
     };
@@ -2899,15 +3015,32 @@ async function adminSaveContent() {
     document.getElementById('admin-content-desc').value  = '';
     setTimeout(() => { msgEl.textContent = ''; }, 3000);
 
-    // ✅ تحديث تلقائي للصفحة المفتوحة لو كانت نفس القسم
+    // ✅ تحديث تلقائي للصفحة المفتوحة — في كل الحالات
     const savedSectionId = Number(sectionId);
     const activePage = document.querySelector('.page.active');
     const activePageId = activePage ? activePage.id : '';
 
-    if (window._currentContentSec && Number(window._currentContentSec.id) === savedSectionId && activePageId === 'page-content') {
+    if (activePageId === 'page-content' && window._currentContentSec && Number(window._currentContentSec.id) === savedSectionId) {
+      // الصفحة النهائية مفتوحة ونفس القسم — حدّث مباشرة
       await _openContentPage(window._currentContentSec);
-    } else if (window._currentDynamicSec && Number(window._currentDynamicSec.id) === savedSectionId && activePageId === 'page-dynamic-section') {
+
+    } else if (activePageId === 'page-dynamic-section' && window._currentDynamicSec && Number(window._currentDynamicSec.id) === savedSectionId) {
+      // صفحة قسم ديناميكي مفتوحة ونفس القسم — حدّث مباشرة
       await _renderDynamicSectionPage(window._currentDynamicSec);
+
+    } else {
+      // القسم المحفوظ غير مفتوح حالياً — حدّث الصفحة الحالية لو بتعرض "قيد الإعداد"
+      if (activePageId === 'page-dynamic-section' && window._currentDynamicSec) {
+        const gridEl = document.getElementById('dynamic-section-grid');
+        if (gridEl && gridEl.textContent.includes('قيد الإعداد')) {
+          await _renderDynamicSectionPage(window._currentDynamicSec);
+        }
+      } else if (activePageId === 'page-content') {
+        const areaEl = document.getElementById('content-area');
+        if (areaEl && areaEl.textContent.includes('قيد الإعداد') && window._currentContentSec) {
+          await _openContentPage(window._currentContentSec);
+        }
+      }
     }
   } catch(e) {
     msgEl.style.color='#e74c3c';
