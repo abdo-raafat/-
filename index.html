@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="theme-color" content="#0a3d62">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-<title>منصة معهد فني صحي بني سويف</title>
+<title>منصة المعهد الفني الصحي بني سويف</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;600;700;900&family=Tajawal:wght@300;400;500;700;800&display=swap" rel="stylesheet">
 <script>
@@ -1225,36 +1225,44 @@ function showPage(id) {
   updateBreadcrumb();
 }
 
+// ── Safe History API wrapper ────────────────────────────────────────────────
+// يحمي من SecurityError في بيئات iframe (about:srcdoc) أو file://
+const safeHistory = {
+  replaceState(state, title, url) {
+    try { history.replaceState(state, title, url); } catch(e) {}
+  },
+  pushState(state, title, url) {
+    try { history.pushState(state, title, url); } catch(e) {}
+  }
+};
+
 function goHome() {
   state.navigationStack = [];
   showPage('page-home');
-  history.replaceState({ page: 'home', stackLen: 0 }, '', window.location.pathname);
+  safeHistory.replaceState({ page: 'home', stackLen: 0 }, '', window.location.pathname);
 }
 
 // ==================== SPA ROUTER: Hardware Back Button ====================
-// كل انتقال يدفع state جديد في History API
-// زر الرجوع في الهاتف (popstate) يُشغّل navigateBack تلقائياً
 function _pushHistoryState() {
-  history.pushState(
+  safeHistory.pushState(
     { page: 'spa', stackLen: state.navigationStack.length },
     '',
     window.location.pathname
   );
 }
 
-// الرجوع خطوة واحدة للخلف
 function navigateBack() {
   if (state.navigationStack.length === 0) {
-    history.replaceState({ page: 'home', stackLen: 0 }, '', window.location.pathname);
+    safeHistory.replaceState({ page: 'home', stackLen: 0 }, '', window.location.pathname);
     goHome(); return;
   }
   state.navigationStack.pop();
   if (state.navigationStack.length === 0) {
-    history.replaceState({ page: 'home', stackLen: 0 }, '', window.location.pathname);
+    safeHistory.replaceState({ page: 'home', stackLen: 0 }, '', window.location.pathname);
     goHome(); return;
   }
   const prev = state.navigationStack[state.navigationStack.length - 1];
-  history.replaceState(
+  safeHistory.replaceState(
     { page: 'spa', stackLen: state.navigationStack.length },
     '',
     window.location.pathname
@@ -1262,11 +1270,10 @@ function navigateBack() {
   prev.restore();
 }
 
-// الانتقال المباشر لأي خطوة في الـ breadcrumb
 function navigateTo(index) {
   if (index < 0) { goHome(); return; }
   state.navigationStack = state.navigationStack.slice(0, index + 1);
-  history.replaceState(
+  safeHistory.replaceState(
     { page: 'spa', stackLen: state.navigationStack.length },
     '',
     window.location.pathname
@@ -1275,23 +1282,20 @@ function navigateTo(index) {
   step.restore();
 }
 
-// ── Hardware Back Button (Android / iOS PWA) ──────────────────────────────
 window.addEventListener('popstate', function(e) {
   const stackLen = state.navigationStack.length;
   if (stackLen === 0) {
-    // نحن في الرئيسية بالفعل — لا نعمل شيء
-    history.replaceState({ page: 'home', stackLen: 0 }, '', window.location.pathname);
+    safeHistory.replaceState({ page: 'home', stackLen: 0 }, '', window.location.pathname);
     return;
   }
-  // دفع state وهمي لمنع الخروج، ثم تنفيذ الرجوع الداخلي
-  history.pushState({ page: 'spa', stackLen: stackLen }, '', window.location.pathname);
+  safeHistory.pushState({ page: 'spa', stackLen: stackLen }, '', window.location.pathname);
   state.navigationStack.pop();
   if (state.navigationStack.length === 0) {
-    history.replaceState({ page: 'home', stackLen: 0 }, '', window.location.pathname);
+    safeHistory.replaceState({ page: 'home', stackLen: 0 }, '', window.location.pathname);
     showPage('page-home');
   } else {
     const prev = state.navigationStack[state.navigationStack.length - 1];
-    history.replaceState(
+    safeHistory.replaceState(
       { page: 'spa', stackLen: state.navigationStack.length },
       '',
       window.location.pathname
@@ -1300,9 +1304,8 @@ window.addEventListener('popstate', function(e) {
   }
 });
 
-// تهيئة: state ابتدائي
 (function() {
-  history.replaceState({ page: 'home', stackLen: 0 }, '', window.location.pathname);
+  safeHistory.replaceState({ page: 'home', stackLen: 0 }, '', window.location.pathname);
 })();
 
 // بناء الـ breadcrumb من الـ stack
@@ -2456,7 +2459,7 @@ window.supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
     // نظّف الـ hash من الـ URL بعد المعالجة
     setTimeout(function() {
       if (window.location.hash.includes('access_token')) {
-        history.replaceState(null, '', window.location.pathname);
+        safeHistory.replaceState(null, '', window.location.pathname);
       }
     }, 1500);
   }
