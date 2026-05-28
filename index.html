@@ -2,7 +2,11 @@
 <html lang="ar" dir="rtl">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0a3d62">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>منصة معهد فني صحي بني سويف</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;600;700;900&family=Tajawal:wght@300;400;500;700;800&display=swap" rel="stylesheet">
@@ -66,14 +70,28 @@ window._supabaseReady = new Promise(function(resolve) {
   --font: 'Cairo', 'Tajawal', sans-serif;
 }
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-html { scroll-behavior: smooth; }
+
+/* ===== FULL WIDTH MOBILE FIX (PWA-like) ===== */
+html {
+  scroll-behavior: smooth;
+  width: 100%;
+  max-width: 100vw;
+  overflow-x: hidden;
+}
 body {
   font-family: var(--font);
   background: #f0f6ff;
   color: var(--text);
   min-height: 100vh;
+  width: 100%;
+  max-width: 100vw;
   overflow-x: hidden;
+  /* PWA-like: منع التمرير الأفقي تماماً */
+  position: relative;
 }
+/* منع أي عنصر يسبب overflow أفقي */
+* { max-width: 100%; }
+img, video, iframe, embed, object { max-width: 100%; }
 
 /* ===== SCROLLBAR ===== */
 ::-webkit-scrollbar { width: 7px; }
@@ -709,119 +727,247 @@ footer strong { color: var(--accent2); }
   .content-area { padding: 18px; }
 }
 
+/* ===== PWA MOBILE FULL WIDTH FIX ===== */
+@media(max-width: 768px) {
+  /* منع أي فراغ جانبي */
+  .topnav {
+    width: 100vw;
+    left: 0; right: 0;
+    padding: 0 12px;
+  }
+  .hero {
+    padding: 40px 16px 60px;
+  }
+  .stats-row {
+    padding: 20px 12px;
+    gap: 10px;
+  }
+  .stat-card {
+    min-width: 80px;
+    padding: 12px 16px;
+  }
+  .cards-grid {
+    width: 100%;
+    padding: 14px 12px 40px;
+    grid-template-columns: 1fr;
+  }
+  .content-page {
+    width: 100%;
+    padding: 14px 10px 60px;
+  }
+  .content-area {
+    padding: 16px 14px;
+    border-radius: 14px;
+  }
+  .content-header {
+    padding: 20px 16px;
+    border-radius: 14px;
+  }
+  .links-page, .selector-page {
+    padding: 14px 10px 60px;
+  }
+  /* تحسين البطاقات على الموبايل */
+  .dept-card {
+    border-radius: 14px;
+  }
+  .dept-card .card-top {
+    padding: 20px 16px 16px;
+  }
+  /* تحسين الموارد */
+  .resources-row {
+    grid-template-columns: 1fr;
+  }
+  /* تأكيد عدم overflow */
+  .page {
+    width: 100%;
+    overflow-x: hidden;
+  }
+  /* زر الرجوع */
+  .back-btn {
+    padding: 8px 16px;
+    font-size: .82rem;
+  }
+  /* الـ AI panel على اليسار بالكامل */
+  .ai-panel {
+    width: calc(100vw - 32px);
+    left: 0;
+  }
+  .ai-widget {
+    bottom: 16px;
+    left: 16px;
+  }
+  /* Breadcrumb على الموبايل */
+  .breadcrumb {
+    font-size: .72rem;
+    max-width: 180px;
+    overflow: hidden;
+  }
+}
+
+/* ===== RESOURCE VIEWER MODAL ===== */
 /* ===== RESOURCE VIEWER MODAL ===== */
 .rv-overlay {
   position: fixed; inset: 0; z-index: 99999;
-  background: rgba(10,20,40,0.82);
-  backdrop-filter: blur(6px);
+  background: rgba(8, 16, 32, 0.88);
+  backdrop-filter: blur(8px);
   display: flex; align-items: center; justify-content: center;
-  padding: 16px;
-  animation: rvFadeIn .25s ease;
+  padding: 12px;
+  animation: rvFadeIn .2s ease;
 }
 @keyframes rvFadeIn { from { opacity:0; } to { opacity:1; } }
+
 .rv-modal {
-  background: #fff;
-  border-radius: 20px;
-  width: 100%; max-width: 900px;
-  max-height: 92vh;
+  background: #1a1f2e;
+  border-radius: 16px;
+  width: 100%; max-width: 960px;
+  max-height: 94vh;
   display: flex; flex-direction: column;
   overflow: hidden;
-  box-shadow: 0 30px 80px rgba(0,0,0,0.5);
-  animation: rvSlideUp .3s cubic-bezier(.16,1,.3,1);
+  box-shadow: 0 40px 100px rgba(0,0,0,0.7);
+  animation: rvSlideUp .28s cubic-bezier(.16,1,.3,1);
+  border: 1px solid rgba(255,255,255,0.08);
 }
-@keyframes rvSlideUp { from { opacity:0; transform:translateY(40px) scale(.97); } to { opacity:1; transform:none; } }
+@keyframes rvSlideUp {
+  from { opacity:0; transform:translateY(32px) scale(.98); }
+  to   { opacity:1; transform:none; }
+}
+
+/* ── Header (مطابق للـ screenshot: تيل داكن) ── */
 .rv-header {
-  display: flex; align-items: center; gap: 12px;
-  padding: 16px 20px;
-  background: linear-gradient(135deg, var(--primary), var(--teal));
-  color: #fff; flex-shrink: 0;
+  display: flex; align-items: center; gap: 10px;
+  padding: 0 16px;
+  height: 52px;
+  background: linear-gradient(135deg, #0d7377, #14a085);
+  color: #fff;
+  flex-shrink: 0;
+  border-bottom: 1px solid rgba(0,0,0,0.2);
 }
-.rv-header .rv-title {
-  flex: 1; font-size: .95rem; font-weight: 800;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-.rv-header .rv-type-badge {
-  background: rgba(255,255,255,.18);
-  border-radius: 20px; padding: 3px 12px;
-  font-size: .72rem; font-weight: 600;
-  border: 1px solid rgba(255,255,255,.25);
-  white-space: nowrap;
-}
+/* زر الإغلاق (يسار في RTL = يمين في الـ modal) */
 .rv-close {
-  width: 34px; height: 34px;
-  background: rgba(255,255,255,.18);
-  border: none; border-radius: 50%;
-  color: #fff; font-size: 1.1rem;
-  cursor: pointer; display: flex; align-items: center; justify-content: center;
-  transition: background .2s; flex-shrink: 0;
+  width: 32px; height: 32px;
+  background: rgba(0,0,0,0.25);
+  border: 1.5px solid rgba(255,255,255,0.2);
+  border-radius: 50%;
+  color: #fff; font-size: 1rem;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: background .15s, transform .15s;
+  flex-shrink: 0;
+  order: -1; /* يجيء أول شيء على اليسار */
 }
-.rv-close:hover { background: rgba(255,255,255,.32); }
+.rv-close:hover { background: rgba(231,76,60,0.7); transform: scale(1.1); }
+
+.rv-type-badge {
+  background: rgba(0,0,0,0.3);
+  border: 1px solid rgba(255,255,255,0.2);
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: .72rem; font-weight: 700;
+  white-space: nowrap;
+  letter-spacing: .3px;
+}
+.rv-title {
+  flex: 1;
+  font-size: .92rem; font-weight: 800;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  text-align: right;
+  direction: rtl;
+}
+
+/* ── Body ── */
 .rv-body {
   flex: 1; overflow: auto; position: relative;
-  background: #0d1117;
+  background: #f4f4f4;
   min-height: 200px;
 }
+
+/* ── Footer (مطابق للـ screenshot: أزرار تحميل وفتح خارجي) ── */
 .rv-footer {
-  padding: 10px 20px; display: flex; align-items: center; justify-content: space-between;
-  background: #f8fbff; border-top: 1px solid #e3eaf5; flex-shrink: 0; gap: 10px;
+  padding: 10px 16px;
+  display: flex; align-items: center; justify-content: space-between;
+  background: #1a1f2e;
+  border-top: 1px solid rgba(255,255,255,0.07);
+  flex-shrink: 0; gap: 8px;
 }
-.rv-footer-btns { display: flex; gap: 8px; flex-wrap: wrap; }
+.rv-url-display {
+  font-size: .68rem; color: rgba(255,255,255,0.4);
+  direction: ltr; text-align: left;
+  word-break: break-all;
+  flex: 1; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.rv-footer-btns { display: flex; gap: 8px; flex-wrap: wrap; flex-shrink: 0; }
+
 .rv-btn {
   display: inline-flex; align-items: center; gap: 6px;
-  padding: 8px 16px; border-radius: 10px;
-  font-family: var(--font); font-size: .8rem; font-weight: 700;
-  cursor: pointer; border: none; transition: opacity .2s, transform .2s;
+  padding: 8px 18px; border-radius: 10px;
+  font-family: var(--font); font-size: .82rem; font-weight: 700;
+  cursor: pointer; border: none;
+  transition: opacity .15s, transform .15s;
+  white-space: nowrap; text-decoration: none;
 }
 .rv-btn:hover { opacity: .87; transform: translateY(-1px); }
-.rv-btn-primary { background: linear-gradient(135deg, var(--primary), var(--teal)); color: #fff; }
-.rv-btn-outline { background: #eaf4fb; color: var(--primary); border: 1.5px solid #b8d9f0; }
+.rv-btn-primary {
+  background: linear-gradient(135deg, #0d7377, #14a085);
+  color: #fff;
+  box-shadow: 0 3px 12px rgba(13,115,119,0.4);
+}
+.rv-btn-outline {
+  background: rgba(255,255,255,0.08);
+  color: rgba(255,255,255,0.85);
+  border: 1.5px solid rgba(255,255,255,0.15);
+}
+.rv-btn-outline:hover { background: rgba(255,255,255,0.15); }
 
-/* Loading & Error states */
+/* ── Loading / Error ── */
 .rv-loading, .rv-error {
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   gap: 14px; padding: 60px 30px; color: #fff; text-align: center;
+  background: #0d1117;
 }
 .rv-loading .spinner-lg {
   width: 48px; height: 48px;
-  border: 4px solid rgba(255,255,255,.15);
-  border-top-color: var(--teal);
+  border: 4px solid rgba(255,255,255,.1);
+  border-top-color: #14a085;
   border-radius: 50%;
   animation: spin .8s linear infinite;
 }
+.rv-loading p { font-size: .88rem; opacity: .7; }
 .rv-error .rv-err-icon { font-size: 3rem; }
-.rv-error p { font-size: .9rem; opacity: .8; max-width: 320px; }
+.rv-error p { font-size: .9rem; opacity: .7; max-width: 300px; }
 
-/* PDF iframe */
+/* ── PDF iframe ── */
 .rv-pdf-frame {
-  width: 100%; height: 75vh; border: none; display: block;
+  width: 100%; height: 78vh; border: none; display: block;
   background: #fff;
 }
-/* Video player */
+/* ── Video ── */
 .rv-video {
-  width: 100%; max-height: 75vh; display: block;
+  width: 100%; max-height: 78vh; display: block;
   background: #000; outline: none;
 }
-/* YouTube / embed iframe */
+/* ── Embed (YouTube etc) ── */
 .rv-embed-frame {
-  width: 100%; height: 75vh; border: none; display: block;
+  width: 100%; height: 78vh; border: none; display: block;
+  background: #000;
 }
-/* Image viewer */
+/* ── Image ── */
 .rv-image-wrap {
   display: flex; align-items: center; justify-content: center;
-  background: #111; min-height: 300px; padding: 16px;
-  overflow: auto;
+  background: #111; min-height: 300px; padding: 16px; overflow: auto;
 }
 .rv-image-wrap img {
-  max-width: 100%; max-height: 72vh; border-radius: 10px;
+  max-width: 100%; max-height: 74vh; border-radius: 8px;
   box-shadow: 0 8px 32px rgba(0,0,0,.6);
   object-fit: contain; transition: transform .3s;
   cursor: zoom-in;
 }
 .rv-image-wrap img.zoomed { transform: scale(1.8); cursor: zoom-out; }
-/* Audio player */
+/* ── Audio ── */
 .rv-audio-wrap {
   display: flex; flex-direction: column; align-items: center; justify-content: center;
-  padding: 60px 30px; gap: 24px; background: linear-gradient(135deg, #0d1f2d, #1a3a5c);
+  padding: 60px 30px; gap: 24px;
+  background: linear-gradient(135deg, #0d1f2d, #0d7377);
 }
 .rv-audio-icon { font-size: 4rem; }
 .rv-audio-title { color: #fff; font-size: 1rem; font-weight: 700; text-align: center; }
@@ -829,20 +975,29 @@ footer strong { color: var(--accent2); }
   width: 100%; max-width: 500px; border-radius: 12px;
   filter: invert(1) hue-rotate(180deg);
 }
-/* Fallback */
+/* ── Fallback ── */
 .rv-fallback-wrap {
   display: flex; flex-direction: column; align-items: center; justify-content: center;
-  padding: 60px 30px; gap: 16px; background: linear-gradient(135deg,#0d1f2d,#1a3a5c);
+  padding: 60px 30px; gap: 16px;
+  background: linear-gradient(135deg, #0d1f2d, #1a3a5c);
 }
 .rv-fallback-wrap .rv-f-icon { font-size: 4rem; }
-.rv-fallback-wrap p { color: rgba(255,255,255,.75); font-size: .9rem; max-width: 320px; text-align: center; }
+.rv-fallback-wrap p { color: rgba(255,255,255,.7); font-size: .9rem; max-width: 300px; text-align: center; }
 
+/* ── Mobile ── */
 @media(max-width: 600px) {
-  .rv-modal { border-radius: 14px; max-height: 96vh; }
-  .rv-pdf-frame, .rv-embed-frame { height: 60vh; }
-  .rv-video { max-height: 55vw; }
-  .rv-footer { flex-direction: column; align-items: stretch; }
+  .rv-overlay { padding: 0; align-items: flex-end; }
+  .rv-modal {
+    border-radius: 20px 20px 0 0;
+    max-height: 96vh;
+    max-width: 100%;
+  }
+  .rv-pdf-frame, .rv-embed-frame { height: 65vh; }
+  .rv-video { max-height: 56vw; }
+  .rv-footer { flex-direction: column; align-items: stretch; padding: 10px 12px; }
   .rv-footer-btns { justify-content: center; }
+  .rv-url-display { display: none; }
+  .rv-btn { flex: 1; justify-content: center; }
 }
 </style>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js"></script>
@@ -905,7 +1060,7 @@ footer strong { color: var(--accent2); }
 <!-- ==================== PAGE: LINKS ==================== -->
 <div id="page-links" class="page">
   <div class="links-page">
-    <button class="back-btn" onclick="goHome()">← العودة للرئيسية</button>
+    <button class="back-btn" onclick="navigateBack()">← رجوع</button>
     <div class="page-header">
       <h2>🔗 روابط وجروبات مهمة</h2>
       <p>أهم الروابط والجروبات الرسمية والمهمة لطلاب المعاهد الفنية الصحية</p>
@@ -1073,39 +1228,92 @@ function showPage(id) {
 function goHome() {
   state.navigationStack = [];
   showPage('page-home');
+  history.replaceState({ page: 'home', stackLen: 0 }, '', window.location.pathname);
+}
+
+// ==================== SPA ROUTER: Hardware Back Button ====================
+// كل انتقال يدفع state جديد في History API
+// زر الرجوع في الهاتف (popstate) يُشغّل navigateBack تلقائياً
+function _pushHistoryState() {
+  history.pushState(
+    { page: 'spa', stackLen: state.navigationStack.length },
+    '',
+    window.location.pathname
+  );
 }
 
 // الرجوع خطوة واحدة للخلف
 function navigateBack() {
-  if (state.navigationStack.length === 0) { goHome(); return; }
-  // إزالة الخطوة الأخيرة (الحالية) وتنفيذ الخطوة اللي قبلها
+  if (state.navigationStack.length === 0) {
+    history.replaceState({ page: 'home', stackLen: 0 }, '', window.location.pathname);
+    goHome(); return;
+  }
   state.navigationStack.pop();
-  if (state.navigationStack.length === 0) { goHome(); return; }
+  if (state.navigationStack.length === 0) {
+    history.replaceState({ page: 'home', stackLen: 0 }, '', window.location.pathname);
+    goHome(); return;
+  }
   const prev = state.navigationStack[state.navigationStack.length - 1];
+  history.replaceState(
+    { page: 'spa', stackLen: state.navigationStack.length },
+    '',
+    window.location.pathname
+  );
   prev.restore();
 }
 
 // الانتقال المباشر لأي خطوة في الـ breadcrumb
 function navigateTo(index) {
   if (index < 0) { goHome(); return; }
-  // احذف كل ما بعد index
   state.navigationStack = state.navigationStack.slice(0, index + 1);
+  history.replaceState(
+    { page: 'spa', stackLen: state.navigationStack.length },
+    '',
+    window.location.pathname
+  );
   const step = state.navigationStack[index];
   step.restore();
 }
 
+// ── Hardware Back Button (Android / iOS PWA) ──────────────────────────────
+window.addEventListener('popstate', function(e) {
+  const stackLen = state.navigationStack.length;
+  if (stackLen === 0) {
+    // نحن في الرئيسية بالفعل — لا نعمل شيء
+    history.replaceState({ page: 'home', stackLen: 0 }, '', window.location.pathname);
+    return;
+  }
+  // دفع state وهمي لمنع الخروج، ثم تنفيذ الرجوع الداخلي
+  history.pushState({ page: 'spa', stackLen: stackLen }, '', window.location.pathname);
+  state.navigationStack.pop();
+  if (state.navigationStack.length === 0) {
+    history.replaceState({ page: 'home', stackLen: 0 }, '', window.location.pathname);
+    showPage('page-home');
+  } else {
+    const prev = state.navigationStack[state.navigationStack.length - 1];
+    history.replaceState(
+      { page: 'spa', stackLen: state.navigationStack.length },
+      '',
+      window.location.pathname
+    );
+    prev.restore();
+  }
+});
+
+// تهيئة: state ابتدائي
+(function() {
+  history.replaceState({ page: 'home', stackLen: 0 }, '', window.location.pathname);
+})();
+
 // بناء الـ breadcrumb من الـ stack
 function updateBreadcrumb() {
   const bc = document.getElementById('breadcrumb');
-  // الرئيسية دايمًا أول خطوة
   let parts = [`<span onclick="goHome()" style="cursor:pointer">🏠 الرئيسية</span>`];
   state.navigationStack.forEach((step, i) => {
     const isLast = i === state.navigationStack.length - 1;
     if (isLast) {
-      // الخطوة الحالية — نص فقط بدون ضغط
       parts.push(`<span class="sep">›</span><span style="color:#fff;font-weight:700">${step.label}</span>`);
     } else {
-      // خطوة سابقة — قابلة للضغط
       parts.push(`<span class="sep">›</span><span onclick="navigateTo(${i})" style="cursor:pointer">${step.label}</span>`);
     }
   });
@@ -1172,6 +1380,7 @@ const SECTION_DISPLAY_MAP = {
   'ما بعد الفرقة الثانية':{ icon:'🏆', color:'linear-gradient(135deg,#7d3200,#d4ac0d)', tags:['تكليف حكومي','توظيف','تطوير مهني'],             btnLabel:'ادخل القسم ←',         action: (sec) => openDynamicSection(sec) },
   'روابط وجروبات مهمة':   { icon:'🔗', color:'linear-gradient(135deg,#154360,#2471a3)', tags:['واتساب','تيليجرام','لينكات رسمية'],              btnLabel:'ادخل القسم ←',         action: (sec) => {
     state.navigationStack.push({ label: 'روابط وجروبات مهمة', restore: () => showPage('page-links') });
+    _pushHistoryState(); // SPA Router
     showPage('page-links');
   } },
   'كورس الإنجليزي':       { icon:'🇬🇧', color:'linear-gradient(135deg,#1a3a5c,#c0392b)', tags:['إنجليزي طبي','مصطلحات','محادثة'],             btnLabel:'ادخل الكورس ←',        action: (sec) => openDynamicSection(sec) },
@@ -1348,6 +1557,7 @@ async function openDynamicSection(sec) {
     label: sec.title,
     restore: () => _renderDynamicSectionPage(secCopy),
   });
+  _pushHistoryState(); // SPA Router — مزامنة History API
 
   window._lastOpenSectionId = sec.id;
   await _renderDynamicSectionPage(sec);
@@ -1377,6 +1587,7 @@ async function openDynamicSubSection(sec) {
       await _openContentPage(secCopy);
     },
   });
+  _pushHistoryState(); // SPA Router — مزامنة History API
 
   await _openContentPage(sec);
 }
@@ -1952,19 +2163,34 @@ const ResourceViewer = (function() {
     overlay.className = 'rv-overlay';
     overlay.id = 'rv-overlay';
 
+    // عنوان مختصر للـ header
+    const shortTitle = (title || url).length > 50
+      ? (title || url).substring(0, 47) + '...'
+      : (title || url);
+    const shortUrl = url.length > 70 ? url.substring(0, 67) + '...' : url;
+
     overlay.innerHTML = `
-      <div class="rv-modal" id="rv-modal" role="dialog" aria-modal="true" aria-label="${escHtml(title || 'عارض الملفات')}">
+      <div class="rv-modal" id="rv-modal" role="dialog" aria-modal="true">
+        <!-- Header: مطابق للـ screenshot -->
         <div class="rv-header">
-          <span style="font-size:1.4rem">${getTypeIcon(type)}</span>
-          <span class="rv-title">${escHtml(title || url)}</span>
+          <button class="rv-close" onclick="ResourceViewer.close()" title="إغلاق (ESC)">✕</button>
           <span class="rv-type-badge">${typeBadge(type)}</span>
-          <button class="rv-close" onclick="ResourceViewer.close()" title="إغلاق">✕</button>
+          <span class="rv-title">${escHtml(shortTitle)}</span>
+          <button
+            style="background:rgba(0,0,0,.25);border:1.5px solid rgba(255,255,255,.2);border-radius:8px;color:#fff;padding:5px 10px;cursor:pointer;font-size:1rem;flex-shrink:0;"
+            onclick="ResourceViewer._toggleFullscreen()"
+            title="ملء الشاشة"
+          >⛶</button>
         </div>
+
+        <!-- Body: المحتوى الفعلي -->
         <div class="rv-body" id="rv-body">
           ${buildBody(url, type, title)}
         </div>
+
+        <!-- Footer: أزرار التحميل والفتح الخارجي -->
         <div class="rv-footer">
-          <span style="font-size:.75rem;color:#999;direction:ltr;word-break:break-all;flex:1;max-width:55%">${escHtml(url.length > 60 ? url.substring(0,57)+'...' : url)}</span>
+          <span class="rv-url-display" dir="ltr">${escHtml(shortUrl)}</span>
           <div class="rv-footer-btns">
             ${type !== 'fallback' ? `<button class="rv-btn rv-btn-outline" onclick="ResourceViewer._reload()">🔄 إعادة التحميل</button>` : ''}
             <a class="rv-btn rv-btn-primary" href="${escUrl(url)}" target="_blank" rel="noopener" download>⬇️ تحميل</a>
@@ -2072,13 +2298,24 @@ const ResourceViewer = (function() {
       </div>`;
   }
 
-  return { open, close, detectType, _reload, _showPdfFallback, _showGdriveFallback };
+  function _toggleFullscreen() {
+    const modal = document.getElementById('rv-modal');
+    if (!modal) return;
+    if (!document.fullscreenElement) {
+      modal.requestFullscreen && modal.requestFullscreen();
+    } else {
+      document.exitFullscreen && document.exitFullscreen();
+    }
+  }
+
+  return { open, close, detectType, _reload, _showPdfFallback, _showGdriveFallback, _toggleFullscreen };
 })();
 
 // ==================== تحديث دوال الـ resources لتستخدم ResourceViewer ====================
 
 /**
- * openResource — الدالة الموحدة لفتح أي مورد داخل الموقع
+ * openResource — يفتح كل الملفات والفيديوهات داخل الموقع في Modal
+ * ✅ PDF, Google Drive, Cloudinary, YouTube, Video, Audio, Image
  */
 function openResource(url, title, resourceType) {
   if (!url) return;
@@ -2096,102 +2333,239 @@ const SUPABASE_KEY = 'sb_publishable_xzg8wn0ETQniEItj2Etfmw__klmgUWg';
 
 window.supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
   auth: {
-    detectSessionInUrl: true,
-    persistSession: true,
-    autoRefreshToken: true
+    detectSessionInUrl: true,   // ← يقرأ الـ token من URL بعد OAuth redirect
+    persistSession: true,        // ← يحفظ الـ session في localStorage
+    autoRefreshToken: true,      // ← يجدد الـ token تلقائياً
+    storageKey: 'sb-auth',       // ← مفتاح ثابت في localStorage
+    flowType: 'pkce'             // ← أكثر أماناً وأكثر توافقاً مع Mobile
   }
 });
+
+// Debug: تأكد من قراءة الـ session من URL (مهم بعد Google OAuth redirect)
+(function() {
+  const hash = window.location.hash;
+  if (hash && (hash.includes('access_token') || hash.includes('error'))) {
+    console.log('[Auth] OAuth redirect detected — processing tokens...');
+    // Supabase بيتعامل مع الـ hash تلقائياً عند detectSessionInUrl: true
+    // نظّف الـ hash من الـ URL بعد المعالجة
+    setTimeout(function() {
+      if (window.location.hash.includes('access_token')) {
+        history.replaceState(null, '', window.location.pathname);
+      }
+    }, 1500);
+  }
+})();
 </script>
 
 <script>
-// ==================== AUTH FUNCTIONS ====================
+// ==================== AUTH SYSTEM (Reactive) ====================
 
+// ── الـ Admin email ──────────────────────────────────────────────
+const ADMIN_EMAIL = 'bdatyabdo010@gmail.com';
+
+// ── حالة المستخدم العالمية ───────────────────────────────────────
+window._authUser = null;
+
+// ── تسجيل الدخول بجوجل ──────────────────────────────────────────
 window.loginWithGoogle = async function() {
-  if (!window.supabase) { alert('جاري التحميل، حاول مجدداً'); return; }
-  // حفظ الـ navigation stack قبل الـ redirect
+  const db = window.supabase;
+  if (!db) { alert('جاري التحميل، حاول مجدداً'); return; }
+
+  // حفظ الصفحة الحالية قبل الـ redirect
   try {
-    const stackData = state.navigationStack.map(function(s){ return { label: s.label }; });
-    sessionStorage.setItem('_nav_stack_labels', JSON.stringify(stackData));
-    // حفظ آخر section_id كانت مفتوحة
     if (window._lastOpenSectionId) {
       sessionStorage.setItem('_last_section_id', String(window._lastOpenSectionId));
     }
   } catch(e) {}
+
   const redirectTo = window.location.origin + window.location.pathname;
-  const { error } = await window.supabase.auth.signInWithOAuth({
+  const { error } = await db.auth.signInWithOAuth({
     provider: 'google',
-    options: { redirectTo: redirectTo, skipBrowserRedirect: false }
+    options: {
+      redirectTo,
+      skipBrowserRedirect: false,
+      queryParams: { access_type: 'offline', prompt: 'select_account' }
+    }
   });
   if (error) alert('خطأ في تسجيل الدخول: ' + error.message);
 };
 
+// ── تسجيل الخروج ────────────────────────────────────────────────
 window.logoutUser = async function() {
-  await window.supabase.auth.signOut();
-  location.reload();
+  const db = window.supabase;
+  if (!db) return;
+  await db.auth.signOut();
+  window._authUser = null;
+  _renderUserBox(null);
+  goHome();
 };
 
+// ── رسم User Box في الـ navbar ──────────────────────────────────
 function _renderUserBox(user) {
   const box = document.getElementById('user-box');
   if (!box) return;
+
+  window._authUser = user || null;
+
   if (!user) {
-    box.innerHTML = '<button class="chatgpt-login-btn" onclick="loginWithGoogle()">🔐 دخول</button>';
+    box.innerHTML = `
+      <button class="chatgpt-login-btn" onclick="loginWithGoogle()">
+        🔐 دخول بجوجل
+      </button>`;
     return;
   }
-  const isAdmin = user.email === 'bdatyabdo010@gmail.com';
+
+  // بيانات المستخدم
+  const name     = user.user_metadata?.full_name
+                || user.user_metadata?.name
+                || user.email.split('@')[0];
+  const avatar   = user.user_metadata?.avatar_url
+                || user.user_metadata?.picture
+                || '';
+  const email    = user.email || '';
+  const isAdmin  = email === ADMIN_EMAIL;
+
+  // صورة المستخدم أو أيقونة افتراضية
+  const avatarHtml = avatar
+    ? `<img src="${avatar}" class="user-avatar" alt="${name}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">`
+    : '';
+  const fallbackIcon = `<div class="user-avatar-fallback" style="${avatar ? 'display:none' : ''}">
+    ${name.charAt(0).toUpperCase()}
+  </div>`;
+
+  const adminBtn = isAdmin
+    ? `<button class="admin-btn" onclick="toggleAdminPanel()">⚙️ لوحة التحكم</button>`
+    : '';
+
+  box.innerHTML = `
+    <div class="user-card">
+      <div class="user-avatar-wrap" onclick="toggleUserDropdown()" title="${email}">
+        ${avatarHtml}
+        ${fallbackIcon}
+        <span class="user-name">${name}</span>
+        <span class="user-chevron">▾</span>
+      </div>
+      <div class="user-dropdown" id="user-dropdown">
+        <div class="ud-header">
+          <div class="ud-avatar">
+            ${avatar ? `<img src="${avatar}" style="width:44px;height:44px;border-radius:50%;object-fit:cover">` : `<div style="width:44px;height:44px;border-radius:50%;background:linear-gradient(135deg,var(--primary),var(--teal));display:flex;align-items:center;justify-content:center;color:#fff;font-size:1.3rem;font-weight:700">${name.charAt(0).toUpperCase()}</div>`}
+          </div>
+          <div class="ud-info">
+            <div class="ud-name">${name}</div>
+            <div class="ud-email">${email}</div>
+            ${isAdmin ? '<div class="ud-badge">⭐ مشرف</div>' : ''}
+          </div>
+        </div>
+        ${adminBtn}
+        <button class="ud-logout" onclick="logoutUser()">🚪 تسجيل الخروج</button>
+      </div>
+    </div>`;
+
+  // تحديث admin sections لو admin
   if (isAdmin) {
-    box.innerHTML =
-      '<div class="user-card">'
-      + '<span class="user-email">👤 ' + user.email + '</span>'
-      + '<button style="background:rgba(255,255,255,.2);color:#fff;border:1.5px solid rgba(255,255,255,.35);padding:6px 12px;border-radius:16px;cursor:pointer;font-size:12px;font-family:inherit;" onclick="toggleAdminPanel()">⚙️ تحكم</button>'
-      + '<button class="logout-btn" onclick="logoutUser()">خروج</button>'
-      + '</div>';
-    adminLoadSections();
-  } else {
-    box.innerHTML =
-      '<div class="user-card">'
-      + '<span class="user-email">👤 ' + user.email + '</span>'
-      + '<button class="logout-btn" onclick="logoutUser()">خروج</button>'
-      + '</div>';
+    try { adminLoadSections(); } catch(e) {}
   }
 }
 
-window.checkUser = async function() {
-  if (!window.supabase) return;
+// ── dropdown المستخدم ────────────────────────────────────────────
+window.toggleUserDropdown = function() {
+  const dd = document.getElementById('user-dropdown');
+  if (!dd) return;
+  const isOpen = dd.classList.toggle('open');
+  if (isOpen) {
+    // إغلاق عند الضغط خارجاً
+    setTimeout(() => {
+      document.addEventListener('click', _closeDropdownOutside, { once: true });
+    }, 10);
+  }
+};
+function _closeDropdownOutside(e) {
+  const card = document.querySelector('.user-card');
+  if (card && !card.contains(e.target)) {
+    const dd = document.getElementById('user-dropdown');
+    if (dd) dd.classList.remove('open');
+  }
+}
 
-  // استمع لتغييرات الـ Auth — ده بيشتغل تلقائياً بعد Google OAuth redirect
-  window.supabase.auth.onAuthStateChange(function(event, session) {
-    _renderUserBox(session ? session.user : null);
-    // لو كان في redirect بعد login — ارجع للصفحة اللي كان فيها
-    if (event === 'SIGNED_IN') {
-      try {
-        var lastId = sessionStorage.getItem('_last_section_id');
-        sessionStorage.removeItem('_last_section_id');
-        sessionStorage.removeItem('_nav_stack_labels');
-        if (lastId) {
-          setTimeout(function() {
-            var sec = window['__sectionData_' + lastId];
-            if (sec) { openDynamicSection(sec); }
-          }, 600);
-        }
-      } catch(e) {}
+// ── Core: تهيئة Auth الـ Reactive ─────────────────────────────────
+window.initAuth = async function() {
+  const db = window.supabase;
+  if (!db) { console.warn('[Auth] supabase not ready'); return; }
+
+  // ① استمع لكل تغيير في حالة الـ Auth
+  db.auth.onAuthStateChange(function(event, session) {
+    console.log('[Auth] event:', event, '| user:', session?.user?.email || 'none');
+
+    const user = session?.user || null;
+    _renderUserBox(user);
+
+    if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+      // بعد login: ارجع للصفحة اللي كان فيها المستخدم
+      if (event === 'SIGNED_IN') {
+        _restoreAfterLogin();
+      }
+    }
+
+    if (event === 'SIGNED_OUT') {
+      _renderUserBox(null);
+      goHome();
     }
   });
 
-  // اقرأ الـ session الحالية
-  const { data: { session } } = await window.supabase.auth.getSession();
-  _renderUserBox(session ? session.user : null);
+  // ② اقرأ الـ session الحالية مباشرة (هام جداً بعد OAuth redirect)
+  try {
+    const { data, error } = await db.auth.getSession();
+    if (error) {
+      console.error('[Auth] getSession error:', error.message);
+    } else {
+      const user = data?.session?.user || null;
+      console.log('[Auth] current session:', user?.email || 'not logged in');
+      _renderUserBox(user);
+    }
+  } catch(e) {
+    console.error('[Auth] getSession exception:', e.message);
+  }
 };
 
-document.addEventListener('DOMContentLoaded', function() { window.checkUser(); });
+// ── استعادة الصفحة بعد OAuth redirect ───────────────────────────
+function _restoreAfterLogin() {
+  try {
+    const lastId = sessionStorage.getItem('_last_section_id');
+    sessionStorage.removeItem('_last_section_id');
+    if (lastId) {
+      setTimeout(function() {
+        const sec = window['__sectionData_' + lastId];
+        if (sec) { openDynamicSection(sec); }
+      }, 500);
+    }
+  } catch(e) {}
+}
+
+// ── تشغيل Auth عند جاهزية الصفحة ────────────────────────────────
+// نستخدم DOMContentLoaded + انتظار Supabase
+document.addEventListener('DOMContentLoaded', function() {
+  // انتظر Supabase يكون جاهز ثم شغّل Auth
+  function _tryInitAuth(attempts) {
+    if (window.supabase && typeof window.supabase.auth !== 'undefined') {
+      window.initAuth();
+    } else if (attempts > 0) {
+      setTimeout(() => _tryInitAuth(attempts - 1), 150);
+    } else {
+      console.error('[Auth] Supabase failed to load after retries');
+    }
+  }
+  _tryInitAuth(20); // يحاول 20 مرة × 150ms = 3 ثواني كحد أقصى
+});
+
+// دعم اسم قديم للتوافق
+window.checkUser = window.initAuth;
 
 </script>
 
 <style>
+/* ==================== AUTH UI STYLES ==================== */
 
-#user-box {
-  /* مش fixed — هيتحط جوه الـ navbar */
-}
-
+/* زر الدخول */
 .chatgpt-login-btn {
   display: flex;
   align-items: center;
@@ -2199,50 +2573,172 @@ document.addEventListener('DOMContentLoaded', function() { window.checkUser(); }
   background: rgba(255,255,255,0.15);
   border: 1.5px solid rgba(255,255,255,0.35);
   color: #fff;
-  padding: 7px 14px;
-  border-radius: 20px;
+  padding: 8px 16px;
+  border-radius: 22px;
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 700;
   cursor: pointer;
   backdrop-filter: blur(8px);
-  transition: background .2s;
+  transition: background .2s, transform .2s;
   white-space: nowrap;
   font-family: 'Cairo','Tajawal',sans-serif;
+  letter-spacing: .2px;
 }
-.chatgpt-login-btn:hover { background: rgba(255,255,255,0.25); }
+.chatgpt-login-btn:hover {
+  background: rgba(255,255,255,0.28);
+  transform: scale(1.03);
+}
 
+/* بطاقة المستخدم */
 .user-card {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+/* صورة المستخدم */
+.user-avatar-wrap {
   display: flex;
   align-items: center;
   gap: 8px;
+  cursor: pointer;
+  padding: 5px 12px 5px 8px;
+  border-radius: 22px;
+  background: rgba(255,255,255,0.12);
+  border: 1.5px solid rgba(255,255,255,0.25);
+  transition: background .2s;
+  user-select: none;
 }
+.user-avatar-wrap:hover { background: rgba(255,255,255,0.22); }
 
-.user-email {
+.user-avatar {
+  width: 30px; height: 30px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid rgba(255,255,255,0.5);
+  flex-shrink: 0;
+}
+.user-avatar-fallback {
+  width: 30px; height: 30px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--accent2), var(--accent));
+  display: flex; align-items: center; justify-content: center;
   color: #fff;
-  font-size: 12px;
-  font-weight: 600;
-  max-width: 130px;
+  font-size: .9rem;
+  font-weight: 800;
+  flex-shrink: 0;
+  border: 2px solid rgba(255,255,255,0.4);
+}
+.user-name {
+  color: #fff;
+  font-size: .8rem;
+  font-weight: 700;
+  max-width: 90px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  opacity: .9;
+}
+.user-chevron {
+  color: rgba(255,255,255,0.7);
+  font-size: .7rem;
+  transition: transform .2s;
+}
+.user-avatar-wrap:hover .user-chevron { transform: translateY(2px); }
+
+/* Dropdown */
+.user-dropdown {
+  display: none;
+  position: absolute;
+  top: calc(100% + 10px);
+  left: 0; /* RTL: opens to the right */
+  min-width: 240px;
+  background: #fff;
+  border-radius: 16px;
+  box-shadow: 0 16px 48px rgba(10,61,98,0.22);
+  border: 1.5px solid #d5e8f5;
+  overflow: hidden;
+  animation: ddFadeIn .2s cubic-bezier(.16,1,.3,1);
+  z-index: 2000;
+}
+.user-dropdown.open { display: block; }
+
+@keyframes ddFadeIn {
+  from { opacity:0; transform: translateY(-8px) scale(.97); }
+  to   { opacity:1; transform: none; }
 }
 
+.ud-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 18px 16px 14px;
+  background: linear-gradient(135deg, var(--primary) 0%, var(--teal) 100%);
+  color: #fff;
+}
+.ud-info { flex: 1; min-width: 0; }
+.ud-name {
+  font-size: .92rem; font-weight: 800;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.ud-email {
+  font-size: .72rem; opacity: .8; margin-top: 2px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  direction: ltr; text-align: left;
+}
+.ud-badge {
+  display: inline-block;
+  background: var(--gold);
+  color: #000;
+  font-size: .65rem; font-weight: 800;
+  padding: 2px 8px; border-radius: 10px; margin-top: 4px;
+}
+
+.admin-btn {
+  display: flex; align-items: center; gap: 8px;
+  width: 100%; padding: 12px 16px;
+  background: #f0f6ff;
+  border: none; cursor: pointer;
+  font-family: 'Cairo','Tajawal',sans-serif;
+  font-size: .85rem; font-weight: 700;
+  color: var(--primary);
+  transition: background .15s;
+  border-bottom: 1px solid #e8f0fb;
+}
+.admin-btn:hover { background: #dceefb; }
+
+.ud-logout {
+  display: flex; align-items: center; gap: 8px;
+  width: 100%; padding: 12px 16px;
+  background: #fff;
+  border: none; cursor: pointer;
+  font-family: 'Cairo','Tajawal',sans-serif;
+  font-size: .85rem; font-weight: 700;
+  color: #e74c3c;
+  transition: background .15s;
+}
+.ud-logout:hover { background: #fef0f0; }
+
+/* زر الخروج القديم (للتوافق) */
 .logout-btn {
   background: rgba(255,255,255,0.15);
   color: #fff;
   border: 1.5px solid rgba(255,255,255,0.3);
-  padding: 6px 12px;
-  border-radius: 16px;
-  cursor: pointer;
-  font-size: 12px;
+  padding: 6px 12px; border-radius: 16px;
+  cursor: pointer; font-size: 12px;
   font-family: 'Cairo','Tajawal',sans-serif;
-  white-space: nowrap;
-  transition: background .2s;
+  white-space: nowrap; transition: background .2s;
 }
 .logout-btn:hover { background: rgba(255,255,255,0.28); }
 
+/* Mobile auth */
+@media(max-width: 600px) {
+  .user-name { max-width: 60px; font-size: .72rem; }
+  .user-dropdown { min-width: 200px; left: auto; right: 0; }
+  .chatgpt-login-btn { padding: 7px 12px; font-size: 12px; }
+}
 </style>
+
+<!-- auth styles moved to reactive auth block -->
 
 <!-- ADMIN PANEL -->
 <div id="admin-panel" style="display:none;position:fixed;top:80px;left:20px;z-index:999999;background:white;border-radius:18px;box-shadow:0 8px 40px rgba(0,0,0,.22);width:320px;font-family:'Cairo','Tajawal',sans-serif;direction:rtl;overflow:hidden;max-height:90vh;overflow-y:auto;">
