@@ -2182,7 +2182,7 @@ async function loadSectionResources(sectionId) {
     const safeId = toValidId(sectionId);
     if (safeId === null) { console.warn('[loadSectionResources] invalid sectionId blocked:', sectionId); return []; }
     const { data, error } = await window.supabase
-      .from('section_resources').select('*').eq('section_id', safeId).order('id');
+      .from('section_resources').select('*').eq('section_id', safeId).order('icon', { ascending: true });
     if (error) { console.error('[loadSectionResources] error:', error.message); return []; }
     return data || [];
   } catch (err) {
