@@ -4039,6 +4039,7 @@ function toggleAdminPanel() {
 (function() {
   var MSG_KEY = 'site_msg_dismissed_id';
 
+  // ── زر الإغلاق ──────────────────────────────────────────
   window.closeSiteMessage = function() {
     var overlay = document.getElementById('site-msg-overlay');
     if (!overlay) return;
@@ -4049,6 +4050,7 @@ function toggleAdminPanel() {
     }, 300);
   };
 
+  // إغلاق بالضغط على الخلفية أو Escape
   document.addEventListener('DOMContentLoaded', function() {
     var overlay = document.getElementById('site-msg-overlay');
     if (overlay) {
@@ -4061,51 +4063,131 @@ function toggleAdminPanel() {
     });
   });
 
+  // ── الانتظار الحقيقي: حتى يصبح window.supabase client جاهزاً ──
+  // window._supabaseReady يـresolve بالمكتبة (factory) لكن
+  // window.supabase (الـ client الفعلي) يُنشأ داخل .then() لاحق —
+  // لذا ننتظر بـ polling حتى window.supabase.from يكون دالة.
+  function waitForClient(maxWait) {
+    return new Promise(function(resolve, reject) {
+      var start   = Date.now();
+      var limit   = maxWait || 8000;
+      var timer   = setInterval(function() {
+        if (window.supabase && typeof window.supabase.from === 'function') {
+          clearInterval(timer);
+          resolve(window.supabase);
+        } else if (Date.now() - start > limit) {
+          clearInterval(timer);
+          reject(new Error('timeout: window.supabase لم يصبح جاهزاً خلال ' + limit + 'ms'));
+        }
+      }, 50);
+    });
+  }
+
   async function loadSiteMessage() {
+    console.log('[SiteMsg] 🚀 بدء تحميل رسالة الترحيب...');
+
+    var db;
     try {
-      var sb = await window._supabaseReady;
-      if (!sb || !sb.createClient) return;
+      // ① انتظر المكتبة تتحمّل أولاً
+      await window._supabaseReady;
+      console.log('[SiteMsg] ✅ مكتبة Supabase محمّلة');
 
+      // ② انتظر الـ client الحقيقي (window.supabase = _db.from(...))
+      db = await waitForClient(8000);
+      console.log('[SiteMsg] ✅ Supabase client جاهز:', typeof db.from);
+    } catch (err) {
+      console.error('[SiteMsg] ❌ فشل الانتظار:', err.message);
+      return;
+    }
+
+    // ③ تحقق sessionStorage — معطّل مؤقتاً للتجربة (اجعله true لتفعيل)
+    var ENABLE_DISMISS_CHECK = false;
+    if (ENABLE_DISMISS_CHECK) {
       var dismissed = sessionStorage.getItem(MSG_KEY);
+      console.log('[SiteMsg] 🔍 dismissed id في sessionStorage:', dismissed);
+    }
 
-      var result = await sb
+    // ④ query
+    console.log('[SiteMsg] 📡 جاري الاستعلام من site_messages...');
+    var result;
+    try {
+      result = await db
         .from('site_messages')
         .select('id, title, message')
         .eq('is_active', true)
         .order('created_at', { ascending: false })
         .limit(1)
         .single();
-
-      var data  = result.data;
-      var error = result.error;
-
-      if (error || !data) return;
-      if (dismissed && dismissed === String(data.id)) return;
-
-      var msgId = String(data.id);
-
-      document.getElementById('site-msg-title').textContent = data.title   || 'رسالة مهمة';
-      document.getElementById('site-msg-text').textContent  = data.message || '';
-
-      var origClose = window.closeSiteMessage;
-      window.closeSiteMessage = function() {
-        sessionStorage.setItem(MSG_KEY, msgId);
-        origClose();
-      };
-
-      setTimeout(function() {
-        var overlay = document.getElementById('site-msg-overlay');
-        if (overlay) overlay.style.display = 'flex';
-      }, 800);
-
-    } catch(e) {
-      console.warn('site_messages error:', e);
+    } catch (queryErr) {
+      console.error('[SiteMsg] ❌ استثناء في query:', queryErr);
+      return;
     }
+
+    var data  = result.data;
+    var error = result.error;
+
+    // ⑤ تحقق النتيجة
+    if (error) {
+      // PGRST116 = لا توجد صفوف — ليست خطأ حقيقياً
+      if (error.code === 'PGRST116') {
+        console.log('[SiteMsg] ℹ️ لا توجد رسالة مفعّلة في الجدول');
+      } else {
+        console.error('[SiteMsg] ❌ خطأ Supabase:', error.code, error.message);
+      }
+      return;
+    }
+
+    if (!data) {
+      console.log('[SiteMsg] ℹ️ data فارغ، لا شيء للعرض');
+      return;
+    }
+
+    console.log('[SiteMsg] 📨 رسالة مستلمة → id:', data.id, '| title:', data.title);
+
+    // ⑥ تحقق dismiss (مفعّل)
+    if (ENABLE_DISMISS_CHECK) {
+      var dismissedId = sessionStorage.getItem(MSG_KEY);
+      if (dismissedId && dismissedId === String(data.id)) {
+        console.log('[SiteMsg] ⏭️ الرسالة أُغلقت مسبقاً في هذه الجلسة');
+        return;
+      }
+    }
+
+    // ⑦ ملء المحتوى
+    var titleEl = document.getElementById('site-msg-title');
+    var textEl  = document.getElementById('site-msg-text');
+    if (!titleEl || !textEl) {
+      console.error('[SiteMsg] ❌ عناصر الـ popup غير موجودة في DOM');
+      return;
+    }
+    titleEl.textContent = data.title   || 'رسالة مهمة';
+    textEl.textContent  = data.message || '';
+
+    // ⑧ ربط dismiss بالإغلاق
+    var msgId    = String(data.id);
+    var baseFn   = window.closeSiteMessage;
+    window.closeSiteMessage = function() {
+      sessionStorage.setItem(MSG_KEY, msgId);
+      baseFn();
+    };
+
+    // ⑨ إظهار الـ popup
+    setTimeout(function() {
+      var overlay = document.getElementById('site-msg-overlay');
+      if (overlay) {
+        overlay.style.display = 'flex';
+        console.log('[SiteMsg] 🎉 Popup يظهر الآن');
+      } else {
+        console.error('[SiteMsg] ❌ العنصر site-msg-overlay غير موجود');
+      }
+    }, 600);
   }
 
+  // ── تشغيل بعد DOM جاهز ──────────────────────────────────
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', loadSiteMessage);
   } else {
+    // DOM جاهز بالفعل — نشغّل مباشرة
     loadSiteMessage();
   }
 })();
