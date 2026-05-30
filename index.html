@@ -11,14 +11,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;600;700;900&family=Tajawal:wght@300;400;500;700;800&display=swap" rel="stylesheet">
 <script>
-// ── PKCE Code Handler ──────────────────────────────────────────────
-// ⚠️ مهم جداً: نحفظ الـ code لكن لا نمسح الـ URL الآن
-// Supabase يحتاج يقرأ الـ ?code= بنفسه عبر detectSessionInUrl
-// نمسح الـ URL فقط بعد ما Supabase يعمل exchange ناجح
-window._pkceCodeInUrl = new URLSearchParams(window.location.search).get('code');
-// لا تمسح الـ URL هنا — Supabase يحتاجه!
-
-// تحميل Supabase
+// لا تمسح الـ URL — Supabase يحتاج يقرأ الـ ?code= أو #access_token بنفسه
 window._supabaseReady = new Promise(function(resolve) {
   var s = document.createElement('script');
   s.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js';
@@ -2005,19 +1998,15 @@ window._supabaseReady.then(function(lib) {
         autoRefreshToken: true,
         detectSessionInUrl: true,
         storageKey: 'sb-benisuef-auth',
-        flowType: 'pkce'
+        flowType: 'implicit'   // ← implicit بدل pkce — يشتغل على static hosting
       }
     });
   }
   window.supabase = window._db;
 
-  // ── معالجة PKCE / OAuth redirect ─────────────────────────────
-  // detectSessionInUrl:true يتعامل مع كل شيء تلقائياً
-  // لا نستدعي exchangeCodeForSession يدوياً — Supabase يقرأ الـ ?code= بنفسه
-  // وبيطلق onAuthStateChange(SIGNED_IN) تلقائياً
-  // فقط نظّف الـ URL بعد ثانيتين لضمان انتهاء المعالجة
-  if (window._pkceCodeInUrl) {
-    console.log('[Auth] PKCE code detected — letting Supabase handle it via detectSessionInUrl');
+  // نظّف الـ URL بعد ثانيتين (بعد ما Supabase يقرأ الـ hash)
+  if (window.location.hash.includes('access_token') || window.location.search.includes('code=')) {
+    console.log('[Auth] OAuth redirect detected');
     setTimeout(function() {
       try { history.replaceState(null, '', window.location.pathname); } catch(e) {}
     }, 2000);
