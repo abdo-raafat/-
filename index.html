@@ -11,25 +11,18 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;600;700;900&family=Tajawal:wght@300;400;500;700;800&display=swap" rel="stylesheet">
 <script>
-// ── PKCE Code Exchange Handler ──────────────────────────────────────
-// لو Google بعت ?code= في الـ URL، نعمل exchange يدوي قبل ما Supabase يتحمّل
-// عشان نضمن إن الـ session تتحفظ في localStorage
+// ── PKCE Code Handler ──────────────────────────────────────────────
+// ⚠️ مهم جداً: نحفظ الـ code لكن لا نمسح الـ URL الآن
+// Supabase يحتاج يقرأ الـ ?code= بنفسه عبر detectSessionInUrl
+// نمسح الـ URL فقط بعد ما Supabase يعمل exchange ناجح
 window._pkceCodeInUrl = new URLSearchParams(window.location.search).get('code');
-if (window._pkceCodeInUrl) {
-  // نظّف الـ URL فوراً عشان مايتعملش redirect loop
-  try {
-    history.replaceState(null, '', window.location.pathname);
-  } catch(e) {}
-}
+// لا تمسح الـ URL هنا — Supabase يحتاجه!
 
-// ② تحميل Supabase
-// نحل بـ window.supabaseJs (الـ factory/namespace) وليس window.supabase (الـ client)
+// تحميل Supabase
 window._supabaseReady = new Promise(function(resolve) {
   var s = document.createElement('script');
   s.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js';
   s.onload = function() {
-    // UMD يضع المكتبة في window.supabase كـ namespace يحتوي على createClient
-    // نحفظها في اسم مستقل حتى لا يُكتب فوقها لاحقاً
     window._supabaseLib = window.supabase;
     resolve(window._supabaseLib);
   };
@@ -2018,47 +2011,17 @@ window._supabaseReady.then(function(lib) {
   }
   window.supabase = window._db;
 
-  // ── معالجة PKCE code إذا كان موجوداً ────────────────────────────
-  // Supabase v2 مع detectSessionInUrl:true بيتعامل مع الـ code تلقائياً
-  // لكن لو مش شغّال نعمله يدوي
+  // ── معالجة PKCE / OAuth redirect ─────────────────────────────
+  // detectSessionInUrl:true يتعامل مع كل شيء تلقائياً
+  // لا نستدعي exchangeCodeForSession يدوياً — Supabase يقرأ الـ ?code= بنفسه
+  // وبيطلق onAuthStateChange(SIGNED_IN) تلقائياً
+  // فقط نظّف الـ URL بعد ثانيتين لضمان انتهاء المعالجة
   if (window._pkceCodeInUrl) {
-    console.log('[Auth] PKCE code detected — exchanging for session...');
-    window._db.auth.exchangeCodeForSession(window._pkceCodeInUrl)
-      .then(function(result) {
-        if (result.error) {
-          console.error('[Auth] Code exchange failed:', result.error.message);
-        } else {
-          console.log('[Auth] Code exchange SUCCESS — user:', result.data?.user?.email);
-          if (result.data?.user) {
-            _renderUserBox(result.data.user);
-            window._authUser = result.data.user;
-          }
-        }
-      })
-      .catch(function(e) {
-        console.error('[Auth] Code exchange exception:', e.message);
-      });
+    console.log('[Auth] PKCE code detected — letting Supabase handle it via detectSessionInUrl');
+    setTimeout(function() {
+      try { history.replaceState(null, '', window.location.pathname); } catch(e) {}
+    }, 2000);
   }
-
-  // ── معالجة OAuth redirect (PKCE flow) ─────────────────────────
-  // بعد Google redirect، Supabase بيحتاج يقرأ الـ code/token من الـ URL
-  // detectSessionInUrl:true بيعمل ده تلقائياً — بس لازم ننتظره
-  (function() {
-    var hash = window.location.hash;
-    var search = window.location.search;
-    var hasAuthParams = (hash && (hash.includes('access_token') || hash.includes('error')))
-                     || (search && (search.includes('code=') || search.includes('error=')));
-    if (hasAuthParams) {
-      console.log('[Auth] OAuth redirect detected — letting Supabase process...');
-      // Supabase PKCE: onAuthStateChange سيُطلق SIGNED_IN تلقائياً
-      // فقط نظّف الـ URL بعد ثانيتين
-      setTimeout(function() {
-        try {
-          safeHistory.replaceState(null, '', window.location.pathname);
-        } catch(e) {}
-      }, 2000);
-    }
-  })();
 
   window._db.from('site_sections').select('id').limit(1)
     .then(function(res) {
@@ -3989,12 +3952,9 @@ window.checkUser = window.initAuth;
   </div>
 </div>
 
-<!-- ADMIN PANEL -->
-<div id="admin-panel" style="display:none;position:fixed;top:80px;left:20px;z-index:999999;background:white;border-radius:18px;box-shadow:0 8px 40px rgba(0,0,0,.22);width:320px;font-family:'Cairo','Tajawal',sans-serif;direction:rtl;overflow:hidden;max-height:90vh;overflow-y:auto;">
-  <div style="background:linear-gradient(135deg,#0a3d62,#17a589);padding:16px 20px;color:#fff;display:flex;align-items:center;justify-content:space-between;">
-    <div style="font-weight:900;font-size:1rem;">⚙️ لوحة التحكم</div>
-    <button onclick="document.getElementById('admin-panel').style.display='none'" style="background:rgba(255,255,255,.2);border:none;color:#fff;border-radius:50%;width:28px;height:28px;cursor:pointer;font-size:.9rem;">✕</button>
-  </div>
+<!-- ADMIN PANEL (legacy small panel - hidden, kept for compatibility) -->
+<div id="admin-panel" style="display:none;">
+  <div>
   <div style="padding:18px;">
     <!-- Tab buttons -->
     <div style="display:flex;gap:6px;margin-bottom:16px;">
@@ -4080,6 +4040,8 @@ async function adminLoadSections() {
     const opts = data.map(s => `<option value="${s.id}">${s.title}${s.subtitle ? ' — ' + s.subtitle : ''}</option>`).join('');
     if (selAdd)  selAdd.innerHTML  = '<option value="">— اختر القسم —</option>' + opts;
     if (selList) selList.innerHTML = '<option value="">اختر القسم لعرض محتواه</option>' + opts;
+    // also sync admin dashboard selects
+    if (typeof admSyncSelects === 'function') admSyncSelects();
   } catch(e) { console.error('adminLoadSections error:', e); }
 }
 
@@ -4240,11 +4202,1068 @@ function adminTab(tab) {
 }
 
 function toggleAdminPanel() {
-  const p = document.getElementById('admin-panel');
-  p.style.display = p.style.display === 'none' ? 'block' : 'none';
+  openAdminDashboard();
 }
 
 // نهاية لوحة التحكم
+</script>
+
+<!-- ==================== PAGE: ADMIN DASHBOARD ==================== -->
+<div id="page-admin-dashboard" class="page" style="padding-bottom: calc(var(--bottom-nav-h) + var(--safe-bottom) + 20px);">
+
+<!-- Admin Sidebar + Content Layout -->
+<div id="adm-layout" style="display:flex;min-height:100vh;direction:rtl;">
+
+  <!-- SIDEBAR -->
+  <aside id="adm-sidebar" style="width:240px;min-width:240px;background:linear-gradient(180deg,#0a2540 0%,#0a3d62 60%,#17a589 100%);color:#fff;display:flex;flex-direction:column;position:sticky;top:64px;height:calc(100vh - 64px);overflow-y:auto;z-index:100;transition:width 0.3s;">
+    <div style="padding:24px 20px 16px;border-bottom:1px solid rgba(255,255,255,.12);">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px;">
+        <div style="width:40px;height:40px;border-radius:12px;background:rgba(255,255,255,.15);display:flex;align-items:center;justify-content:center;font-size:1.3rem;">⚙️</div>
+        <div>
+          <div style="font-weight:900;font-size:.95rem;">لوحة التحكم</div>
+          <div style="font-size:.7rem;opacity:.7;">Admin Dashboard</div>
+        </div>
+      </div>
+    </div>
+    <nav style="padding:16px 12px;flex:1;">
+      <div style="font-size:.65rem;font-weight:800;opacity:.5;letter-spacing:1px;padding:0 8px;margin-bottom:8px;">الرئيسية</div>
+      <button class="adm-nav-btn active" id="adm-nav-overview" onclick="admShowTab('overview')">📊 نظرة عامة</button>
+      <div style="font-size:.65rem;font-weight:800;opacity:.5;letter-spacing:1px;padding:0 8px;margin:14px 0 8px;">إدارة المحتوى</div>
+      <button class="adm-nav-btn" id="adm-nav-content" onclick="admShowTab('content')">📚 المحتوى والأقسام</button>
+      <button class="adm-nav-btn" id="adm-nav-sections" onclick="admShowTab('sections')">🗂️ إدارة الأقسام</button>
+      <button class="adm-nav-btn" id="adm-nav-resources" onclick="admShowTab('resources')">📁 الملفات والموارد</button>
+      <div style="font-size:.65rem;font-weight:800;opacity:.5;letter-spacing:1px;padding:0 8px;margin:14px 0 8px;">المستخدمون</div>
+      <button class="adm-nav-btn" id="adm-nav-users" onclick="admShowTab('users')">👥 إدارة المستخدمين</button>
+      <button class="adm-nav-btn" id="adm-nav-payments" onclick="admShowTab('payments')">💳 الاشتراكات والمدفوعات</button>
+      <div style="font-size:.65rem;font-weight:800;opacity:.5;letter-spacing:1px;padding:0 8px;margin:14px 0 8px;">التواصل</div>
+      <button class="adm-nav-btn" id="adm-nav-messages" onclick="admShowTab('messages')">💬 الرسائل والإشعارات</button>
+      <button class="adm-nav-btn" id="adm-nav-sitemsgs" onclick="admShowTab('sitemsgs')">📢 رسائل الموقع</button>
+      <div style="font-size:.65rem;font-weight:800;opacity:.5;letter-spacing:1px;padding:0 8px;margin:14px 0 8px;">الإعدادات</div>
+      <button class="adm-nav-btn" id="adm-nav-settings" onclick="admShowTab('settings')">⚙️ إعدادات الموقع</button>
+    </nav>
+    <div style="padding:14px 12px;border-top:1px solid rgba(255,255,255,.12);">
+      <button onclick="goHome();setActiveNav('bn-home')" style="width:100%;padding:9px;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.2);color:#fff;border-radius:10px;font-family:var(--font);font-size:.8rem;font-weight:700;cursor:pointer;">🏠 العودة للموقع</button>
+    </div>
+  </aside>
+
+  <!-- MAIN CONTENT -->
+  <main style="flex:1;min-width:0;background:var(--bg-page);padding:28px 24px;overflow-x:hidden;">
+
+    <!-- HEADER BAR -->
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:28px;flex-wrap:wrap;gap:12px;">
+      <div>
+        <h1 id="adm-page-title" style="font-size:1.5rem;font-weight:900;color:var(--primary);margin-bottom:4px;">📊 نظرة عامة</h1>
+        <p id="adm-page-sub" style="font-size:.85rem;color:var(--text-secondary);">مرحباً بك في لوحة تحكم المنصة</p>
+      </div>
+      <button onclick="admRefreshCurrentTab()" style="padding:9px 18px;background:linear-gradient(135deg,#0a3d62,#17a589);color:#fff;border:none;border-radius:10px;font-family:var(--font);font-size:.82rem;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:6px;">🔄 تحديث</button>
+    </div>
+
+    <!-- TAB CONTAINERS -->
+
+    <!-- ── OVERVIEW ── -->
+    <div id="adm-tab-overview" class="adm-tab">
+      <div id="adm-stats-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:16px;margin-bottom:28px;"></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;flex-wrap:wrap;">
+        <div class="adm-card" style="grid-column:span 1;">
+          <div class="adm-card-title">📋 آخر طلبات الاشتراك</div>
+          <div id="adm-recent-subs" style="max-height:320px;overflow-y:auto;"></div>
+        </div>
+        <div class="adm-card" style="grid-column:span 1;">
+          <div class="adm-card-title">👥 آخر المستخدمين المسجلين</div>
+          <div id="adm-recent-users" style="max-height:320px;overflow-y:auto;"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── CONTENT MANAGEMENT ── -->
+    <div id="adm-tab-content" class="adm-tab" style="display:none;">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">
+        <div class="adm-card">
+          <div class="adm-card-title">➕ إضافة محتوى جديد</div>
+          <div class="adm-form-group">
+            <label>📁 القسم</label>
+            <select id="adm-content-section" onchange="admLoadSectionPath()" class="adm-select">
+              <option value="">— جاري تحميل الأقسام —</option>
+            </select>
+            <div id="adm-section-path" style="font-size:.72rem;color:var(--text-secondary);margin-top:4px;"></div>
+          </div>
+          <div class="adm-form-group">
+            <label>🏷️ نوع المحتوى</label>
+            <select id="adm-content-type" onchange="admToggleContentFields()" class="adm-select">
+              <option value="video">🎬 فيديو</option>
+              <option value="text">📝 نص / شرح</option>
+              <option value="link">🔗 رابط</option>
+              <option value="pdf">📄 PDF</option>
+            </select>
+          </div>
+          <div class="adm-form-group">
+            <label>📌 العنوان</label>
+            <input id="adm-content-title" type="text" placeholder="عنوان المحتوى" class="adm-input">
+          </div>
+          <div id="adm-url-grp" class="adm-form-group">
+            <label>🔗 الرابط</label>
+            <input id="adm-content-url" type="url" placeholder="https://..." class="adm-input" style="direction:ltr;">
+            <div id="adm-url-hint" style="font-size:.7rem;color:var(--text-secondary);margin-top:3px;">للفيديو: يوتيوب أو رابط مباشر</div>
+          </div>
+          <div id="adm-body-grp" class="adm-form-group" style="display:none;">
+            <label>📝 النص</label>
+            <textarea id="adm-content-body" rows="5" placeholder="اكتب النص هنا..." class="adm-input" style="resize:vertical;"></textarea>
+          </div>
+          <div class="adm-form-group">
+            <label>💬 وصف (اختياري)</label>
+            <input id="adm-content-desc" type="text" placeholder="وصف مختصر" class="adm-input">
+          </div>
+          <button onclick="admSaveContent()" class="adm-btn-primary">💾 حفظ المحتوى</button>
+          <div id="adm-content-msg" style="margin-top:10px;text-align:center;font-size:.82rem;min-height:20px;"></div>
+        </div>
+        <div class="adm-card">
+          <div class="adm-card-title">📋 المحتوى الحالي</div>
+          <select id="adm-list-section" class="adm-select" style="margin-bottom:12px;" onchange="admLoadContentList()">
+            <option value="">اختر القسم</option>
+          </select>
+          <div id="adm-content-list" style="max-height:500px;overflow-y:auto;"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── SECTIONS MANAGEMENT ── -->
+    <div id="adm-tab-sections" class="adm-tab" style="display:none;">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">
+        <div class="adm-card">
+          <div class="adm-card-title">➕ إضافة / تعديل قسم</div>
+          <div class="adm-form-group">
+            <label>📌 عنوان القسم</label>
+            <input id="adm-sec-title" type="text" placeholder="مثال: أناتومي الفرقة الأولى" class="adm-input">
+          </div>
+          <div class="adm-form-group">
+            <label>💬 الوصف</label>
+            <input id="adm-sec-subtitle" type="text" placeholder="وصف مختصر" class="adm-input">
+          </div>
+          <div class="adm-form-group">
+            <label>🎨 أيقونة (emoji)</label>
+            <input id="adm-sec-icon" type="text" placeholder="📚" class="adm-input" value="📚">
+          </div>
+          <div class="adm-form-group">
+            <label>📁 القسم الأب (اتركه فارغاً للقسم الرئيسي)</label>
+            <select id="adm-sec-parent" class="adm-select">
+              <option value="">— قسم رئيسي —</option>
+            </select>
+          </div>
+          <div class="adm-form-group">
+            <label>🔢 الترتيب</label>
+            <input id="adm-sec-order" type="number" placeholder="1" class="adm-input" value="1">
+          </div>
+          <input type="hidden" id="adm-sec-edit-id">
+          <div style="display:flex;gap:10px;">
+            <button onclick="admSaveSection()" class="adm-btn-primary" style="flex:1;">💾 حفظ القسم</button>
+            <button onclick="admClearSectionForm()" style="padding:11px 16px;background:var(--bg-input);border:1.5px solid var(--border-color);border-radius:12px;font-family:var(--font);font-size:.82rem;cursor:pointer;color:var(--text-primary);">🔄 مسح</button>
+          </div>
+          <div id="adm-sec-msg" style="margin-top:10px;text-align:center;font-size:.82rem;min-height:20px;"></div>
+        </div>
+        <div class="adm-card">
+          <div class="adm-card-title">🗂️ جميع الأقسام</div>
+          <input type="text" id="adm-sec-search" placeholder="🔍 بحث في الأقسام..." class="adm-input" style="margin-bottom:12px;" oninput="admFilterSections(this.value)">
+          <div id="adm-sections-list" style="max-height:550px;overflow-y:auto;"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── RESOURCES ── -->
+    <div id="adm-tab-resources" class="adm-tab" style="display:none;">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">
+        <div class="adm-card">
+          <div class="adm-card-title">➕ إضافة مورد / ملف</div>
+          <div class="adm-form-group">
+            <label>📁 القسم</label>
+            <select id="adm-res-section" class="adm-select">
+              <option value="">— اختر القسم —</option>
+            </select>
+          </div>
+          <div class="adm-form-group">
+            <label>🏷️ النوع</label>
+            <select id="adm-res-type" class="adm-select">
+              <option value="pdf">📄 PDF</option>
+              <option value="link">🔗 رابط</option>
+              <option value="video">🎬 فيديو</option>
+              <option value="file">📎 ملف</option>
+            </select>
+          </div>
+          <div class="adm-form-group">
+            <label>📌 العنوان</label>
+            <input id="adm-res-title" type="text" placeholder="اسم الملف أو المورد" class="adm-input">
+          </div>
+          <div class="adm-form-group">
+            <label>🔗 الرابط</label>
+            <input id="adm-res-url" type="url" placeholder="https://..." class="adm-input" style="direction:ltr;">
+          </div>
+          <div class="adm-form-group">
+            <label>💬 الوصف</label>
+            <input id="adm-res-desc" type="text" placeholder="وصف مختصر" class="adm-input">
+          </div>
+          <button onclick="admSaveResource()" class="adm-btn-primary">💾 إضافة المورد</button>
+          <div id="adm-res-msg" style="margin-top:10px;text-align:center;font-size:.82rem;min-height:20px;"></div>
+        </div>
+        <div class="adm-card">
+          <div class="adm-card-title">📁 الموارد المضافة</div>
+          <select id="adm-res-list-section" class="adm-select" style="margin-bottom:12px;" onchange="admLoadResourceList()">
+            <option value="">اختر القسم</option>
+          </select>
+          <div id="adm-resources-list" style="max-height:500px;overflow-y:auto;"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── USERS ── -->
+    <div id="adm-tab-users" class="adm-tab" style="display:none;">
+      <div class="adm-card">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;flex-wrap:wrap;gap:10px;">
+          <div class="adm-card-title" style="margin-bottom:0;">👥 إدارة المستخدمين</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <input type="text" id="adm-users-search" placeholder="🔍 بحث بالإيميل أو الاسم..." class="adm-input" style="width:220px;" oninput="admFilterUsers(this.value)">
+            <select id="adm-users-filter" class="adm-select" style="width:auto;" onchange="admFilterUsers(document.getElementById('adm-users-search').value)">
+              <option value="">كل المستخدمين</option>
+              <option value="subscribed">مشتركون فقط</option>
+              <option value="pending">طلبات معلقة</option>
+            </select>
+          </div>
+        </div>
+        <div id="adm-users-table" style="overflow-x:auto;"></div>
+        <div id="adm-users-pagination" style="display:flex;gap:8px;justify-content:center;margin-top:16px;flex-wrap:wrap;"></div>
+      </div>
+    </div>
+
+    <!-- ── PAYMENTS ── -->
+    <div id="adm-tab-payments" class="adm-tab" style="display:none;">
+      <div id="adm-payments-stats" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:14px;margin-bottom:24px;"></div>
+      <div class="adm-card">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px;">
+          <div class="adm-card-title" style="margin-bottom:0;">💳 طلبات الاشتراك</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <select id="adm-pay-filter" class="adm-select" style="width:auto;" onchange="admLoadPayments()">
+              <option value="">كل الطلبات</option>
+              <option value="pending">⏳ معلقة</option>
+              <option value="approved">✅ مقبولة</option>
+              <option value="rejected">❌ مرفوضة</option>
+            </select>
+          </div>
+        </div>
+        <div id="adm-payments-list" style="max-height:600px;overflow-y:auto;"></div>
+      </div>
+    </div>
+
+    <!-- ── MESSAGES ── -->
+    <div id="adm-tab-messages" class="adm-tab" style="display:none;">
+      <div class="adm-card">
+        <div class="adm-card-title">💬 الرسائل الواردة من المستخدمين</div>
+        <div id="adm-messages-list" style="max-height:600px;overflow-y:auto;">
+          <div style="text-align:center;padding:40px;color:var(--text-secondary);">
+            <div style="font-size:2rem;margin-bottom:12px;">💬</div>
+            <p>لا توجد رسائل حالياً</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── SITE MESSAGES ── -->
+    <div id="adm-tab-sitemsgs" class="adm-tab" style="display:none;">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">
+        <div class="adm-card">
+          <div class="adm-card-title">➕ رسالة ترحيبية جديدة</div>
+          <div class="adm-form-group">
+            <label>📌 العنوان</label>
+            <input id="adm-smsg-title" type="text" placeholder="عنوان الرسالة" class="adm-input">
+          </div>
+          <div class="adm-form-group">
+            <label>📝 نص الرسالة</label>
+            <textarea id="adm-smsg-body" rows="6" placeholder="اكتب نص الرسالة..." class="adm-input" style="resize:vertical;"></textarea>
+          </div>
+          <div class="adm-form-group" style="display:flex;align-items:center;gap:10px;">
+            <input type="checkbox" id="adm-smsg-active" checked style="width:auto;">
+            <label style="margin:0;font-size:.85rem;">تفعيل الرسالة فوراً</label>
+          </div>
+          <button onclick="admSaveSiteMessage()" class="adm-btn-primary">💾 نشر الرسالة</button>
+          <div id="adm-smsg-msg" style="margin-top:10px;text-align:center;font-size:.82rem;min-height:20px;"></div>
+        </div>
+        <div class="adm-card">
+          <div class="adm-card-title">📢 الرسائل المنشورة</div>
+          <div id="adm-sitemsgs-list" style="max-height:500px;overflow-y:auto;"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── SETTINGS ── -->
+    <div id="adm-tab-settings" class="adm-tab" style="display:none;">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">
+        <div class="adm-card">
+          <div class="adm-card-title">⚙️ إعدادات خطط الاشتراك</div>
+          <div id="adm-plans-list" style="margin-bottom:16px;max-height:380px;overflow-y:auto;"></div>
+          <button onclick="admAddPlan()" class="adm-btn-primary">➕ إضافة خطة جديدة</button>
+        </div>
+        <div class="adm-card">
+          <div class="adm-card-title">📊 إحصائيات الموقع</div>
+          <div id="adm-site-stats" style="display:flex;flex-direction:column;gap:12px;"></div>
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div>
+</div>
+
+<!-- ── Admin Dashboard Mobile Toggle ── -->
+<style>
+/* ===== ADMIN DASHBOARD STYLES ===== */
+.adm-nav-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 12px;
+  background: transparent;
+  border: none;
+  color: rgba(255,255,255,.7);
+  border-radius: 10px;
+  font-family: var(--font);
+  font-size: .83rem;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: right;
+  transition: all .2s;
+  margin-bottom: 2px;
+}
+.adm-nav-btn:hover { background: rgba(255,255,255,.1); color: #fff; }
+.adm-nav-btn.active { background: rgba(255,255,255,.18); color: #fff; font-weight: 800; }
+
+.adm-card {
+  background: var(--bg-card);
+  border-radius: 16px;
+  padding: 22px 20px;
+  box-shadow: 0 4px 20px rgba(10,61,98,.08);
+  border: 1.5px solid var(--border-color);
+  transition: background 0.3s, border-color 0.3s;
+}
+.adm-card-title {
+  font-size: 1rem;
+  font-weight: 900;
+  color: var(--primary);
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 2px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.adm-form-group { margin-bottom: 14px; }
+.adm-form-group label { font-size: .78rem; font-weight: 700; color: var(--primary); display: block; margin-bottom: 5px; }
+.adm-input {
+  width: 100%;
+  padding: 10px 13px;
+  border: 1.5px solid var(--border-color);
+  border-radius: 10px;
+  font-family: var(--font);
+  font-size: .85rem;
+  outline: none;
+  background: var(--bg-input);
+  color: var(--text-primary);
+  box-sizing: border-box;
+  transition: border-color .2s;
+}
+.adm-input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(10,61,98,.08); }
+.adm-select {
+  width: 100%;
+  padding: 10px 13px;
+  border: 1.5px solid var(--border-color);
+  border-radius: 10px;
+  font-family: var(--font);
+  font-size: .85rem;
+  outline: none;
+  background: var(--bg-input);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+.adm-btn-primary {
+  width: 100%;
+  padding: 12px;
+  background: linear-gradient(135deg, #0a3d62, #17a589);
+  color: #fff;
+  border: none;
+  border-radius: 12px;
+  font-family: var(--font);
+  font-size: .9rem;
+  font-weight: 800;
+  cursor: pointer;
+  transition: opacity .2s, transform .15s;
+}
+.adm-btn-primary:hover { opacity: .9; transform: translateY(-1px); }
+.adm-stat-card {
+  background: var(--bg-card);
+  border-radius: 14px;
+  padding: 20px;
+  box-shadow: 0 4px 16px rgba(10,61,98,.06);
+  border: 1.5px solid var(--border-color);
+  text-align: center;
+}
+.adm-stat-card .num { font-size: 1.8rem; font-weight: 900; }
+.adm-stat-card .lbl { font-size: .75rem; color: var(--text-secondary); margin-top: 4px; }
+.adm-row-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1.5px solid var(--border-color);
+  margin-bottom: 8px;
+  background: var(--bg-input);
+  font-size: .83rem;
+  flex-wrap: wrap;
+}
+.adm-badge {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-size: .68rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.adm-badge-green { background: #d0f0e8; color: #0b6e4f; }
+.adm-badge-red { background: #fde8e8; color: #c0392b; }
+.adm-badge-orange { background: #fde8cc; color: #9a3e00; }
+.adm-badge-blue { background: #dceefb; color: #0a3d62; }
+.adm-action-btn {
+  padding: 5px 12px;
+  border-radius: 8px;
+  border: none;
+  font-family: var(--font);
+  font-size: .72rem;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+/* Mobile responsive admin */
+@media(max-width: 768px) {
+  #adm-layout { flex-direction: column; }
+  #adm-sidebar { width: 100%; min-width: unset; position: relative; top: 0; height: auto; flex-direction: row; flex-wrap: wrap; padding: 10px; gap: 4px; }
+  #adm-sidebar > div:first-child { display: none; }
+  #adm-sidebar > nav { display: flex; flex-wrap: wrap; gap: 4px; padding: 0; flex: 1; }
+  #adm-sidebar > nav > div { display: none; }
+  .adm-nav-btn { width: auto; font-size: .72rem; padding: 7px 10px; flex: 0; white-space: nowrap; }
+  #adm-sidebar > div:last-child { display: none; }
+  #page-admin-dashboard > #adm-layout > main { padding: 16px 12px; }
+  #adm-tab-content > div, #adm-tab-sections > div, #adm-tab-resources > div, #adm-tab-sitemsgs > div, #adm-tab-settings > div { grid-template-columns: 1fr !important; }
+  #adm-tab-overview > div:last-child { grid-template-columns: 1fr !important; }
+}
+</style>
+
+<script>
+// ==================== ADMIN DASHBOARD LOGIC ====================
+
+let _admCurrentTab = 'overview';
+let _admAllSections = [];
+let _admAllUsers = [];
+let _admAllPayments = [];
+
+function openAdminDashboard() {
+  // Check admin
+  if (!window._authUser || window._authUser.email !== ADMIN_EMAIL) {
+    alert('❌ صلاحيات الأدمن فقط');
+    return;
+  }
+  state.navigationStack.push({
+    label: 'لوحة التحكم',
+    restore: () => openAdminDashboard(),
+  });
+  _pushHistoryState();
+  showPage('page-admin-dashboard');
+  document.getElementById('adm-page-title').textContent = '📊 نظرة عامة';
+  admShowTab('overview');
+  // Sync selects
+  setTimeout(admSyncSelects, 500);
+}
+
+function admShowTab(tab) {
+  _admCurrentTab = tab;
+  document.querySelectorAll('.adm-tab').forEach(t => t.style.display = 'none');
+  document.querySelectorAll('.adm-nav-btn').forEach(b => b.classList.remove('active'));
+  const tabEl = document.getElementById('adm-tab-' + tab);
+  const navEl = document.getElementById('adm-nav-' + tab);
+  if (tabEl) tabEl.style.display = '';
+  if (navEl) navEl.classList.add('active');
+  const titles = { overview:'📊 نظرة عامة', content:'📚 إدارة المحتوى', sections:'🗂️ إدارة الأقسام', resources:'📁 الملفات والموارد', users:'👥 المستخدمون', payments:'💳 الاشتراكات', messages:'💬 الرسائل', sitemsgs:'📢 رسائل الموقع', settings:'⚙️ الإعدادات' };
+  document.getElementById('adm-page-title').textContent = titles[tab] || 'لوحة التحكم';
+  admLoadTab(tab);
+}
+
+async function admLoadTab(tab) {
+  if (!window.supabase) return;
+  if (tab === 'overview') await admLoadOverview();
+  else if (tab === 'content' || tab === 'resources') { await admSyncSelects(); if (tab === 'content') admLoadContentList_adm(); }
+  else if (tab === 'sections') await admLoadSectionsList();
+  else if (tab === 'users') await admLoadUsers();
+  else if (tab === 'payments') { await admLoadPaymentsStats(); await admLoadPayments(); }
+  else if (tab === 'sitemsgs') await admLoadSiteMsgsList();
+  else if (tab === 'settings') { await admLoadPlansSettings(); await admLoadSiteStats(); }
+}
+
+function admRefreshCurrentTab() { admLoadTab(_admCurrentTab); }
+
+// ── OVERVIEW ──
+async function admLoadOverview() {
+  const db = window.supabase;
+  const [sec, content, pay, users] = await Promise.all([
+    db.from('site_sections').select('id', {count:'exact'}),
+    db.from('section_content').select('id', {count:'exact'}),
+    db.from('payment_requests').select('id,status'),
+    db.from('user_profiles').select('id', {count:'exact'}).catch(() => ({data:null,count:0})),
+  ]);
+  const totalSec = sec.count || 0;
+  const totalContent = content.count || 0;
+  const payData = pay.data || [];
+  const approved = payData.filter(p=>p.status==='approved').length;
+  const pending = payData.filter(p=>p.status==='pending').length;
+  const totalUsers = users.count || 0;
+
+  document.getElementById('adm-stats-grid').innerHTML = `
+    <div class="adm-stat-card"><div class="num" style="color:#0a3d62">${totalSec}</div><div class="lbl">📁 الأقسام</div></div>
+    <div class="adm-stat-card"><div class="num" style="color:#17a589">${totalContent}</div><div class="lbl">📚 عناصر المحتوى</div></div>
+    <div class="adm-stat-card"><div class="num" style="color:#f39c12">${pending}</div><div class="lbl">⏳ اشتراكات معلقة</div></div>
+    <div class="adm-stat-card"><div class="num" style="color:#27ae60">${approved}</div><div class="lbl">✅ اشتراكات نشطة</div></div>
+    <div class="adm-stat-card"><div class="num" style="color:#8e44ad">${payData.length}</div><div class="lbl">💳 إجمالي الطلبات</div></div>
+    <div class="adm-stat-card"><div class="num" style="color:#e74c3c">${totalUsers}</div><div class="lbl">👥 المستخدمون</div></div>
+  `;
+
+  // Recent subs
+  const recentSubs = await db.from('payment_requests').select('*').order('created_at', {ascending:false}).limit(5);
+  const subEl = document.getElementById('adm-recent-subs');
+  if (subEl) {
+    const items = recentSubs.data || [];
+    subEl.innerHTML = items.length === 0 ? '<p style="text-align:center;color:#aaa;padding:20px;">لا توجد طلبات</p>' :
+      items.map(r => `<div class="adm-row-item">
+        <div style="flex:1;min-width:0;">
+          <div style="font-weight:700;font-size:.82rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${r.full_name||r.email||'—'}</div>
+          <div style="font-size:.7rem;color:#888;">${r.plan_name||r.planName||''} • ${r.payment_type||r.duration||''}</div>
+        </div>
+        <span class="adm-badge ${r.status==='approved'?'adm-badge-green':r.status==='rejected'?'adm-badge-red':'adm-badge-orange'}">${r.status==='approved'?'✅ مقبول':r.status==='rejected'?'❌ مرفوض':'⏳ معلق'}</span>
+        ${r.status==='pending' ? `<button class="adm-action-btn" style="background:#d4edda;color:#0b6e4f;" onclick="admApprovePayment('${r.id}')">قبول</button><button class="adm-action-btn" style="background:#fde8e8;color:#c0392b;" onclick="admRejectPayment('${r.id}')">رفض</button>` : ''}
+      </div>`).join('');
+  }
+
+  // Recent users
+  const recentUsers = await db.from('user_profiles').select('*').order('created_at', {ascending:false}).limit(5).catch(()=>({data:[]}));
+  const usrEl = document.getElementById('adm-recent-users');
+  if (usrEl) {
+    const items = recentUsers.data || [];
+    usrEl.innerHTML = items.length === 0 ? '<p style="text-align:center;color:#aaa;padding:20px;">لا توجد بيانات مستخدمين في جدول user_profiles</p>' :
+      items.map(u => `<div class="adm-row-item">
+        <div style="flex:1;min-width:0;">
+          <div style="font-weight:700;font-size:.82rem;">${u.full_name||u.name||'—'}</div>
+          <div style="font-size:.7rem;color:#888;direction:ltr;text-align:right;">${u.email||''}</div>
+        </div>
+        <span class="adm-badge adm-badge-blue">${u.role||'student'}</span>
+      </div>`).join('');
+  }
+}
+
+// ── SYNC SELECTS ──
+async function admSyncSelects() {
+  if (!window.supabase) return;
+  try {
+    const { data } = await window.supabase.from('site_sections').select('id, title, parent_id, subtitle').order('display_order');
+    if (!data) return;
+    _admAllSections = data;
+    const opts = data.map(s => `<option value="${s.id}">${s.title}${s.subtitle?' — '+s.subtitle:''}</option>`).join('');
+    const withEmpty = '<option value="">— اختر القسم —</option>' + opts;
+    ['adm-content-section','adm-list-section','adm-sec-parent','adm-res-section','adm-res-list-section'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) {
+        if (id === 'adm-sec-parent') el.innerHTML = '<option value="">— قسم رئيسي —</option>' + opts;
+        else el.innerHTML = withEmpty;
+      }
+    });
+    // also sync legacy admin-panel selects
+    ['admin-section-select','admin-list-section'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.innerHTML = (id==='admin-list-section'?'<option value="">اختر القسم لعرض محتواه</option>':'<option value="">— اختر القسم —</option>') + opts;
+    });
+    window._adminSections = data;
+  } catch(e) { console.warn('admSyncSelects:', e); }
+}
+
+function admLoadSectionPath() {
+  const id = document.getElementById('adm-content-section').value;
+  if (!id || !_admAllSections.length) { document.getElementById('adm-section-path').textContent = ''; return; }
+  const sec = _admAllSections.find(s => String(s.id) === String(id));
+  if (!sec) return;
+  let path = sec.title;
+  if (sec.parent_id) { const p = _admAllSections.find(x => String(x.id) === String(sec.parent_id)); if (p) path = p.title + ' › ' + path; }
+  document.getElementById('adm-section-path').textContent = '📍 ' + path;
+}
+
+function admToggleContentFields() {
+  const t = document.getElementById('adm-content-type').value;
+  document.getElementById('adm-url-grp').style.display = t === 'text' ? 'none' : '';
+  document.getElementById('adm-body-grp').style.display = t === 'text' ? '' : 'none';
+  const hints = { video:'للفيديو: رابط يوتيوب أو رابط مباشر', pdf:'رابط PDF أو Google Drive', link:'رابط الصفحة', file:'رابط الملف المباشر' };
+  const hint = document.getElementById('adm-url-hint');
+  if (hint) hint.textContent = hints[t] || '';
+}
+
+async function admSaveContent() {
+  const sectionId = document.getElementById('adm-content-section').value;
+  const type    = document.getElementById('adm-content-type').value;
+  const title   = document.getElementById('adm-content-title').value.trim();
+  const url     = document.getElementById('adm-content-url').value.trim();
+  const body    = document.getElementById('adm-content-body').value.trim();
+  const desc    = document.getElementById('adm-content-desc').value.trim();
+  const msgEl   = document.getElementById('adm-content-msg');
+
+  if (!sectionId) { msgEl.style.color='#e74c3c'; msgEl.textContent='❌ اختر القسم'; return; }
+  if (!title) { msgEl.style.color='#e74c3c'; msgEl.textContent='❌ أدخل العنوان'; return; }
+  if (type !== 'text' && !url) { msgEl.style.color='#e74c3c'; msgEl.textContent='❌ أدخل الرابط'; return; }
+  if (type === 'text' && !body) { msgEl.style.color='#e74c3c'; msgEl.textContent='❌ أدخل النص'; return; }
+
+  let normalizedUrl = url;
+  if (/drive\.google\.com/.test(url)) normalizedUrl = url.replace(/\/view(\?.*)?$/,'/preview').replace(/\/edit(\?.*)?$/,'/preview').replace(/[?&]usp=[^&]*/g,'');
+
+  msgEl.style.color='#0a3d62'; msgEl.textContent='⏳ جاري الحفظ...';
+  try {
+    const { error } = await window.supabase.from('section_content').insert([{
+      section_id: Number(sectionId), content_type: type, title, description: desc||null,
+      url: type !== 'text' && normalizedUrl ? normalizedUrl : null,
+      body: type === 'text' && body ? body : null, display_order: Date.now()
+    }]);
+    if (error) throw error;
+    msgEl.style.color='#17a589'; msgEl.textContent='✅ تم الحفظ!';
+    document.getElementById('adm-content-title').value='';
+    document.getElementById('adm-content-url').value='';
+    document.getElementById('adm-content-body').value='';
+    document.getElementById('adm-content-desc').value='';
+    setTimeout(()=>msgEl.textContent='',3000);
+    admLoadContentList_adm();
+    // sync open page
+    const savedId = Number(sectionId);
+    if (window._currentContentSec && Number(window._currentContentSec.id)===savedId) _openContentPage(window._currentContentSec);
+  } catch(e) { msgEl.style.color='#e74c3c'; msgEl.textContent='❌ '+e.message; }
+}
+
+async function admLoadContentList_adm() {
+  const sectionId = document.getElementById('adm-list-section').value;
+  const listEl = document.getElementById('adm-content-list');
+  if (!sectionId) { listEl.innerHTML=''; return; }
+  listEl.innerHTML='<div style="text-align:center;padding:16px;color:#888">⏳ جاري التحميل...</div>';
+  try {
+    const { data, error } = await window.supabase.from('section_content').select('*').eq('section_id', sectionId).order('display_order');
+    if (error) throw error;
+    const icons = { video:'🎬', text:'📝', link:'🔗', pdf:'📄' };
+    listEl.innerHTML = (data||[]).length === 0 ? '<p style="text-align:center;color:#aaa;padding:16px;">لا يوجد محتوى</p>' :
+      (data||[]).map(item => `<div class="adm-row-item">
+        <span style="font-size:1.3rem">${icons[item.content_type]||'📌'}</span>
+        <div style="flex:1;min-width:0;">
+          <div style="font-weight:700;font-size:.82rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${item.title}</div>
+          <div style="font-size:.7rem;color:#888;">${item.content_type}</div>
+        </div>
+        <button class="adm-action-btn" style="background:#fde8e8;color:#c0392b;" onclick="admDeleteContent(${item.id})">🗑️ حذف</button>
+      </div>`).join('');
+  } catch(e) { listEl.innerHTML='<div style="color:#e74c3c;padding:10px;font-size:.8rem;">❌ '+e.message+'</div>'; }
+}
+
+async function admDeleteContent(id) {
+  if (!confirm('حذف هذا المحتوى؟')) return;
+  await window.supabase.from('section_content').delete().eq('id', id);
+  admLoadContentList_adm();
+  // Also run original delete
+  if (typeof adminLoadContentList === 'function') adminLoadContentList();
+}
+
+// ── SECTIONS MANAGEMENT ──
+async function admLoadSectionsList() {
+  await admSyncSelects();
+  const listEl = document.getElementById('adm-sections-list');
+  if (!listEl || !_admAllSections.length) return;
+  admRenderSectionsList(_admAllSections);
+}
+
+function admRenderSectionsList(sections) {
+  const listEl = document.getElementById('adm-sections-list');
+  if (!listEl) return;
+  const rootSecs = sections.filter(s => !s.parent_id);
+  const childSecs = sections.filter(s => s.parent_id);
+
+  listEl.innerHTML = rootSecs.map(root => {
+    const children = childSecs.filter(c => String(c.parent_id) === String(root.id));
+    return `<div style="margin-bottom:8px;">
+      <div class="adm-row-item" style="background:linear-gradient(135deg,var(--light),#dceefb);border-color:#b8d9f0;">
+        <span style="font-size:1.2rem">${root.icon||'📁'}</span>
+        <div style="flex:1;min-width:0;">
+          <div style="font-weight:800;font-size:.85rem;">${root.title}</div>
+          <div style="font-size:.7rem;color:#888;">${root.subtitle||''} ${children.length?'• '+children.length+' قسم فرعي':''}</div>
+        </div>
+        <button class="adm-action-btn" style="background:#dceefb;color:#0a3d62;" onclick="admEditSection(${root.id})">✏️ تعديل</button>
+        <button class="adm-action-btn" style="background:#fde8e8;color:#c0392b;" onclick="admDeleteSection(${root.id})">🗑️</button>
+      </div>
+      ${children.map(child => `
+        <div class="adm-row-item" style="margin-right:20px;font-size:.8rem;">
+          <span>${child.icon||'📂'}</span>
+          <div style="flex:1;min-width:0;">
+            <div style="font-weight:700;">${child.title}</div>
+            <div style="font-size:.68rem;color:#888;">${child.subtitle||''}</div>
+          </div>
+          <button class="adm-action-btn" style="background:#dceefb;color:#0a3d62;" onclick="admEditSection(${child.id})">✏️</button>
+          <button class="adm-action-btn" style="background:#fde8e8;color:#c0392b;" onclick="admDeleteSection(${child.id})">🗑️</button>
+        </div>`).join('')}
+    </div>`;
+  }).join('');
+}
+
+function admFilterSections(q) {
+  if (!q) { admRenderSectionsList(_admAllSections); return; }
+  const filtered = _admAllSections.filter(s => s.title.includes(q) || (s.subtitle||'').includes(q));
+  admRenderSectionsList(filtered);
+}
+
+function admEditSection(id) {
+  const sec = _admAllSections.find(s => s.id === id);
+  if (!sec) return;
+  document.getElementById('adm-sec-title').value = sec.title || '';
+  document.getElementById('adm-sec-subtitle').value = sec.subtitle || '';
+  document.getElementById('adm-sec-icon').value = sec.icon || '📚';
+  document.getElementById('adm-sec-parent').value = sec.parent_id || '';
+  document.getElementById('adm-sec-order').value = sec.display_order || 1;
+  document.getElementById('adm-sec-edit-id').value = id;
+  document.getElementById('adm-sec-msg').textContent = '⚠️ أنت في وضع التعديل — اضغط حفظ لتأكيد التغييرات';
+  document.getElementById('adm-sec-msg').style.color = '#f39c12';
+}
+
+function admClearSectionForm() {
+  ['adm-sec-title','adm-sec-subtitle','adm-sec-edit-id'].forEach(id => { const el=document.getElementById(id); if(el) el.value=''; });
+  document.getElementById('adm-sec-icon').value = '📚';
+  document.getElementById('adm-sec-parent').value = '';
+  document.getElementById('adm-sec-order').value = '1';
+  document.getElementById('adm-sec-msg').textContent = '';
+}
+
+async function admSaveSection() {
+  const editId = document.getElementById('adm-sec-edit-id').value;
+  const title = document.getElementById('adm-sec-title').value.trim();
+  const subtitle = document.getElementById('adm-sec-subtitle').value.trim();
+  const icon = document.getElementById('adm-sec-icon').value.trim() || '📚';
+  const parent_id = document.getElementById('adm-sec-parent').value || null;
+  const display_order = Number(document.getElementById('adm-sec-order').value) || 1;
+  const msgEl = document.getElementById('adm-sec-msg');
+  if (!title) { msgEl.style.color='#e74c3c'; msgEl.textContent='❌ أدخل عنوان القسم'; return; }
+  msgEl.style.color='#0a3d62'; msgEl.textContent='⏳ جاري الحفظ...';
+  try {
+    const record = { title, subtitle: subtitle||null, icon, parent_id: parent_id ? Number(parent_id) : null, display_order };
+    let error;
+    if (editId) {
+      const r = await window.supabase.from('site_sections').update(record).eq('id', editId);
+      error = r.error;
+    } else {
+      const r = await window.supabase.from('site_sections').insert([record]);
+      error = r.error;
+    }
+    if (error) throw error;
+    msgEl.style.color='#17a589'; msgEl.textContent = editId ? '✅ تم التعديل!' : '✅ تمت الإضافة!';
+    admClearSectionForm();
+    await admLoadSectionsList();
+    setTimeout(()=>msgEl.textContent='',3000);
+  } catch(e) { msgEl.style.color='#e74c3c'; msgEl.textContent='❌ '+e.message; }
+}
+
+async function admDeleteSection(id) {
+  if (!confirm('حذف هذا القسم وجميع أقسامه الفرعية؟ لن يُحذف المحتوى المرتبط.')) return;
+  await window.supabase.from('site_sections').delete().eq('id', id);
+  await admLoadSectionsList();
+}
+
+// ── RESOURCES ──
+async function admSaveResource() {
+  const sectionId = document.getElementById('adm-res-section').value;
+  const type = document.getElementById('adm-res-type').value;
+  const title = document.getElementById('adm-res-title').value.trim();
+  const url = document.getElementById('adm-res-url').value.trim();
+  const desc = document.getElementById('adm-res-desc').value.trim();
+  const msgEl = document.getElementById('adm-res-msg');
+  if (!sectionId||!title||!url) { msgEl.style.color='#e74c3c'; msgEl.textContent='❌ أكمل الحقول المطلوبة'; return; }
+  let nUrl = url;
+  if (/drive\.google\.com/.test(url)) nUrl = url.replace(/\/view(\?.*)?$/,'/preview').replace(/\/edit(\?.*)?$/,'/preview');
+  msgEl.style.color='#0a3d62'; msgEl.textContent='⏳ جاري الحفظ...';
+  try {
+    const { error } = await window.supabase.from('section_resources').insert([{ section_id:Number(sectionId), resource_type:type, title, url:nUrl, description:desc||null, display_order:Date.now() }]);
+    if (error) throw error;
+    msgEl.style.color='#17a589'; msgEl.textContent='✅ تمت الإضافة!';
+    document.getElementById('adm-res-title').value=''; document.getElementById('adm-res-url').value=''; document.getElementById('adm-res-desc').value='';
+    setTimeout(()=>msgEl.textContent='',3000);
+    admLoadResourceList();
+  } catch(e) { msgEl.style.color='#e74c3c'; msgEl.textContent='❌ '+e.message; }
+}
+
+async function admLoadResourceList() {
+  const sectionId = document.getElementById('adm-res-list-section').value;
+  const listEl = document.getElementById('adm-resources-list');
+  if (!sectionId) { listEl.innerHTML=''; return; }
+  listEl.innerHTML='<div style="text-align:center;padding:16px;color:#888">⏳ جاري التحميل...</div>';
+  try {
+    const { data, error } = await window.supabase.from('section_resources').select('*').eq('section_id', sectionId).order('display_order');
+    if (error) throw error;
+    const icons = { pdf:'📄', link:'🔗', video:'🎬', file:'📎' };
+    listEl.innerHTML = (data||[]).length===0 ? '<p style="text-align:center;color:#aaa;padding:16px;">لا توجد موارد</p>' :
+      (data||[]).map(r => `<div class="adm-row-item">
+        <span style="font-size:1.2rem">${icons[r.resource_type]||'📎'}</span>
+        <div style="flex:1;min-width:0;">
+          <div style="font-weight:700;font-size:.82rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${r.title}</div>
+          <div style="font-size:.7rem;color:#888;">${r.resource_type}</div>
+        </div>
+        <button class="adm-action-btn" style="background:#fde8e8;color:#c0392b;" onclick="admDeleteResource(${r.id})">🗑️ حذف</button>
+      </div>`).join('');
+  } catch(e) { listEl.innerHTML='<div style="color:#e74c3c;padding:10px;font-size:.8rem;">❌ '+e.message+'</div>'; }
+}
+
+async function admDeleteResource(id) {
+  if (!confirm('حذف هذا المورد؟')) return;
+  await window.supabase.from('section_resources').delete().eq('id', id);
+  admLoadResourceList();
+}
+
+// ── USERS ──
+async function admLoadUsers() {
+  const listEl = document.getElementById('adm-users-table');
+  listEl.innerHTML = '<div style="text-align:center;padding:20px;color:#888">⏳ جاري تحميل المستخدمين...</div>';
+  try {
+    const { data: payData } = await window.supabase.from('payment_requests').select('email, status, plan_name, planName, created_at').order('created_at', {ascending:false});
+    _admAllPayments = payData || [];
+
+    // Group by email for subscription status
+    const subMap = {};
+    (payData||[]).forEach(p => {
+      if (!subMap[p.email] || p.status === 'approved') subMap[p.email] = p.status;
+    });
+
+    // Try user_profiles table
+    let usersData = [];
+    try {
+      const { data: up } = await window.supabase.from('user_profiles').select('*').order('created_at', {ascending:false});
+      usersData = up || [];
+    } catch(e) {}
+
+    _admAllUsers = usersData.length > 0 ? usersData : Object.keys(subMap).map(email => ({email, id:email}));
+    admRenderUsers(_admAllUsers, subMap);
+  } catch(e) { listEl.innerHTML = '<div style="color:#e74c3c;padding:20px;">❌ '+e.message+'</div>'; }
+}
+
+function admRenderUsers(users, subMap) {
+  const listEl = document.getElementById('adm-users-table');
+  if (!users.length) { listEl.innerHTML = '<p style="text-align:center;color:#aaa;padding:20px;">لا يوجد بيانات مستخدمين</p>'; return; }
+  listEl.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:.82rem;">
+    <thead><tr style="background:linear-gradient(135deg,#0a3d62,#17a589);color:#fff;">
+      <th style="padding:10px 12px;text-align:right;font-weight:800;">المستخدم</th>
+      <th style="padding:10px 12px;text-align:right;font-weight:800;">الإيميل</th>
+      <th style="padding:10px 12px;text-align:right;font-weight:800;">الاشتراك</th>
+      <th style="padding:10px 12px;text-align:right;font-weight:800;">إجراءات</th>
+    </tr></thead>
+    <tbody>${users.map(u => {
+      const email = u.email || '';
+      const status = (subMap||{})[email] || 'none';
+      const badge = status==='approved' ? '<span class="adm-badge adm-badge-green">✅ مشترك</span>' : status==='pending' ? '<span class="adm-badge adm-badge-orange">⏳ معلق</span>' : '<span class="adm-badge adm-badge-blue">مجاني</span>';
+      return `<tr style="border-bottom:1px solid var(--border-color);">
+        <td style="padding:10px 12px;">${u.full_name||u.name||'—'}</td>
+        <td style="padding:10px 12px;direction:ltr;text-align:right;font-size:.75rem;color:#666;">${email}</td>
+        <td style="padding:10px 12px;">${badge}</td>
+        <td style="padding:10px 12px;"><button class="adm-action-btn" style="background:#dceefb;color:#0a3d62;" onclick="admViewUser('${email}')">عرض</button></td>
+      </tr>`;
+    }).join('')}</tbody>
+  </table>`;
+}
+
+function admFilterUsers(q) {
+  const filter = document.getElementById('adm-users-filter').value;
+  let filtered = _admAllUsers;
+  if (q) filtered = filtered.filter(u => (u.email||'').includes(q) || (u.full_name||u.name||'').includes(q));
+  // Build subMap
+  const subMap = {};
+  _admAllPayments.forEach(p => { if (!subMap[p.email] || p.status==='approved') subMap[p.email]=p.status; });
+  if (filter === 'subscribed') filtered = filtered.filter(u => subMap[u.email]==='approved');
+  else if (filter === 'pending') filtered = filtered.filter(u => subMap[u.email]==='pending');
+  admRenderUsers(filtered, subMap);
+}
+
+function admViewUser(email) {
+  const pays = _admAllPayments.filter(p => p.email === email);
+  const info = pays.length ? pays.map(p=>`${p.plan_name||p.planName||''} (${p.status}) - ${new Date(p.created_at).toLocaleDateString('ar')}`).join('\n') : 'لا توجد طلبات اشتراك';
+  alert(`👤 ${email}\n\n📋 الاشتراكات:\n${info}`);
+}
+
+// ── PAYMENTS ──
+async function admLoadPaymentsStats() {
+  const { data } = await window.supabase.from('payment_requests').select('status, amount');
+  const d = data||[];
+  const total=d.length, approved=d.filter(p=>p.status==='approved').length, pending=d.filter(p=>p.status==='pending').length, rejected=d.filter(p=>p.status==='rejected').length;
+  const revenue = d.filter(p=>p.status==='approved').reduce((s,p)=>s+(p.amount||0),0);
+  document.getElementById('adm-payments-stats').innerHTML = `
+    <div class="adm-stat-card"><div class="num" style="color:#0a3d62">${total}</div><div class="lbl">📋 إجمالي الطلبات</div></div>
+    <div class="adm-stat-card"><div class="num" style="color:#27ae60">${approved}</div><div class="lbl">✅ مقبولة</div></div>
+    <div class="adm-stat-card"><div class="num" style="color:#f39c12">${pending}</div><div class="lbl">⏳ معلقة</div></div>
+    <div class="adm-stat-card"><div class="num" style="color:#e74c3c">${rejected}</div><div class="lbl">❌ مرفوضة</div></div>
+    <div class="adm-stat-card"><div class="num" style="color:#17a589">${revenue}</div><div class="lbl">💰 الإيرادات (ج)</div></div>
+  `;
+}
+
+async function admLoadPayments() {
+  const filter = document.getElementById('adm-pay-filter').value;
+  const listEl = document.getElementById('adm-payments-list');
+  listEl.innerHTML = '<div style="text-align:center;padding:20px;color:#888">⏳ جاري التحميل...</div>';
+  try {
+    let q = window.supabase.from('payment_requests').select('*').order('created_at', {ascending:false});
+    if (filter) q = q.eq('status', filter);
+    const { data, error } = await q;
+    if (error) throw error;
+    const items = data||[];
+    if (!items.length) { listEl.innerHTML='<p style="text-align:center;color:#aaa;padding:20px;">لا توجد طلبات</p>'; return; }
+    listEl.innerHTML = items.map(r => `<div class="adm-row-item" style="flex-wrap:wrap;gap:8px;">
+      <div style="flex:1;min-width:160px;">
+        <div style="font-weight:800;font-size:.85rem;">${r.full_name||'—'}</div>
+        <div style="font-size:.73rem;color:#888;direction:ltr;text-align:right;">${r.email||''}</div>
+        <div style="font-size:.73rem;color:#555;margin-top:2px;">${r.plan_name||r.planName||''} • ${r.payment_type||r.duration||''} ${r.amount?'• '+r.amount+' ج':''}</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+        <span class="adm-badge ${r.status==='approved'?'adm-badge-green':r.status==='rejected'?'adm-badge-red':'adm-badge-orange'}">${r.status==='approved'?'✅ مقبول':r.status==='rejected'?'❌ مرفوض':'⏳ معلق'}</span>
+        ${r.status==='pending'?`<button class="adm-action-btn" style="background:#d4edda;color:#0b6e4f;" onclick="admApprovePayment('${r.id}')">✅ قبول</button><button class="adm-action-btn" style="background:#fde8e8;color:#c0392b;" onclick="admRejectPayment('${r.id}')">❌ رفض</button>`:''}
+        ${r.screenshot_url ? `<button class="adm-action-btn" style="background:#dceefb;color:#0a3d62;" onclick="ResourceViewer.open('${r.screenshot_url}','إثبات الدفع','image')">🖼️ إثبات</button>` : ''}
+        <button class="adm-action-btn" style="background:#f0f0f0;color:#555;" onclick="admDeletePayment('${r.id}')">🗑️</button>
+      </div>
+    </div>`).join('');
+  } catch(e) { listEl.innerHTML='<div style="color:#e74c3c;padding:20px;">❌ '+e.message+'</div>'; }
+}
+
+async function admApprovePayment(id) {
+  await window.supabase.from('payment_requests').update({status:'approved'}).eq('id', id);
+  admLoadPayments(); admLoadPaymentsStats();
+  if (typeof renderAdminPaymentDashboard==='function') renderAdminPaymentDashboard();
+}
+async function admRejectPayment(id) {
+  const reason = prompt('سبب الرفض (اختياري):');
+  await window.supabase.from('payment_requests').update({status:'rejected', rejection_reason:reason||null}).eq('id', id);
+  admLoadPayments(); admLoadPaymentsStats();
+  if (typeof renderAdminPaymentDashboard==='function') renderAdminPaymentDashboard();
+}
+async function admDeletePayment(id) {
+  if (!confirm('حذف هذا الطلب نهائياً؟')) return;
+  await window.supabase.from('payment_requests').delete().eq('id', id);
+  admLoadPayments(); admLoadPaymentsStats();
+}
+
+// ── SITE MESSAGES ──
+async function admLoadSiteMsgsList() {
+  const listEl = document.getElementById('adm-sitemsgs-list');
+  listEl.innerHTML = '<div style="text-align:center;padding:16px;color:#888">⏳ جاري التحميل...</div>';
+  try {
+    const { data, error } = await window.supabase.from('site_messages').select('*').order('created_at', {ascending:false});
+    if (error) throw error;
+    const items = data||[];
+    listEl.innerHTML = items.length===0 ? '<p style="text-align:center;color:#aaa;padding:16px;">لا توجد رسائل</p>' :
+      items.map(m => `<div class="adm-row-item" style="flex-direction:column;align-items:flex-start;">
+        <div style="display:flex;width:100%;align-items:center;justify-content:space-between;margin-bottom:6px;">
+          <div style="font-weight:800;font-size:.88rem;">${m.title||'—'}</div>
+          <div style="display:flex;gap:6px;">
+            <span class="adm-badge ${m.is_active?'adm-badge-green':'adm-badge-blue'}">${m.is_active?'🟢 مفعّل':'⚪ معطّل'}</span>
+            <button class="adm-action-btn" style="background:${m.is_active?'#fde8e8':'#d4edda'};color:${m.is_active?'#c0392b':'#0b6e4f'};" onclick="admToggleSiteMsg('${m.id}',${!m.is_active})">${m.is_active?'تعطيل':'تفعيل'}</button>
+            <button class="adm-action-btn" style="background:#fde8e8;color:#c0392b;" onclick="admDeleteSiteMsg('${m.id}')">🗑️</button>
+          </div>
+        </div>
+        <div style="font-size:.78rem;color:var(--text-secondary);line-height:1.6;">${(m.message||'').substring(0,120)}${m.message&&m.message.length>120?'...':''}</div>
+      </div>`).join('');
+  } catch(e) { listEl.innerHTML='<div style="color:#e74c3c;padding:10px;font-size:.8rem;">❌ '+e.message+'</div>'; }
+}
+
+async function admSaveSiteMessage() {
+  const title = document.getElementById('adm-smsg-title').value.trim();
+  const message = document.getElementById('adm-smsg-body').value.trim();
+  const is_active = document.getElementById('adm-smsg-active').checked;
+  const msgEl = document.getElementById('adm-smsg-msg');
+  if (!title||!message) { msgEl.style.color='#e74c3c'; msgEl.textContent='❌ أدخل العنوان والنص'; return; }
+  msgEl.style.color='#0a3d62'; msgEl.textContent='⏳ جاري النشر...';
+  try {
+    if (is_active) await window.supabase.from('site_messages').update({is_active:false}).eq('is_active',true);
+    const { error } = await window.supabase.from('site_messages').insert([{title, message, is_active}]);
+    if (error) throw error;
+    msgEl.style.color='#17a589'; msgEl.textContent='✅ تم النشر!';
+    document.getElementById('adm-smsg-title').value=''; document.getElementById('adm-smsg-body').value='';
+    setTimeout(()=>msgEl.textContent='',3000);
+    admLoadSiteMsgsList();
+  } catch(e) { msgEl.style.color='#e74c3c'; msgEl.textContent='❌ '+e.message; }
+}
+async function admToggleSiteMsg(id, active) {
+  if (active) await window.supabase.from('site_messages').update({is_active:false}).eq('is_active',true);
+  await window.supabase.from('site_messages').update({is_active:active}).eq('id',id);
+  admLoadSiteMsgsList();
+}
+async function admDeleteSiteMsg(id) {
+  if (!confirm('حذف هذه الرسالة؟')) return;
+  await window.supabase.from('site_messages').delete().eq('id',id);
+  admLoadSiteMsgsList();
+}
+
+// ── SETTINGS ──
+async function admLoadPlansSettings() {
+  const plans = typeof PaymentStore !== 'undefined' ? PaymentStore.getPlans() : [];
+  const listEl = document.getElementById('adm-plans-list');
+  if (!listEl) return;
+  listEl.innerHTML = plans.map(p => `<div class="adm-row-item">
+    <span style="font-size:1.3rem">${p.icon||'📚'}</span>
+    <div style="flex:1;min-width:0;">
+      <div style="font-weight:800;font-size:.83rem;">${p.name}</div>
+      <div style="font-size:.72rem;color:#888;">${p.monthlyPrice} ج/شهر</div>
+    </div>
+    <span class="adm-badge ${p.active?'adm-badge-green':'adm-badge-blue'}">${p.active?'مفعّل':'معطّل'}</span>
+    <button class="adm-action-btn" style="background:#dceefb;color:#0a3d62;" onclick="admEditPlan('${p.id}')">✏️</button>
+    <button class="adm-action-btn" style="background:#fde8e8;color:#c0392b;" onclick="if(typeof deletePlan==='function')deletePlan('${p.id}');admLoadPlansSettings();">🗑️</button>
+  </div>`).join('') || '<p style="text-align:center;color:#aaa;padding:16px;">لا توجد خطط</p>';
+}
+function admEditPlan(id) {
+  if (typeof savePlan === 'function') { alert('استخدم نظام إدارة المدفوعات المتكاملة لتعديل الخطط'); }
+}
+function admAddPlan() { if (typeof addNewPlan === 'function') addNewPlan(); }
+
+async function admLoadSiteStats() {
+  const db = window.supabase;
+  const [sec, cont, pay] = await Promise.all([
+    db.from('site_sections').select('id', {count:'exact'}),
+    db.from('section_content').select('id', {count:'exact'}),
+    db.from('payment_requests').select('status'),
+  ]);
+  const approved = (pay.data||[]).filter(p=>p.status==='approved').length;
+  document.getElementById('adm-site-stats').innerHTML = `
+    <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border-color);font-size:.85rem;"><span style="color:var(--text-secondary);">إجمالي الأقسام</span><strong>${sec.count||0}</strong></div>
+    <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border-color);font-size:.85rem;"><span style="color:var(--text-secondary);">إجمالي عناصر المحتوى</span><strong>${cont.count||0}</strong></div>
+    <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border-color);font-size:.85rem;"><span style="color:var(--text-secondary);">الاشتراكات النشطة</span><strong style="color:#27ae60">${approved}</strong></div>
+    <div style="display:flex;justify-content:space-between;padding:10px 0;font-size:.85rem;"><span style="color:var(--text-secondary);">إجمالي طلبات الاشتراك</span><strong>${(pay.data||[]).length}</strong></div>
+  `;
+}
+
+// ── Make sure admin btn in bottom nav also works ──
+document.addEventListener('DOMContentLoaded', function() {
+  // Add admin tab to bottom nav for mobile
+  const bnAdmin = document.createElement('button');
+  bnAdmin.className = 'bn-item';
+  bnAdmin.id = 'bn-admin';
+  bnAdmin.title = 'لوحة التحكم';
+  bnAdmin.style.display = 'none';
+  bnAdmin.onclick = function() { openAdminDashboard(); setActiveNav('bn-admin'); };
+  bnAdmin.innerHTML = '<span class="bn-icon">⚙️</span><span class="bn-label">الأدمن</span>';
+  const bnNav = document.getElementById('bottom-nav');
+  if (bnNav) bnNav.appendChild(bnAdmin);
+
+  // Show admin btn only for admin
+  function checkAdminVisibility() {
+    if (window._authUser && window._authUser.email === ADMIN_EMAIL) {
+      bnAdmin.style.display = '';
+    } else {
+      bnAdmin.style.display = 'none';
+    }
+  }
+  setInterval(checkAdminVisibility, 1000);
+});
+
 </script>
 
 <!-- ==================== WELCOME MESSAGE POPUP ==================== -->
