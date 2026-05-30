@@ -11,48 +11,18 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;600;700;900&family=Tajawal:wght@300;400;500;700;800&display=swap" rel="stylesheet">
 <script>
-// ① استبدال window.fetch قبل تحميل Supabase
-// ⚠️ ملاحظة: الـ wrapper ده بيحل مشكلة headers.entries() في بعض البيئات
-// لكن بيحتفظ بالـ body الأصلية لأن Supabase PKCE يحتاجها
-(function() {
-  var _orig = window.fetch;
-  window.fetch = async function(input, init) {
-    var res = await _orig.call(this, input, init);
+// ── PKCE Code Exchange Handler ──────────────────────────────────────
+// لو Google بعت ?code= في الـ URL، نعمل exchange يدوي قبل ما Supabase يتحمّل
+// عشان نضمن إن الـ session تتحفظ في localStorage
+window._pkceCodeInUrl = new URLSearchParams(window.location.search).get('code');
+if (window._pkceCodeInUrl) {
+  // نظّف الـ URL فوراً عشان مايتعملش redirect loop
+  try {
+    history.replaceState(null, '', window.location.pathname);
+  } catch(e) {}
+}
 
-    // لو طلب Auth (Supabase token exchange) — ارجّعه بدون تعديل
-    var url = typeof input === 'string' ? input : (input && input.url) || '';
-    if (url && (url.includes('/auth/v1/') || url.includes('token') || url.includes('callback'))) {
-      return res;
-    }
-
-    var text = '';
-    try { text = await res.text(); } catch(e) {}
-    var hdrs = {};
-    try { res.headers.forEach(function(v,k){ hdrs[k]=v; }); } catch(e) {}
-    return {
-      ok: res.ok,
-      status: res.status,
-      statusText: res.statusText,
-      url: res.url,
-      headers: {
-        get:     function(k){ return hdrs[(k||'').toLowerCase()]||null; },
-        has:     function(k){ return (k||'').toLowerCase() in hdrs; },
-        entries: function(){ return Object.entries(hdrs)[Symbol.iterator](); },
-        forEach: function(cb){ Object.keys(hdrs).forEach(function(k){ cb(hdrs[k],k); }); }
-      },
-      text:  function(){ return Promise.resolve(text); },
-      json:  function(){
-        try{ return Promise.resolve(JSON.parse(text)); }
-        catch(e){ return Promise.reject(e); }
-      },
-      clone: function(){ return this; },
-      body: null,
-      bodyUsed: true
-    };
-  };
-})();
-
-// ② تحميل Supabase بعد تثبيت الـ fetch المعدّل
+// ② تحميل Supabase
 // نحل بـ window.supabaseJs (الـ factory/namespace) وليس window.supabase (الـ client)
 window._supabaseReady = new Promise(function(resolve) {
   var s = document.createElement('script');
@@ -2042,11 +2012,33 @@ window._supabaseReady.then(function(lib) {
         autoRefreshToken: true,
         detectSessionInUrl: true,
         storageKey: 'sb-benisuef-auth',
-        flowType: 'implicit'
+        flowType: 'pkce'
       }
     });
   }
   window.supabase = window._db;
+
+  // ── معالجة PKCE code إذا كان موجوداً ────────────────────────────
+  // Supabase v2 مع detectSessionInUrl:true بيتعامل مع الـ code تلقائياً
+  // لكن لو مش شغّال نعمله يدوي
+  if (window._pkceCodeInUrl) {
+    console.log('[Auth] PKCE code detected — exchanging for session...');
+    window._db.auth.exchangeCodeForSession(window._pkceCodeInUrl)
+      .then(function(result) {
+        if (result.error) {
+          console.error('[Auth] Code exchange failed:', result.error.message);
+        } else {
+          console.log('[Auth] Code exchange SUCCESS — user:', result.data?.user?.email);
+          if (result.data?.user) {
+            _renderUserBox(result.data.user);
+            window._authUser = result.data.user;
+          }
+        }
+      })
+      .catch(function(e) {
+        console.error('[Auth] Code exchange exception:', e.message);
+      });
+  }
 
   // ── معالجة OAuth redirect (PKCE flow) ─────────────────────────
   // بعد Google redirect، Supabase بيحتاج يقرأ الـ code/token من الـ URL
