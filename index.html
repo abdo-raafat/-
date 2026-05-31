@@ -17,20 +17,6 @@
 (function() {
   var _orig = window.fetch;
   window.fetch = async function(input, init) {
-    // ── استثناء طلبات PDF وملفات Supabase Storage ──
-    // PDF.js يحتاج body stream حقيقي — لا يعمل مع body: null
-    var url = (typeof input === 'string') ? input
-             : (input && input.url ? input.url : '');
-    var isPdfOrStorage = (
-      /\.pdf($|\?)/i.test(url) ||
-      /storage\/v1\/object/i.test(url) ||
-      /storage\/v1\/sign/i.test(url)
-    );
-    if (isPdfOrStorage) {
-      return _orig.call(this, input, init);
-    }
-
-    // ── الطلبات العادية (Supabase REST/Auth): نُعالجها كالمعتاد ──
     var res = await _orig.call(this, input, init);
     var text = '';
     try { text = await res.text(); } catch(e) {}
@@ -1472,7 +1458,6 @@ button { min-height: 40px; }
   </div>
   <div class="breadcrumb" id="breadcrumb"></div>
   <div style="display:flex;align-items:center;gap:8px;">
-    <button id="admin-gear-btn" onclick="toggleAdminPanel()" title="لوحة التحكم" aria-label="لوحة التحكم الإدارية" style="display:none;background:rgba(255,255,255,0.15);border:1.5px solid rgba(255,255,255,0.3);color:#fff;border-radius:50%;width:36px;height:36px;font-size:1.1rem;cursor:pointer;transition:background .2s,transform .2s;line-height:1;padding:0;" onmouseover="this.style.background='rgba(255,255,255,0.28)';this.style.transform='rotate(30deg)'" onmouseout="this.style.background='rgba(255,255,255,0.15)';this.style.transform='rotate(0deg)'">⚙️</button>
     <button id="dark-mode-btn" onclick="toggleDarkMode()" title="الوضع الليلي" aria-label="تبديل الوضع الليلي">🌙</button>
     <div id="user-box">
       <button class="chatgpt-login-btn" onclick="loginWithGoogle()">🔐 دخول</button>
@@ -2837,55 +2822,39 @@ window.logoutUser = async function() {
   location.reload();
 };
 
-async function _renderUserBox(user) {
+function _renderUserBox(user) {
   const box = document.getElementById('user-box');
-  const gearBtn = document.getElementById('admin-gear-btn');
   if (!box) return;
-
   if (!user) {
     window._isAdminUser = false;
     document.body.classList.remove('is-admin');
     document.body.classList.add('content-protected');
-    if (gearBtn) gearBtn.style.display = 'none';
     box.innerHTML = '<button class="chatgpt-login-btn" onclick="loginWithGoogle()">🔐 دخول</button>';
     return;
   }
-
-  // جلب الـ role من جدول profiles
-  var isAdmin = false;
-  try {
-    if (window.supabase) {
-      var profileResult = await window.supabase
-        .from('profiles')
-        .select('role')
-        .eq('id', user.id)
-        .maybeSingle();
-      if (profileResult.data && profileResult.data.role === 'admin') {
-        isAdmin = true;
-      }
-    }
-  } catch(e) {
-    console.warn('[AdminCheck] خطأ في جلب الـ role:', e.message || e);
-  }
-
+  const isAdmin = user.email === 'bdatyabdo010@gmail.com';
   window._isAdminUser = isAdmin;
-
   if (isAdmin) {
     document.body.classList.add('is-admin');
-    document.body.classList.remove('content-protected');
-    if (gearBtn) gearBtn.style.display = 'flex';
-    adminLoadSections();
   } else {
     document.body.classList.remove('is-admin');
     document.body.classList.add('content-protected');
-    if (gearBtn) gearBtn.style.display = 'none';
   }
-
-  box.innerHTML =
-    '<div class="user-card">'
-    + '<span class="user-email">👤 ' + user.email + '</span>'
-    + '<button class="logout-btn" onclick="logoutUser()">خروج</button>'
-    + '</div>';
+  if (isAdmin) {
+    box.innerHTML =
+      '<div class="user-card">'
+      + '<span class="user-email">👤 ' + user.email + '</span>'
+      + '<button style="background:rgba(255,255,255,.2);color:#fff;border:1.5px solid rgba(255,255,255,.35);padding:6px 12px;border-radius:16px;cursor:pointer;font-size:12px;font-family:inherit;" onclick="toggleAdminPanel()">⚙️ تحكم</button>'
+      + '<button class="logout-btn" onclick="logoutUser()">خروج</button>'
+      + '</div>';
+    adminLoadSections();
+  } else {
+    box.innerHTML =
+      '<div class="user-card">'
+      + '<span class="user-email">👤 ' + user.email + '</span>'
+      + '<button class="logout-btn" onclick="logoutUser()">خروج</button>'
+      + '</div>';
+  }
 }
 
 window.checkUser = async function() {
@@ -2911,7 +2880,7 @@ window.checkUser = async function() {
     }
 
     // [ORIGINAL CODE - لم يُعدَّل] عرض بيانات المستخدم بعد التأكد أنه غير محظور
-    await _renderUserBox(session ? session.user : null);
+    _renderUserBox(session ? session.user : null);
 
     // [ORIGINAL CODE - لم يُعدَّل] استعادة آخر صفحة بعد Google OAuth redirect
     if (event === 'SIGNED_IN') {
@@ -2944,7 +2913,7 @@ window.checkUser = async function() {
   }
 
   // [ORIGINAL CODE - لم يُعدَّل] عرض المستخدم لو غير محظور
-  await _renderUserBox(session ? session.user : null);
+  _renderUserBox(session ? session.user : null);
 };
 
 document.addEventListener('DOMContentLoaded', function() { window.checkUser(); });
@@ -3120,17 +3089,16 @@ window.checkBanStatus = async function(email) {
 </style>
 
 <!-- ADMIN PANEL -->
-<div id="admin-panel" style="display:none;position:fixed;top:70px;left:20px;z-index:999999;background:white;border-radius:18px;box-shadow:0 8px 40px rgba(0,0,0,.22);width:320px;font-family:'Cairo','Tajawal',sans-serif;direction:rtl;overflow:hidden;max-height:90vh;overflow-y:auto;">
+<div id="admin-panel" style="display:none;position:fixed;top:80px;left:20px;z-index:999999;background:white;border-radius:18px;box-shadow:0 8px 40px rgba(0,0,0,.22);width:320px;font-family:'Cairo','Tajawal',sans-serif;direction:rtl;overflow:hidden;max-height:90vh;overflow-y:auto;">
   <div style="background:linear-gradient(135deg,#0a3d62,#17a589);padding:16px 20px;color:#fff;display:flex;align-items:center;justify-content:space-between;">
     <div style="font-weight:900;font-size:1rem;">⚙️ لوحة التحكم</div>
     <button onclick="document.getElementById('admin-panel').style.display='none'" style="background:rgba(255,255,255,.2);border:none;color:#fff;border-radius:50%;width:28px;height:28px;cursor:pointer;font-size:.9rem;">✕</button>
   </div>
   <div style="padding:18px;">
     <!-- Tab buttons -->
-    <div style="display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap;">
-      <button onclick="adminTab('add')" id="tab-add" style="flex:1;min-width:80px;padding:8px;border:none;border-radius:10px;background:#0a3d62;color:#fff;font-family:inherit;font-size:.78rem;font-weight:700;cursor:pointer;">➕ محتوى</button>
-      <button onclick="adminTab('list')" id="tab-list" style="flex:1;min-width:80px;padding:8px;border:none;border-radius:10px;background:#eaf4fb;color:#0a3d62;font-family:inherit;font-size:.78rem;font-weight:700;cursor:pointer;">📋 الحالي</button>
-      <button onclick="adminTab('users')" id="tab-users" style="flex:1;min-width:80px;padding:8px;border:none;border-radius:10px;background:#eaf4fb;color:#0a3d62;font-family:inherit;font-size:.78rem;font-weight:700;cursor:pointer;">👥 المستخدمين</button>
+    <div style="display:flex;gap:6px;margin-bottom:16px;">
+      <button onclick="adminTab('add')" id="tab-add" style="flex:1;padding:8px;border:none;border-radius:10px;background:#0a3d62;color:#fff;font-family:inherit;font-size:.8rem;font-weight:700;cursor:pointer;">➕ إضافة محتوى</button>
+      <button onclick="adminTab('list')" id="tab-list" style="flex:1;padding:8px;border:none;border-radius:10px;background:#eaf4fb;color:#0a3d62;font-family:inherit;font-size:.8rem;font-weight:700;cursor:pointer;">📋 المحتوى الحالي</button>
     </div>
 
     <!-- ADD TAB -->
@@ -3186,15 +3154,6 @@ window.checkBanStatus = async function(email) {
         </select>
       </div>
       <div id="admin-content-list" style="max-height:350px;overflow-y:auto;"></div>
-    </div>
-
-    <!-- USERS TAB -->
-    <div id="admin-tab-users" style="display:none;">
-      <div style="display:flex;gap:6px;margin-bottom:10px;">
-        <input id="admin-users-search" type="text" placeholder="🔍 بحث بالإيميل..." oninput="adminUsersFilter()" style="flex:1;padding:8px 12px;border:1.5px solid #d5e8f5;border-radius:10px;font-family:inherit;font-size:.8rem;outline:none;background:#f8fbff;">
-        <button onclick="adminLoadUsers()" style="padding:8px 12px;background:#0a3d62;color:#fff;border:none;border-radius:10px;cursor:pointer;font-size:.82rem;font-family:inherit;">تحديث</button>
-      </div>
-      <div id="admin-users-list" style="max-height:400px;overflow-y:auto;"></div>
     </div>
   </div>
 </div>
@@ -3343,153 +3302,18 @@ async function adminDeleteContent(id) {
 }
 
 function adminTab(tab) {
-  document.getElementById('admin-tab-add').style.display   = tab === 'add'   ? '' : 'none';
-  document.getElementById('admin-tab-list').style.display  = tab === 'list'  ? '' : 'none';
-  document.getElementById('admin-tab-users').style.display = tab === 'users' ? '' : 'none';
-  ['add','list','users'].forEach(function(t) {
-    var btn = document.getElementById('tab-' + t);
-    if (!btn) return;
-    btn.style.background = (t === tab) ? '#0a3d62' : '#eaf4fb';
-    btn.style.color      = (t === tab) ? '#fff'    : '#0a3d62';
-  });
-  if (tab === 'list')  adminLoadContentList();
-  if (tab === 'users') adminLoadUsers();
+  document.getElementById('admin-tab-add').style.display  = tab === 'add'  ? '' : 'none';
+  document.getElementById('admin-tab-list').style.display = tab === 'list' ? '' : 'none';
+  document.getElementById('tab-add').style.background  = tab === 'add'  ? '#0a3d62' : '#eaf4fb';
+  document.getElementById('tab-add').style.color       = tab === 'add'  ? '#fff'    : '#0a3d62';
+  document.getElementById('tab-list').style.background = tab === 'list' ? '#0a3d62' : '#eaf4fb';
+  document.getElementById('tab-list').style.color      = tab === 'list' ? '#fff'    : '#0a3d62';
+  if (tab === 'list') adminLoadContentList();
 }
 
 function toggleAdminPanel() {
   const p = document.getElementById('admin-panel');
   p.style.display = p.style.display === 'none' ? 'block' : 'none';
-}
-
-// ==================== USERS TAB LOGIC ====================
-
-window._adminAllUsers = [];
-
-async function adminLoadUsers() {
-  const listEl = document.getElementById('admin-users-list');
-  if (!listEl) return;
-  listEl.innerHTML = '<div style="text-align:center;padding:20px;color:#888;font-size:.82rem;">⏳ جاري التحميل...</div>';
-
-  try {
-    // جلب المستخدمين من profiles
-    const { data: profiles, error: pe } = await window.supabase
-      .from('profiles')
-      .select('id, email, role, full_name, created_at')
-      .order('created_at', { ascending: false });
-    if (pe) throw pe;
-
-    // جلب المحظورين من banned_users
-    const { data: banned } = await window.supabase
-      .from('banned_users')
-      .select('email');
-    const bannedEmails = new Set((banned || []).map(b => (b.email || '').toLowerCase()));
-
-    window._adminAllUsers = (profiles || []).map(function(u) {
-      return Object.assign({}, u, { is_banned: bannedEmails.has((u.email || '').toLowerCase()) });
-    });
-    adminUsersRender(window._adminAllUsers);
-  } catch(e) {
-    listEl.innerHTML = '<div style="color:#e74c3c;font-size:.8rem;padding:10px;">❌ ' + (e.message || 'خطأ في التحميل') + '</div>';
-  }
-}
-
-function adminUsersFilter() {
-  var q = (document.getElementById('admin-users-search').value || '').toLowerCase().trim();
-  if (!q) { adminUsersRender(window._adminAllUsers); return; }
-  adminUsersRender(window._adminAllUsers.filter(function(u) {
-    return (u.email || '').toLowerCase().includes(q);
-  }));
-}
-
-function adminUsersRender(users) {
-  var listEl = document.getElementById('admin-users-list');
-  if (!listEl) return;
-  if (!users || users.length === 0) {
-    listEl.innerHTML = '<div style="text-align:center;padding:20px;color:#aaa;font-size:.82rem;">لا يوجد مستخدمون</div>';
-    return;
-  }
-  var html = '';
-  for (var i = 0; i < users.length; i++) {
-    var u = users[i];
-    var em  = (u.email || '').replace(/&/g,'&amp;').replace(/"/g,'&quot;');
-    var uid = (u.id    || '').replace(/&/g,'&amp;').replace(/"/g,'&quot;');
-    var emailDisplay = (u.email || '—').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-
-    var bannedBadge = u.is_banned
-      ? '<span style="background:#fef0f0;color:#e74c3c;border-radius:6px;padding:2px 7px;font-size:.68rem;font-weight:700;">محظور</span>'
-      : '';
-    var roleBadge = u.role === 'admin'
-      ? '<span style="background:#eaf4fb;color:#0a3d62;border-radius:6px;padding:2px 7px;font-size:.68rem;font-weight:700;">أدمن</span>'
-      : '<span style="background:#f0faf5;color:#17a589;border-radius:6px;padding:2px 7px;font-size:.68rem;font-weight:700;">مستخدم</span>';
-
-    var banBtn = u.is_banned
-      ? '<button data-em="' + em + '" onclick="adminUnbanUser(this.getAttribute(\'data-em\'))" style="background:#eaf4fb;border:1px solid #b8d9f0;color:#0a3d62;border-radius:7px;padding:4px 9px;cursor:pointer;font-size:.72rem;font-family:inherit;">✅ رفع الحظر</button>'
-      : '<button data-em="' + em + '" onclick="adminBanUser(this.getAttribute(\'data-em\'))"   style="background:#fef0f0;border:1px solid #fcc;color:#e74c3c;border-radius:7px;padding:4px 9px;cursor:pointer;font-size:.72rem;font-family:inherit;">🚫 حظر</button>';
-
-    var newRole = u.role === 'admin' ? 'user' : 'admin';
-    var roleLabel = u.role === 'admin' ? '⬇ مستخدم' : '⬆ أدمن';
-    var roleStyle = u.role === 'admin'
-      ? 'background:#fff3e0;border:1px solid #f0c070;color:#b7770d;'
-      : 'background:#eaf4fb;border:1px solid #b8d9f0;color:#0a3d62;';
-    var roleToggle = '<button data-uid="' + uid + '" data-role="' + newRole + '" onclick="adminSetRole(this.getAttribute(\'data-uid\'),this.getAttribute(\'data-role\'))" style="' + roleStyle + 'border-radius:7px;padding:4px 9px;cursor:pointer;font-size:.72rem;font-family:inherit;">' + roleLabel + '</button>';
-
-    html += '<div style="background:#f8fbff;border:1.5px solid #d5e8f5;border-radius:12px;padding:11px 13px;margin-bottom:8px;">'
-      + '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:6px;">'
-      + '<span style="font-size:.8rem;font-weight:700;color:#0a3d62;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + emailDisplay + '</span>'
-      + roleBadge + bannedBadge
-      + '</div>'
-      + '<div style="display:flex;gap:5px;flex-wrap:wrap;">'
-      + roleToggle + banBtn
-      + '</div>'
-      + '</div>';
-  }
-  listEl.innerHTML = html;
-}
-
-function _escHtmlU(s) {
-  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-}
-function _escAttr(s) {
-  return String(s || '').replace(/&/g,'&amp;').replace(/"/g,'&quot;');
-}
-
-async function adminSetRole(userId, newRole) {
-  if (!userId) return;
-  try {
-    var { error } = await window.supabase
-      .from('profiles')
-      .update({ role: newRole })
-      .eq('id', userId);
-    if (error) throw error;
-    // تحديث محلي
-    var u = window._adminAllUsers.find(function(x){ return x.id === userId; });
-    if (u) u.role = newRole;
-    adminUsersRender(window._adminAllUsers);
-  } catch(e) { alert('خطأ في تغيير الصلاحية: ' + (e.message || e)); }
-}
-
-async function adminBanUser(email) {
-  if (!email) return;
-  var reason = prompt('سبب الحظر (اختياري):') || null;
-  try {
-    var rec = { email: email.toLowerCase().trim(), reason: reason, banned_at: new Date().toISOString() };
-    var { error } = await window.supabase.from('banned_users').upsert([rec], { onConflict: 'email' });
-    if (error) throw error;
-    var u = window._adminAllUsers.find(function(x){ return (x.email||'').toLowerCase() === email.toLowerCase(); });
-    if (u) u.is_banned = true;
-    adminUsersRender(window._adminAllUsers);
-  } catch(e) { alert('خطأ في الحظر: ' + (e.message || e)); }
-}
-
-async function adminUnbanUser(email) {
-  if (!email) return;
-  try {
-    var { error } = await window.supabase.from('banned_users').delete().eq('email', email.toLowerCase().trim());
-    if (error) throw error;
-    var u = window._adminAllUsers.find(function(x){ return (x.email||'').toLowerCase() === email.toLowerCase(); });
-    if (u) u.is_banned = false;
-    adminUsersRender(window._adminAllUsers);
-  } catch(e) { alert('خطأ في رفع الحظر: ' + (e.message || e)); }
 }
 
 // نهاية لوحة التحكم
@@ -3952,34 +3776,28 @@ var PDFJSViewer = (function() {
     if (!body) return;
     body.innerHTML = '';
 
-    // عرض الـ viewer الفعلي (بعد حذف padding)
-    var viewW = Math.max(body.clientWidth || window.innerWidth, 100) - 2;
-    // DPR للشاشات Retina — للوضوح فقط، لا يؤثر على أبعاد الـ viewport
-    var dpr = Math.min(window.devicePixelRatio || 1, 2);
+    var { dpr, viewW } = _getDeviceScale();
 
     for (var i = 1; i <= _totalPages; i++) {
       var page = await _pdfDoc.getPage(i);
-
-      // viewport بـ scale=1 لمعرفة الحجم الأصلي للصفحة
-      var baseViewport = page.getViewport({ scale: 1.0 });
-      // fitScale = نسبة عرض الحاوية للعرض الأصلي × مستوى الزووم
-      var fitScale = (viewW / baseViewport.width) * _scale;
-      var viewport = page.getViewport({ scale: fitScale });
+      var viewport = page.getViewport({ scale: _scale });
+      // ضبط الـ scale تلقائياً ليناسب عرض الشاشة
+      var autoScale = viewW / viewport.width;
+      var finalScale = _scale * autoScale;
+      var scaledViewport = page.getViewport({ scale: finalScale });
 
       var wrap = document.createElement('div');
       wrap.className = 'pdfjs-page-wrap';
       wrap.dataset.pageNum = i;
-      wrap.style.width  = Math.floor(viewport.width)  + 'px';
-      wrap.style.height = Math.floor(viewport.height) + 'px';
+      wrap.style.width = scaledViewport.width + 'px';
 
       var canvas = document.createElement('canvas');
-      // الـ canvas بأبعاد مضاعفة بـ dpr للوضوح على شاشات الريتينا
-      canvas.width  = Math.floor(viewport.width  * dpr);
-      canvas.height = Math.floor(viewport.height * dpr);
-      // CSS يضبطه بالحجم الفعلي
-      canvas.style.width  = Math.floor(viewport.width)  + 'px';
-      canvas.style.height = Math.floor(viewport.height) + 'px';
+      canvas.width = scaledViewport.width * dpr;
+      canvas.height = scaledViewport.height * dpr;
+      canvas.style.width = scaledViewport.width + 'px';
+      canvas.style.height = scaledViewport.height + 'px';
 
+      // Protect overlay
       var protect = document.createElement('div');
       protect.className = 'pdfjs-page-protect';
 
@@ -3988,10 +3806,9 @@ var PDFJSViewer = (function() {
       body.appendChild(wrap);
 
       var ctx = canvas.getContext('2d');
-      // scale الـ context بـ dpr بس — viewport لا يتغير
       ctx.scale(dpr, dpr);
 
-      await page.render({ canvasContext: ctx, viewport: viewport }).promise;
+      await page.render({ canvasContext: ctx, viewport: scaledViewport }).promise;
       page.cleanup();
     }
 
