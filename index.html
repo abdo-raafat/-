@@ -2158,10 +2158,29 @@ function _renderUserBox(user) {
 window.checkUser = async function() {
   if (!window.supabase) return;
 
-  // استمع لتغييرات الـ Auth — ده بيشتغل تلقائياً بعد Google OAuth redirect
-  window.supabase.auth.onAuthStateChange(function(event, session) {
+  // ============================================================
+  // [BAN SYSTEM v2] onAuthStateChange — async للتأكد من انتظار فحص الحظر
+  // المشكلة السابقة: _renderUserBox كان يُنفَّذ قبل فحص الحظر
+  // الحل: نفحص الحظر أولاً — إذا محظور نوقف كل شيء، إذا لا نكمل
+  // ============================================================
+  window.supabase.auth.onAuthStateChange(async function(event, session) {
+
+    // [BAN CHECK] عند أي حدث يحمل session (دخول أو استعادة)
+    if (session && session.user && session.user.email) {
+      var isBanned = await _isBanned(session.user.email);
+      if (isBanned) {
+        // محظور: لا نعرض بياناته، نسجّل خروجه، نعرض رسالة الحظر
+        await window.supabase.auth.signOut();
+        _renderUserBox(null);
+        _showBanMessage(isBanned.reason);
+        return; // نوقف تنفيذ أي كود بعده تماماً
+      }
+    }
+
+    // [ORIGINAL CODE - لم يُعدَّل] عرض بيانات المستخدم بعد التأكد أنه غير محظور
     _renderUserBox(session ? session.user : null);
-    // لو كان في redirect بعد login — ارجع للصفحة اللي كان فيها
+
+    // [ORIGINAL CODE - لم يُعدَّل] استعادة آخر صفحة بعد Google OAuth redirect
     if (event === 'SIGNED_IN') {
       try {
         var lastId = sessionStorage.getItem('_last_section_id');
@@ -2177,13 +2196,136 @@ window.checkUser = async function() {
     }
   });
 
-  // اقرأ الـ session الحالية
+  // [BAN CHECK] عند تحميل الصفحة: نفحص الـ session الحالية قبل عرض أي شيء
   const { data: { session } } = await window.supabase.auth.getSession();
+
+  if (session && session.user && session.user.email) {
+    var isBanned = await _isBanned(session.user.email);
+    if (isBanned) {
+      // محظور: نسجّل خروجه فوراً ونعرض رسالة الحظر — لا نعرض بياناته أبداً
+      await window.supabase.auth.signOut();
+      _renderUserBox(null);
+      _showBanMessage(isBanned.reason);
+      return;
+    }
+  }
+
+  // [ORIGINAL CODE - لم يُعدَّل] عرض المستخدم لو غير محظور
   _renderUserBox(session ? session.user : null);
 };
 
 document.addEventListener('DOMContentLoaded', function() { window.checkUser(); });
 
+</script>
+
+<!-- [BAN SYSTEM v2] نظام حظر الحسابات — الجدول banned_users موجود مسبقاً في Supabase -->
+<script>
+// ==================== BAN SYSTEM v2 — نظام حظر الحسابات ====================
+// تم إعادة الكتابة لإصلاح مشكلة عدم عمل الحظر
+// السبب القديم: _renderUserBox كان يُنفَّذ قبل انتظار نتيجة فحص الحظر
+// الحل: دالة _isBanned تُرجع البيانات مباشرة (أو null) فتُنتظر بـ await
+
+/**
+ * _isBanned(email)
+ * يفحص جدول banned_users ويُرجع:
+ *   - بيانات الحظر { email, reason, banned_at } إذا كان محظوراً
+ *   - null إذا لم يكن محظوراً أو حدث خطأ
+ */
+async function _isBanned(email) {
+  if (!window.supabase || !email) return null;
+  try {
+    var cleanEmail = email.toLowerCase().trim();
+    var result = await window.supabase
+      .from('banned_users')
+      .select('email, reason, banned_at')
+      .eq('email', cleanEmail)
+      .maybeSingle();
+
+    if (result.error) {
+      console.warn('[BAN] خطأ في فحص الحظر:', result.error.message);
+      return null; // عند الخطأ نسمح بالدخول (fail-open) لتجنب تعطيل الموقع
+    }
+    return result.data || null; // يُرجع الصف إذا موجود، أو null
+  } catch(err) {
+    console.error('[BAN] خطأ غير متوقع:', err.message || err);
+    return null;
+  }
+}
+
+/**
+ * _showBanMessage(reason)
+ * يعرض overlay يغطي الصفحة بالكامل — لا يمكن إغلاقه
+ */
+function _showBanMessage(reason) {
+  // امسح أي overlay سابق
+  var existing = document.getElementById('ban-overlay');
+  if (existing) existing.remove();
+
+  // امسح localStorage و sessionStorage المتعلقَين بـ Supabase Auth
+  try {
+    Object.keys(localStorage).forEach(function(k) {
+      if (k.startsWith('sb-') || k.includes('supabase')) localStorage.removeItem(k);
+    });
+    Object.keys(sessionStorage).forEach(function(k) {
+      if (k.startsWith('sb-') || k.includes('supabase') || k.startsWith('_nav') || k.startsWith('_last')) sessionStorage.removeItem(k);
+    });
+  } catch(e) {}
+
+  var reasonHtml = reason
+    ? '<div style="background:#fef0f0;border:1px solid #fcc;border-radius:10px;padding:10px 14px;color:#c0392b;font-size:.82rem;margin-bottom:20px;">سبب الحظر: ' + reason + '</div>'
+    : '';
+
+  var overlay = document.createElement('div');
+  overlay.id = 'ban-overlay';
+  overlay.setAttribute('style',
+    'position:fixed;inset:0;z-index:2147483647;background:rgba(10,20,40,0.97);' +
+    'display:flex;align-items:center;justify-content:center;padding:24px;' +
+    'direction:rtl;font-family:Cairo,Tajawal,sans-serif;'
+  );
+  overlay.innerHTML =
+    '<div style="background:#fff;border-radius:20px;padding:40px 36px;max-width:420px;width:100%;text-align:center;box-shadow:0 30px 80px rgba(0,0,0,.6);">' +
+    '<div style="font-size:3.5rem;margin-bottom:16px;">🚫</div>' +
+    '<h2 style="color:#c0392b;font-size:1.3rem;font-weight:900;margin-bottom:14px;">تم حظر هذا الحساب</h2>' +
+    '<p style="color:#444;font-size:.95rem;line-height:1.8;margin-bottom:' + (reason ? '10px' : '20px') + ';">' +
+    'تم حظر هذا الحساب. يرجى التواصل مع الإدارة.' +
+    '</p>' +
+    reasonHtml +
+    '<div style="font-size:.78rem;color:#999;">إذا كنت تعتقد أن هذا خطأ، تواصل مع المسؤول.</div>' +
+    '</div>';
+
+  document.body.appendChild(overlay);
+}
+
+// ==================== الدوال الإدارية (Browser Console) ====================
+
+/** حظر مستخدم: await banUser('email@example.com', 'السبب') */
+window.banUser = async function(email, reason) {
+  if (!window.supabase || !email) { console.error('[BAN] يجب تمرير email'); return; }
+  var rec = { email: email.toLowerCase().trim(), reason: reason || null, banned_at: new Date().toISOString() };
+  var res = await window.supabase.from('banned_users').upsert([rec], { onConflict: 'email' });
+  if (res.error) { console.error('[BAN] خطأ:', res.error.message); } else { console.log('[BAN] ✅ تم حظر:', email); }
+};
+
+/** رفع الحظر: await unbanUser('email@example.com') */
+window.unbanUser = async function(email) {
+  if (!window.supabase || !email) { console.error('[BAN] يجب تمرير email'); return; }
+  var res = await window.supabase.from('banned_users').delete().eq('email', email.toLowerCase().trim());
+  if (res.error) { console.error('[BAN] خطأ:', res.error.message); } else { console.log('[BAN] ✅ تم رفع الحظر عن:', email); }
+};
+
+/** فحص حالة الحظر: await checkBanStatus('email@example.com') */
+window.checkBanStatus = async function(email) {
+  if (!window.supabase || !email) { console.error('[BAN] يجب تمرير email'); return; }
+  var data = await _isBanned(email);
+  if (data) {
+    console.log('[BAN] ⛔ محظور | البريد:', data.email, '| السبب:', data.reason || 'غير محدد', '| تاريخ:', data.banned_at);
+  } else {
+    console.log('[BAN] ✅ غير محظور:', email);
+  }
+  return data;
+};
+
+// ==================== نهاية نظام الحظر v2 ====================
 </script>
 
 <style>
