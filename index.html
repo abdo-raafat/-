@@ -954,6 +954,131 @@ body.rv-open {
     content: '— اسحب للأسفل للإغلاق —';
   }
 }
+
+/* ===== PDF.JS INTERNAL VIEWER ===== */
+#pdfjs-viewer-overlay {
+  position: fixed; inset: 0; z-index: 999999;
+  background: rgba(10,20,40,0.92);
+  backdrop-filter: blur(8px);
+  display: flex; flex-direction: column;
+  animation: rvFadeIn .25s ease;
+}
+#pdfjs-viewer-header {
+  display: flex; align-items: center; gap: 10px;
+  padding: 12px 16px;
+  background: linear-gradient(135deg, var(--primary), var(--teal));
+  color: #fff; flex-shrink: 0;
+  min-height: 56px;
+}
+#pdfjs-viewer-title {
+  flex: 1; font-size: .92rem; font-weight: 800;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+#pdfjs-viewer-controls {
+  display: flex; align-items: center; gap: 6px; flex-shrink: 0;
+}
+.pdfjs-ctrl-btn {
+  background: rgba(255,255,255,.18);
+  border: 1px solid rgba(255,255,255,.25);
+  color: #fff; border-radius: 8px;
+  padding: 6px 10px; font-size: .8rem; font-weight: 700;
+  cursor: pointer; font-family: var(--font);
+  min-width: 36px; text-align: center;
+  transition: background .2s;
+}
+.pdfjs-ctrl-btn:hover { background: rgba(255,255,255,.32); }
+.pdfjs-ctrl-btn:active { background: rgba(255,255,255,.45); }
+#pdfjs-page-info {
+  font-size: .78rem; color: rgba(255,255,255,.85);
+  white-space: nowrap; padding: 0 4px;
+}
+#pdfjs-close-btn {
+  background: rgba(231,76,60,.7);
+  border: none; border-radius: 50%;
+  color: #fff; width: 34px; height: 34px;
+  font-size: 1rem; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0; transition: background .2s;
+}
+#pdfjs-close-btn:hover { background: rgba(231,76,60,1); }
+#pdfjs-viewer-body {
+  flex: 1; overflow-y: auto; overflow-x: hidden;
+  background: #525659;
+  display: flex; flex-direction: column; align-items: center;
+  padding: 16px 8px; gap: 12px;
+  -webkit-overflow-scrolling: touch;
+  user-select: none !important;
+  -webkit-user-select: none !important;
+}
+#pdfjs-viewer-body * {
+  user-select: none !important;
+  -webkit-user-select: none !important;
+}
+.pdfjs-page-wrap {
+  position: relative;
+  box-shadow: 0 4px 20px rgba(0,0,0,.5);
+  border-radius: 4px; overflow: hidden;
+  background: #fff;
+  max-width: 100%;
+}
+.pdfjs-page-wrap canvas {
+  display: block; max-width: 100%; height: auto !important;
+  pointer-events: none;
+}
+/* Security overlay per page — prevents screenshot selection */
+.pdfjs-page-protect {
+  position: absolute; inset: 0;
+  pointer-events: none; z-index: 2;
+  background: transparent;
+}
+#pdfjs-loading-wrap {
+  display: flex; flex-direction: column; align-items: center;
+  justify-content: center; gap: 16px; padding: 60px 30px;
+  color: #fff;
+}
+#pdfjs-loading-wrap .spinner-lg {
+  width: 48px; height: 48px;
+  border: 4px solid rgba(255,255,255,.15);
+  border-top-color: var(--teal);
+  border-radius: 50%;
+  animation: spin .8s linear infinite;
+}
+#pdfjs-zoom-display {
+  font-size: .78rem; color: rgba(255,255,255,.85);
+  min-width: 40px; text-align: center;
+}
+#pdfjs-footer {
+  display: flex; align-items: center; justify-content: center;
+  gap: 8px; padding: 8px 16px;
+  background: rgba(10,20,40,0.85);
+  flex-shrink: 0;
+}
+/* Admin download btn — hidden for non-admin */
+#pdfjs-admin-download {
+  display: none;
+}
+/* Mobile PDF viewer adjustments */
+@media (max-width: 600px) {
+  #pdfjs-viewer-header { padding: 10px 12px; gap: 6px; }
+  #pdfjs-viewer-title { font-size: .82rem; }
+  .pdfjs-ctrl-btn { padding: 5px 8px; font-size: .75rem; min-width: 30px; }
+  #pdfjs-viewer-body { padding: 8px 4px; gap: 8px; }
+}
+
+/* ===== CONTENT PROTECTION — GLOBAL ===== */
+body.content-protected,
+body.content-protected * {
+  -webkit-user-select: none !important;
+  -moz-user-select: none !important;
+  user-select: none !important;
+}
+/* Allow admin selection */
+body.is-admin,
+body.is-admin * {
+  -webkit-user-select: text !important;
+  -moz-user-select: text !important;
+  user-select: text !important;
+}
 </style>
 
 <!-- ============================================================ -->
@@ -2294,22 +2419,9 @@ const ResourceViewer = (function() {
     switch(type) {
 
       case 'pdf':
-        return `
-          <div class="rv-loading" id="rv-loading-indicator">
-            <div class="spinner-lg"></div>
-            <p>جاري تحميل الملف...</p>
-          </div>
-          <iframe
-            class="rv-pdf-frame"
-            src="${escUrl(url)}#toolbar=1&navpanes=1&scrollbar=1"
-            style="display:none"
-            id="rv-pdf-iframe"
-            onload="
-              document.getElementById('rv-loading-indicator').style.display='none';
-              this.style.display='block';
-            "
-            onerror="ResourceViewer._showPdfFallback('${escUrl(url)}')"
-          ></iframe>`;
+        // PDF.js internal viewer — no iframe, fully embedded
+        setTimeout(function() { PDFJSViewer.open(url, title); }, 50);
+        return `<div class="rv-loading" id="rv-loading-indicator"><div class="spinner-lg"></div><p>جاري فتح الملف...</p></div>`;
 
       case 'video_direct':
         return `
@@ -2348,24 +2460,10 @@ const ResourceViewer = (function() {
       }
 
       case 'gdrive_pdf': {
-        // رابط Google Drive المباشر — نعرضه كـ PDF في iframe
+        // Google Drive PDF — open via PDF.js
         const directUrl = toEmbedUrl(url, 'gdrive_pdf');
-        return `
-          <div class="rv-loading" id="rv-loading-indicator">
-            <div class="spinner-lg"></div>
-            <p>جاري تحميل الملف...</p>
-          </div>
-          <iframe
-            class="rv-pdf-frame"
-            src="${escUrl(directUrl)}#toolbar=1"
-            style="display:none"
-            id="rv-pdf-iframe"
-            onload="
-              document.getElementById('rv-loading-indicator').style.display='none';
-              this.style.display='block';
-            "
-            onerror="ResourceViewer._showGdriveFallback('${escUrl(url)}')"
-          ></iframe>`;
+        setTimeout(function() { PDFJSViewer.open(directUrl, title); }, 50);
+        return `<div class="rv-loading" id="rv-loading-indicator"><div class="spinner-lg"></div><p>جاري فتح الملف...</p></div>`;
       }
 
       case 'image':
@@ -2504,10 +2602,10 @@ const ResourceViewer = (function() {
           ${buildBody(url, type, title)}
         </div>
         <div class="rv-footer">
-          <span style="font-size:.75rem;color:#999;direction:ltr;word-break:break-all;flex:1;max-width:55%">${escHtml(url.length > 60 ? url.substring(0,57)+'...' : url)}</span>
+          <span style="font-size:.75rem;color:#999;direction:ltr;word-break:break-all;flex:1;max-width:55%" id="rv-url-display" class="admin-only-el" style="display:none">${escHtml(url.length > 60 ? url.substring(0,57)+'...' : url)}</span>
           <div class="rv-footer-btns">
             ${type !== 'fallback' ? `<button class="rv-btn rv-btn-outline" onclick="ResourceViewer._reload()">🔄 إعادة التحميل</button>` : ''}
-            ${(type === 'pdf' || type === 'gdrive_pdf' || type === 'image' || type === 'audio' || type === 'video_direct') ? `<a class="rv-btn rv-btn-primary" href="${escUrl(url)}" download>⬇️ تحميل</a>` : ''}
+            ${(type === 'pdf' || type === 'gdrive_pdf' || type === 'image' || type === 'audio' || type === 'video_direct') ? `<a class="rv-btn rv-btn-primary admin-only-el" href="${escUrl(url)}" download style="display:none">⬇️ تحميل</a>` : ''}
           </div>
         </div>
       </div>`;
@@ -2524,6 +2622,13 @@ const ResourceViewer = (function() {
     document.body.appendChild(overlay);
     document.body.style.overflow = 'hidden';
     document.body.classList.add('rv-open');
+
+    // إظهار عناصر الأدمن فقط للأدمن
+    var isAdmin = window._isAdminUser === true;
+    var adminEls = overlay.querySelectorAll('.admin-only-el');
+    adminEls.forEach(function(el) {
+      el.style.display = isAdmin ? '' : 'none';
+    });
 
     // Swipe لأسفل للإغلاق على الموبايل
     var touchStartY = 0;
@@ -2674,9 +2779,16 @@ const ResourceViewer = (function() {
 /**
  * openResource — الدالة الموحدة لفتح أي مورد داخل الموقع
  */
-function openResource(url, title, resourceType) {
+async function openResource(url, title, resourceType) {
   if (!url) return;
-  ResourceViewer.open(url, title, resourceType);
+  // للـ PDF: احصل على Signed URL إذا كان Supabase Storage
+  var finalUrl = url;
+  if (resourceType === 'pdf' || /\.pdf($|\?)/i.test(url)) {
+    try { finalUrl = await _getSignedPdfUrl(url); } catch(e) {}
+    PDFJSViewer.open(finalUrl, title);
+    return;
+  }
+  ResourceViewer.open(finalUrl, title, resourceType);
 }
 
 
@@ -2714,10 +2826,20 @@ function _renderUserBox(user) {
   const box = document.getElementById('user-box');
   if (!box) return;
   if (!user) {
+    window._isAdminUser = false;
+    document.body.classList.remove('is-admin');
+    document.body.classList.add('content-protected');
     box.innerHTML = '<button class="chatgpt-login-btn" onclick="loginWithGoogle()">🔐 دخول</button>';
     return;
   }
   const isAdmin = user.email === 'bdatyabdo010@gmail.com';
+  window._isAdminUser = isAdmin;
+  if (isAdmin) {
+    document.body.classList.add('is-admin');
+  } else {
+    document.body.classList.remove('is-admin');
+    document.body.classList.add('content-protected');
+  }
   if (isAdmin) {
     box.innerHTML =
       '<div class="user-card">'
@@ -3485,6 +3607,397 @@ document.addEventListener('DOMContentLoaded', function() {
     });
   }
 
+})();
+</script>
+<!-- ==================== PDF.JS INTERNAL VIEWER + CONTENT PROTECTION ==================== -->
+<script>
+// ==================== PDF.js Loader ====================
+window._pdfjsReady = new Promise(function(resolve) {
+  if (window.pdfjsLib) { resolve(window.pdfjsLib); return; }
+  var s = document.createElement('script');
+  s.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+  s.onload = function() {
+    window.pdfjsLib.GlobalWorkerOptions.workerSrc =
+      'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    resolve(window.pdfjsLib);
+  };
+  s.onerror = function() { resolve(null); };
+  document.head.appendChild(s);
+});
+
+// ==================== Supabase Signed URL Helper ====================
+async function _getSignedPdfUrl(storagePath) {
+  if (!window.supabase) return storagePath;
+  // إذا كان الرابط مباشر وليس Supabase storage path، نُرجعه كما هو
+  if (storagePath.startsWith('http') && !storagePath.includes('supabase')) return storagePath;
+  try {
+    // استخراج bucket وpath من الرابط
+    var bucketMatch = storagePath.match(/\/storage\/v1\/object\/(?:public|sign)\/([^/]+)\/(.+)/);
+    if (!bucketMatch) {
+      // مسار نسبي: bucket/path
+      var parts = storagePath.replace(/^\/+/, '').split('/');
+      var bucket = parts.shift();
+      var filePath = parts.join('/');
+    } else {
+      var bucket = bucketMatch[1];
+      var filePath = bucketMatch[2].split('?')[0];
+    }
+    var result = await window.supabase.storage
+      .from(bucket)
+      .createSignedUrl(filePath, 300); // 5 دقائق
+    if (result.data && result.data.signedUrl) return result.data.signedUrl;
+  } catch(e) { console.warn('[SignedURL]', e.message); }
+  return storagePath;
+}
+
+// ==================== PDFJSViewer ====================
+var PDFJSViewer = (function() {
+
+  var _pdfDoc = null;
+  var _currentPage = 1;
+  var _totalPages = 0;
+  var _scale = 1.0;
+  var _renderTask = null;
+  var _overlayEl = null;
+  var _currentUrl = '';
+  var _currentTitle = '';
+  var _rendering = false;
+
+  function _getDeviceScale() {
+    var dpr = window.devicePixelRatio || 1;
+    // على الموبايل نستخدم عرض الشاشة لضبط الـ scale المناسب
+    var viewW = Math.min(window.innerWidth, 900) - 32;
+    return { dpr: dpr, viewW: viewW };
+  }
+
+  function _buildOverlay(title) {
+    var ol = document.createElement('div');
+    ol.id = 'pdfjs-viewer-overlay';
+    ol.innerHTML = `
+      <div id="pdfjs-viewer-header">
+        <span style="font-size:1.3rem;flex-shrink:0">📄</span>
+        <span id="pdfjs-viewer-title">${_esc(title)}</span>
+        <div id="pdfjs-viewer-controls">
+          <button class="pdfjs-ctrl-btn" onclick="PDFJSViewer.zoomOut()" title="تصغير">−</button>
+          <span id="pdfjs-zoom-display">100%</span>
+          <button class="pdfjs-ctrl-btn" onclick="PDFJSViewer.zoomIn()" title="تكبير">+</button>
+          <button class="pdfjs-ctrl-btn" onclick="PDFJSViewer.prevPage()" id="pdfjs-prev-btn">&#x2039;</button>
+          <span id="pdfjs-page-info">- / -</span>
+          <button class="pdfjs-ctrl-btn" onclick="PDFJSViewer.nextPage()" id="pdfjs-next-btn">&#x203a;</button>
+          <button id="pdfjs-admin-download" class="pdfjs-ctrl-btn admin-only-el" style="display:none;background:rgba(231,76,60,.7)" title="تحميل (أدمن فقط)">⬇️</button>
+        </div>
+        <button id="pdfjs-close-btn" onclick="PDFJSViewer.close()">✕</button>
+      </div>
+      <div id="pdfjs-viewer-body">
+        <div id="pdfjs-loading-wrap">
+          <div class="spinner-lg"></div>
+          <p>جاري تحميل الملف...</p>
+        </div>
+      </div>
+    `;
+    // إغلاق بـ ESC
+    ol._keyHandler = function(e) { if (e.key === 'Escape') PDFJSViewer.close(); };
+    document.addEventListener('keydown', ol._keyHandler);
+    // Touch swipe للإغلاق على الموبايل
+    var touchY = 0;
+    var header = null;
+    ol.addEventListener('touchstart', function(e) {
+      touchY = e.touches[0].clientY;
+      header = e.target.closest('#pdfjs-viewer-header');
+    }, { passive: true });
+    ol.addEventListener('touchmove', function(e) {
+      if (!header) return;
+      var diff = e.touches[0].clientY - touchY;
+      if (diff > 80) PDFJSViewer.close();
+    }, { passive: true });
+    return ol;
+  }
+
+  function _esc(s) {
+    return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  async function open(url, title) {
+    if (!url) return;
+    // إغلاق أي viewer سابق
+    close();
+    // إغلاق rv-overlay الموجود (إن وجد — لأن PDF.js viewer مستقل)
+    var rvOl = document.getElementById('rv-overlay');
+    if (rvOl) rvOl.remove();
+    document.body.style.overflow = 'hidden';
+    document.body.classList.add('rv-open');
+
+    _currentUrl = url;
+    _currentTitle = title || 'ملف PDF';
+    _currentPage = 1;
+    _scale = 1.0;
+
+    _overlayEl = _buildOverlay(_currentTitle);
+    document.body.appendChild(_overlayEl);
+
+    // إظهار زر التحميل للأدمن
+    if (window._isAdminUser) {
+      var dlBtn = document.getElementById('pdfjs-admin-download');
+      if (dlBtn) {
+        dlBtn.style.display = '';
+        dlBtn.onclick = function() {
+          var a = document.createElement('a');
+          a.href = _currentUrl; a.download = ''; a.click();
+        };
+      }
+    }
+
+    // تحميل PDF.js
+    var pdfjs = await window._pdfjsReady;
+    if (!pdfjs) {
+      _showError('تعذّر تحميل عارض PDF، جاري المحاولة بطريقة بديلة...');
+      // Fallback: Google Docs Viewer في iframe داخلي
+      _fallbackViewer(url, title);
+      return;
+    }
+
+    // جلب Signed URL لو كان Supabase
+    var finalUrl = await _getSignedPdfUrl(url);
+
+    try {
+      var loadingTask = pdfjs.getDocument({ url: finalUrl, disableRange: false, disableStream: false });
+      _pdfDoc = await loadingTask.promise;
+      _totalPages = _pdfDoc.numPages;
+      _updatePageInfo();
+      await _renderAllVisible();
+    } catch(err) {
+      console.error('[PDFjs]', err);
+      _showError('تعذّر تحميل الملف. ' + (err.message || ''));
+    }
+  }
+
+  async function _renderAllVisible() {
+    var body = document.getElementById('pdfjs-viewer-body');
+    if (!body) return;
+    body.innerHTML = '';
+
+    var { dpr, viewW } = _getDeviceScale();
+
+    for (var i = 1; i <= _totalPages; i++) {
+      var page = await _pdfDoc.getPage(i);
+      var viewport = page.getViewport({ scale: _scale });
+      // ضبط الـ scale تلقائياً ليناسب عرض الشاشة
+      var autoScale = viewW / viewport.width;
+      var finalScale = _scale * autoScale;
+      var scaledViewport = page.getViewport({ scale: finalScale });
+
+      var wrap = document.createElement('div');
+      wrap.className = 'pdfjs-page-wrap';
+      wrap.dataset.pageNum = i;
+      wrap.style.width = scaledViewport.width + 'px';
+
+      var canvas = document.createElement('canvas');
+      canvas.width = scaledViewport.width * dpr;
+      canvas.height = scaledViewport.height * dpr;
+      canvas.style.width = scaledViewport.width + 'px';
+      canvas.style.height = scaledViewport.height + 'px';
+
+      // Protect overlay
+      var protect = document.createElement('div');
+      protect.className = 'pdfjs-page-protect';
+
+      wrap.appendChild(canvas);
+      wrap.appendChild(protect);
+      body.appendChild(wrap);
+
+      var ctx = canvas.getContext('2d');
+      ctx.scale(dpr, dpr);
+
+      await page.render({ canvasContext: ctx, viewport: scaledViewport }).promise;
+      page.cleanup();
+    }
+
+    // الصفحة الأولى = المشاهدة الافتراضية
+    _updatePageInfo();
+    // تتبع الصفحة الحالية أثناء التمرير
+    _bindScrollTracker(body);
+  }
+
+  function _bindScrollTracker(body) {
+    body.addEventListener('scroll', function() {
+      var pages = body.querySelectorAll('.pdfjs-page-wrap');
+      var midY = body.scrollTop + body.clientHeight / 2;
+      var closest = 1;
+      var minDist = Infinity;
+      pages.forEach(function(p) {
+        var dist = Math.abs((p.offsetTop + p.offsetHeight / 2) - midY);
+        if (dist < minDist) { minDist = dist; closest = parseInt(p.dataset.pageNum); }
+      });
+      _currentPage = closest;
+      _updatePageInfo();
+    }, { passive: true });
+  }
+
+  function _updatePageInfo() {
+    var el = document.getElementById('pdfjs-page-info');
+    if (el) el.textContent = _totalPages ? (_currentPage + ' / ' + _totalPages) : '- / -';
+    var zEl = document.getElementById('pdfjs-zoom-display');
+    if (zEl) zEl.textContent = Math.round(_scale * 100) + '%';
+  }
+
+  function prevPage() {
+    if (_currentPage <= 1) return;
+    _currentPage--;
+    _scrollToPage(_currentPage);
+    _updatePageInfo();
+  }
+  function nextPage() {
+    if (_currentPage >= _totalPages) return;
+    _currentPage++;
+    _scrollToPage(_currentPage);
+    _updatePageInfo();
+  }
+  function _scrollToPage(n) {
+    var body = document.getElementById('pdfjs-viewer-body');
+    if (!body) return;
+    var wrap = body.querySelector('[data-page-num="' + n + '"]');
+    if (wrap) wrap.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  function zoomIn() {
+    _scale = Math.min(_scale + 0.25, 3.0);
+    _reRender();
+  }
+  function zoomOut() {
+    _scale = Math.max(_scale - 0.25, 0.5);
+    _reRender();
+  }
+  function _reRender() {
+    if (!_pdfDoc) return;
+    _renderAllVisible().catch(function(e){ console.warn(e); });
+    _updatePageInfo();
+  }
+
+  function _showError(msg) {
+    var body = document.getElementById('pdfjs-viewer-body');
+    if (body) body.innerHTML = '<div class="pdfjs-page-wrap" style="padding:40px;text-align:center;color:#c0392b;background:#fff;min-width:280px"><div style="font-size:3rem;margin-bottom:14px">⚠️</div><p>' + _esc(msg) + '</p></div>';
+  }
+
+  function _fallbackViewer(url, title) {
+    // Google Docs Viewer داخل iframe في نفس الـ overlay
+    var body = document.getElementById('pdfjs-viewer-body');
+    if (!body) return;
+    var gdUrl = 'https://docs.google.com/viewer?url=' + encodeURIComponent(url) + '&embedded=true';
+    body.innerHTML = '<iframe src="' + gdUrl + '" style="width:100%;flex:1;min-height:calc(100vh - 80px);border:none;background:#fff" onload="this.previousElementSibling&&this.previousElementSibling.remove()"></iframe>';
+    body.style.padding = '0';
+  }
+
+  function close() {
+    if (_overlayEl) {
+      document.removeEventListener('keydown', _overlayEl._keyHandler);
+      _overlayEl.remove();
+      _overlayEl = null;
+    }
+    var ol = document.getElementById('pdfjs-viewer-overlay');
+    if (ol) ol.remove();
+    document.body.style.overflow = '';
+    document.body.classList.remove('rv-open');
+    _pdfDoc = null;
+    _currentPage = 1;
+    _totalPages = 0;
+    _scale = 1.0;
+  }
+
+  return { open, close, prevPage, nextPage, zoomIn, zoomOut };
+})();
+
+// ==================== CONTENT PROTECTION SYSTEM ====================
+(function() {
+
+  // ── 1. الحماية الافتراضية لغير المسجّلين والطلاب ──────────────────
+  function applyProtection() {
+    if (window._isAdminUser) return; // الأدمن مُعفى
+    document.body.classList.add('content-protected');
+  }
+
+  document.addEventListener('DOMContentLoaded', applyProtection);
+
+  // ── 2. منع Right Click للطلاب ─────────────────────────────────────
+  document.addEventListener('contextmenu', function(e) {
+    if (window._isAdminUser) return;
+    e.preventDefault();
+    e.stopPropagation();
+    return false;
+  }, true);
+
+  // ── 3. منع اختصارات لوحة المفاتيح الخطيرة ────────────────────────
+  document.addEventListener('keydown', function(e) {
+    if (window._isAdminUser) return;
+    var key = e.key.toLowerCase();
+    var ctrl = e.ctrlKey || e.metaKey;
+
+    // Ctrl+S, Ctrl+P, Ctrl+C, Ctrl+A, Ctrl+U (view source), F12
+    if (ctrl && (key === 's' || key === 'p' || key === 'c' || key === 'a' || key === 'u')) {
+      e.preventDefault(); e.stopPropagation(); return false;
+    }
+    if (e.key === 'F12' || (ctrl && e.shiftKey && (key === 'i' || key === 'j' || key === 'c'))) {
+      e.preventDefault(); e.stopPropagation(); return false;
+    }
+    // منع Print Screen
+    if (e.key === 'PrintScreen') {
+      e.preventDefault(); return false;
+    }
+  }, true);
+
+  // ── 4. منع سحب الملفات والصور ─────────────────────────────────────
+  document.addEventListener('dragstart', function(e) {
+    if (window._isAdminUser) return;
+    e.preventDefault(); return false;
+  }, true);
+
+  // ── 5. منع تحديد النص بالماوس ─────────────────────────────────────
+  document.addEventListener('selectstart', function(e) {
+    if (window._isAdminUser) return;
+    e.preventDefault(); return false;
+  }, true);
+
+  // ── 6. منع Copy من clipboard API ─────────────────────────────────
+  document.addEventListener('copy', function(e) {
+    if (window._isAdminUser) return;
+    e.preventDefault(); return false;
+  }, true);
+
+  // ── 7. منع أي محاولة طباعة ───────────────────────────────────────
+  window.addEventListener('beforeprint', function(e) {
+    if (window._isAdminUser) return;
+    e.preventDefault();
+    // غطّي كل الصفحة
+    var blocker = document.createElement('div');
+    blocker.id = '_print-block';
+    blocker.setAttribute('style','position:fixed;inset:0;z-index:2147483647;background:#fff;display:flex;align-items:center;justify-content:center;font-size:2rem;font-family:Cairo,sans-serif;');
+    blocker.textContent = '🔒 الطباعة غير مسموح بها';
+    document.body.appendChild(blocker);
+    setTimeout(function(){ var b=document.getElementById('_print-block'); if(b)b.remove(); }, 3000);
+  });
+
+  // ── 8. منع Long Press على الموبايل (يمنع Copy/Save) ───────────────
+  document.addEventListener('touchstart', function(e) {
+    if (window._isAdminUser) return;
+    if (e.target.tagName === 'CANVAS' || e.target.tagName === 'IMG') {
+      e.preventDefault();
+    }
+  }, { passive: false });
+
+})();
+
+// ==================== الحماية تُطبَّق بعد تحديد حالة المستخدم ====================
+// _renderUserBox يضبط window._isAdminUser و document.body classes عند تسجيل الدخول
+// لو لم يكن مسجلاً نطبّق الحماية فوراً
+(function() {
+  var _orig = window._renderUserBox;
+  // apply protection immediately for non-logged users
+  document.addEventListener('DOMContentLoaded', function() {
+    setTimeout(function() {
+      if (!window._isAdminUser) {
+        document.body.classList.add('content-protected');
+      }
+    }, 1500);
+  });
 })();
 </script>
 </body>
