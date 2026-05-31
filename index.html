@@ -850,6 +850,110 @@ footer strong { color: var(--accent2); }
   .rv-footer { flex-direction: column; align-items: stretch; }
   .rv-footer-btns { justify-content: center; }
 }
+
+/* Full Screen داخل المتصفح */
+.rv-modal:fullscreen,
+.rv-modal:-webkit-full-screen {
+  max-width: 100vw !important;
+  max-height: 100vh !important;
+  border-radius: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+}
+.rv-modal:fullscreen .rv-pdf-frame,
+.rv-modal:fullscreen .rv-embed-frame,
+.rv-modal:-webkit-full-screen .rv-pdf-frame,
+.rv-modal:-webkit-full-screen .rv-embed-frame {
+  height: calc(100vh - 120px) !important;
+}
+.rv-modal:fullscreen .rv-video,
+.rv-modal:-webkit-full-screen .rv-video {
+  max-height: calc(100vh - 120px) !important;
+}
+.rv-modal:fullscreen .rv-image-wrap img,
+.rv-modal:-webkit-full-screen .rv-image-wrap img {
+  max-height: calc(100vh - 140px) !important;
+}
+
+/* Zoom للصور: pinch على الهاتف */
+.rv-image-wrap {
+  touch-action: pinch-zoom;
+}
+.rv-image-wrap img {
+  cursor: zoom-in;
+  user-select: none;
+}
+.rv-image-wrap img.zoomed {
+  transform: scale(2);
+  cursor: zoom-out;
+}
+.rv-image-wrap img.zoomed-max {
+  transform: scale(3);
+  cursor: zoom-out;
+}
+
+/* ===== INTERNAL VIEWER: تحسينات الموبايل وتجربة Full App ===== */
+
+/* إخفاء شريط التمرير داخل الـ overlay لتجربة app-like */
+.rv-overlay {
+  /* منع Scroll الخلفية تماماً */
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* على الموبايل: الـ modal يأخذ الشاشة بالكامل */
+@media (max-width: 768px) {
+  .rv-overlay {
+    padding: 0 !important;
+    align-items: flex-end;
+  }
+  .rv-modal {
+    border-radius: 20px 20px 0 0 !important;
+    max-height: 98vh !important;
+    height: 98vh;
+    max-width: 100vw !important;
+    width: 100vw !important;
+  }
+  .rv-pdf-frame,
+  .rv-embed-frame {
+    height: calc(98vh - 120px) !important;
+  }
+  .rv-video {
+    max-height: calc(98vh - 120px) !important;
+  }
+}
+
+/* منع body scroll عند فتح viewer */
+body.rv-open {
+  overflow: hidden !important;
+  position: fixed;
+  width: 100%;
+}
+
+/* تحسين الـ iframe للموبايل */
+.rv-pdf-frame,
+.rv-embed-frame {
+  -webkit-overflow-scrolling: touch;
+}
+
+/* نبذة إشارة Swipe للإغلاق على الموبايل */
+.rv-swipe-hint {
+  display: none;
+}
+@media (max-width: 768px) {
+  .rv-swipe-hint {
+    display: block;
+    text-align: center;
+    padding: 8px;
+    background: rgba(0,0,0,.15);
+    color: rgba(255,255,255,.7);
+    font-size: .72rem;
+    flex-shrink: 0;
+  }
+  .rv-swipe-hint::before {
+    content: '— اسحب للأسفل للإغلاق —';
+  }
+}
 </style>
 
 <!-- ============================================================ -->
@@ -1287,42 +1391,42 @@ button { min-height: 40px; }
       <h3 class="links-section-title">📌 روابط هامة</h3>
       <div class="link-card lc-blue">
         <div class="lc-top"><div class="lc-icon">🏥</div><div class="lc-info"><h3>وزارة الصحة المصرية</h3><p>الصفحة الرسمية لوزارة الصحة والسكان على فيسبوك</p></div></div>
-        <div class="lc-footer"><span class="lc-url">facebook.com/egypt.mohp</span><a class="lc-btn" href="https://www.facebook.com/egypt.mohp?locale=ar_AR" target="_blank" rel="noopener">زيارة الصفحة 🌐</a></div>
+        <div class="lc-footer"><span class="lc-url">facebook.com/egypt.mohp</span><button class="lc-btn" onclick="openResource('https://www.facebook.com/egypt.mohp?locale=ar_AR','زيارة الصفحة 🌐','link')" style="background:linear-gradient(135deg,#1a3a5c,#2471a3);color:#fff;border:none;cursor:pointer;font-family:inherit;">زيارة الصفحة 🌐</button></div>
       </div>
       <div class="link-card lc-green">
         <div class="lc-top"><div class="lc-icon">📋</div><div class="lc-info"><h3>تكليف المعاهد الفنية الصحية</h3><p>قناة متابعة أخبار التكليف (واتساب)</p></div></div>
-        <div class="lc-footer"><span class="lc-url">whatsapp.com/channel/0029Vb74o669xVJX4TcXlg1m</span><a class="lc-btn" href="https://whatsapp.com/channel/0029Vb74o669xVJX4TcXlg1m" target="_blank" rel="noopener">فتح القناة 📲</a></div>
+        <div class="lc-footer"><span class="lc-url">whatsapp.com/channel/0029Vb74o669xVJX4TcXlg1m</span><button class="lc-btn" onclick="openResource('https://whatsapp.com/channel/0029Vb74o669xVJX4TcXlg1m','فتح القناة 📲','link')" style="background:linear-gradient(135deg,#1a3a5c,#2471a3);color:#fff;border:none;cursor:pointer;font-family:inherit;">فتح القناة 📲</button></div>
       </div>
       <div class="link-card lc-purple">
         <div class="lc-top"><div class="lc-icon">🎓</div><div class="lc-info"><h3>جروب التخصصية</h3><p>جروب التخصصية على تيليجرام</p></div></div>
-        <div class="lc-footer"><span class="lc-url">t.me/+T7xQgK4mvsFlMTRk</span><a class="lc-btn" href="https://t.me/+T7xQgK4mvsFlMTRk" target="_blank" rel="noopener">فتح الجروب ✈️</a></div>
+        <div class="lc-footer"><span class="lc-url">t.me/+T7xQgK4mvsFlMTRk</span><button class="lc-btn" onclick="openResource('https://t.me/+T7xQgK4mvsFlMTRk','فتح الجروب ✈️','link')" style="background:linear-gradient(135deg,#1a3a5c,#2471a3);color:#fff;border:none;cursor:pointer;font-family:inherit;">فتح الجروب ✈️</button></div>
       </div>
       <div class="link-card lc-orange">
         <div class="lc-top"><div class="lc-icon">📢</div><div class="lc-info"><h3>كل ما يخص المعاهد الفنية الصحية</h3><p>جروب غير رسمي لطلاب المعاهد (تيليجرام)</p></div></div>
-        <div class="lc-footer"><span class="lc-url">t.me/+NzuSKf0oV7FkNDg8</span><a class="lc-btn" href="https://t.me/+NzuSKf0oV7FkNDg8" target="_blank" rel="noopener">فتح الجروب ✈️</a></div>
+        <div class="lc-footer"><span class="lc-url">t.me/+NzuSKf0oV7FkNDg8</span><button class="lc-btn" onclick="openResource('https://t.me/+NzuSKf0oV7FkNDg8','فتح الجروب ✈️','link')" style="background:linear-gradient(135deg,#1a3a5c,#2471a3);color:#fff;border:none;cursor:pointer;font-family:inherit;">فتح الجروب ✈️</button></div>
       </div>
     </div>
 
     <div style="margin-bottom: 30px;">
       <h3 class="links-section-title teal">🏛️ المعاهد الفنية الصحية التابعة لوزارة الصحة (12 معهدًا)</h3>
-      <div class="link-card lc-blue"><div class="lc-top"><div class="lc-icon">🏥</div><div class="lc-info"><h3>المعهد الفني الصحي بإمبابة</h3><p>الصفحة الرسمية على فيسبوك</p></div></div><div class="lc-footer"><span class="lc-url">facebook.com/profile.php?id=100070811356042</span><a class="lc-btn" href="https://www.facebook.com/profile.php?id=100070811356042&mibextid=ZbWKwL" target="_blank" rel="noopener">زيارة الصفحة 🌐</a></div></div>
-      <div class="link-card lc-green"><div class="lc-top"><div class="lc-icon">🏥</div><div class="lc-info"><h3>المعهد الفني الصحي بالإسكندرية</h3><p>الصفحة الرسمية على فيسبوك</p></div></div><div class="lc-footer"><span class="lc-url">facebook.com/profile.php?id=100064007596801</span><a class="lc-btn" href="https://www.facebook.com/profile.php?id=100064007596801&mibextid=ZbWKwL" target="_blank" rel="noopener">زيارة الصفحة 🌐</a></div></div>
-      <div class="link-card lc-purple"><div class="lc-top"><div class="lc-icon">🏥</div><div class="lc-info"><h3>المعهد الفني الصحي بطنطا</h3><p>الصفحة الرسمية على فيسبوك</p></div></div><div class="lc-footer"><span class="lc-url">facebook.com/profile.php?id=100064043640292</span><a class="lc-btn" href="https://www.facebook.com/profile.php?id=100064043640292&mibextid=ZbWKwL" target="_blank" rel="noopener">زيارة الصفحة 🌐</a></div></div>
-      <div class="link-card lc-orange"><div class="lc-top"><div class="lc-icon">🏥</div><div class="lc-info"><h3>المعهد الفني الصحي ببنها</h3><p>الصفحة الرسمية على فيسبوك</p></div></div><div class="lc-footer"><span class="lc-url">facebook.com/BHTI1994</span><a class="lc-btn" href="https://www.facebook.com/BHTI1994?mibextid=ZbWKwL" target="_blank" rel="noopener">زيارة الصفحة 🌐</a></div></div>
-      <div class="link-card lc-blue"><div class="lc-top"><div class="lc-icon">🏥</div><div class="lc-info"><h3>المعهد الفني الصحي بالمنصورة</h3><p>الصفحة الرسمية على فيسبوك</p></div></div><div class="lc-footer"><span class="lc-url">facebook.com/mansoura.ht.institute</span><a class="lc-btn" href="https://www.facebook.com/mansoura.ht.institute?mibextid=ZbWKwL" target="_blank" rel="noopener">زيارة الصفحة 🌐</a></div></div>
-      <div class="link-card lc-green"><div class="lc-top"><div class="lc-icon">🏥</div><div class="lc-info"><h3>المعهد الفني الصحي بالزقازيق</h3><p>الصفحة الرسمية على فيسبوك</p></div></div><div class="lc-footer"><span class="lc-url">facebook.com/zhtif</span><a class="lc-btn" href="https://www.facebook.com/zhtif?mibextid=ZbWKwL" target="_blank" rel="noopener">زيارة الصفحة 🌐</a></div></div>
-      <div class="link-card lc-purple"><div class="lc-top"><div class="lc-icon">🏥</div><div class="lc-info"><h3>المعهد الفني الصحي ببورسعيد</h3><p>الصفحة الرسمية على فيسبوك</p></div></div><div class="lc-footer"><span class="lc-url">facebook.com/Portsaid.h.technical.institute</span><a class="lc-btn" href="https://www.facebook.com/Portsaid.h.technical.institute?mibextid=ZbWKwL" target="_blank" rel="noopener">زيارة الصفحة 🌐</a></div></div>
-      <div class="link-card lc-orange"><div class="lc-top"><div class="lc-icon">🏥</div><div class="lc-info"><h3>المعهد الفني الصحي بالإسماعيلية</h3><p>الصفحة الرسمية على فيسبوك</p></div></div><div class="lc-footer"><span class="lc-url">facebook.com/profile.php?id=100064169527721</span><a class="lc-btn" href="https://www.facebook.com/profile.php?id=100064169527721&mibextid=ZbWKwL" target="_blank" rel="noopener">زيارة الصفحة 🌐</a></div></div>
-      <div class="link-card lc-blue"><div class="lc-top"><div class="lc-icon">🏥</div><div class="lc-info"><h3>المعهد الفني الصحي ببني سويف</h3><p>الصفحة الرسمية على فيسبوك</p></div></div><div class="lc-footer"><span class="lc-url">facebook.com/htibeniseuf</span><a class="lc-btn" href="https://www.facebook.com/htibeniseuf?mibextid=ZbWKwL" target="_blank" rel="noopener">زيارة الصفحة 🌐</a></div></div>
-      <div class="link-card lc-green"><div class="lc-top"><div class="lc-icon">🏥</div><div class="lc-info"><h3>المعهد الفني الصحي بأسيوط</h3><p>الصفحة الرسمية على فيسبوك</p></div></div><div class="lc-footer"><span class="lc-url">facebook.com/TH123HEALth</span><a class="lc-btn" href="https://www.facebook.com/TH123HEALth?mibextid=ZbWKwL" target="_blank" rel="noopener">زيارة الصفحة 🌐</a></div></div>
-      <div class="link-card lc-purple"><div class="lc-top"><div class="lc-icon">🏥</div><div class="lc-info"><h3>المعهد الفني الصحي بسوهاج</h3><p>الصفحة الرسمية على فيسبوك</p></div></div><div class="lc-footer"><span class="lc-url">facebook.com/profile.php?id=100069363183058</span><a class="lc-btn" href="https://www.facebook.com/profile.php?id=100069363183058&mibextid=ZbWKwL" target="_blank" rel="noopener">زيارة الصفحة 🌐</a></div></div>
-      <div class="link-card lc-orange"><div class="lc-top"><div class="lc-icon">🏥</div><div class="lc-info"><h3>المعهد الفني الصحي بأسوان</h3><p>الصفحة الرسمية على فيسبوك</p></div></div><div class="lc-footer"><span class="lc-url">facebook.com/profile.php?id=100057560074688</span><a class="lc-btn" href="https://www.facebook.com/profile.php?id=100057560074688&mibextid=ZbWKwL" target="_blank" rel="noopener">زيارة الصفحة 🌐</a></div></div>
+      <div class="link-card lc-blue"><div class="lc-top"><div class="lc-icon">🏥</div><div class="lc-info"><h3>المعهد الفني الصحي بإمبابة</h3><p>الصفحة الرسمية على فيسبوك</p></div></div><div class="lc-footer"><span class="lc-url">facebook.com/profile.php?id=100070811356042</span><button class="lc-btn" onclick="openResource('https://www.facebook.com/profile.php?id=100070811356042&mibextid=ZbWKwL','زيارة الصفحة 🌐','link')" style="background:linear-gradient(135deg,#1a3a5c,#2471a3);color:#fff;border:none;cursor:pointer;font-family:inherit;">زيارة الصفحة 🌐</button></div></div>
+      <div class="link-card lc-green"><div class="lc-top"><div class="lc-icon">🏥</div><div class="lc-info"><h3>المعهد الفني الصحي بالإسكندرية</h3><p>الصفحة الرسمية على فيسبوك</p></div></div><div class="lc-footer"><span class="lc-url">facebook.com/profile.php?id=100064007596801</span><button class="lc-btn" onclick="openResource('https://www.facebook.com/profile.php?id=100064007596801&mibextid=ZbWKwL','زيارة الصفحة 🌐','link')" style="background:linear-gradient(135deg,#1a3a5c,#2471a3);color:#fff;border:none;cursor:pointer;font-family:inherit;">زيارة الصفحة 🌐</button></div></div>
+      <div class="link-card lc-purple"><div class="lc-top"><div class="lc-icon">🏥</div><div class="lc-info"><h3>المعهد الفني الصحي بطنطا</h3><p>الصفحة الرسمية على فيسبوك</p></div></div><div class="lc-footer"><span class="lc-url">facebook.com/profile.php?id=100064043640292</span><button class="lc-btn" onclick="openResource('https://www.facebook.com/profile.php?id=100064043640292&mibextid=ZbWKwL','زيارة الصفحة 🌐','link')" style="background:linear-gradient(135deg,#1a3a5c,#2471a3);color:#fff;border:none;cursor:pointer;font-family:inherit;">زيارة الصفحة 🌐</button></div></div>
+      <div class="link-card lc-orange"><div class="lc-top"><div class="lc-icon">🏥</div><div class="lc-info"><h3>المعهد الفني الصحي ببنها</h3><p>الصفحة الرسمية على فيسبوك</p></div></div><div class="lc-footer"><span class="lc-url">facebook.com/BHTI1994</span><button class="lc-btn" onclick="openResource('https://www.facebook.com/BHTI1994?mibextid=ZbWKwL','زيارة الصفحة 🌐','link')" style="background:linear-gradient(135deg,#1a3a5c,#2471a3);color:#fff;border:none;cursor:pointer;font-family:inherit;">زيارة الصفحة 🌐</button></div></div>
+      <div class="link-card lc-blue"><div class="lc-top"><div class="lc-icon">🏥</div><div class="lc-info"><h3>المعهد الفني الصحي بالمنصورة</h3><p>الصفحة الرسمية على فيسبوك</p></div></div><div class="lc-footer"><span class="lc-url">facebook.com/mansoura.ht.institute</span><button class="lc-btn" onclick="openResource('https://www.facebook.com/mansoura.ht.institute?mibextid=ZbWKwL','زيارة الصفحة 🌐','link')" style="background:linear-gradient(135deg,#1a3a5c,#2471a3);color:#fff;border:none;cursor:pointer;font-family:inherit;">زيارة الصفحة 🌐</button></div></div>
+      <div class="link-card lc-green"><div class="lc-top"><div class="lc-icon">🏥</div><div class="lc-info"><h3>المعهد الفني الصحي بالزقازيق</h3><p>الصفحة الرسمية على فيسبوك</p></div></div><div class="lc-footer"><span class="lc-url">facebook.com/zhtif</span><button class="lc-btn" onclick="openResource('https://www.facebook.com/zhtif?mibextid=ZbWKwL','زيارة الصفحة 🌐','link')" style="background:linear-gradient(135deg,#1a3a5c,#2471a3);color:#fff;border:none;cursor:pointer;font-family:inherit;">زيارة الصفحة 🌐</button></div></div>
+      <div class="link-card lc-purple"><div class="lc-top"><div class="lc-icon">🏥</div><div class="lc-info"><h3>المعهد الفني الصحي ببورسعيد</h3><p>الصفحة الرسمية على فيسبوك</p></div></div><div class="lc-footer"><span class="lc-url">facebook.com/Portsaid.h.technical.institute</span><button class="lc-btn" onclick="openResource('https://www.facebook.com/Portsaid.h.technical.institute?mibextid=ZbWKwL','زيارة الصفحة 🌐','link')" style="background:linear-gradient(135deg,#1a3a5c,#2471a3);color:#fff;border:none;cursor:pointer;font-family:inherit;">زيارة الصفحة 🌐</button></div></div>
+      <div class="link-card lc-orange"><div class="lc-top"><div class="lc-icon">🏥</div><div class="lc-info"><h3>المعهد الفني الصحي بالإسماعيلية</h3><p>الصفحة الرسمية على فيسبوك</p></div></div><div class="lc-footer"><span class="lc-url">facebook.com/profile.php?id=100064169527721</span><button class="lc-btn" onclick="openResource('https://www.facebook.com/profile.php?id=100064169527721&mibextid=ZbWKwL','زيارة الصفحة 🌐','link')" style="background:linear-gradient(135deg,#1a3a5c,#2471a3);color:#fff;border:none;cursor:pointer;font-family:inherit;">زيارة الصفحة 🌐</button></div></div>
+      <div class="link-card lc-blue"><div class="lc-top"><div class="lc-icon">🏥</div><div class="lc-info"><h3>المعهد الفني الصحي ببني سويف</h3><p>الصفحة الرسمية على فيسبوك</p></div></div><div class="lc-footer"><span class="lc-url">facebook.com/htibeniseuf</span><button class="lc-btn" onclick="openResource('https://www.facebook.com/htibeniseuf?mibextid=ZbWKwL','زيارة الصفحة 🌐','link')" style="background:linear-gradient(135deg,#1a3a5c,#2471a3);color:#fff;border:none;cursor:pointer;font-family:inherit;">زيارة الصفحة 🌐</button></div></div>
+      <div class="link-card lc-green"><div class="lc-top"><div class="lc-icon">🏥</div><div class="lc-info"><h3>المعهد الفني الصحي بأسيوط</h3><p>الصفحة الرسمية على فيسبوك</p></div></div><div class="lc-footer"><span class="lc-url">facebook.com/TH123HEALth</span><button class="lc-btn" onclick="openResource('https://www.facebook.com/TH123HEALth?mibextid=ZbWKwL','زيارة الصفحة 🌐','link')" style="background:linear-gradient(135deg,#1a3a5c,#2471a3);color:#fff;border:none;cursor:pointer;font-family:inherit;">زيارة الصفحة 🌐</button></div></div>
+      <div class="link-card lc-purple"><div class="lc-top"><div class="lc-icon">🏥</div><div class="lc-info"><h3>المعهد الفني الصحي بسوهاج</h3><p>الصفحة الرسمية على فيسبوك</p></div></div><div class="lc-footer"><span class="lc-url">facebook.com/profile.php?id=100069363183058</span><button class="lc-btn" onclick="openResource('https://www.facebook.com/profile.php?id=100069363183058&mibextid=ZbWKwL','زيارة الصفحة 🌐','link')" style="background:linear-gradient(135deg,#1a3a5c,#2471a3);color:#fff;border:none;cursor:pointer;font-family:inherit;">زيارة الصفحة 🌐</button></div></div>
+      <div class="link-card lc-orange"><div class="lc-top"><div class="lc-icon">🏥</div><div class="lc-info"><h3>المعهد الفني الصحي بأسوان</h3><p>الصفحة الرسمية على فيسبوك</p></div></div><div class="lc-footer"><span class="lc-url">facebook.com/profile.php?id=100057560074688</span><button class="lc-btn" onclick="openResource('https://www.facebook.com/profile.php?id=100057560074688&mibextid=ZbWKwL','زيارة الصفحة 🌐','link')" style="background:linear-gradient(135deg,#1a3a5c,#2471a3);color:#fff;border:none;cursor:pointer;font-family:inherit;">زيارة الصفحة 🌐</button></div></div>
     </div>
 
     <div style="margin-bottom: 30px;">
       <h3 class="links-section-title accent">🎓 المعاهد التابعة لوزارة التعليم العالي</h3>
-      <div class="link-card lc-blue"><div class="lc-top"><div class="lc-icon">🏛️</div><div class="lc-info"><h3>المعهد الفني الصحي بالوادي الجديد</h3><p>الصفحة الرسمية على فيسبوك</p></div></div><div class="lc-footer"><span class="lc-url">facebook.com/profile.php?id=61550650958448</span><a class="lc-btn" href="https://www.facebook.com/profile.php?id=61550650958448&mibextid=ZbWKwL" target="_blank" rel="noopener">زيارة الصفحة 🌐</a></div></div>
-      <div class="link-card lc-green"><div class="lc-top"><div class="lc-icon">🏛️</div><div class="lc-info"><h3>المعهد الفني الصحي بجنوب الوادي (قنا)</h3><p>الصفحة الرسمية على فيسبوك</p></div></div><div class="lc-footer"><span class="lc-url">facebook.com/qenamti</span><a class="lc-btn" href="https://www.facebook.com/qenamti?mibextid=ZbWKwL" target="_blank" rel="noopener">زيارة الصفحة 🌐</a></div></div>
+      <div class="link-card lc-blue"><div class="lc-top"><div class="lc-icon">🏛️</div><div class="lc-info"><h3>المعهد الفني الصحي بالوادي الجديد</h3><p>الصفحة الرسمية على فيسبوك</p></div></div><div class="lc-footer"><span class="lc-url">facebook.com/profile.php?id=61550650958448</span><button class="lc-btn" onclick="openResource('https://www.facebook.com/profile.php?id=61550650958448&mibextid=ZbWKwL','زيارة الصفحة 🌐','link')" style="background:linear-gradient(135deg,#1a3a5c,#2471a3);color:#fff;border:none;cursor:pointer;font-family:inherit;">زيارة الصفحة 🌐</button></div></div>
+      <div class="link-card lc-green"><div class="lc-top"><div class="lc-icon">🏛️</div><div class="lc-info"><h3>المعهد الفني الصحي بجنوب الوادي (قنا)</h3><p>الصفحة الرسمية على فيسبوك</p></div></div><div class="lc-footer"><span class="lc-url">facebook.com/qenamti</span><button class="lc-btn" onclick="openResource('https://www.facebook.com/qenamti?mibextid=ZbWKwL','زيارة الصفحة 🌐','link')" style="background:linear-gradient(135deg,#1a3a5c,#2471a3);color:#fff;border:none;cursor:pointer;font-family:inherit;">زيارة الصفحة 🌐</button></div></div>
     </div>
   </div>
 </div>
@@ -2103,6 +2207,10 @@ const ResourceViewer = (function() {
       if (rt === 'video') return detectVideoType(url);
       if (rt === 'audio') return 'audio';
       if (rt === 'image') return 'image';
+      if (rt === 'html' || rt === 'link') {
+        // كل الروابط تُعرض داخلياً في iframe بدون استثناء
+        return 'external_link';
+      }
     }
 
     // extension
@@ -2110,6 +2218,7 @@ const ResourceViewer = (function() {
     if (/\.(mp4|webm|ogg|mov|avi|mkv)$/.test(lower))  return 'video_direct';
     if (/\.(mp3|wav|ogg|aac|flac|m4a)$/.test(lower))  return 'audio';
     if (/\.(jpe?g|png|webp|gif|svg|bmp)$/.test(lower)) return 'image';
+    if (/\.html?$/.test(lower))                         return 'html';
 
     // YouTube
     if (/youtube\.com\/watch|youtu\.be\//.test(url))   return 'youtube';
@@ -2266,9 +2375,15 @@ const ResourceViewer = (function() {
               src="${escUrl(url)}"
               alt="${escHtml(title)}"
               loading="lazy"
-              onclick="this.classList.toggle('zoomed')"
+              onclick="
+                var el=this;
+                if(el.classList.contains('zoomed-max')){el.classList.remove('zoomed','zoomed-max');}
+                else if(el.classList.contains('zoomed')){el.classList.add('zoomed-max');}
+                else{el.classList.add('zoomed');}
+              "
               onerror="document.getElementById('rv-img-wrap').innerHTML='<div class=\\'rv-error\\'><span class=\\'rv-err-icon\\'>🖼️</span><p>تعذّر تحميل الصورة</p></div>'"
             >
+            <div style="position:absolute;bottom:10px;right:10px;background:rgba(0,0,0,.5);color:#fff;border-radius:8px;padding:4px 10px;font-size:.72rem;">اضغط للتكبير</div>
           </div>`;
 
       case 'audio':
@@ -2282,12 +2397,61 @@ const ResourceViewer = (function() {
             </audio>
           </div>`;
 
-      default: // fallback
+      default: // fallback — نحاول عرضه في iframe داخلي
         return `
-          <div class="rv-fallback-wrap">
-            <div class="rv-f-icon">📎</div>
-            <p>لا يمكن عرض هذا النوع من الملفات مباشرةً.<br>يمكنك تحميله أو فتحه في تبويب جديد.</p>
-          </div>`;
+          <div class="rv-loading" id="rv-loading-indicator">
+            <div class="spinner-lg"></div>
+            <p>جاري تحميل الملف...</p>
+          </div>
+          <iframe
+            class="rv-embed-frame"
+            src="${escUrl(url)}"
+            style="display:none;background:#fff;"
+            id="rv-embed-iframe"
+            onload="
+              document.getElementById('rv-loading-indicator').style.display='none';
+              this.style.display='block';
+            "
+            onerror="ResourceViewer._showExternalFallback('${escUrl(url)}')"
+          ></iframe>`;
+
+      case 'html':
+        return `
+          <div class="rv-loading" id="rv-loading-indicator">
+            <div class="spinner-lg"></div>
+            <p>جاري تحميل الصفحة...</p>
+          </div>
+          <iframe
+            class="rv-embed-frame"
+            src="${escUrl(url)}"
+            style="display:none;background:#fff;"
+            id="rv-embed-iframe"
+            sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+            onload="
+              document.getElementById('rv-loading-indicator').style.display='none';
+              this.style.display='block';
+            "
+          ></iframe>`;
+
+      case 'external_link':
+        return `
+          <div class="rv-loading" id="rv-loading-indicator">
+            <div class="spinner-lg"></div>
+            <p>جاري تحميل الصفحة...</p>
+          </div>
+          <iframe
+            class="rv-embed-frame"
+            src="${escUrl(url)}"
+            style="display:none;background:#fff;"
+            id="rv-embed-iframe"
+            sandbox="allow-scripts allow-same-origin allow-forms allow-popups-to-escape-sandbox"
+            allow="accelerometer;autoplay;clipboard-write;encrypted-media;gyroscope;picture-in-picture"
+            onload="
+              document.getElementById('rv-loading-indicator').style.display='none';
+              this.style.display='block';
+            "
+            onerror="ResourceViewer._showExternalFallback('${escUrl(url)}')"
+          ></iframe>`;
     }
   }
 
@@ -2302,6 +2466,8 @@ const ResourceViewer = (function() {
       gdrive_pdf: '📄 Google Drive PDF',
       image: '🖼️ صورة',
       audio: '🎵 صوت',
+      html: '🌐 صفحة HTML',
+      external_link: '🌐 عرض داخلي',
       fallback: '📎 ملف',
     };
     return map[type] || '📎 ملف';
@@ -2326,10 +2492,12 @@ const ResourceViewer = (function() {
 
     overlay.innerHTML = `
       <div class="rv-modal" id="rv-modal" role="dialog" aria-modal="true" aria-label="${escHtml(title || 'عارض الملفات')}">
+        <div class="rv-swipe-hint"></div>
         <div class="rv-header">
           <span style="font-size:1.4rem">${getTypeIcon(type)}</span>
           <span class="rv-title">${escHtml(title || url)}</span>
           <span class="rv-type-badge">${typeBadge(type)}</span>
+          <button class="rv-close" onclick="ResourceViewer._toggleFullscreen()" title="ملء الشاشة" id="rv-fs-btn">⛶</button>
           <button class="rv-close" onclick="ResourceViewer.close()" title="إغلاق">✕</button>
         </div>
         <div class="rv-body" id="rv-body">
@@ -2339,8 +2507,7 @@ const ResourceViewer = (function() {
           <span style="font-size:.75rem;color:#999;direction:ltr;word-break:break-all;flex:1;max-width:55%">${escHtml(url.length > 60 ? url.substring(0,57)+'...' : url)}</span>
           <div class="rv-footer-btns">
             ${type !== 'fallback' ? `<button class="rv-btn rv-btn-outline" onclick="ResourceViewer._reload()">🔄 إعادة التحميل</button>` : ''}
-            <a class="rv-btn rv-btn-primary" href="${escUrl(url)}" target="_blank" rel="noopener" download>⬇️ تحميل</a>
-            <a class="rv-btn rv-btn-outline" href="${escUrl(url)}" target="_blank" rel="noopener">↗ فتح خارجي</a>
+            ${(type === 'pdf' || type === 'gdrive_pdf' || type === 'image' || type === 'audio' || type === 'video_direct') ? `<a class="rv-btn rv-btn-primary" href="${escUrl(url)}" download>⬇️ تحميل</a>` : ''}
           </div>
         </div>
       </div>`;
@@ -2356,6 +2523,20 @@ const ResourceViewer = (function() {
 
     document.body.appendChild(overlay);
     document.body.style.overflow = 'hidden';
+    document.body.classList.add('rv-open');
+
+    // Swipe لأسفل للإغلاق على الموبايل
+    var touchStartY = 0;
+    var modal = document.getElementById('rv-modal');
+    if (modal) {
+      modal.addEventListener('touchstart', function(e) {
+        touchStartY = e.touches[0].clientY;
+      }, { passive: true });
+      modal.addEventListener('touchmove', function(e) {
+        var diff = e.touches[0].clientY - touchStartY;
+        if (diff > 80) { close(); }
+      }, { passive: true });
+    }
 
     // حفظ state للـ PDF fallback
     window._rvCurrentUrl = url;
@@ -2366,7 +2547,7 @@ const ResourceViewer = (function() {
     const map = {
       pdf:'📄', video_direct:'🎬', youtube:'▶️',
       vimeo:'🎥', dailymotion:'📹', gdrive_pdf:'📁',
-      image:'🖼️', audio:'🎵', fallback:'📎'
+      image:'🖼️', audio:'🎵', html:'🌐', external_link:'🔗', fallback:'📎'
     };
     return map[type] || '📎';
   }
@@ -2375,6 +2556,7 @@ const ResourceViewer = (function() {
     const el = document.getElementById('rv-overlay');
     if (el) el.remove();
     document.body.style.overflow = '';
+    document.body.classList.remove('rv-open');
     if (document._rvKeyHandler) {
       document.removeEventListener('keydown', document._rvKeyHandler);
     }
@@ -2440,11 +2622,51 @@ const ResourceViewer = (function() {
         "
       ></iframe>
       <div style="text-align:center;padding:12px;background:#f8fbff;border-top:1px solid #e3eaf5">
-        <p style="font-size:.8rem;color:#666;margin-bottom:8px">لو الملف مش بيظهر، الضغط على تحميل أو فتح خارجي</p>
+        <p style="font-size:.8rem;color:#666;margin-bottom:8px">لو الملف مش بيظهر، اضغط زر التحميل بالأسفل</p>
       </div>`;
   }
 
-  return { open, close, detectType, _reload, _showPdfFallback, _showGdriveFallback };
+  function _toggleFullscreen() {
+    const modal = document.getElementById('rv-modal');
+    const btn   = document.getElementById('rv-fs-btn');
+    if (!modal) return;
+    if (!document.fullscreenElement) {
+      modal.requestFullscreen && modal.requestFullscreen();
+      modal.webkitRequestFullscreen && modal.webkitRequestFullscreen();
+      if (btn) btn.textContent = '✕ خروج ملء الشاشة';
+    } else {
+      document.exitFullscreen && document.exitFullscreen();
+      document.webkitExitFullscreen && document.webkitExitFullscreen();
+      if (btn) btn.textContent = '⛶';
+    }
+  }
+
+  function _showExternalFallback(url) {
+    // fallback: نحاول Google Docs Viewer
+    const body = document.getElementById('rv-body');
+    if (!body) return;
+    const gdocsUrl = 'https://docs.google.com/viewer?url=' + encodeURIComponent(url) + '&embedded=true';
+    body.innerHTML = `
+      <div class="rv-loading" id="rv-loading-indicator">
+        <div class="spinner-lg"></div>
+        <p>جاري محاولة العرض...</p>
+      </div>
+      <iframe
+        class="rv-embed-frame"
+        src="${gdocsUrl}"
+        style="display:none"
+        id="rv-embed-iframe"
+        onload="
+          document.getElementById('rv-loading-indicator').style.display='none';
+          this.style.display='block';
+        "
+      ></iframe>
+      <div style="text-align:center;padding:12px;background:#f8fbff;border-top:1px solid #e3eaf5">
+        <p style="font-size:.8rem;color:#666;margin-bottom:8px">لو الملف لا يظهر، جرّب زر التحميل أدناه</p>
+      </div>`;
+  }
+
+  return { open, close, detectType, _reload, _showPdfFallback, _showGdriveFallback, _showExternalFallback, _toggleFullscreen };
 })();
 
 // ==================== تحديث دوال الـ resources لتستخدم ResourceViewer ====================
@@ -2459,21 +2681,7 @@ function openResource(url, title, resourceType) {
 
 
 </script>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-
-<script>
-
-const SUPABASE_URL = 'https://xiqeaohemuxgujrcnpzd.supabase.co';
-const SUPABASE_KEY = 'sb_publishable_xzg8wn0ETQniEItj2Etfmw__klmgUWg';
-
-window.supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
-  auth: {
-    detectSessionInUrl: true,
-    persistSession: true,
-    autoRefreshToken: true
-  }
-});
-</script>
+<!-- Supabase already initialized above via _supabaseReady -->
 
 <script>
 // ==================== AUTH FUNCTIONS ====================
@@ -3078,7 +3286,12 @@ async function loadAndShowWelcome() {
   }
 
   try {
-    // اجلب الرسالة النشطة + id + created_at
+    // ① تحقق هل المستخدم مسجل دخول — لو مسجل ماتظهرش الرسالة خالص
+    var sessionResult = await window.supabase.auth.getSession();
+    var currentSession = sessionResult && sessionResult.data && sessionResult.data.session;
+    if (currentSession && currentSession.user) return; // مسجل دخول → لا popup
+
+    // ② اجلب الرسالة النشطة
     var result = await window.supabase
       .from('site_messages')
       .select('id, title, message, location, is_active, created_at')
@@ -3096,13 +3309,14 @@ async function loadAndShowWelcome() {
 
     var row = result.data;
 
-    // مفتاح الحفظ يعتمد على ID + created_at → لو تغيّرت الرسالة تظهر من جديد
+    // ③ مفتاح الحفظ يعتمد على ID + created_at
     var seenKey = 'welcome_seen_' + row.id + '_' + (row.created_at || '');
     var alreadySeen = '';
     try { alreadySeen = localStorage.getItem(seenKey); } catch(e) {}
-    if (alreadySeen) return; // نفس الرسالة شوفناها قبل
+    // ④ لو المستخدم ضغط "حسناً" قبل كده على نفس الرسالة → ماتظهرش
+    if (alreadySeen) return;
 
-    // ملأ الـ popup بالبيانات من قاعدة البيانات
+    // ⑤ ملأ الـ popup بالبيانات من قاعدة البيانات
     var titleEl = document.getElementById('w-title');
     var msgEl   = document.getElementById('w-message');
     var extraEl = document.getElementById('w-extra');
@@ -3117,11 +3331,11 @@ async function loadAndShowWelcome() {
       if (msgEl) msgEl.textContent = row.title || 'مرحباً بك';
     }
 
-    // اعرض الـ popup
+    // ⑥ اعرض الـ popup
     var overlay = document.getElementById('welcome-overlay');
     if (overlay) overlay.style.display = 'flex';
 
-    // احفظ الـ key الخاص بهذه الرسالة تحديداً
+    // ⑦ احفظ الـ key — بس لما المستخدم يضغط "حسناً" في closeWelcome()
     window._welcomeSeenKey = seenKey;
 
   } catch(err) {
@@ -3160,6 +3374,118 @@ document.addEventListener('DOMContentLoaded', function() {
     el.style.willChange = 'transform';
   });
 });
+
+// ==================== INTERNAL VIEWER SYSTEM ====================
+// اعتراض شامل لمنع أي فتح خارجي نهائياً
+
+(function() {
+
+  // ── 1. اعتراض كل الروابط في الصفحة ─────────────────────────────
+  document.addEventListener('click', function(e) {
+    var target = e.target.closest('a[href]');
+    if (!target) return;
+
+    var href = target.getAttribute('href');
+    if (!href || href.startsWith('#') || href.startsWith('javascript:') || href.startsWith('mailto:') || href.startsWith('tel:')) return;
+
+    // منع أي فتح خارجي
+    var isExternal = target.getAttribute('target') === '_blank'
+      || (href.startsWith('http') && !href.includes(window.location.hostname));
+
+    if (isExternal) {
+      e.preventDefault();
+      e.stopPropagation();
+
+      // تحديد نوع الرابط وعرضه داخلياً
+      var title = target.textContent.trim() || href;
+      var type = _guessLinkType(href);
+
+      if (type === 'download_only') {
+        // تحميل مباشر بدون viewer
+        var a = document.createElement('a');
+        a.href = href;
+        a.download = '';
+        a.click();
+      } else {
+        openResource(href, title, type);
+      }
+    }
+  }, true);
+
+  // ── 2. اعتراض window.open ────────────────────────────────────────
+  var _origOpen = window.open;
+  window.open = function(url, target, features) {
+    if (!url) return null;
+    if (target === '_blank' || !target || target === '_new') {
+      var title = url.split('/').pop() || url;
+      var type = _guessLinkType(url);
+      openResource(url, title, type);
+      return { closed: false, focus: function(){}, close: function(){} };
+    }
+    return _origOpen.call(window, url, target, features);
+  };
+
+  // ── 3. تخمين نوع الرابط ─────────────────────────────────────────
+  function _guessLinkType(url) {
+    var lower = (url || '').toLowerCase();
+    if (/\.pdf($|\?|#)/.test(lower) || lower.endsWith('.pdf')) return 'pdf';
+    if (/\.(mp4|webm|ogg|mov|avi|mkv)($|\?|#)/.test(lower))   return 'video';
+    if (/\.(mp3|wav|aac|flac|m4a)($|\?|#)/.test(lower))       return 'audio';
+    if (/\.(jpe?g|png|webp|gif|svg|bmp)($|\?|#)/.test(lower)) return 'image';
+    if (/youtube\.com|youtu\.be/.test(url))                    return 'video';
+    if (/drive\.google\.com/.test(url))                        return 'pdf';
+    if (/\.(zip|rar|7z|tar|gz)($|\?|#)/.test(lower))          return 'download_only';
+    return 'link'; // HTML/iframe داخلي
+  }
+
+  // ── 4. الموبايل: ملء الشاشة عند فتح أي ملف ─────────────────────
+  // نُضيف class على overlay للموبايل يجعله fullscreen حقيقي
+  var _origRVOpen = null;
+  document.addEventListener('DOMContentLoaded', function() {
+    // نربط بعد تحميل ResourceViewer
+    setTimeout(function() {
+      if (!window.ResourceViewer) return;
+      _origRVOpen = ResourceViewer.open;
+      ResourceViewer.open = function(url, title, resourceType) {
+        _origRVOpen.call(ResourceViewer, url, title, resourceType);
+        // على الموبايل: نطلب ملء الشاشة تلقائياً
+        setTimeout(function() {
+          var modal = document.getElementById('rv-modal');
+          if (modal && window.innerWidth <= 768) {
+            try {
+              if (modal.requestFullscreen) modal.requestFullscreen();
+              else if (modal.webkitRequestFullscreen) modal.webkitRequestFullscreen();
+            } catch(e) {}
+          }
+        }, 350);
+      };
+    }, 0);
+  });
+
+  // ── 5. منع الرجوع للمتصفح عند وجود modal مفتوح ──────────────────
+  window.addEventListener('popstate', function(e) {
+    var overlay = document.getElementById('rv-overlay');
+    if (overlay) {
+      e.preventDefault();
+      ResourceViewer.close();
+      history.pushState(null, '', window.location.href);
+    }
+  });
+
+  // دفع state أولي لتمكين popstate
+  history.pushState(null, '', window.location.href);
+
+  // ── 6. PWA: تحديث Service Worker لمنع التنقل الخارجي ────────────
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function() {
+      // لو مفيش SW مسجل نسجّل واحد بسيط يمنع التنقل الخارجي
+      navigator.serviceWorker.getRegistrations().then(function(regs) {
+        // لا نتدخل في SW موجود
+      });
+    });
+  }
+
+})();
 </script>
 </body>
 </html>
