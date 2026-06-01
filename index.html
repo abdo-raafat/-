@@ -993,9 +993,16 @@ body.rv-open {
   transition: background .2s; flex-shrink: 0;
 }
 #native-pdf-close:hover { background: rgba(255,255,255,.35); }
-#native-pdf-frame {
-  flex: 1; width: 100%; border: none; display: block;
-  background: #fff;
+/* منع النسخ والتحديد داخل الـ PDF viewer */
+#native-pdf-modal canvas {
+  -webkit-user-select: none !important;
+  user-select: none !important;
+  -webkit-touch-callout: none !important;
+  pointer-events: none !important;
+}
+#native-pdf-body {
+  flex: 1; overflow-y: auto; overflow-x: hidden;
+  background: #525659;
   -webkit-overflow-scrolling: touch;
 }
 @media (max-width: 768px) {
@@ -1019,6 +1026,32 @@ body.is-admin * {
   -webkit-user-select: text !important;
   -moz-user-select: text !important;
   user-select: text !important;
+}
+
+/* ===== CONTENT PROTECTION — IMAGES & CANVAS ===== */
+body.content-protected img,
+body.content-protected canvas {
+  -webkit-user-drag: none !important;
+  user-drag: none !important;
+  -webkit-touch-callout: none !important;
+  pointer-events: none !important;
+}
+/* استعادة pointer-events لعناصر تحتاج نقر (زر الـ toggle) */
+body.content-protected .rv-image-wrap img {
+  pointer-events: auto !important;
+}
+/* منع Print للطلاب */
+@media print {
+  body.content-protected * {
+    display: none !important;
+  }
+  body.content-protected::after {
+    content: '🔒 الطباعة غير مسموح بها';
+    display: block !important;
+    font-size: 2rem;
+    text-align: center;
+    margin-top: 30vh;
+  }
 }
 </style>
 
@@ -2372,6 +2405,10 @@ const ResourceViewer = (function() {
             playsinline
             preload="metadata"
             id="rv-video-el"
+            controlsList="nodownload noplaybackrate nofullscreen"
+            disablePictureInPicture
+            disableRemotePlayback
+            oncontextmenu="return false;"
           >
             <source src="${escUrl(url)}">
             <p style="color:#fff;padding:20px">متصفحك لا يدعم تشغيل الفيديو.</p>
@@ -2414,6 +2451,9 @@ const ResourceViewer = (function() {
               src="${escUrl(url)}"
               alt="${escHtml(title)}"
               loading="lazy"
+              draggable="false"
+              oncontextmenu="return false;"
+              ondragstart="return false;"
               onclick="
                 var el=this;
                 if(el.classList.contains('zoomed-max')){el.classList.remove('zoomed','zoomed-max');}
@@ -2421,6 +2461,7 @@ const ResourceViewer = (function() {
                 else{el.classList.add('zoomed');}
               "
               onerror="document.getElementById('rv-img-wrap').innerHTML='<div class=\\'rv-error\\'><span class=\\'rv-err-icon\\'>🖼️</span><p>تعذّر تحميل الصورة</p></div>'"
+              style="-webkit-touch-callout:none;-webkit-user-select:none;user-select:none;pointer-events:auto;"
             >
             <div style="position:absolute;bottom:10px;right:10px;background:rgba(0,0,0,.5);color:#fff;border-radius:8px;padding:4px 10px;font-size:.72rem;">اضغط للتكبير</div>
           </div>`;
@@ -2430,7 +2471,9 @@ const ResourceViewer = (function() {
           <div class="rv-audio-wrap">
             <div class="rv-audio-icon">🎵</div>
             <div class="rv-audio-title">${escHtml(title)}</div>
-            <audio controls preload="metadata" id="rv-audio-el">
+            <audio controls preload="metadata" id="rv-audio-el"
+              controlsList="nodownload"
+              oncontextmenu="return false;">
               <source src="${escUrl(url)}">
               متصفحك لا يدعم تشغيل الصوت.
             </audio>
@@ -2623,25 +2666,10 @@ const ResourceViewer = (function() {
   }
 
   function _showPdfFallback(url) {
-    // جرّب Google Docs Viewer كـ fallback للـ PDF
-    const body = document.getElementById('rv-body');
-    if (!body) return;
-    const gdocsUrl = 'https://docs.google.com/viewer?url=' + encodeURIComponent(url) + '&embedded=true';
-    body.innerHTML = `
-      <div class="rv-loading" id="rv-loading-indicator">
-        <div class="spinner-lg"></div>
-        <p>جاري المحاولة عبر Google Docs Viewer...</p>
-      </div>
-      <iframe
-        class="rv-pdf-frame"
-        src="${gdocsUrl}"
-        style="display:none"
-        id="rv-pdf-iframe"
-        onload="
-          document.getElementById('rv-loading-indicator').style.display='none';
-          this.style.display='block';
-        "
-      ></iframe>`;
+    // استخدام PDF.js viewer بدل Google Docs
+    var title = window._rvCurrentTitle || 'PDF';
+    close();
+    NativePDFViewer.open(url, title);
   }
 
   function _showGdriveFallback(url) {
@@ -2761,20 +2789,28 @@ window.logoutUser = async function() {
   location.reload();
 };
 
-function _renderUserBox(user) {
+// ============================================================
+// _renderUserBox — يعتمد على profiles.role من Supabase
+// لا يحتوي على بريد إلكتروني مُشفَّر هنا
+// ============================================================
+function _renderUserBox(user, role) {
   const box = document.getElementById('user-box');
   if (!box) return;
   if (!user) {
     window._isAdminUser = false;
+    window._currentUserRole = null;
     document.body.classList.remove('is-admin');
     document.body.classList.add('content-protected');
     box.innerHTML = '<button class="chatgpt-login-btn" onclick="loginWithGoogle()">🔐 دخول</button>';
     return;
   }
-  const isAdmin = user.email === 'bdatyabdo010@gmail.com';
+  // role يأتي من profiles.role في Supabase — ليس من HTML
+  const isAdmin = (role === 'admin');
   window._isAdminUser = isAdmin;
+  window._currentUserRole = role || 'user';
   if (isAdmin) {
     document.body.classList.add('is-admin');
+    document.body.classList.remove('content-protected');
   } else {
     document.body.classList.remove('is-admin');
     document.body.classList.add('content-protected');
@@ -2782,7 +2818,7 @@ function _renderUserBox(user) {
   if (isAdmin) {
     box.innerHTML =
       '<div class="user-card">'
-      + '<span class="user-email">👤 ' + user.email + '</span>'
+      + '<span class="user-email">👑 ' + user.email + '</span>'
       + '<button style="background:rgba(255,255,255,.2);color:#fff;border:1.5px solid rgba(255,255,255,.35);padding:6px 12px;border-radius:16px;cursor:pointer;font-size:12px;font-family:inherit;" onclick="toggleAdminPanel()">⚙️ تحكم</button>'
       + '<button class="logout-btn" onclick="logoutUser()">خروج</button>'
       + '</div>';
@@ -2796,32 +2832,49 @@ function _renderUserBox(user) {
   }
 }
 
+// ── fetchUserRole: جلب الـ role من profiles ──────────────────
+async function _fetchUserRole(userId) {
+  if (!window.supabase || !userId) return null;
+  try {
+    var { data, error } = await window.supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', userId)
+      .maybeSingle();
+    if (error) { console.warn('[AUTH] fetchUserRole error:', error.message); return null; }
+    return (data && data.role) ? data.role : 'user';
+  } catch(e) { return null; }
+}
+
 window.checkUser = async function() {
   if (!window.supabase) return;
 
   // ============================================================
-  // [BAN SYSTEM v2] onAuthStateChange — async للتأكد من انتظار فحص الحظر
-  // المشكلة السابقة: _renderUserBox كان يُنفَّذ قبل فحص الحظر
-  // الحل: نفحص الحظر أولاً — إذا محظور نوقف كل شيء، إذا لا نكمل
+  // [AUTH v3] onAuthStateChange — يجلب الـ role من profiles.role
+  // لا يعتمد على البريد المُشفَّر في HTML، لا يستخدم localStorage
   // ============================================================
   window.supabase.auth.onAuthStateChange(async function(event, session) {
 
-    // [BAN CHECK] عند أي حدث يحمل session (دخول أو استعادة)
+    // [BAN CHECK] عند أي حدث يحمل session
     if (session && session.user && session.user.email) {
       var isBanned = await _isBanned(session.user.email);
       if (isBanned) {
-        // محظور: لا نعرض بياناته، نسجّل خروجه، نعرض رسالة الحظر
         await window.supabase.auth.signOut();
-        _renderUserBox(null);
+        _renderUserBox(null, null);
         _showBanMessage(isBanned.reason);
-        return; // نوقف تنفيذ أي كود بعده تماماً
+        return;
       }
     }
 
-    // [ORIGINAL CODE - لم يُعدَّل] عرض بيانات المستخدم بعد التأكد أنه غير محظور
-    _renderUserBox(session ? session.user : null);
+    if (session && session.user) {
+      // ── Admin Middleware: جلب الـ role من قاعدة البيانات ──
+      var role = await _fetchUserRole(session.user.id);
+      _renderUserBox(session.user, role);
+    } else {
+      _renderUserBox(null, null);
+    }
 
-    // [ORIGINAL CODE - لم يُعدَّل] استعادة آخر صفحة بعد Google OAuth redirect
+    // استعادة آخر صفحة بعد Google OAuth redirect
     if (event === 'SIGNED_IN') {
       try {
         var lastId = sessionStorage.getItem('_last_section_id');
@@ -2837,22 +2890,25 @@ window.checkUser = async function() {
     }
   });
 
-  // [BAN CHECK] عند تحميل الصفحة: نفحص الـ session الحالية قبل عرض أي شيء
+  // فحص الـ session الحالية عند تحميل الصفحة
   const { data: { session } } = await window.supabase.auth.getSession();
 
   if (session && session.user && session.user.email) {
     var isBanned = await _isBanned(session.user.email);
     if (isBanned) {
-      // محظور: نسجّل خروجه فوراً ونعرض رسالة الحظر — لا نعرض بياناته أبداً
       await window.supabase.auth.signOut();
-      _renderUserBox(null);
+      _renderUserBox(null, null);
       _showBanMessage(isBanned.reason);
       return;
     }
   }
 
-  // [ORIGINAL CODE - لم يُعدَّل] عرض المستخدم لو غير محظور
-  _renderUserBox(session ? session.user : null);
+  if (session && session.user) {
+    var role = await _fetchUserRole(session.user.id);
+    _renderUserBox(session.user, role);
+  } else {
+    _renderUserBox(null, null);
+  }
 };
 
 document.addEventListener('DOMContentLoaded', function() { window.checkUser(); });
@@ -3027,75 +3083,435 @@ window.checkBanStatus = async function(email) {
 
 </style>
 
-<!-- ADMIN PANEL -->
-<div id="admin-panel" style="display:none;position:fixed;top:80px;left:20px;z-index:999999;background:white;border-radius:18px;box-shadow:0 8px 40px rgba(0,0,0,.22);width:320px;font-family:'Cairo','Tajawal',sans-serif;direction:rtl;overflow:hidden;max-height:90vh;overflow-y:auto;">
-  <div style="background:linear-gradient(135deg,#0a3d62,#17a589);padding:16px 20px;color:#fff;display:flex;align-items:center;justify-content:space-between;">
-    <div style="font-weight:900;font-size:1rem;">⚙️ لوحة التحكم</div>
-    <button onclick="document.getElementById('admin-panel').style.display='none'" style="background:rgba(255,255,255,.2);border:none;color:#fff;border-radius:50%;width:28px;height:28px;cursor:pointer;font-size:.9rem;">✕</button>
-  </div>
-  <div style="padding:18px;">
-    <!-- Tab buttons -->
-    <div style="display:flex;gap:6px;margin-bottom:16px;">
-      <button onclick="adminTab('add')" id="tab-add" style="flex:1;padding:8px;border:none;border-radius:10px;background:#0a3d62;color:#fff;font-family:inherit;font-size:.8rem;font-weight:700;cursor:pointer;">➕ إضافة محتوى</button>
-      <button onclick="adminTab('list')" id="tab-list" style="flex:1;padding:8px;border:none;border-radius:10px;background:#eaf4fb;color:#0a3d62;font-family:inherit;font-size:.8rem;font-weight:700;cursor:pointer;">📋 المحتوى الحالي</button>
+<!-- ============================================================ -->
+<!-- ADMIN DASHBOARD v2 — لوحة تحكم شاملة داخل نفس الموقع      -->
+<!-- تظهر فقط للأدمن — مدمجة في الصفحة — Responsive             -->
+<!-- ============================================================ -->
+
+<style>
+/* ===== ADMIN DASHBOARD STYLES ===== */
+#admin-panel {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 999999;
+  background: rgba(10,20,40,0.72);
+  backdrop-filter: blur(8px);
+  align-items: flex-start;
+  justify-content: center;
+  padding: 70px 16px 16px;
+  font-family: 'Cairo','Tajawal',sans-serif;
+  direction: rtl;
+  overflow-y: auto;
+  animation: apFadeIn .3s ease;
+}
+#admin-panel.ap-open { display: flex; }
+@keyframes apFadeIn { from { opacity:0; } to { opacity:1; } }
+
+.ap-modal {
+  background: var(--bg-card, #fff);
+  border-radius: 22px;
+  width: 100%;
+  max-width: 960px;
+  box-shadow: 0 30px 80px rgba(0,0,0,0.35);
+  overflow: hidden;
+  animation: apSlideUp .35s cubic-bezier(.16,1,.3,1);
+}
+@keyframes apSlideUp { from { opacity:0; transform: translateY(40px) scale(.97); } to { opacity:1; transform:none; } }
+
+/* Header */
+.ap-header {
+  background: linear-gradient(135deg, #0a3d62 0%, #17a589 100%);
+  padding: 18px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: #fff;
+  gap: 12px;
+}
+.ap-header-title { font-size: 1.1rem; font-weight: 900; display: flex; align-items: center; gap: 10px; }
+.ap-close-btn {
+  width: 34px; height: 34px;
+  background: rgba(255,255,255,.18);
+  border: none; border-radius: 50%;
+  color: #fff; font-size: 1rem;
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+  transition: background .2s; flex-shrink: 0;
+}
+.ap-close-btn:hover { background: rgba(255,255,255,.35); }
+
+/* Nav Tabs */
+.ap-nav {
+  display: flex;
+  background: var(--bg-card, #fff);
+  border-bottom: 2px solid #e3eaf5;
+  overflow-x: auto;
+  gap: 0;
+  scrollbar-width: none;
+}
+.ap-nav::-webkit-scrollbar { display: none; }
+.ap-nav-btn {
+  padding: 13px 18px;
+  border: none;
+  background: transparent;
+  color: #666;
+  font-family: inherit;
+  font-size: .82rem;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  border-bottom: 3px solid transparent;
+  margin-bottom: -2px;
+  transition: color .2s, border-color .2s;
+  display: flex; align-items: center; gap: 6px;
+}
+.ap-nav-btn:hover { color: #0a3d62; }
+.ap-nav-btn.active { color: #0a3d62; border-bottom-color: #0a3d62; }
+
+/* Body */
+.ap-body { padding: 24px; min-height: 400px; }
+.ap-tab-panel { display: none; }
+.ap-tab-panel.active { display: block; animation: apFadeIn .25s ease; }
+
+/* ---- Stat Cards ---- */
+.ap-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 14px;
+  margin-bottom: 24px;
+}
+.ap-stat-card {
+  background: linear-gradient(135deg, var(--light,#eaf4fb), #dceefb);
+  border-radius: 14px;
+  padding: 18px 16px;
+  text-align: center;
+  box-shadow: 0 2px 12px rgba(10,61,98,.07);
+  border: 1px solid rgba(10,61,98,.07);
+  transition: transform .2s;
+}
+.ap-stat-card:hover { transform: translateY(-3px); }
+.ap-stat-card .ap-stat-icon { font-size: 1.8rem; margin-bottom: 8px; }
+.ap-stat-card .ap-stat-num { font-size: 1.7rem; font-weight: 900; color: #0a3d62; line-height: 1; }
+.ap-stat-card .ap-stat-lbl { font-size: .73rem; color: #666; margin-top: 4px; }
+
+/* ---- Table ---- */
+.ap-table-wrap { overflow-x: auto; border-radius: 12px; border: 1px solid #e3eaf5; }
+.ap-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: .8rem;
+}
+.ap-table th {
+  background: linear-gradient(135deg, #0a3d62, #1a5276);
+  color: #fff;
+  padding: 11px 14px;
+  text-align: right;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.ap-table td {
+  padding: 10px 14px;
+  border-bottom: 1px solid #f0f4f8;
+  vertical-align: middle;
+  color: #2c3e50;
+}
+.ap-table tr:last-child td { border-bottom: none; }
+.ap-table tr:hover td { background: #f8fbff; }
+
+/* ---- Badges ---- */
+.ap-badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-size: .7rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.ap-badge.pending  { background: #fff8e1; color: #b7770d; border: 1px solid #ffe082; }
+.ap-badge.active   { background: #e8f5e9; color: #2e7d32; border: 1px solid #a5d6a7; }
+.ap-badge.expired  { background: #fce4ec; color: #c62828; border: 1px solid #f48fb1; }
+.ap-badge.cancelled{ background: #f3e5f5; color: #6a1b9a; border: 1px solid #ce93d8; }
+.ap-badge.admin    { background: #e3f2fd; color: #0a3d62; border: 1px solid #90caf9; }
+.ap-badge.user     { background: #f5f5f5; color: #555;    border: 1px solid #ddd; }
+
+/* ---- Action Buttons ---- */
+.ap-btn {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: none;
+  font-family: inherit;
+  font-size: .72rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: opacity .2s, transform .2s;
+  white-space: nowrap;
+}
+.ap-btn:hover { opacity: .85; transform: translateY(-1px); }
+.ap-btn-primary  { background: linear-gradient(135deg,#0a3d62,#17a589); color: #fff; }
+.ap-btn-success  { background: linear-gradient(135deg,#1b5e20,#2e7d32); color: #fff; }
+.ap-btn-danger   { background: linear-gradient(135deg,#b71c1c,#c62828); color: #fff; }
+.ap-btn-warn     { background: linear-gradient(135deg,#e65100,#f57c00); color: #fff; }
+.ap-btn-ghost    { background: #eaf4fb; color: #0a3d62; border: 1px solid #d5e8f5; }
+
+/* ---- Form Fields ---- */
+.ap-field { margin-bottom: 14px; }
+.ap-label { font-size: .8rem; font-weight: 700; color: #0a3d62; display: block; margin-bottom: 5px; }
+.ap-input, .ap-select, .ap-textarea {
+  width: 100%;
+  padding: 9px 12px;
+  border: 1.5px solid #d5e8f5;
+  border-radius: 10px;
+  font-family: inherit;
+  font-size: .82rem;
+  outline: none;
+  background: #f8fbff;
+  color: #2c3e50;
+  box-sizing: border-box;
+  transition: border-color .2s, box-shadow .2s;
+}
+.ap-input:focus, .ap-select:focus, .ap-textarea:focus {
+  border-color: #0a3d62;
+  box-shadow: 0 0 0 3px rgba(10,61,98,.1);
+}
+.ap-textarea { resize: vertical; }
+
+/* ---- Section Title ---- */
+.ap-section-heading {
+  display: flex; align-items: center; gap: 10px;
+  font-size: .95rem; font-weight: 900; color: #0a3d62;
+  margin-bottom: 16px;
+  padding-bottom: 10px;
+  border-bottom: 2px solid #e3eaf5;
+}
+
+/* ---- Loading State ---- */
+.ap-loading {
+  display: flex; align-items: center; justify-content: center;
+  gap: 10px; padding: 50px 20px;
+  color: #0a3d62; font-size: .88rem;
+}
+.ap-empty {
+  text-align: center; padding: 50px 20px;
+  color: #aaa; font-size: .85rem;
+}
+.ap-empty .ap-empty-icon { font-size: 2.5rem; margin-bottom: 10px; }
+
+/* ---- Messages Tab ---- */
+.ap-msg-item {
+  background: #f8fbff;
+  border: 1.5px solid #e3eaf5;
+  border-radius: 14px;
+  padding: 14px 16px;
+  margin-bottom: 10px;
+  transition: border-color .2s;
+}
+.ap-msg-item:hover { border-color: #0a3d62; }
+.ap-msg-meta { font-size: .72rem; color: #999; margin-bottom: 6px; display: flex; gap: 12px; flex-wrap: wrap; }
+.ap-msg-text { font-size: .85rem; color: #2c3e50; line-height: 1.7; }
+
+/* ---- Responsive ---- */
+@media (max-width: 600px) {
+  #admin-panel { padding: 64px 8px 8px; }
+  .ap-body { padding: 14px; }
+  .ap-nav-btn { padding: 11px 12px; font-size: .75rem; }
+  .ap-stats-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .ap-header { padding: 14px 16px; }
+  .ap-table th, .ap-table td { padding: 8px 10px; font-size: .74rem; }
+}
+
+/* Dark Mode */
+[data-theme="dark"] .ap-modal { background: #1a2535; }
+[data-theme="dark"] .ap-nav { background: #1a2535; border-bottom-color: #2a3f55; }
+[data-theme="dark"] .ap-nav-btn { color: #9ab0c6; }
+[data-theme="dark"] .ap-nav-btn.active { color: #7dd0f0; border-bottom-color: #7dd0f0; }
+[data-theme="dark"] .ap-nav-btn:hover { color: #fff; }
+[data-theme="dark"] .ap-stat-card { background: linear-gradient(135deg,#1e2d40,#1a2535); border-color: #2a3f55; }
+[data-theme="dark"] .ap-stat-card .ap-stat-num { color: #7dd0f0; }
+[data-theme="dark"] .ap-stat-card .ap-stat-lbl { color: #9ab0c6; }
+[data-theme="dark"] .ap-table th { background: linear-gradient(135deg,#0e1f30,#1a3a5c); }
+[data-theme="dark"] .ap-table td { color: #e8f0f8; border-bottom-color: #2a3f55; }
+[data-theme="dark"] .ap-table tr:hover td { background: #1e2d40; }
+[data-theme="dark"] .ap-table-wrap { border-color: #2a3f55; }
+[data-theme="dark"] .ap-input, [data-theme="dark"] .ap-select, [data-theme="dark"] .ap-textarea { background: #1e2d40; border-color: #2a3f55; color: #e8f0f8; }
+[data-theme="dark"] .ap-label { color: #7dd0f0; }
+[data-theme="dark"] .ap-section-heading { color: #7dd0f0; border-bottom-color: #2a3f55; }
+[data-theme="dark"] .ap-msg-item { background: #1e2d40; border-color: #2a3f55; }
+[data-theme="dark"] .ap-msg-text { color: #e8f0f8; }
+[data-theme="dark"] .ap-msg-meta { color: #5a7a94; }
+[data-theme="dark"] .ap-btn-ghost { background: #1e3050; color: #7dd0f0; border-color: #2a4060; }
+</style>
+
+<!-- ADMIN PANEL OVERLAY -->
+<div id="admin-panel" role="dialog" aria-modal="true" aria-label="لوحة التحكم">
+  <div class="ap-modal">
+
+    <!-- Header -->
+    <div class="ap-header">
+      <div class="ap-header-title">
+        <span>🛡️</span>
+        <span>لوحة تحكم الإدارة</span>
+      </div>
+      <button class="ap-close-btn" onclick="toggleAdminPanel()" aria-label="إغلاق">✕</button>
     </div>
 
-    <!-- ADD TAB -->
-    <div id="admin-tab-add">
-      <div style="margin-bottom:12px;">
-        <label style="font-size:.8rem;font-weight:700;color:#0a3d62;display:block;margin-bottom:5px;">📁 اختر القسم</label>
-        <select id="admin-section-select" style="width:100%;padding:9px 12px;border:1.5px solid #d5e8f5;border-radius:10px;font-family:inherit;font-size:.82rem;outline:none;background:#f8fbff;" onchange="adminLoadSectionPath()">
-          <option value="">— جاري تحميل الأقسام —</option>
-        </select>
-        <div id="admin-section-path" style="font-size:.72rem;color:#888;margin-top:4px;"></div>
+    <!-- Navigation Tabs -->
+    <nav class="ap-nav" role="tablist">
+      <button class="ap-nav-btn active" onclick="apSwitchTab('dashboard')" id="ap-tab-dashboard" role="tab">📊 Dashboard</button>
+      <button class="ap-nav-btn" onclick="apSwitchTab('requests')"  id="ap-tab-requests"  role="tab">📝 Requests</button>
+      <button class="ap-nav-btn" onclick="apSwitchTab('subscriptions')" id="ap-tab-subscriptions" role="tab">🎓 Subscriptions</button>
+      <button class="ap-nav-btn" onclick="apSwitchTab('users')"     id="ap-tab-users"     role="tab">👥 Users</button>
+      <button class="ap-nav-btn" onclick="apSwitchTab('messages')"  id="ap-tab-messages"  role="tab">💬 Messages</button>
+      <button class="ap-nav-btn" onclick="apSwitchTab('content')"   id="ap-tab-content"   role="tab">➕ المحتوى</button>
+    </nav>
+
+    <!-- Body -->
+    <div class="ap-body">
+
+      <!-- ═══════════════════ TAB: DASHBOARD ═══════════════════ -->
+      <div class="ap-tab-panel active" id="ap-panel-dashboard" role="tabpanel">
+        <div class="ap-section-heading">📊 نظرة عامة على المنصة</div>
+        <div class="ap-stats-grid" id="ap-dashboard-stats">
+          <div class="ap-stat-card"><div class="ap-stat-icon">👥</div><div class="ap-stat-num" id="ap-stat-users">—</div><div class="ap-stat-lbl">إجمالي المستخدمين</div></div>
+          <div class="ap-stat-card"><div class="ap-stat-icon">🎓</div><div class="ap-stat-num" id="ap-stat-subs">—</div><div class="ap-stat-lbl">الاشتراكات الكلية</div></div>
+          <div class="ap-stat-card"><div class="ap-stat-icon">⏳</div><div class="ap-stat-num" id="ap-stat-pending">—</div><div class="ap-stat-lbl">طلبات معلقة</div></div>
+          <div class="ap-stat-card"><div class="ap-stat-icon">✅</div><div class="ap-stat-num" id="ap-stat-active">—</div><div class="ap-stat-lbl">اشتراكات نشطة</div></div>
+          <div class="ap-stat-card"><div class="ap-stat-icon">💬</div><div class="ap-stat-num" id="ap-stat-msgs">—</div><div class="ap-stat-lbl">الرسائل</div></div>
+          <div class="ap-stat-card"><div class="ap-stat-icon">📁</div><div class="ap-stat-num" id="ap-stat-content">—</div><div class="ap-stat-lbl">عناصر المحتوى</div></div>
+        </div>
+        <div class="ap-section-heading" style="margin-top:20px;">🕐 آخر النشاطات</div>
+        <div id="ap-recent-activity">
+          <div class="ap-loading"><div class="spinner"></div> جاري التحميل...</div>
+        </div>
       </div>
 
-      <div style="margin-bottom:12px;">
-        <label style="font-size:.8rem;font-weight:700;color:#0a3d62;display:block;margin-bottom:5px;">🏷️ نوع المحتوى</label>
-        <select id="admin-content-type" onchange="adminToggleFields()" style="width:100%;padding:9px 12px;border:1.5px solid #d5e8f5;border-radius:10px;font-family:inherit;font-size:.82rem;outline:none;background:#f8fbff;">
-          <option value="video">🎬 فيديو</option>
-          <option value="text">📝 نص / شرح</option>
-          <option value="link">🔗 رابط</option>
-          <option value="pdf">📄 PDF</option>
-        </select>
+      <!-- ═══════════════════ TAB: REQUESTS ═══════════════════ -->
+      <div class="ap-tab-panel" id="ap-panel-requests" role="tabpanel">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:16px;">
+          <div class="ap-section-heading" style="margin:0;border:none;padding:0;">📝 طلبات الاشتراك المعلقة</div>
+          <button class="ap-btn ap-btn-ghost" onclick="apLoadRequests()">🔄 تحديث</button>
+        </div>
+        <div id="ap-requests-body">
+          <div class="ap-loading"><div class="spinner"></div> جاري التحميل...</div>
+        </div>
       </div>
 
-      <div style="margin-bottom:12px;">
-        <label style="font-size:.8rem;font-weight:700;color:#0a3d62;display:block;margin-bottom:5px;">📌 العنوان</label>
-        <input id="admin-content-title" type="text" placeholder="مثال: شرح الدرس الأول" style="width:100%;padding:9px 12px;border:1.5px solid #d5e8f5;border-radius:10px;font-family:inherit;font-size:.82rem;outline:none;box-sizing:border-box;">
+      <!-- ═══════════════════ TAB: SUBSCRIPTIONS ═══════════════════ -->
+      <div class="ap-tab-panel" id="ap-panel-subscriptions" role="tabpanel">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:16px;">
+          <div class="ap-section-heading" style="margin:0;border:none;padding:0;">🎓 جميع الاشتراكات</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <select class="ap-select" id="ap-sub-filter" style="width:auto;padding:7px 10px;" onchange="apLoadSubscriptions()">
+              <option value="">الكل</option>
+              <option value="pending">معلق</option>
+              <option value="active">نشط</option>
+              <option value="expired">منتهي</option>
+              <option value="cancelled">ملغي</option>
+            </select>
+            <button class="ap-btn ap-btn-ghost" onclick="apLoadSubscriptions()">🔄 تحديث</button>
+          </div>
+        </div>
+        <div id="ap-subscriptions-body">
+          <div class="ap-loading"><div class="spinner"></div> جاري التحميل...</div>
+        </div>
       </div>
 
-      <div id="admin-url-field" style="margin-bottom:12px;">
-        <label style="font-size:.8rem;font-weight:700;color:#0a3d62;display:block;margin-bottom:5px;">🔗 الرابط (URL)</label>
-        <input id="admin-content-url" type="url" placeholder="https://..." style="width:100%;padding:9px 12px;border:1.5px solid #d5e8f5;border-radius:10px;font-family:inherit;font-size:.82rem;outline:none;box-sizing:border-box;direction:ltr;">
-        <div style="font-size:.7rem;color:#888;margin-top:3px;" id="admin-url-hint">للفيديو: رابط يوتيوب أو أي رابط فيديو</div>
+      <!-- ═══════════════════ TAB: USERS ═══════════════════ -->
+      <div class="ap-tab-panel" id="ap-panel-users" role="tabpanel">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:16px;">
+          <div class="ap-section-heading" style="margin:0;border:none;padding:0;">👥 إدارة المستخدمين</div>
+          <button class="ap-btn ap-btn-ghost" onclick="apLoadUsers()">🔄 تحديث</button>
+        </div>
+        <div class="ap-field" style="margin-bottom:14px;">
+          <input class="ap-input" id="ap-users-search" type="text" placeholder="🔍 بحث بالبريد الإلكتروني أو الاسم..." oninput="apFilterUsers()">
+        </div>
+        <div id="ap-users-body">
+          <div class="ap-loading"><div class="spinner"></div> جاري التحميل...</div>
+        </div>
+        <!-- Ban User Form -->
+        <div style="margin-top:20px;padding:16px;background:#fff8e1;border-radius:14px;border:1.5px solid #ffe082;">
+          <div class="ap-section-heading" style="margin-bottom:12px;border-bottom:none;padding-bottom:0;color:#9a6700;">🚫 حظر مستخدم</div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;">
+            <input class="ap-input" id="ap-ban-email" type="email" placeholder="البريد الإلكتروني..." style="flex:1;min-width:160px;">
+            <input class="ap-input" id="ap-ban-reason" type="text" placeholder="سبب الحظر (اختياري)..." style="flex:2;min-width:160px;">
+            <button class="ap-btn ap-btn-danger" onclick="apBanUser()">🚫 حظر</button>
+          </div>
+          <div id="ap-ban-msg" style="margin-top:8px;font-size:.78rem;min-height:16px;"></div>
+        </div>
       </div>
 
-      <div id="admin-body-field" style="margin-bottom:12px;display:none;">
-        <label style="font-size:.8rem;font-weight:700;color:#0a3d62;display:block;margin-bottom:5px;">📝 النص / الشرح</label>
-        <textarea id="admin-content-body" rows="4" placeholder="اكتب النص أو الشرح هنا..." style="width:100%;padding:9px 12px;border:1.5px solid #d5e8f5;border-radius:10px;font-family:inherit;font-size:.82rem;outline:none;resize:vertical;box-sizing:border-box;"></textarea>
+      <!-- ═══════════════════ TAB: MESSAGES ═══════════════════ -->
+      <div class="ap-tab-panel" id="ap-panel-messages" role="tabpanel">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:16px;">
+          <div class="ap-section-heading" style="margin:0;border:none;padding:0;">💬 رسائل المستخدمين</div>
+          <button class="ap-btn ap-btn-ghost" onclick="apLoadMessages()">🔄 تحديث</button>
+        </div>
+        <div id="ap-messages-body">
+          <div class="ap-loading"><div class="spinner"></div> جاري التحميل...</div>
+        </div>
       </div>
 
-      <div style="margin-bottom:16px;">
-        <label style="font-size:.8rem;font-weight:700;color:#0a3d62;display:block;margin-bottom:5px;">💬 وصف (اختياري)</label>
-        <input id="admin-content-desc" type="text" placeholder="وصف مختصر..." style="width:100%;padding:9px 12px;border:1.5px solid #d5e8f5;border-radius:10px;font-family:inherit;font-size:.82rem;outline:none;box-sizing:border-box;">
-      </div>
+      <!-- ═══════════════════ TAB: CONTENT ═══════════════════ -->
+      <div class="ap-tab-panel" id="ap-panel-content" role="tabpanel">
+        <div style="display:flex;gap:6px;margin-bottom:16px;">
+          <button onclick="adminTab('add')" id="tab-add" class="ap-btn ap-btn-primary" style="flex:1;justify-content:center;padding:10px;">➕ إضافة محتوى</button>
+          <button onclick="adminTab('list')" id="tab-list" class="ap-btn ap-btn-ghost" style="flex:1;justify-content:center;padding:10px;">📋 المحتوى الحالي</button>
+        </div>
 
-      <button onclick="adminSaveContent()" style="width:100%;padding:12px;background:linear-gradient(135deg,#0a3d62,#17a589);color:#fff;border:none;border-radius:12px;font-family:inherit;font-size:.9rem;font-weight:800;cursor:pointer;transition:opacity .2s;">💾 حفظ المحتوى</button>
-      <div id="admin-msg" style="margin-top:10px;text-align:center;font-size:.82rem;min-height:20px;"></div>
-    </div>
+        <!-- ADD TAB -->
+        <div id="admin-tab-add">
+          <div class="ap-field">
+            <label class="ap-label">📁 اختر القسم</label>
+            <select id="admin-section-select" class="ap-select" onchange="adminLoadSectionPath()">
+              <option value="">— جاري تحميل الأقسام —</option>
+            </select>
+            <div id="admin-section-path" style="font-size:.72rem;color:#888;margin-top:4px;"></div>
+          </div>
+          <div class="ap-field">
+            <label class="ap-label">🏷️ نوع المحتوى</label>
+            <select id="admin-content-type" onchange="adminToggleFields()" class="ap-select">
+              <option value="video">🎬 فيديو</option>
+              <option value="text">📝 نص / شرح</option>
+              <option value="link">🔗 رابط</option>
+              <option value="pdf">📄 PDF</option>
+            </select>
+          </div>
+          <div class="ap-field">
+            <label class="ap-label">📌 العنوان</label>
+            <input id="admin-content-title" type="text" placeholder="مثال: شرح الدرس الأول" class="ap-input">
+          </div>
+          <div id="admin-url-field" class="ap-field">
+            <label class="ap-label">🔗 الرابط (URL)</label>
+            <input id="admin-content-url" type="url" placeholder="https://..." class="ap-input" style="direction:ltr;">
+            <div style="font-size:.7rem;color:#888;margin-top:3px;" id="admin-url-hint">للفيديو: رابط يوتيوب أو أي رابط فيديو</div>
+          </div>
+          <div id="admin-body-field" class="ap-field" style="display:none;">
+            <label class="ap-label">📝 النص / الشرح</label>
+            <textarea id="admin-content-body" rows="4" placeholder="اكتب النص أو الشرح هنا..." class="ap-textarea ap-input"></textarea>
+          </div>
+          <div class="ap-field">
+            <label class="ap-label">💬 وصف (اختياري)</label>
+            <input id="admin-content-desc" type="text" placeholder="وصف مختصر..." class="ap-input">
+          </div>
+          <button onclick="adminSaveContent()" class="ap-btn ap-btn-primary" style="width:100%;justify-content:center;padding:13px;font-size:.9rem;">💾 حفظ المحتوى</button>
+          <div id="admin-msg" style="margin-top:10px;text-align:center;font-size:.82rem;min-height:20px;"></div>
+        </div>
 
-    <!-- LIST TAB -->
-    <div id="admin-tab-list" style="display:none;">
-      <div style="margin-bottom:10px;">
-        <select id="admin-list-section" style="width:100%;padding:9px 12px;border:1.5px solid #d5e8f5;border-radius:10px;font-family:inherit;font-size:.82rem;outline:none;background:#f8fbff;" onchange="adminLoadContentList()">
-          <option value="">اختر القسم لعرض محتواه</option>
-        </select>
+        <!-- LIST TAB -->
+        <div id="admin-tab-list" style="display:none;">
+          <div class="ap-field">
+            <select id="admin-list-section" class="ap-select" onchange="adminLoadContentList()">
+              <option value="">اختر القسم لعرض محتواه</option>
+            </select>
+          </div>
+          <div id="admin-content-list" style="max-height:380px;overflow-y:auto;"></div>
+        </div>
       </div>
-      <div id="admin-content-list" style="max-height:350px;overflow-y:auto;"></div>
-    </div>
-  </div>
-</div>
+      <!-- End Content Tab -->
+
+    </div><!-- /ap-body -->
+  </div><!-- /ap-modal -->
+</div><!-- /admin-panel -->
 
 <style>
 #admin-panel select:focus, #admin-panel input:focus, #admin-panel textarea:focus {
@@ -3240,19 +3656,384 @@ async function adminDeleteContent(id) {
   } catch(e) { alert('خطأ في الحذف: ' + e.message); }
 }
 
+// ── adminTab: يُستخدم داخل تاب المحتوى ────────────────────────
 function adminTab(tab) {
   document.getElementById('admin-tab-add').style.display  = tab === 'add'  ? '' : 'none';
   document.getElementById('admin-tab-list').style.display = tab === 'list' ? '' : 'none';
-  document.getElementById('tab-add').style.background  = tab === 'add'  ? '#0a3d62' : '#eaf4fb';
-  document.getElementById('tab-add').style.color       = tab === 'add'  ? '#fff'    : '#0a3d62';
-  document.getElementById('tab-list').style.background = tab === 'list' ? '#0a3d62' : '#eaf4fb';
-  document.getElementById('tab-list').style.color      = tab === 'list' ? '#fff'    : '#0a3d62';
+  var btnAdd  = document.getElementById('tab-add');
+  var btnList = document.getElementById('tab-list');
+  if (btnAdd) {
+    btnAdd.className  = tab === 'add'  ? 'ap-btn ap-btn-primary' : 'ap-btn ap-btn-ghost';
+    btnAdd.style.flex = '1'; btnAdd.style.justifyContent = 'center'; btnAdd.style.padding = '10px';
+  }
+  if (btnList) {
+    btnList.className  = tab === 'list' ? 'ap-btn ap-btn-primary' : 'ap-btn ap-btn-ghost';
+    btnList.style.flex = '1'; btnList.style.justifyContent = 'center'; btnList.style.padding = '10px';
+  }
   if (tab === 'list') adminLoadContentList();
 }
 
+// ── toggleAdminPanel ────────────────────────────────────────────
 function toggleAdminPanel() {
-  const p = document.getElementById('admin-panel');
-  p.style.display = p.style.display === 'none' ? 'block' : 'none';
+  var p = document.getElementById('admin-panel');
+  if (!p) return;
+  var isOpen = p.classList.contains('ap-open');
+  if (isOpen) {
+    p.classList.remove('ap-open');
+    document.body.style.overflow = '';
+  } else {
+    p.classList.add('ap-open');
+    document.body.style.overflow = 'hidden';
+    apSwitchTab('dashboard');
+    apLoadDashboard();
+  }
+}
+
+// ── Close on overlay click ──────────────────────────────────────
+document.addEventListener('DOMContentLoaded', function() {
+  var panel = document.getElementById('admin-panel');
+  if (panel) {
+    panel.addEventListener('click', function(e) {
+      if (e.target === panel) toggleAdminPanel();
+    });
+  }
+});
+
+// ── apSwitchTab ─────────────────────────────────────────────────
+function apSwitchTab(tab) {
+  // Update nav buttons
+  document.querySelectorAll('.ap-nav-btn').forEach(function(btn) {
+    btn.classList.remove('active');
+  });
+  var activeBtn = document.getElementById('ap-tab-' + tab);
+  if (activeBtn) activeBtn.classList.add('active');
+
+  // Show correct panel
+  document.querySelectorAll('.ap-tab-panel').forEach(function(p) {
+    p.classList.remove('active');
+  });
+  var activePanel = document.getElementById('ap-panel-' + tab);
+  if (activePanel) activePanel.classList.add('active');
+
+  // Lazy load data
+  if (tab === 'dashboard')     apLoadDashboard();
+  else if (tab === 'requests') apLoadRequests();
+  else if (tab === 'subscriptions') apLoadSubscriptions();
+  else if (tab === 'users')    apLoadUsers();
+  else if (tab === 'messages') apLoadMessages();
+  else if (tab === 'content')  { /* already managed by adminTab */ }
+}
+
+// ────────────────────────────────────────────────────────────────
+// DASHBOARD TAB
+// ────────────────────────────────────────────────────────────────
+async function apLoadDashboard() {
+  if (!window.supabase) return;
+  try {
+    var [usersRes, subsRes, msgsRes, contentRes] = await Promise.all([
+      window.supabase.from('profiles').select('id', { count: 'exact', head: true }),
+      window.supabase.from('subscriptions').select('id, status, full_name, user_email, created_at', { count: 'exact' }),
+      window.supabase.from('contact_messages').select('id', { count: 'exact', head: true }),
+      window.supabase.from('section_content').select('id', { count: 'exact', head: true }),
+    ]);
+
+    var totalUsers   = usersRes.count || 0;
+    var totalSubs    = subsRes.count  || 0;
+    var allSubs      = subsRes.data   || [];
+    var pending      = allSubs.filter(function(s){ return s.status === 'pending'; }).length;
+    var active       = allSubs.filter(function(s){ return s.status === 'active';  }).length;
+    var totalMsgs    = msgsRes.count  || 0;
+    var totalContent = contentRes.count || 0;
+
+    _apSetStat('ap-stat-users',   totalUsers);
+    _apSetStat('ap-stat-subs',    totalSubs);
+    _apSetStat('ap-stat-pending', pending);
+    _apSetStat('ap-stat-active',  active);
+    _apSetStat('ap-stat-msgs',    totalMsgs);
+    _apSetStat('ap-stat-content', totalContent);
+
+    // Recent activity: last 8 subscriptions
+    var recent = allSubs.slice(0, 8);
+    var actEl = document.getElementById('ap-recent-activity');
+    if (!actEl) return;
+    if (recent.length === 0) {
+      actEl.innerHTML = '<div class="ap-empty"><div class="ap-empty-icon">📭</div>لا يوجد نشاط حديث</div>';
+      return;
+    }
+    var statusLabels = {
+      pending: '<span class="ap-badge pending">⏳ معلق</span>',
+      active: '<span class="ap-badge active">✅ نشط</span>',
+      expired: '<span class="ap-badge expired">❌ منتهي</span>',
+      cancelled: '<span class="ap-badge cancelled">🚫 ملغي</span>',
+    };
+    actEl.innerHTML = '<div class="ap-table-wrap"><table class="ap-table"><thead><tr>'
+      + '<th>الاسم</th><th>البريد</th><th>الحالة</th><th>تاريخ الطلب</th>'
+      + '</tr></thead><tbody>'
+      + recent.map(function(s) {
+        return '<tr><td>' + _apEsc(s.full_name || '—') + '</td>'
+          + '<td style="direction:ltr;text-align:right;">' + _apEsc(s.user_email || '—') + '</td>'
+          + '<td>' + (statusLabels[s.status] || s.status) + '</td>'
+          + '<td>' + _apDate(s.created_at) + '</td></tr>';
+      }).join('')
+      + '</tbody></table></div>';
+  } catch(err) {
+    var actEl2 = document.getElementById('ap-recent-activity');
+    if (actEl2) actEl2.innerHTML = '<div class="ap-empty" style="color:#e74c3c;">❌ خطأ: ' + _apEsc(err.message) + '</div>';
+  }
+}
+
+function _apSetStat(id, val) {
+  var el = document.getElementById(id);
+  if (el) el.textContent = val;
+}
+
+// ────────────────────────────────────────────────────────────────
+// REQUESTS TAB
+// ────────────────────────────────────────────────────────────────
+async function apLoadRequests() {
+  var el = document.getElementById('ap-requests-body');
+  if (!el || !window.supabase) return;
+  el.innerHTML = '<div class="ap-loading"><div class="spinner"></div> جاري التحميل...</div>';
+  try {
+    var { data, error } = await window.supabase
+      .from('subscriptions')
+      .select('*')
+      .eq('status', 'pending')
+      .order('requested_at', { ascending: false });
+    if (error) throw error;
+    if (!data || data.length === 0) {
+      el.innerHTML = '<div class="ap-empty"><div class="ap-empty-icon">🎉</div>لا توجد طلبات معلقة</div>';
+      return;
+    }
+    el.innerHTML = '<div class="ap-table-wrap"><table class="ap-table"><thead><tr>'
+      + '<th>الاسم</th><th>البريد</th><th>التخصص</th><th>النوع</th><th>التاريخ</th><th>إجراء</th>'
+      + '</tr></thead><tbody>'
+      + data.map(function(r) {
+        return '<tr>'
+          + '<td>' + _apEsc(r.full_name || '—') + '</td>'
+          + '<td style="direction:ltr;font-size:.72rem;">' + _apEsc(r.user_email || '—') + '</td>'
+          + '<td>' + _apEsc(r.specialty || '—') + '</td>'
+          + '<td><span class="ap-badge pending">' + (r.subscription_type === 'yearly' ? '📅 سنوي' : '📆 شهري') + '</span></td>'
+          + '<td>' + _apDate(r.requested_at) + '</td>'
+          + '<td style="white-space:nowrap;">'
+          + '<button class="ap-btn ap-btn-success" style="margin-left:4px;" onclick="apApproveReq(\'' + r.id + '\',\'' + r.user_id + '\')">✅ قبول</button>'
+          + '<button class="ap-btn ap-btn-danger" onclick="apRejectReq(\'' + r.id + '\',\'' + r.user_id + '\')">❌ رفض</button>'
+          + '</td></tr>';
+      }).join('')
+      + '</tbody></table></div>';
+  } catch(err) {
+    el.innerHTML = '<div class="ap-empty" style="color:#e74c3c;">❌ ' + _apEsc(err.message) + '</div>';
+  }
+}
+
+async function apApproveReq(subId, userId) {
+  await approveSubscription(subId, userId);
+  setTimeout(apLoadRequests, 800);
+  setTimeout(apLoadDashboard, 1000);
+}
+
+async function apRejectReq(subId, userId) {
+  var reason = prompt('سبب الرفض (اختياري):') || '';
+  await cancelSubscription(subId, userId, reason);
+  setTimeout(apLoadRequests, 800);
+}
+
+// ────────────────────────────────────────────────────────────────
+// SUBSCRIPTIONS TAB
+// ────────────────────────────────────────────────────────────────
+async function apLoadSubscriptions() {
+  var el = document.getElementById('ap-subscriptions-body');
+  if (!el || !window.supabase) return;
+  el.innerHTML = '<div class="ap-loading"><div class="spinner"></div> جاري التحميل...</div>';
+  var filterVal = (document.getElementById('ap-sub-filter') || {}).value || '';
+  try {
+    var query = window.supabase
+      .from('subscriptions')
+      .select('*')
+      .order('created_at', { ascending: false });
+    if (filterVal) query = query.eq('status', filterVal);
+    var { data, error } = await query;
+    if (error) throw error;
+    if (!data || data.length === 0) {
+      el.innerHTML = '<div class="ap-empty"><div class="ap-empty-icon">📭</div>لا توجد اشتراكات</div>';
+      return;
+    }
+    var statusMap = {
+      pending: '<span class="ap-badge pending">⏳ معلق</span>',
+      active:  '<span class="ap-badge active">✅ نشط</span>',
+      expired: '<span class="ap-badge expired">❌ منتهي</span>',
+      cancelled: '<span class="ap-badge cancelled">🚫 ملغي</span>',
+    };
+    el.innerHTML = '<div class="ap-table-wrap"><table class="ap-table"><thead><tr>'
+      + '<th>الاسم</th><th>البريد</th><th>الحالة</th><th>النوع</th><th>الانتهاء</th><th>إجراء</th>'
+      + '</tr></thead><tbody>'
+      + data.map(function(s) {
+        return '<tr>'
+          + '<td>' + _apEsc(s.full_name || '—') + '</td>'
+          + '<td style="direction:ltr;font-size:.72rem;">' + _apEsc(s.user_email || '—') + '</td>'
+          + '<td>' + (statusMap[s.status] || s.status) + '</td>'
+          + '<td>' + (s.subscription_type === 'yearly' ? '📅 سنوي' : '📆 شهري') + '</td>'
+          + '<td>' + _apDate(s.end_date) + '</td>'
+          + '<td style="white-space:nowrap;">'
+          + (s.status === 'pending' ? '<button class="ap-btn ap-btn-success" style="margin-left:4px;" onclick="apApproveReq(\'' + s.id + '\',\'' + s.user_id + '\')">✅</button>' : '')
+          + (s.status !== 'cancelled' ? '<button class="ap-btn ap-btn-danger" onclick="apCancelSub(\'' + s.id + '\',\'' + s.user_id + '\')">🚫</button>' : '')
+          + '</td></tr>';
+      }).join('')
+      + '</tbody></table></div>';
+  } catch(err) {
+    el.innerHTML = '<div class="ap-empty" style="color:#e74c3c;">❌ ' + _apEsc(err.message) + '</div>';
+  }
+}
+
+async function apCancelSub(subId, userId) {
+  var reason = prompt('سبب الإلغاء (اختياري):') || '';
+  await cancelSubscription(subId, userId, reason);
+  setTimeout(apLoadSubscriptions, 800);
+}
+
+// ────────────────────────────────────────────────────────────────
+// USERS TAB
+// ────────────────────────────────────────────────────────────────
+var _apUsersCache = [];
+
+async function apLoadUsers() {
+  var el = document.getElementById('ap-users-body');
+  if (!el || !window.supabase) return;
+  el.innerHTML = '<div class="ap-loading"><div class="spinner"></div> جاري التحميل...</div>';
+  try {
+    var [profilesRes, bannedRes] = await Promise.all([
+      window.supabase.from('profiles').select('*').order('updated_at', { ascending: false }),
+      window.supabase.from('banned_users').select('email'),
+    ]);
+    if (profilesRes.error) throw profilesRes.error;
+    var profiles = profilesRes.data || [];
+    var bannedEmails = new Set((bannedRes.data || []).map(function(b){ return b.email; }));
+    _apUsersCache = profiles;
+    _apRenderUsers(profiles, bannedEmails);
+  } catch(err) {
+    el.innerHTML = '<div class="ap-empty" style="color:#e74c3c;">❌ ' + _apEsc(err.message) + '</div>';
+  }
+}
+
+function apFilterUsers() {
+  var q = (document.getElementById('ap-users-search').value || '').toLowerCase();
+  if (!q) { apLoadUsers(); return; }
+  var filtered = _apUsersCache.filter(function(u) {
+    return (u.email || '').toLowerCase().includes(q) || (u.full_name || '').toLowerCase().includes(q);
+  });
+  _apRenderUsers(filtered, new Set());
+}
+
+function _apRenderUsers(profiles, bannedEmails) {
+  var el = document.getElementById('ap-users-body');
+  if (!el) return;
+  if (!profiles || profiles.length === 0) {
+    el.innerHTML = '<div class="ap-empty"><div class="ap-empty-icon">👥</div>لا يوجد مستخدمون</div>';
+    return;
+  }
+  var subMap = { none:'—', pending:'⏳ معلق', active:'✅ نشط', expired:'❌ منتهي', cancelled:'🚫 ملغي' };
+  el.innerHTML = '<div class="ap-table-wrap"><table class="ap-table"><thead><tr>'
+    + '<th>البريد</th><th>الاسم</th><th>الاشتراك</th><th>حالة الحساب</th><th>إجراء</th>'
+    + '</tr></thead><tbody>'
+    + profiles.map(function(u) {
+      var isBanned = bannedEmails.has((u.email || '').toLowerCase());
+      var isAdmin  = (u.role === 'admin'); // من profiles.role — لا مقارنة بريد
+      return '<tr>'
+        + '<td style="direction:ltr;font-size:.72rem;">' + _apEsc(u.email || '—') + '</td>'
+        + '<td>' + _apEsc(u.full_name || '—') + '</td>'
+        + '<td>' + (subMap[u.subscription_status] || u.subscription_status || '—') + '</td>'
+        + '<td>'
+        + (isAdmin ? '<span class="ap-badge admin">👑 أدمن</span>' : '')
+        + (isBanned ? '<span class="ap-badge expired">🚫 محظور</span>' : (!isAdmin ? '<span class="ap-badge user">👤 عادي</span>' : ''))
+        + '</td>'
+        + '<td style="white-space:nowrap;">'
+        + (!isAdmin && !isBanned ? '<button class="ap-btn ap-btn-danger" onclick="apBanUserDirect(\'' + _apEsc(u.email) + '\')">🚫 حظر</button>' : '')
+        + (isBanned ? '<button class="ap-btn ap-btn-success" onclick="apUnbanUserDirect(\'' + _apEsc(u.email) + '\')">✅ رفع حظر</button>' : '')
+        + '</td></tr>';
+    }).join('')
+    + '</tbody></table></div>';
+}
+
+async function apBanUser() {
+  var email  = (document.getElementById('ap-ban-email').value  || '').trim();
+  var reason = (document.getElementById('ap-ban-reason').value || '').trim();
+  var msgEl  = document.getElementById('ap-ban-msg');
+  if (!email) { if (msgEl) { msgEl.style.color='#e74c3c'; msgEl.textContent='❌ أدخل البريد الإلكتروني'; } return; }
+  if (msgEl) { msgEl.style.color='#0a3d62'; msgEl.textContent='⏳ جاري الحظر...'; }
+  await window.banUser(email, reason);
+  document.getElementById('ap-ban-email').value  = '';
+  document.getElementById('ap-ban-reason').value = '';
+  if (msgEl) { msgEl.style.color='#17a589'; msgEl.textContent='✅ تم الحظر بنجاح'; setTimeout(function(){ msgEl.textContent=''; }, 3000); }
+  apLoadUsers();
+}
+
+async function apBanUserDirect(email) {
+  var reason = prompt('سبب الحظر (اختياري):') || '';
+  await window.banUser(email, reason);
+  apLoadUsers();
+}
+
+async function apUnbanUserDirect(email) {
+  await window.unbanUser(email);
+  apLoadUsers();
+}
+
+// ────────────────────────────────────────────────────────────────
+// MESSAGES TAB
+// ────────────────────────────────────────────────────────────────
+async function apLoadMessages() {
+  var el = document.getElementById('ap-messages-body');
+  if (!el || !window.supabase) return;
+  el.innerHTML = '<div class="ap-loading"><div class="spinner"></div> جاري التحميل...</div>';
+  try {
+    var { data, error } = await window.supabase
+      .from('contact_messages')
+      .select('*')
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    if (!data || data.length === 0) {
+      el.innerHTML = '<div class="ap-empty"><div class="ap-empty-icon">📭</div>لا توجد رسائل بعد</div>';
+      return;
+    }
+    el.innerHTML = data.map(function(m) {
+      return '<div class="ap-msg-item">'
+        + '<div class="ap-msg-meta">'
+        + '<span>👤 ' + _apEsc(m.name || m.full_name || 'مجهول') + '</span>'
+        + '<span>📧 ' + _apEsc(m.email || '—') + '</span>'
+        + '<span>🕐 ' + _apDate(m.created_at) + '</span>'
+        + (m.subject ? '<span>📌 ' + _apEsc(m.subject) + '</span>' : '')
+        + '</div>'
+        + '<div class="ap-msg-text">' + _apEsc(m.message || m.body || '—') + '</div>'
+        + '<div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;">'
+        + '<button class="ap-btn ap-btn-danger" onclick="apDeleteMessage(\'' + m.id + '\')">🗑️ حذف</button>'
+        + '</div>'
+        + '</div>';
+    }).join('');
+  } catch(err) {
+    el.innerHTML = '<div class="ap-empty" style="color:#e74c3c;">❌ ' + _apEsc(err.message) + '</div>';
+  }
+}
+
+async function apDeleteMessage(id) {
+  if (!confirm('هل تريد حذف هذه الرسالة؟')) return;
+  try {
+    var { error } = await window.supabase.from('contact_messages').delete().eq('id', id);
+    if (error) throw error;
+    apLoadMessages();
+  } catch(err) { alert('خطأ في الحذف: ' + err.message); }
+}
+
+// ────────────────────────────────────────────────────────────────
+// Helpers
+// ────────────────────────────────────────────────────────────────
+function _apEsc(s) {
+  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function _apDate(d) {
+  if (!d) return '—';
+  try {
+    return new Date(d).toLocaleDateString('ar-EG', { year:'numeric', month:'short', day:'numeric' });
+  } catch(e) { return String(d); }
 }
 
 // نهاية لوحة التحكم
@@ -3457,33 +4238,26 @@ document.addEventListener('DOMContentLoaded', function() {
       e.preventDefault();
       e.stopPropagation();
 
-      // تحديد نوع الرابط وعرضه داخلياً
+      // تحديد نوع الرابط وعرضه داخلياً — دائماً داخلي بدون استثناء
       var title = target.textContent.trim() || href;
       var type = _guessLinkType(href);
-
-      if (type === 'download_only') {
-        // تحميل مباشر بدون viewer
-        var a = document.createElement('a');
-        a.href = href;
-        a.download = '';
-        a.click();
-      } else {
-        openResource(href, title, type);
-      }
+      openResource(href, title, type);
     }
   }, true);
 
-  // ── 2. اعتراض window.open ────────────────────────────────────────
+  // ── 2. اعتراض window.open — ممنوع تماماً لغير الأدمن ────────────
   var _origOpen = window.open;
   window.open = function(url, target, features) {
-    if (!url) return null;
-    if (target === '_blank' || !target || target === '_new') {
-      var title = url.split('/').pop() || url;
-      var type = _guessLinkType(url);
-      openResource(url, title, type);
-      return { closed: false, focus: function(){}, close: function(){} };
+    // الأدمن: يُسمح بفتح النوافذ بشكل طبيعي
+    if (window._isAdminUser) {
+      return _origOpen.call(window, url, target, features);
     }
-    return _origOpen.call(window, url, target, features);
+    if (!url) return null;
+    // جميع المستخدمين العاديين → viewer داخلي
+    var title = url.split('/').pop() || url;
+    var type = _guessLinkType(url);
+    openResource(url, title, type);
+    return { closed: false, focus: function(){}, close: function(){} };
   };
 
   // ── 3. تخمين نوع الرابط ─────────────────────────────────────────
@@ -3495,7 +4269,7 @@ document.addEventListener('DOMContentLoaded', function() {
     if (/\.(jpe?g|png|webp|gif|svg|bmp)($|\?|#)/.test(lower)) return 'image';
     if (/youtube\.com|youtu\.be/.test(url))                    return 'video';
     if (/drive\.google\.com/.test(url))                        return 'pdf';
-    if (/\.(zip|rar|7z|tar|gz)($|\?|#)/.test(lower))          return 'download_only';
+    // ملفات مضغوطة أو غير معروفة — نعرض fallback داخلي
     return 'link'; // HTML/iframe داخلي
   }
 
@@ -3576,37 +4350,183 @@ async function _getSignedPdfUrl(storagePath) {
   return storagePath;
 }
 
-// ==================== NativePDFViewer ====================
+// ==================== NativePDFViewer — PDF.js Secure Viewer ====================
+// يعرض PDF داخلياً باستخدام PDF.js مع منع التنزيل والنسخ والطباعة بالكامل
 var NativePDFViewer = (function() {
   var _overlayEl = null;
+  var _pdfDoc    = null;
+  var _pageNum   = 1;
+  var _totalPages = 0;
+  var _rendering = false;
+  var _PDFJS_CDN = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+  var _PDFJS_WORKER = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  var _pdfJsLoaded = false;
 
   function _esc(s) {
     return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   }
 
+  // تحميل PDF.js إذا لم يكن محمّلاً
+  function _loadPdfJs() {
+    return new Promise(function(resolve, reject) {
+      if (window.pdfjsLib) { resolve(window.pdfjsLib); return; }
+      if (_pdfJsLoaded) {
+        var t = setInterval(function() {
+          if (window.pdfjsLib) { clearInterval(t); resolve(window.pdfjsLib); }
+        }, 100);
+        return;
+      }
+      _pdfJsLoaded = true;
+      var s = document.createElement('script');
+      s.src = _PDFJS_CDN;
+      s.onload = function() {
+        window.pdfjsLib.GlobalWorkerOptions.workerSrc = _PDFJS_WORKER;
+        resolve(window.pdfjsLib);
+      };
+      s.onerror = reject;
+      document.head.appendChild(s);
+    });
+  }
+
+  // رسم صفحة على canvas
+  function _renderPage(num) {
+    if (!_pdfDoc || _rendering) return;
+    _rendering = true;
+    _pdfDoc.getPage(num).then(function(page) {
+      var container = document.getElementById('npdf-canvas-container');
+      if (!container) { _rendering = false; return; }
+
+      var viewport = page.getViewport({ scale: 1.5 });
+      // تحديد العرض بحسب حجم الشاشة
+      var maxW = container.clientWidth || window.innerWidth;
+      var scale = Math.min(1.5, maxW / viewport.width);
+      viewport = page.getViewport({ scale: scale });
+
+      var canvas = document.createElement('canvas');
+      canvas.style.display = 'block';
+      canvas.style.margin = '0 auto 12px';
+      canvas.style.borderRadius = '8px';
+      canvas.style.boxShadow = '0 4px 20px rgba(0,0,0,.4)';
+      canvas.style.maxWidth = '100%';
+      canvas.style.pointerEvents = 'none'; // منع التفاعل المباشر
+      canvas.oncontextmenu = function() { return false; };
+      canvas.width  = viewport.width;
+      canvas.height = viewport.height;
+
+      var ctx = canvas.getContext('2d');
+      var renderCtx = { canvasContext: ctx, viewport: viewport };
+      page.render(renderCtx).promise.then(function() {
+        _rendering = false;
+        container.innerHTML = '';
+        container.appendChild(canvas);
+        _updatePageInfo();
+      }).catch(function() { _rendering = false; });
+    }).catch(function() { _rendering = false; });
+  }
+
+  function _updatePageInfo() {
+    var el = document.getElementById('npdf-page-info');
+    if (el) el.textContent = 'صفحة ' + _pageNum + ' من ' + _totalPages;
+    var prevBtn = document.getElementById('npdf-prev');
+    var nextBtn = document.getElementById('npdf-next');
+    if (prevBtn) prevBtn.disabled = (_pageNum <= 1);
+    if (nextBtn) nextBtn.disabled = (_pageNum >= _totalPages);
+  }
+
   async function open(url, title) {
     if (!url) return;
     close();
+
     var finalUrl = url;
     try { finalUrl = await _getSignedPdfUrl(url); } catch(e) {}
+
     document.body.style.overflow = 'hidden';
     document.body.classList.add('rv-open');
+
     var ol = document.createElement('div');
     ol.id = 'native-pdf-overlay';
+
+    // هيكل الـ overlay
     ol.innerHTML =
       '<div id="native-pdf-modal">' +
         '<div id="native-pdf-header">' +
           '<span style="font-size:1.3rem;flex-shrink:0">📄</span>' +
-          '<span id="native-pdf-title">' + _esc(title || 'PDF') + '</span>' +
-          '<button id="native-pdf-close" onclick="NativePDFViewer.close()" title="إغلاق">✕</button>' +
+          '<span id="native-pdf-title" style="flex:1;font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + _esc(title || 'PDF') + '</span>' +
+          // أزرار التنقل بين الصفحات
+          '<div id="npdf-nav" style="display:flex;align-items:center;gap:8px;flex-shrink:0;">' +
+            '<button id="npdf-prev" onclick="NativePDFViewer.prevPage()" style="background:rgba(255,255,255,.2);border:none;color:#fff;border-radius:8px;padding:5px 12px;cursor:pointer;font-size:.82rem;font-family:inherit;" title="الصفحة السابقة">◀</button>' +
+            '<span id="npdf-page-info" style="font-size:.78rem;opacity:.85;white-space:nowrap;"></span>' +
+            '<button id="npdf-next" onclick="NativePDFViewer.nextPage()" style="background:rgba(255,255,255,.2);border:none;color:#fff;border-radius:8px;padding:5px 12px;cursor:pointer;font-size:.82rem;font-family:inherit;" title="الصفحة التالية">▶</button>' +
+          '</div>' +
+          '<button id="native-pdf-close" onclick="NativePDFViewer.close()" title="إغلاق" style="background:rgba(255,255,255,.18);border:none;border-radius:50%;width:34px;height:34px;color:#fff;font-size:1.1rem;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;">✕</button>' +
         '</div>' +
-        '<iframe id="native-pdf-frame" src="' + finalUrl + '" title="' + _esc(title || 'PDF') + '"></iframe>' +
+        '<div id="native-pdf-body" style="flex:1;overflow-y:auto;overflow-x:hidden;background:#525659;padding:20px 12px;-webkit-overflow-scrolling:touch;">' +
+          '<div id="npdf-loading" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:60px;color:#fff;">' +
+            '<div style="width:48px;height:48px;border:4px solid rgba(255,255,255,.2);border-top-color:#17a589;border-radius:50%;animation:spin .8s linear infinite;"></div>' +
+            '<p style="font-size:.9rem;opacity:.8;">جاري تحميل الملف...</p>' +
+          '</div>' +
+          '<div id="npdf-canvas-container" style="display:none;max-width:100%;"></div>' +
+          '<div id="npdf-error" style="display:none;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:40px;color:#fff;text-align:center;">' +
+            '<span style="font-size:3rem;">⚠️</span>' +
+            '<p style="font-size:.9rem;opacity:.8;max-width:300px;">تعذّر تحميل الملف. تأكد من الاتصال بالإنترنت وأن الملف متاح.</p>' +
+          '</div>' +
+        '</div>' +
       '</div>';
-    ol._keyHandler = function(e) { if (e.key === 'Escape') NativePDFViewer.close(); };
+
+    // منع Right Click على الـ overlay
+    ol.addEventListener('contextmenu', function(e) { e.preventDefault(); return false; });
+
+    ol._keyHandler = function(e) {
+      if (e.key === 'Escape') { NativePDFViewer.close(); return; }
+      if (e.key === 'ArrowRight' || e.key === 'ArrowDown') NativePDFViewer.nextPage();
+      if (e.key === 'ArrowLeft'  || e.key === 'ArrowUp')   NativePDFViewer.prevPage();
+    };
     document.addEventListener('keydown', ol._keyHandler);
-    ol.addEventListener('click', function(e) { if (e.target === ol) NativePDFViewer.close(); });
     document.body.appendChild(ol);
     _overlayEl = ol;
+
+    // تحميل PDF.js وفتح الملف
+    _loadPdfJs().then(function(pdfjsLib) {
+      return pdfjsLib.getDocument({
+        url: finalUrl,
+        disableFontFace: false,
+        cMapUrl: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/cmaps/',
+        cMapPacked: true,
+      }).promise;
+    }).then(function(doc) {
+      _pdfDoc    = doc;
+      _pageNum   = 1;
+      _totalPages = doc.numPages;
+
+      var loadingEl   = document.getElementById('npdf-loading');
+      var containerEl = document.getElementById('npdf-canvas-container');
+      if (loadingEl)   loadingEl.style.display   = 'none';
+      if (containerEl) containerEl.style.display  = 'block';
+
+      _renderPage(_pageNum);
+    }).catch(function(err) {
+      console.error('[NativePDFViewer] فشل التحميل:', err);
+      var loadingEl = document.getElementById('npdf-loading');
+      var errorEl   = document.getElementById('npdf-error');
+      if (loadingEl) loadingEl.style.display = 'none';
+      if (errorEl)   errorEl.style.display   = 'flex';
+    });
+  }
+
+  function prevPage() {
+    if (_pageNum <= 1) return;
+    _pageNum--;
+    _renderPage(_pageNum);
+    var body = document.getElementById('native-pdf-body');
+    if (body) body.scrollTop = 0;
+  }
+
+  function nextPage() {
+    if (_pageNum >= _totalPages) return;
+    _pageNum++;
+    _renderPage(_pageNum);
+    var body = document.getElementById('native-pdf-body');
+    if (body) body.scrollTop = 0;
   }
 
   function close() {
@@ -3617,11 +4537,15 @@ var NativePDFViewer = (function() {
     }
     var ol = document.getElementById('native-pdf-overlay');
     if (ol) ol.remove();
+    _pdfDoc    = null;
+    _pageNum   = 1;
+    _totalPages = 0;
+    _rendering  = false;
     document.body.style.overflow = '';
     document.body.classList.remove('rv-open');
   }
 
-  return { open, close };
+  return { open, close, prevPage, nextPage };
 })();
 
 // ==================== CONTENT PROTECTION SYSTEM ====================
@@ -3701,6 +4625,47 @@ var NativePDFViewer = (function() {
     }
   }, { passive: false });
 
+  // ── 9. منع Cut ─────────────────────────────────────────────────────
+  document.addEventListener('cut', function(e) {
+    if (window._isAdminUser) return;
+    e.preventDefault(); return false;
+  }, true);
+
+  // ── 10. منع Download من أي عنصر <a download> ───────────────────────
+  document.addEventListener('click', function(e) {
+    if (window._isAdminUser) return;
+    var t = e.target.closest('a[download], a[href$=".pdf"], a[href$=".mp4"], a[href$=".mp3"]');
+    if (t) {
+      e.preventDefault();
+      e.stopPropagation();
+      // إذا كان ملف قابل للعرض — نفتحه داخلياً
+      var href = t.getAttribute('href');
+      if (href && !href.startsWith('#')) {
+        var type = (href.toLowerCase().endsWith('.pdf') || href.toLowerCase().includes('.pdf')) ? 'pdf'
+                 : (href.toLowerCase().endsWith('.mp4') || href.toLowerCase().endsWith('.webm')) ? 'video'
+                 : href.toLowerCase().endsWith('.mp3') ? 'audio' : 'link';
+        openResource(href, t.textContent.trim() || 'ملف', type);
+      }
+      return false;
+    }
+  }, true);
+
+  // ── 11. منع Pointer Events على الـ canvas (صور PDF) ─────────────────
+  document.addEventListener('pointerdown', function(e) {
+    if (window._isAdminUser) return;
+    if (e.target.tagName === 'CANVAS') {
+      e.preventDefault();
+    }
+  }, { passive: false });
+
+  // ── 12. منع Long Press على iOS (لمنع حفظ الصور) ─────────────────────
+  document.addEventListener('touchend', function(e) {
+    if (window._isAdminUser) return;
+    if (e.target.tagName === 'IMG' || e.target.tagName === 'CANVAS') {
+      e.preventDefault();
+    }
+  }, { passive: false });
+
 })();
 
 // ==================== الحماية تُطبَّق بعد تحديد حالة المستخدم ====================
@@ -3717,6 +4682,1344 @@ var NativePDFViewer = (function() {
     }, 1500);
   });
 })();
+
+// ==================== منع فتح الروابط الخارجية من المحتوى الديناميكي ====================
+// MutationObserver يراقب أي عنصر جديد يُضاف ويُزيل target="_blank" و download
+(function() {
+  function _sanitizeLinks(root) {
+    if (window._isAdminUser) return;
+    // إزالة target="_blank"
+    root.querySelectorAll('a[target="_blank"]').forEach(function(a) {
+      a.removeAttribute('target');
+    });
+    // إزالة download attribute
+    root.querySelectorAll('[download]').forEach(function(el) {
+      el.removeAttribute('download');
+    });
+    // إزالة روابط مباشرة لـ PDF أو ملفات
+    root.querySelectorAll('a[href$=".pdf"], a[href$=".mp4"], a[href$=".zip"], a[href$=".rar"]').forEach(function(a) {
+      if (!a.classList.contains('rv-btn')) {
+        a.addEventListener('click', function(e) {
+          if (window._isAdminUser) return;
+          e.preventDefault();
+          e.stopPropagation();
+          openResource(a.href, a.textContent.trim() || 'ملف', 'link');
+        }, true);
+      }
+    });
+  }
+
+  document.addEventListener('DOMContentLoaded', function() {
+    _sanitizeLinks(document);
+    // مراقبة أي تغييرات لاحقة في DOM
+    var observer = new MutationObserver(function(mutations) {
+      mutations.forEach(function(m) {
+        m.addedNodes.forEach(function(node) {
+          if (node.nodeType === 1) _sanitizeLinks(node);
+        });
+      });
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+  });
+})();
 </script>
+
+<!-- ============================================================ -->
+<!-- SUPABASE SUBSCRIPTIONS SYSTEM v1                             -->
+<!-- يعمل جنباً إلى جنب مع نظام LocalStorage الموجود            -->
+<!-- لا يحذف أي كود قديم — إضافة فقط                            -->
+<!-- ============================================================ -->
+<style>
+/* ===== SUBSCRIPTION TOAST ===== */
+#sub-toast-container {
+  position: fixed;
+  top: 80px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2147483640;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  pointer-events: none;
+  width: max-content;
+  max-width: 94vw;
+}
+.sub-toast {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: #fff;
+  border-radius: 14px;
+  padding: 13px 20px;
+  box-shadow: 0 8px 32px rgba(10,61,98,0.22);
+  font-family: 'Cairo','Tajawal',sans-serif;
+  font-size: .9rem;
+  font-weight: 600;
+  color: #1a2a3a;
+  pointer-events: all;
+  border-right: 5px solid #0a3d62;
+  animation: subToastIn .35s cubic-bezier(.16,1,.3,1);
+  min-width: 260px;
+  direction: rtl;
+}
+.sub-toast.success { border-color: #17a589; }
+.sub-toast.error   { border-color: #e74c3c; }
+.sub-toast.warning { border-color: #f39c12; }
+.sub-toast.info    { border-color: #2471a3; }
+.sub-toast.hiding  { animation: subToastOut .3s ease forwards; }
+.sub-toast .st-icon { font-size: 1.4rem; flex-shrink: 0; }
+.sub-toast .st-text { flex: 1; line-height: 1.5; }
+.sub-toast .st-close {
+  background: none; border: none; cursor: pointer;
+  color: #aaa; font-size: 1rem; padding: 0 2px;
+  flex-shrink: 0;
+}
+@keyframes subToastIn  { from { opacity:0; transform:translateY(-16px) scale(.95); } to { opacity:1; transform:none; } }
+@keyframes subToastOut { to   { opacity:0; transform:translateY(-12px) scale(.95); } }
+
+/* ===== SUBSCRIPTION MODAL ===== */
+#sub-modal-overlay {
+  display: none;
+  position: fixed; inset: 0; z-index: 2147483645;
+  background: rgba(10,20,40,0.85);
+  backdrop-filter: blur(6px);
+  align-items: center; justify-content: center;
+  padding: 16px;
+  animation: rvFadeIn .25s ease;
+  direction: rtl;
+  font-family: 'Cairo','Tajawal',sans-serif;
+}
+#sub-modal-overlay.open { display: flex; }
+#sub-modal-box {
+  background: #fff;
+  border-radius: 22px;
+  width: 100%; max-width: 480px;
+  box-shadow: 0 30px 80px rgba(0,0,0,.45);
+  overflow: hidden;
+  animation: rvSlideUp .35s cubic-bezier(.16,1,.3,1);
+}
+.sub-modal-head {
+  background: linear-gradient(135deg,#0a3d62,#17a589);
+  padding: 24px 28px 20px;
+  color: #fff;
+}
+.sub-modal-head h3 {
+  font-size: 1.2rem; font-weight: 900; margin-bottom: 4px;
+}
+.sub-modal-head p { font-size: .82rem; opacity: .85; }
+.sub-modal-body { padding: 24px 28px; }
+.sub-plan-cards {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.sub-plan-card {
+  border: 2px solid #e3eaf5;
+  border-radius: 14px;
+  padding: 16px 14px;
+  cursor: pointer;
+  transition: border-color .2s, box-shadow .2s, transform .2s;
+  text-align: center;
+  position: relative;
+}
+.sub-plan-card:hover {
+  border-color: #0a3d62;
+  box-shadow: 0 4px 18px rgba(10,61,98,.12);
+  transform: translateY(-2px);
+}
+.sub-plan-card.selected {
+  border-color: #17a589;
+  background: linear-gradient(135deg,#eaf4fb,#d5f0eb);
+  box-shadow: 0 4px 18px rgba(23,165,137,.2);
+}
+.sub-plan-card .sp-badge {
+  position: absolute; top: -10px; right: 12px;
+  background: linear-gradient(135deg,#e74c3c,#c0392b);
+  color: #fff; border-radius: 20px;
+  padding: 3px 10px; font-size: .68rem; font-weight: 700;
+}
+.sub-plan-card .sp-icon { font-size: 1.8rem; margin-bottom: 6px; }
+.sub-plan-card .sp-name { font-size: .88rem; font-weight: 800; color: #0a3d62; }
+.sub-plan-card .sp-price { font-size: 1.1rem; font-weight: 900; color: #17a589; margin-top: 4px; }
+.sub-plan-card .sp-period { font-size: .72rem; color: #888; }
+.sub-field-row { margin-bottom: 14px; }
+.sub-field-row label {
+  display: block; font-size: .8rem; font-weight: 700;
+  color: #0a3d62; margin-bottom: 5px;
+}
+.sub-field-row input, .sub-field-row select {
+  width: 100%; padding: 10px 13px;
+  border: 1.5px solid #d5e8f5; border-radius: 10px;
+  font-family: inherit; font-size: .84rem;
+  outline: none; background: #f8fbff;
+  transition: border-color .2s;
+  box-sizing: border-box;
+}
+.sub-field-row input:focus, .sub-field-row select:focus {
+  border-color: #0a3d62;
+  box-shadow: 0 0 0 3px rgba(10,61,98,.08);
+}
+.sub-modal-footer {
+  display: flex; gap: 10px;
+  padding: 0 28px 24px;
+}
+.sub-btn-submit {
+  flex: 1; padding: 13px;
+  background: linear-gradient(135deg,#0a3d62,#17a589);
+  color: #fff; border: none; border-radius: 12px;
+  font-family: inherit; font-size: .92rem; font-weight: 800;
+  cursor: pointer; transition: opacity .2s;
+}
+.sub-btn-submit:hover { opacity: .88; }
+.sub-btn-submit:disabled {
+  opacity: .5; cursor: not-allowed;
+}
+.sub-btn-cancel {
+  padding: 13px 20px;
+  background: #f0f4f8; color: #0a3d62;
+  border: 1.5px solid #d5e8f5; border-radius: 12px;
+  font-family: inherit; font-size: .88rem; font-weight: 700;
+  cursor: pointer; transition: background .2s;
+}
+.sub-btn-cancel:hover { background: #e3eaf5; }
+.sub-session-timer {
+  text-align: center;
+  font-size: .75rem;
+  color: #e74c3c;
+  margin-bottom: 14px;
+  font-weight: 700;
+  min-height: 18px;
+}
+.sub-progress {
+  height: 3px;
+  background: linear-gradient(90deg,#0a3d62,#17a589);
+  width: 0%;
+  transition: width .4s ease;
+  border-radius: 3px;
+  margin-bottom: 16px;
+}
+
+/* ===== MY SUBSCRIPTION WIDGET ===== */
+#my-sub-widget {
+  display: none;
+  background: linear-gradient(135deg,#eaf4fb,#d5f0eb);
+  border: 2px solid #b0ddd3;
+  border-radius: 14px;
+  padding: 14px 18px;
+  margin: 16px 28px;
+  font-family: 'Cairo','Tajawal',sans-serif;
+  direction: rtl;
+}
+#my-sub-widget.visible { display: flex; align-items: center; gap: 12px; }
+.msw-icon { font-size: 1.6rem; flex-shrink: 0; }
+.msw-info { flex: 1; }
+.msw-name { font-size: .9rem; font-weight: 800; color: #0a3d62; }
+.msw-expiry { font-size: .75rem; color: #555; margin-top: 2px; }
+.msw-status {
+  font-size: .72rem; font-weight: 700;
+  padding: 3px 10px; border-radius: 20px;
+}
+.msw-status.active   { background: #d5f0eb; color: #0b7a5e; }
+.msw-status.expired  { background: #fde8cc; color: #9a3e00; }
+.msw-status.pending  { background: #fff3cd; color: #856404; }
+
+@media(max-width:600px) {
+  .sub-plan-cards { grid-template-columns: 1fr; }
+  #sub-modal-box { border-radius: 16px; }
+  .sub-modal-body, .sub-modal-footer { padding-right: 18px; padding-left: 18px; }
+}
+</style>
+
+<!-- Toast Container -->
+<div id="sub-toast-container"></div>
+
+<!-- Subscription Modal -->
+<div id="sub-modal-overlay" role="dialog" aria-modal="true" aria-label="طلب الاشتراك">
+  <div id="sub-modal-box">
+    <div class="sub-modal-head">
+      <h3>🎓 اشترك في المنصة</h3>
+      <p>احصل على وصول كامل لجميع المواد والمحتوى التعليمي</p>
+    </div>
+    <div class="sub-modal-body">
+      <div class="sub-progress" id="sub-progress-bar"></div>
+      <div class="sub-session-timer" id="sub-session-timer"></div>
+
+      <!-- Plans -->
+      <div class="sub-plan-cards" id="sub-plan-cards">
+        <div class="sub-plan-card selected" data-plan="monthly" onclick="SubSystem.selectPlan('monthly',this)">
+          <div class="sp-icon">📅</div>
+          <div class="sp-name">شهري</div>
+          <div class="sp-price">مجاناً</div>
+          <div class="sp-period">30 يوماً</div>
+        </div>
+        <div class="sub-plan-card" data-plan="yearly" onclick="SubSystem.selectPlan('yearly',this)">
+          <span class="sp-badge">الأفضل ✨</span>
+          <div class="sp-icon">🏆</div>
+          <div class="sp-name">سنوي</div>
+          <div class="sp-price">مجاناً</div>
+          <div class="sp-period">365 يوماً</div>
+        </div>
+      </div>
+
+      <!-- Fields -->
+      <div class="sub-field-row">
+        <label>📛 الاسم الكامل</label>
+        <input id="sub-name" type="text" placeholder="اكتب اسمك الكامل..." maxlength="80">
+      </div>
+      <div class="sub-field-row">
+        <label>🎓 التخصص / الشعبة</label>
+        <input id="sub-specialty" type="text" placeholder="مثال: تسجيل طبي — الفرقة الأولى" maxlength="100">
+      </div>
+      <div class="sub-field-row">
+        <label>📞 رقم الهاتف (اختياري)</label>
+        <input id="sub-phone" type="tel" placeholder="01xxxxxxxxx" maxlength="15" dir="ltr">
+      </div>
+    </div>
+
+    <div class="sub-modal-footer">
+      <button class="sub-btn-submit" id="sub-submit-btn" onclick="SubSystem.submitRequest()">
+        ✅ إرسال طلب الاشتراك
+      </button>
+      <button class="sub-btn-cancel" onclick="SubSystem.closeModal()">إلغاء</button>
+    </div>
+  </div>
+</div>
+
+<!-- My Subscription Widget (injected into admin panel area or standalone) -->
+<div id="my-sub-widget">
+  <div class="msw-icon">🎓</div>
+  <div class="msw-info">
+    <div class="msw-name" id="msw-plan-name">—</div>
+    <div class="msw-expiry" id="msw-expiry">—</div>
+  </div>
+  <span class="msw-status" id="msw-status-badge">—</span>
+</div>
+
+<script>
+// ============================================================
+// SUPABASE SUBSCRIPTIONS SYSTEM v1
+// يعمل بالتوازي مع نظام LocalStorage الموجود — لا يحذفه
+// ============================================================
+
+window.SubSystem = (function() {
+
+  // ── الثوابت ────────────────────────────────────────────────
+  var PLANS = {
+    monthly: { label: 'شهري',  days: 30,  type: 'monthly' },
+    yearly:  { label: 'سنوي',  days: 365, type: 'yearly'  }
+  };
+
+  // Rate Limit: لا أكثر من طلب واحد كل 60 ثانية للمستخدم الواحد
+  var RATE_LIMIT_MS   = 60 * 1000;
+  // Session Timer: المودال يُغلق تلقائياً بعد 5 دقائق
+  var SESSION_TIMEOUT = 5 * 60 * 1000;
+
+  var _currentPlan    = 'monthly';
+  var _sessionTimerId = null;
+  var _sessionStart   = null;
+  var _timerDisplayId = null;
+  var _isSubmitting   = false;
+
+  // ── Toast System ────────────────────────────────────────────
+  function toast(msg, type, duration) {
+    type     = type     || 'info';
+    duration = duration || 4000;
+    var icons = { success:'✅', error:'❌', warning:'⚠️', info:'ℹ️' };
+    var container = document.getElementById('sub-toast-container');
+    if (!container) return;
+
+    var el = document.createElement('div');
+    el.className = 'sub-toast ' + type;
+    el.innerHTML =
+      '<span class="st-icon">' + icons[type] + '</span>' +
+      '<span class="st-text">' + msg + '</span>' +
+      '<button class="st-close" onclick="this.parentElement.remove()">✕</button>';
+
+    container.appendChild(el);
+
+    setTimeout(function() {
+      el.classList.add('hiding');
+      setTimeout(function() { if (el.parentElement) el.remove(); }, 320);
+    }, duration);
+  }
+
+  // ── Session Timer ────────────────────────────────────────────
+  function _startSessionTimer() {
+    _sessionStart = Date.now();
+    _clearSessionTimer();
+    var timerEl = document.getElementById('sub-session-timer');
+    var progressEl = document.getElementById('sub-progress-bar');
+
+    _timerDisplayId = setInterval(function() {
+      var elapsed  = Date.now() - _sessionStart;
+      var remaining = SESSION_TIMEOUT - elapsed;
+      if (remaining <= 0) {
+        _clearSessionTimer();
+        closeModal();
+        toast('انتهت مهلة طلب الاشتراك. يرجى المحاولة مجدداً.', 'warning');
+        return;
+      }
+      var secs = Math.ceil(remaining / 1000);
+      var mins = Math.floor(secs / 60);
+      var s    = secs % 60;
+      if (timerEl) {
+        timerEl.textContent = remaining < 60000
+          ? '⏳ تنتهي المهلة خلال ' + secs + ' ثانية'
+          : '⏳ المهلة: ' + mins + ':' + (s < 10 ? '0' : '') + s;
+      }
+      // Progress bar
+      var pct = Math.min(100, (elapsed / SESSION_TIMEOUT) * 100);
+      if (progressEl) progressEl.style.width = pct + '%';
+    }, 1000);
+
+    // Auto-close
+    _sessionTimerId = setTimeout(function() {
+      closeModal();
+      toast('انتهت مهلة الجلسة. يرجى المحاولة مجدداً.', 'warning');
+    }, SESSION_TIMEOUT);
+  }
+
+  function _clearSessionTimer() {
+    if (_timerDisplayId) { clearInterval(_timerDisplayId); _timerDisplayId = null; }
+    if (_sessionTimerId) { clearTimeout(_sessionTimerId);  _sessionTimerId = null; }
+    var timerEl = document.getElementById('sub-session-timer');
+    if (timerEl) timerEl.textContent = '';
+    var progressEl = document.getElementById('sub-progress-bar');
+    if (progressEl) progressEl.style.width = '0%';
+  }
+
+  // ── Rate Limit Check ─────────────────────────────────────────
+  function _checkRateLimit(userId) {
+    var key = 'sub_last_request_' + (userId || 'anon');
+    var last = 0;
+    try { last = parseInt(localStorage.getItem(key) || '0', 10); } catch(e) {}
+    var now = Date.now();
+    if (now - last < RATE_LIMIT_MS) {
+      var waitSec = Math.ceil((RATE_LIMIT_MS - (now - last)) / 1000);
+      return { allowed: false, waitSeconds: waitSec };
+    }
+    return { allowed: true };
+  }
+
+  function _setRateLimitStamp(userId) {
+    var key = 'sub_last_request_' + (userId || 'anon');
+    try { localStorage.setItem(key, String(Date.now())); } catch(e) {}
+  }
+
+  // ── Duplicate Detection ──────────────────────────────────────
+  async function _checkDuplicate(userId) {
+    if (!window.supabase || !userId) return false;
+    try {
+      var result = await window.supabase
+        .from('subscriptions')
+        .select('id, status, subscription_type, end_date')
+        .eq('user_id', userId)
+        .in('status', ['active', 'pending'])
+        .maybeSingle();
+
+      if (result.error) {
+        console.warn('[SubSystem] duplicate check error:', result.error.message);
+        return false;
+      }
+      return result.data || false;
+    } catch(err) {
+      console.warn('[SubSystem] duplicate check exception:', err.message);
+      return false;
+    }
+  }
+
+  // ── Fraud Detection ──────────────────────────────────────────
+  function _fraudCheck(name, phone) {
+    // اسم أقصر من 3 أحرف — مشبوه
+    if (!name || name.trim().length < 3) {
+      return { fraud: true, reason: 'الاسم يجب أن يكون 3 أحرف على الأقل' };
+    }
+    // اسم يحتوي أرقام فقط
+    if (/^\d+$/.test(name.trim())) {
+      return { fraud: true, reason: 'الاسم لا يمكن أن يكون أرقاماً فقط' };
+    }
+    // رقم هاتف بصيغة خاطئة (لو مُدخل)
+    if (phone && phone.trim()) {
+      var ph = phone.trim().replace(/\s/g,'');
+      if (!/^(01[0-9]{9}|00201[0-9]{9}|\+201[0-9]{9})$/.test(ph)) {
+        return { fraud: true, reason: 'رقم الهاتف يجب أن يكون مصري صحيح (11 رقم يبدأ بـ 01)' };
+      }
+    }
+    // طلبات متعددة خلال فترة قصيرة جداً (أقل من 5 ثوانٍ من فتح المودال)
+    if (_sessionStart && (Date.now() - _sessionStart) < 5000) {
+      return { fraud: true, reason: 'يرجى ملء البيانات بعناية قبل الإرسال' };
+    }
+    return { fraud: false };
+  }
+
+  // ── Select Plan ──────────────────────────────────────────────
+  function selectPlan(plan, el) {
+    _currentPlan = plan;
+    var cards = document.querySelectorAll('.sub-plan-card');
+    cards.forEach(function(c) { c.classList.remove('selected'); });
+    if (el) el.classList.add('selected');
+  }
+
+  // ── Open / Close Modal ───────────────────────────────────────
+  function openModal() {
+    // يجب أن يكون المستخدم مسجلاً
+    if (!window.supabase) {
+      toast('جاري تحميل النظام، حاول مجدداً', 'warning');
+      return;
+    }
+    window.supabase.auth.getSession().then(function(res) {
+      var session = res && res.data && res.data.session;
+      if (!session || !session.user) {
+        toast('يجب تسجيل الدخول أولاً لطلب الاشتراك', 'warning', 5000);
+        return;
+      }
+      var overlay = document.getElementById('sub-modal-overlay');
+      if (overlay) {
+        overlay.classList.add('open');
+        _startSessionTimer();
+        // تعبئة تلقائية للبريد إذا كان الاسم فارغاً
+        var nameEl = document.getElementById('sub-name');
+        if (nameEl && !nameEl.value) {
+          var meta = session.user.user_metadata;
+          nameEl.value = (meta && meta.full_name) ? meta.full_name : '';
+        }
+      }
+    });
+  }
+
+  function closeModal() {
+    var overlay = document.getElementById('sub-modal-overlay');
+    if (overlay) overlay.classList.remove('open');
+    _clearSessionTimer();
+    _isSubmitting = false;
+    var btn = document.getElementById('sub-submit-btn');
+    if (btn) { btn.disabled = false; btn.textContent = '✅ إرسال طلب الاشتراك'; }
+  }
+
+  // ── Submit Request ───────────────────────────────────────────
+  async function submitRequest() {
+    if (_isSubmitting) return;
+
+    var name      = (document.getElementById('sub-name')      || {}).value || '';
+    var specialty = (document.getElementById('sub-specialty') || {}).value || '';
+    var phone     = (document.getElementById('sub-phone')     || {}).value || '';
+    var plan      = _currentPlan;
+
+    // ① Fraud Detection
+    var fraud = _fraudCheck(name, phone);
+    if (fraud.fraud) {
+      toast(fraud.reason, 'warning', 6000);
+      return;
+    }
+
+    // ② Check Auth
+    if (!window.supabase) { toast('النظام غير جاهز، أعد المحاولة', 'error'); return; }
+    var sessionRes = await window.supabase.auth.getSession();
+    var session    = sessionRes && sessionRes.data && sessionRes.data.session;
+    if (!session || !session.user) {
+      toast('انتهت جلستك، يرجى تسجيل الدخول مجدداً', 'error');
+      closeModal();
+      return;
+    }
+    var user = session.user;
+
+    // ③ Rate Limit
+    var rl = _checkRateLimit(user.id);
+    if (!rl.allowed) {
+      toast('يرجى الانتظار ' + rl.waitSeconds + ' ثانية قبل إرسال طلب جديد', 'warning', 6000);
+      return;
+    }
+
+    // ④ Duplicate Detection
+    var existing = await _checkDuplicate(user.id);
+    if (existing) {
+      var typeLabel = existing.subscription_type === 'yearly' ? 'سنوي' : 'شهري';
+      var statusLabel = existing.status === 'active' ? 'نشط' : 'قيد المراجعة';
+      toast(
+        'لديك اشتراك ' + typeLabel + ' بالفعل — الحالة: ' + statusLabel,
+        'info', 7000
+      );
+      closeModal();
+      _loadMySubscription(user.id); // تحديث الـ widget
+      return;
+    }
+
+    // ⑤ Submit
+    _isSubmitting = true;
+    var btn = document.getElementById('sub-submit-btn');
+    if (btn) { btn.disabled = true; btn.textContent = '⏳ جاري الإرسال...'; }
+
+    try {
+      var planMeta   = PLANS[plan];
+      var now        = new Date();
+      var endDate    = new Date(now.getTime() + planMeta.days * 24 * 60 * 60 * 1000);
+
+      // ── إنشاء سجل في subscriptions ──────────────────────────
+      var subRecord = {
+        user_id:           user.id,
+        user_email:        user.email,
+        full_name:         name.trim(),
+        specialty:         specialty.trim() || null,
+        phone:             phone.trim()     || null,
+        subscription_type: planMeta.type,
+        status:            'pending',      // الأدمن يراجع ويوافق
+        start_date:        now.toISOString(),
+        end_date:          endDate.toISOString(),
+        requested_at:      now.toISOString(),
+        notes:             null
+      };
+
+      var { data: subData, error: subErr } = await window.supabase
+        .from('subscriptions')
+        .insert([subRecord])
+        .select()
+        .single();
+
+      if (subErr) {
+        console.error('[SubSystem] insert subscription error:', subErr);
+        throw new Error(subErr.message || 'فشل إنشاء سجل الاشتراك');
+      }
+
+      // ── تحديث profiles ───────────────────────────────────────
+      var profileUpdate = {
+        subscription_status: 'pending',
+        subscription_type:   planMeta.type,
+        subscription_end:    endDate.toISOString(),
+        updated_at:          now.toISOString()
+      };
+
+      var { error: profErr } = await window.supabase
+        .from('profiles')
+        .upsert([{
+          id: user.id,
+          email: user.email,
+          ...profileUpdate
+        }], { onConflict: 'id' });
+
+      if (profErr) {
+        // غير مميت — الاشتراك تم تسجيله
+        console.warn('[SubSystem] profile update warning:', profErr.message);
+      }
+
+      // ── تسجيل Stamp في Rate Limit ─────────────────────────────
+      _setRateLimitStamp(user.id);
+
+      // ── تحديث LocalStorage (التوافق مع النظام القديم) ─────────
+      try {
+        localStorage.setItem('sub_status_' + user.id, 'pending');
+        localStorage.setItem('sub_type_'   + user.id, planMeta.type);
+        localStorage.setItem('sub_end_'    + user.id, endDate.toISOString());
+        localStorage.setItem('sub_id_'     + user.id, subData.id);
+      } catch(e) {}
+
+      // ── نجح الطلب ─────────────────────────────────────────────
+      closeModal();
+      toast(
+        'تم إرسال طلب الاشتراك بنجاح! سيتم مراجعته والتفعيل قريباً 🎉',
+        'success', 7000
+      );
+
+      // تحديث الـ widget
+      _showSubscriptionWidget({
+        plan:    planMeta.label,
+        endDate: endDate,
+        status:  'pending'
+      });
+
+      console.log('[SubSystem] ✅ subscription created:', subData.id);
+
+    } catch(err) {
+      console.error('[SubSystem] submitRequest error:', err);
+      toast('حدث خطأ: ' + (err.message || 'يرجى المحاولة مجدداً'), 'error', 8000);
+      _isSubmitting = false;
+      if (btn) { btn.disabled = false; btn.textContent = '✅ إرسال طلب الاشتراك'; }
+    }
+  }
+
+  // ── Load & Display My Subscription ──────────────────────────
+  async function _loadMySubscription(userId) {
+    if (!window.supabase || !userId) return;
+    try {
+      var result = await window.supabase
+        .from('subscriptions')
+        .select('id, subscription_type, status, end_date, start_date')
+        .eq('user_id', userId)
+        .order('requested_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (result.error || !result.data) return;
+      var sub = result.data;
+
+      var planLabel = sub.subscription_type === 'yearly' ? '🏆 اشتراك سنوي' : '📅 اشتراك شهري';
+      _showSubscriptionWidget({
+        plan:    planLabel,
+        endDate: new Date(sub.end_date),
+        status:  sub.status
+      });
+
+      // مزامنة مع LocalStorage للنظام القديم
+      try {
+        localStorage.setItem('sub_status_' + userId, sub.status);
+        localStorage.setItem('sub_type_'   + userId, sub.subscription_type);
+        localStorage.setItem('sub_end_'    + userId, sub.end_date);
+        localStorage.setItem('sub_id_'     + userId, sub.id);
+      } catch(e) {}
+
+    } catch(err) {
+      console.warn('[SubSystem] loadMySubscription error:', err.message);
+    }
+  }
+
+  function _showSubscriptionWidget(info) {
+    var widget = document.getElementById('my-sub-widget');
+    if (!widget) return;
+
+    var nameEl   = document.getElementById('msw-plan-name');
+    var expiryEl = document.getElementById('msw-expiry');
+    var badgeEl  = document.getElementById('msw-status-badge');
+
+    if (nameEl)   nameEl.textContent   = info.plan || '—';
+    if (expiryEl) expiryEl.textContent = 'ينتهي: ' + _formatDate(info.endDate);
+
+    var statusLabels = {
+      active:  { text: '✅ نشط',           cls: 'active'  },
+      pending: { text: '⏳ قيد المراجعة',   cls: 'pending' },
+      expired: { text: '❌ منتهي',          cls: 'expired' },
+      cancelled: { text: '🚫 ملغي',         cls: 'expired' }
+    };
+    var s = statusLabels[info.status] || { text: info.status, cls: 'pending' };
+    if (badgeEl) {
+      badgeEl.textContent = s.text;
+      badgeEl.className = 'msw-status ' + s.cls;
+    }
+
+    widget.classList.add('visible');
+
+    // أضف الـ widget بعد لوحة التحكم أو في الـ navbar area
+    var adminPanel = document.getElementById('admin-panel');
+    if (adminPanel && adminPanel.parentElement && !document.getElementById('my-sub-widget-placed')) {
+      adminPanel.parentElement.insertBefore(widget, adminPanel.nextSibling);
+      widget.id = 'my-sub-widget'; // keep id
+      document.body.appendChild(widget); // move to body for fixed positioning
+    }
+  }
+
+  function _formatDate(d) {
+    if (!d) return '—';
+    try {
+      var date = (d instanceof Date) ? d : new Date(d);
+      return date.toLocaleDateString('ar-EG', { year:'numeric', month:'long', day:'numeric' });
+    } catch(e) { return String(d); }
+  }
+
+  // ── Admin: Approve Subscription ──────────────────────────────
+  window.approveSubscription = async function(subscriptionId, userId) {
+    if (!window.supabase) { console.error('[SubSystem] Supabase غير جاهز'); return; }
+    try {
+      // تحديث subscriptions
+      var { error: e1 } = await window.supabase
+        .from('subscriptions')
+        .update({ status: 'active', approved_at: new Date().toISOString() })
+        .eq('id', subscriptionId);
+      if (e1) throw e1;
+
+      // تحديث profiles
+      var { error: e2 } = await window.supabase
+        .from('profiles')
+        .update({ subscription_status: 'active', updated_at: new Date().toISOString() })
+        .eq('id', userId);
+      if (e2) console.warn('[SubSystem] profile approve warning:', e2.message);
+
+      console.log('[SubSystem] ✅ approved subscription:', subscriptionId);
+      toast('تم تفعيل الاشتراك بنجاح ✅', 'success');
+    } catch(err) {
+      console.error('[SubSystem] approveSubscription error:', err.message);
+      toast('خطأ في التفعيل: ' + err.message, 'error');
+    }
+  };
+
+  // ── Admin: Reject / Cancel ────────────────────────────────────
+  window.cancelSubscription = async function(subscriptionId, userId, reason) {
+    if (!window.supabase) return;
+    try {
+      var { error: e1 } = await window.supabase
+        .from('subscriptions')
+        .update({ status: 'cancelled', notes: reason || null })
+        .eq('id', subscriptionId);
+      if (e1) throw e1;
+
+      var { error: e2 } = await window.supabase
+        .from('profiles')
+        .update({ subscription_status: 'cancelled', updated_at: new Date().toISOString() })
+        .eq('id', userId);
+      if (e2) console.warn('[SubSystem] profile cancel warning:', e2.message);
+
+      console.log('[SubSystem] 🚫 cancelled subscription:', subscriptionId);
+      toast('تم إلغاء الاشتراك', 'warning');
+    } catch(err) {
+      console.error('[SubSystem] cancelSubscription error:', err.message);
+    }
+  };
+
+  // ── Init: تشغيل عند تسجيل الدخول ─────────────────────────────
+  function init() {
+    // انتظر Supabase
+    var _waitSupabase = setInterval(function() {
+      if (!window.supabase) return;
+      clearInterval(_waitSupabase);
+
+      window.supabase.auth.onAuthStateChange(function(event, session) {
+        if (event === 'SIGNED_IN' && session && session.user) {
+          _loadMySubscription(session.user.id);
+        }
+        if (event === 'SIGNED_OUT') {
+          var widget = document.getElementById('my-sub-widget');
+          if (widget) widget.classList.remove('visible');
+        }
+      });
+
+      // فحص session موجودة عند التحميل
+      window.supabase.auth.getSession().then(function(res) {
+        var s = res && res.data && res.data.session;
+        if (s && s.user) _loadMySubscription(s.user.id);
+      });
+    }, 300);
+  }
+
+  // ── SQL Schema Helper ─────────────────────────────────────────
+  window.printSubscriptionSQL = function() {
+    var sql = `
+-- ============================================================
+-- SQL: جداول نظام الاشتراكات — شغّل في Supabase SQL Editor
+-- ============================================================
+
+-- 1. جدول subscriptions
+CREATE TABLE IF NOT EXISTS subscriptions (
+  id                UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id           UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  user_email        TEXT,
+  full_name         TEXT,
+  specialty         TEXT,
+  phone             TEXT,
+  subscription_type TEXT NOT NULL DEFAULT 'monthly' CHECK (subscription_type IN ('monthly','yearly')),
+  status            TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','active','expired','cancelled')),
+  start_date        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  end_date          TIMESTAMPTZ NOT NULL,
+  requested_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  approved_at       TIMESTAMPTZ,
+  notes             TEXT,
+  created_at        TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 2. جدول profiles
+CREATE TABLE IF NOT EXISTS profiles (
+  id                  UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  email               TEXT,
+  full_name           TEXT,
+  subscription_status TEXT DEFAULT 'none' CHECK (subscription_status IN ('none','pending','active','expired','cancelled')),
+  subscription_type   TEXT,
+  subscription_end    TIMESTAMPTZ,
+  updated_at          TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 3. RLS للـ subscriptions
+ALTER TABLE subscriptions ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "users_own_subscriptions" ON subscriptions;
+CREATE POLICY "users_own_subscriptions" ON subscriptions
+  FOR ALL USING (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "admin_all_subscriptions" ON subscriptions;
+CREATE POLICY "admin_all_subscriptions" ON subscriptions
+  FOR ALL USING (is_admin());
+
+-- 4. RLS للـ profiles
+ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "users_own_profile" ON profiles;
+CREATE POLICY "users_own_profile" ON profiles
+  FOR ALL USING (auth.uid() = id);
+
+DROP POLICY IF EXISTS "admin_all_profiles" ON profiles;
+CREATE POLICY "admin_all_profiles" ON profiles
+  FOR ALL USING (is_admin());
+-- ============================================================`;
+    console.group('📋 SQL لإنشاء جداول الاشتراكات:');
+    console.log(sql);
+    console.groupEnd();
+    return sql;
+  };
+
+  // تشغيل النظام
+  init();
+
+  // Public API
+  return {
+    openModal:    openModal,
+    closeModal:   closeModal,
+    selectPlan:   selectPlan,
+    submitRequest: submitRequest,
+    toast:        toast,
+    loadMySub:    function() {
+      window.supabase && window.supabase.auth.getSession().then(function(r) {
+        var s = r && r.data && r.data.session;
+        if (s && s.user) _loadMySubscription(s.user.id);
+      });
+    }
+  };
+
+})();
+
+// ============================================================
+// زر الاشتراك — يُضاف تلقائياً في user-box بعد تسجيل الدخول
+// بدون تعديل _renderUserBox القديمة — نربط بـ onAuthStateChange
+// ============================================================
+(function() {
+  var _waitSub = setInterval(function() {
+    if (!window.supabase) return;
+    clearInterval(_waitSub);
+
+    window.supabase.auth.onAuthStateChange(function(event, session) {
+      if (event === 'SIGNED_IN' && session && session.user) {
+        setTimeout(function() {
+          _injectSubscribeButton(session.user);
+        }, 700);
+      }
+    });
+
+    window.supabase.auth.getSession().then(function(res) {
+      var s = res && res.data && res.data.session;
+      if (s && s.user) {
+        setTimeout(function() { _injectSubscribeButton(s.user); }, 1200);
+      }
+    });
+  }, 400);
+
+  function _injectSubscribeButton(user) {
+    // لا تضيف الزر للأدمن — تعتمد على _isAdminUser المُحدَّث من profiles.role
+    if (window._isAdminUser) return;
+    // لا تضيف مرتين
+    if (document.getElementById('sub-quick-btn')) return;
+    var userCard = document.querySelector('.user-card');
+    if (!userCard) return;
+
+    var btn = document.createElement('button');
+    btn.id = 'sub-quick-btn';
+    btn.setAttribute('style',
+      'background:linear-gradient(135deg,#17a589,#0a3d62);color:#fff;' +
+      'border:none;border-radius:16px;padding:6px 13px;font-size:12px;' +
+      'font-family:Cairo,Tajawal,sans-serif;font-weight:700;cursor:pointer;' +
+      'white-space:nowrap;transition:opacity .2s;'
+    );
+    btn.textContent = '🎓 اشتراك';
+    btn.onclick = function() { SubSystem.openModal(); };
+    userCard.insertBefore(btn, userCard.firstChild);
+  }
+})();
+
+<!-- ============================================================ -->
+<!-- SECURITY SYSTEM v1                                           -->
+<!-- Role Based Access Control — Admin Middleware — RLS Guards   -->
+<!-- يعتمد فقط على profiles.role من Supabase                    -->
+<!-- لا يوجد بريد إلكتروني مُشفَّر، لا localStorage للأدمن     -->
+<!-- ============================================================ -->
+<script>
+// ════════════════════════════════════════════════════════════════
+// § 1. ADMIN MIDDLEWARE
+//    كل دالة إدارية محمية بـ requireAdmin() قبل التنفيذ
+//    لو المستخدم ليس admin من profiles.role → يُرفض الطلب
+// ════════════════════════════════════════════════════════════════
+
+/**
+ * requireAdmin()
+ * يتحقق من أن المستخدم الحالي يملك role='admin' في profiles
+ * يُرجع { ok: true } أو يرمي خطأ ويعرض رسالة
+ */
+window.requireAdmin = async function(silent) {
+  if (!window.supabase) {
+    if (!silent) _secAlert('النظام غير جاهز');
+    return { ok: false };
+  }
+  var sessionRes = await window.supabase.auth.getSession();
+  var session    = sessionRes && sessionRes.data && sessionRes.data.session;
+  if (!session || !session.user) {
+    if (!silent) _secAlert('يجب تسجيل الدخول أولاً');
+    return { ok: false };
+  }
+  var role = await _fetchUserRole(session.user.id);
+  if (role !== 'admin') {
+    if (!silent) _secAlert('⛔ ليس لديك صلاحية الوصول لهذه العملية');
+    console.warn('[SECURITY] Unauthorized admin action attempt by:', session.user.email);
+    return { ok: false };
+  }
+  return { ok: true, user: session.user, role: role };
+};
+
+function _secAlert(msg) {
+  if (typeof toast === 'function') { toast(msg, 'error', 4000); }
+  else { alert(msg); }
+}
+
+// ════════════════════════════════════════════════════════════════
+// § 2. PROTECTED ADMIN WRAPPERS
+//    تغليف كل الدوال الإدارية بـ requireAdmin() دون كسر API
+// ════════════════════════════════════════════════════════════════
+
+// حفظ النسخ الأصلية
+var _origApprove = window.approveSubscription;
+var _origCancel  = window.cancelSubscription;
+var _origBan     = window.banUser;
+var _origUnban   = window.unbanUser;
+
+window.approveSubscription = async function(subId, userId) {
+  var check = await requireAdmin();
+  if (!check.ok) return;
+  return _origApprove(subId, userId);
+};
+
+window.cancelSubscription = async function(subId, userId, reason) {
+  var check = await requireAdmin();
+  if (!check.ok) return;
+  return _origCancel(subId, userId, reason);
+};
+
+window.banUser = async function(email, reason) {
+  var check = await requireAdmin();
+  if (!check.ok) return;
+  return _origBan(email, reason);
+};
+
+window.unbanUser = async function(email) {
+  var check = await requireAdmin();
+  if (!check.ok) return;
+  return _origUnban(email);
+};
+
+// حماية toggleAdminPanel — لن يفتح إلا لو role=admin
+var _origToggleAdmin = window.toggleAdminPanel;
+window.toggleAdminPanel = async function() {
+  var check = await requireAdmin(true);
+  if (!check.ok) {
+    _secAlert('⛔ صلاحيات الأدمن مطلوبة');
+    return;
+  }
+  return _origToggleAdmin();
+};
+
+// حماية adminSaveContent
+var _origSaveContent = window.adminSaveContent || function(){};
+window.adminSaveContent = async function() {
+  // دالة adminSaveContent معرَّفة في نطاق آخر — نستخدم guard مباشر
+  var check = await requireAdmin();
+  if (!check.ok) return;
+  // استدعاء مباشر للمنطق الداخلي عبر الدالة المعرَّفة في الـ scope
+  if (typeof _adminSaveContentInternal === 'function') {
+    return _adminSaveContentInternal();
+  }
+};
+
+// ════════════════════════════════════════════════════════════════
+// § 3. ROLE GATE — يمنع تحميل بيانات الأدمن لغير الأدمن
+//    apLoadDashboard / apLoadRequests / apLoadUsers / etc.
+// ════════════════════════════════════════════════════════════════
+
+var _apFunctions = ['apLoadDashboard','apLoadRequests','apLoadSubscriptions','apLoadUsers','apLoadMessages'];
+
+_apFunctions.forEach(function(fnName) {
+  var original = window[fnName];
+  if (typeof original !== 'function') return;
+  window[fnName] = async function() {
+    var check = await requireAdmin(true);
+    if (!check.ok) {
+      var panelId = 'ap-' + fnName.replace('apLoad','').toLowerCase() + '-body';
+      var el = document.getElementById(panelId) || document.getElementById('ap-recent-activity');
+      if (el) el.innerHTML = '<div class="ap-empty" style="color:#e74c3c;">⛔ غير مصرح</div>';
+      return;
+    }
+    return original.apply(this, arguments);
+  };
+});
+
+// ════════════════════════════════════════════════════════════════
+// § 4. CONTENT PROTECTION — منع Dev Tools Inspection
+//    هجمات Console / iframe injection / XSS
+// ════════════════════════════════════════════════════════════════
+
+(function() {
+  // منع Right Click للمحتوى المحمي (لغير الأدمن)
+  document.addEventListener('contextmenu', function(e) {
+    if (!window._isAdminUser && document.body.classList.contains('content-protected')) {
+      e.preventDefault();
+    }
+  });
+
+  // منع keyboard shortcuts للنسخ في المحتوى المحمي
+  document.addEventListener('keydown', function(e) {
+    if (window._isAdminUser) return;
+    if (!document.body.classList.contains('content-protected')) return;
+    var blocked = (e.ctrlKey || e.metaKey) && ['c','u','s','p','a'].includes(e.key.toLowerCase());
+    if (blocked || e.key === 'F12') {
+      e.preventDefault();
+    }
+  });
+
+  // منع Print Screen (لا يمنع تماماً لكن يُصعّب)
+  document.addEventListener('keyup', function(e) {
+    if (window._isAdminUser) return;
+    if (e.key === 'PrintScreen') {
+      try { navigator.clipboard && navigator.clipboard.writeText(''); } catch(x) {}
+    }
+  });
+})();
+
+// ════════════════════════════════════════════════════════════════
+// § 5. SESSION INTEGRITY CHECK
+//    يتحقق دورياً من صلاحية الـ session ويُزيل صلاحيات الأدمن
+//    لو انتهت أو تغيّرت
+// ════════════════════════════════════════════════════════════════
+
+(function() {
+  var _sessionCheckInterval = null;
+
+  function _startSessionWatch() {
+    if (_sessionCheckInterval) return;
+    _sessionCheckInterval = setInterval(async function() {
+      if (!window.supabase) return;
+      var res  = await window.supabase.auth.getSession();
+      var sess = res && res.data && res.data.session;
+      if (!sess) {
+        // انتهت الجلسة — أزل صلاحيات الأدمن فوراً
+        if (window._isAdminUser) {
+          window._isAdminUser = false;
+          window._currentUserRole = null;
+          document.body.classList.remove('is-admin');
+          var panel = document.getElementById('admin-panel');
+          if (panel) panel.classList.remove('ap-open');
+        }
+        return;
+      }
+      // تحقق من الـ role بشكل دوري (كل 5 دقائق)
+      var role = await _fetchUserRole(sess.user.id);
+      if (role !== 'admin' && window._isAdminUser) {
+        // سُحبت صلاحيات الأدمن من قاعدة البيانات
+        window._isAdminUser = false;
+        window._currentUserRole = role;
+        document.body.classList.remove('is-admin');
+        document.body.classList.add('content-protected');
+        var panel = document.getElementById('admin-panel');
+        if (panel) panel.classList.remove('ap-open');
+        _secAlert('تم سحب صلاحياتك الإدارية');
+      }
+    }, 5 * 60 * 1000); // كل 5 دقائق
+  }
+
+  // ابدأ المراقبة عند تحميل الصفحة
+  var _waitSession = setInterval(function() {
+    if (!window.supabase) return;
+    clearInterval(_waitSession);
+    _startSessionWatch();
+  }, 1000);
+})();
+
+// ════════════════════════════════════════════════════════════════
+// § 6. SQL SCHEMA & RLS POLICIES
+//    طباعة الـ SQL في الـ Console لتشغيله في Supabase SQL Editor
+// ════════════════════════════════════════════════════════════════
+
+window.printSecuritySQL = function() {
+  var sql = `
+-- ════════════════════════════════════════════════════════════════
+-- SECURITY SYSTEM v1 — شغّل هذا في Supabase SQL Editor
+-- ════════════════════════════════════════════════════════════════
+
+-- ────────────────────────────────────────────────────────────────
+-- 1. إضافة عمود role لجدول profiles
+-- ────────────────────────────────────────────────────────────────
+ALTER TABLE profiles
+  ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'user'
+  CHECK (role IN ('admin', 'moderator', 'user'));
+
+-- فهرس للبحث السريع
+CREATE INDEX IF NOT EXISTS idx_profiles_role ON profiles(role);
+
+-- ────────────────────────────────────────────────────────────────
+-- 2. Helper Function — is_admin()
+--    تُستخدم داخل RLS Policies بكفاءة
+-- ────────────────────────────────────────────────────────────────
+CREATE OR REPLACE FUNCTION is_admin()
+RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER
+AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM profiles
+    WHERE id = auth.uid() AND role = 'admin'
+  );
+$$;
+
+-- ────────────────────────────────────────────────────────────────
+-- 3. RLS على profiles
+-- ────────────────────────────────────────────────────────────────
+ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
+
+-- المستخدم يرى ويُعدّل ملفه الشخصي فقط
+DROP POLICY IF EXISTS "profiles_own_read"   ON profiles;
+DROP POLICY IF EXISTS "profiles_own_update" ON profiles;
+DROP POLICY IF EXISTS "profiles_admin_all"  ON profiles;
+DROP POLICY IF EXISTS "profiles_insert_own" ON profiles;
+
+CREATE POLICY "profiles_own_read"   ON profiles FOR SELECT USING (auth.uid() = id);
+CREATE POLICY "profiles_own_update" ON profiles FOR UPDATE USING (auth.uid() = id)
+  WITH CHECK (
+    auth.uid() = id
+    -- لا يسمح للمستخدم بتغيير الـ role لنفسه
+    AND role = (SELECT role FROM profiles WHERE id = auth.uid())
+  );
+CREATE POLICY "profiles_insert_own" ON profiles FOR INSERT WITH CHECK (auth.uid() = id);
+CREATE POLICY "profiles_admin_all"  ON profiles FOR ALL USING (is_admin());
+
+-- ────────────────────────────────────────────────────────────────
+-- 4. RLS على subscriptions
+-- ────────────────────────────────────────────────────────────────
+ALTER TABLE subscriptions ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "subs_own"         ON subscriptions;
+DROP POLICY IF EXISTS "subs_admin_all"   ON subscriptions;
+
+CREATE POLICY "subs_own"       ON subscriptions FOR ALL   USING (auth.uid() = user_id);
+CREATE POLICY "subs_admin_all" ON subscriptions FOR ALL   USING (is_admin());
+
+-- ────────────────────────────────────────────────────────────────
+-- 5. RLS على section_content
+-- ────────────────────────────────────────────────────────────────
+ALTER TABLE section_content ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "content_read_authenticated" ON section_content;
+DROP POLICY IF EXISTS "content_admin_write"        ON section_content;
+
+-- القراءة: كل مستخدم مسجَّل
+CREATE POLICY "content_read_authenticated" ON section_content
+  FOR SELECT USING (auth.uid() IS NOT NULL);
+
+-- الكتابة: الأدمن فقط
+CREATE POLICY "content_admin_write" ON section_content
+  FOR ALL USING (is_admin());
+
+-- ────────────────────────────────────────────────────────────────
+-- 6. RLS على banned_users
+-- ────────────────────────────────────────────────────────────────
+ALTER TABLE banned_users ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "banned_admin_all"  ON banned_users;
+DROP POLICY IF EXISTS "banned_check_own"  ON banned_users;
+
+CREATE POLICY "banned_admin_all" ON banned_users FOR ALL    USING (is_admin());
+-- يسمح لأي مستخدم بفحص إذا كان بريده محظوراً (للبان-شيك)
+CREATE POLICY "banned_check_own" ON banned_users FOR SELECT
+  USING (email = (SELECT email FROM auth.users WHERE id = auth.uid()));
+
+-- ────────────────────────────────────────────────────────────────
+-- 7. RLS على site_sections
+-- ────────────────────────────────────────────────────────────────
+ALTER TABLE site_sections ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "sections_read_all"    ON site_sections;
+DROP POLICY IF EXISTS "sections_admin_write" ON site_sections;
+
+CREATE POLICY "sections_read_all"    ON site_sections FOR SELECT USING (true);
+CREATE POLICY "sections_admin_write" ON site_sections FOR ALL    USING (is_admin());
+
+-- ────────────────────────────────────────────────────────────────
+-- 8. RLS على contact_messages (اختياري — لو الجدول موجود)
+-- ────────────────────────────────────────────────────────────────
+DO $$ BEGIN
+  IF EXISTS (
+    SELECT FROM information_schema.tables
+    WHERE table_name = 'contact_messages'
+  ) THEN
+    ALTER TABLE contact_messages ENABLE ROW LEVEL SECURITY;
+
+    DROP POLICY IF EXISTS "messages_insert_auth"  ON contact_messages;
+    DROP POLICY IF EXISTS "messages_admin_all"    ON contact_messages;
+
+    -- إرسال الرسائل: المستخدمون المسجَّلون فقط
+    EXECUTE 'CREATE POLICY "messages_insert_auth" ON contact_messages
+      FOR INSERT WITH CHECK (auth.uid() IS NOT NULL)';
+
+    -- القراءة والحذف: الأدمن فقط
+    EXECUTE 'CREATE POLICY "messages_admin_all" ON contact_messages
+      FOR ALL USING (is_admin())';
+  END IF;
+END $$;
+
+-- ────────────────────────────────────────────────────────────────
+-- 9. منع أي مستخدم من تغيير role نفسه عبر Trigger
+-- ────────────────────────────────────────────────────────────────
+CREATE OR REPLACE FUNCTION prevent_role_self_escalation()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER AS $$
+BEGIN
+  -- لو المُحدِّث ليس أدمن ويحاول تغيير الـ role
+  IF NOT is_admin() AND NEW.role != OLD.role THEN
+    RAISE EXCEPTION 'Forbidden: cannot change role without admin privileges';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_prevent_role_escalation ON profiles;
+CREATE TRIGGER trg_prevent_role_escalation
+  BEFORE UPDATE ON profiles
+  FOR EACH ROW EXECUTE FUNCTION prevent_role_self_escalation();
+
+-- ────────────────────────────────────────────────────────────────
+-- 10. Auto-create profile on signup (Trigger)
+-- ────────────────────────────────────────────────────────────────
+CREATE OR REPLACE FUNCTION handle_new_user()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER AS $$
+BEGIN
+  INSERT INTO profiles (id, email, full_name, role, subscription_status, updated_at)
+  VALUES (
+    NEW.id,
+    NEW.email,
+    COALESCE(NEW.raw_user_meta_data->>'full_name', ''),
+    'user',   -- الافتراضي دائماً 'user'
+    'none',
+    NOW()
+  )
+  ON CONFLICT (id) DO NOTHING;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+CREATE TRIGGER on_auth_user_created
+  AFTER INSERT ON auth.users
+  FOR EACH ROW EXECUTE FUNCTION handle_new_user();
+
+-- ────────────────────────────────────────────────────────────────
+-- 11. منح صلاحية الأدمن لمستخدم موجود مسبقاً
+--     غيّر 'your-email@example.com' للبريد الصحيح
+-- ────────────────────────────────────────────────────────────────
+-- UPDATE profiles
+--   SET role = 'admin'
+-- WHERE id = (SELECT id FROM auth.users WHERE email = 'your-email@example.com');
+
+-- ════════════════════════════════════════════════════════════════
+-- نهاية SQL — شغّل في Supabase SQL Editor
+-- ════════════════════════════════════════════════════════════════
+`;
+  console.group('%c🔐 SECURITY SQL — شغّل في Supabase SQL Editor', 'color:#17a589;font-size:1.1em;font-weight:bold');
+  console.log(sql);
+  console.groupEnd();
+  return sql;
+};
+
+// طباعة تلقائية عند تحميل الصفحة (للمطوِّر فقط في Console)
+// اعزم printSecuritySQL() في الـ Console لرؤيته
+console.log('%c[SECURITY v1] اكتب printSecuritySQL() في الـ Console لعرض SQL الإعداد', 'color:#0a3d62;font-weight:bold');
+
+</script>
+<!-- ============================================================ -->
+<!-- نهاية نظام الحماية v1                                        -->
+<!-- ============================================================ -->
 </body>
 </html>
