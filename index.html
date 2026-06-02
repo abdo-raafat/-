@@ -13,39 +13,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;600;700;900&family=Tajawal:wght@300;400;500;700;800&display=swap" rel="stylesheet">
 <script>
-// ① استبدال window.fetch قبل تحميل Supabase
-(function() {
-  var _orig = window.fetch;
-  window.fetch = async function(input, init) {
-    var res = await _orig.call(this, input, init);
-    var text = '';
-    try { text = await res.text(); } catch(e) {}
-    var hdrs = {};
-    try { res.headers.forEach(function(v,k){ hdrs[k]=v; }); } catch(e) {}
-    return {
-      ok: res.ok,
-      status: res.status,
-      statusText: res.statusText,
-      url: res.url,
-      headers: {
-        get:     function(k){ return hdrs[(k||'').toLowerCase()]||null; },
-        has:     function(k){ return (k||'').toLowerCase() in hdrs; },
-        entries: function(){ return Object.entries(hdrs)[Symbol.iterator](); },
-        forEach: function(cb){ Object.keys(hdrs).forEach(function(k){ cb(hdrs[k],k); }); }
-      },
-      text:  function(){ return Promise.resolve(text); },
-      json:  function(){
-        try{ return Promise.resolve(JSON.parse(text)); }
-        catch(e){ return Promise.reject(e); }
-      },
-      clone: function(){ return this; },
-      body: null,
-      bodyUsed: true
-    };
-  };
-})();
-
-// ② تحميل Supabase بعد تثبيت الـ fetch المعدّل
+// تحميل Supabase مباشرة — بدون fetch wrapper (كان يكسر Google Auth و postMessage)
 window._supabaseReady = new Promise(function(resolve) {
   var s = document.createElement('script');
   s.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js';
@@ -1440,7 +1408,7 @@ button { min-height: 40px; }
 <body>
 
 <!-- TOP NAV -->
-<nav class="topnav">
+<nav class="topnav" id="main-topnav">
   <div class="logo" onclick="goHome()">
     <span class="icon">🏥</span>
     <div>
@@ -1449,13 +1417,35 @@ button { min-height: 40px; }
     </div>
   </div>
   <div class="breadcrumb" id="breadcrumb"></div>
-  <div style="display:flex;align-items:center;gap:8px;">
+  <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
     <button id="dark-mode-btn" onclick="toggleDarkMode()" title="الوضع الليلي" aria-label="تبديل الوضع الليلي">🌙</button>
     <div id="user-box">
-      <button class="chatgpt-login-btn" onclick="loginWithGoogle()">🔐 دخول</button>
+      <button class="chatgpt-login-btn" onclick="loginWithGoogle()">🔐 دخول بجوجل</button>
     </div>
   </div>
 </nav>
+<!-- Account Menu Dropdown -->
+<div id="account-menu-overlay" onclick="closeAccountMenu()" style="display:none;position:fixed;inset:0;z-index:9998;"></div>
+<div id="account-menu" class="account-menu" style="display:none;">
+  <div class="am-header">
+    <div class="am-avatar" id="am-avatar">👤</div>
+    <div class="am-info">
+      <div class="am-name" id="am-name">—</div>
+      <div class="am-email" id="am-email">—</div>
+    </div>
+  </div>
+  <div class="am-divider"></div>
+  <div class="am-item" id="am-admin-btn" style="display:none;" onclick="toggleAdminPanel();closeAccountMenu();">
+    <span>⚙️</span> لوحة التحكم
+  </div>
+  <div class="am-item" id="am-sub-btn" style="display:none;" onclick="SubSystem.openModal();closeAccountMenu();">
+    <span>🎓</span> طلب اشتراك
+  </div>
+  <div class="am-divider"></div>
+  <div class="am-item am-danger" onclick="logoutUserPro()">
+    <span>🚪</span> تسجيل الخروج
+  </div>
+</div>
 
 <!-- ==================== PAGE: HOME ==================== -->
 <div id="page-home" class="page active">
@@ -2803,27 +2793,90 @@ async function openResource(url, title, resourceType) {
 // ==================== AUTH FUNCTIONS ====================
 
 window.loginWithGoogle = async function() {
-  if (!window.supabase) { alert('جاري التحميل، حاول مجدداً'); return; }
+  // انتظر Supabase يتحمل أولاً — ضروري على GitHub Pages
+  var db = window.supabase;
+  if (!db) {
+    try {
+      var lib = await window._supabaseReady;
+      if (!lib) { alert('فشل تحميل المكتبة، تحقق من الاتصال بالإنترنت'); return; }
+      if (!window._db) {
+        window._db = lib.createClient(
+          "https://xiqeaohemuxgujrcnpzd.supabase.co",
+          "sb_publishable_xzg8wn0ETQniEItj2Etfmw__klmgUWg",
+          { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } }
+        );
+        window.supabase = window._db;
+      }
+      db = window.supabase;
+    } catch(e) {
+      alert('خطأ في تهيئة Supabase: ' + e.message);
+      return;
+    }
+  }
+
   // حفظ الـ navigation stack قبل الـ redirect
   try {
-    const stackData = state.navigationStack.map(function(s){ return { label: s.label }; });
+    var stackData = state.navigationStack.map(function(s){ return { label: s.label }; });
     sessionStorage.setItem('_nav_stack_labels', JSON.stringify(stackData));
-    // حفظ آخر section_id كانت مفتوحة
     if (window._lastOpenSectionId) {
       sessionStorage.setItem('_last_section_id', String(window._lastOpenSectionId));
     }
   } catch(e) {}
-  const redirectTo = window.location.origin + window.location.pathname;
-  const { error } = await window.supabase.auth.signInWithOAuth({
-    provider: 'google',
-    options: { redirectTo: redirectTo, skipBrowserRedirect: false }
-  });
-  if (error) alert('خطأ في تسجيل الدخول: ' + error.message);
+
+  // بناء redirectTo الصح لـ GitHub Pages
+  var redirectTo = window.location.origin + window.location.pathname;
+  redirectTo = redirectTo.replace(/\/index\.html$/, '/');
+  if (!redirectTo.endsWith('/')) redirectTo += '/';
+
+  console.log('[AUTH] redirectTo:', redirectTo);
+
+  try {
+    var result = await db.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: redirectTo,
+        skipBrowserRedirect: false,
+        queryParams: { access_type: 'offline', prompt: 'consent' }
+      }
+    });
+    if (result.error) {
+      console.error('[AUTH] Google login error:', result.error);
+      alert('خطأ في تسجيل الدخول: ' + result.error.message + '\n\nاللي لازم يكون مضاف في Supabase → Authentication → Redirect URLs:\n' + redirectTo);
+    }
+  } catch(err) {
+    console.error('[AUTH] Unexpected error:', err);
+    alert('حدث خطأ غير متوقع: ' + (err.message || String(err)));
+  }
 };
 
 window.logoutUser = async function() {
   await window.supabase.auth.signOut();
   location.reload();
+};
+
+// Enhanced logout with full cleanup
+window.logoutUserPro = async function() {
+  if (!window.supabase) return;
+  try {
+    // Clear all stored data
+    try {
+      Object.keys(localStorage).forEach(function(k) {
+        if (k.startsWith('sb-') || k.includes('supabase') || k.startsWith('sub_')) {
+          localStorage.removeItem(k);
+        }
+      });
+      sessionStorage.clear();
+    } catch(e) {}
+    await window.supabase.auth.signOut();
+    // Update UI immediately without reload for smooth UX
+    _renderUserBox(null, null);
+    goHome();
+    // Hide account menu
+    closeAccountMenu();
+  } catch(err) {
+    console.error('Logout error:', err);
+    location.reload();
+  }
 };
 
 // ============================================================
@@ -2838,10 +2891,11 @@ function _renderUserBox(user, role) {
     window._currentUserRole = null;
     document.body.classList.remove('is-admin');
     document.body.classList.add('content-protected');
-    box.innerHTML = '<button class="chatgpt-login-btn" onclick="loginWithGoogle()">🔐 دخول</button>';
+    box.innerHTML = '<button class="chatgpt-login-btn" onclick="loginWithGoogle()">🔐 دخول بجوجل</button>';
+    // Hide account menu data
+    _updateAccountMenu(null, null);
     return;
   }
-  // role يأتي من profiles.role في Supabase — ليس من HTML
   const isAdmin = (role === 'admin');
   window._isAdminUser = isAdmin;
   window._currentUserRole = role || 'user';
@@ -2852,21 +2906,85 @@ function _renderUserBox(user, role) {
     document.body.classList.remove('is-admin');
     document.body.classList.add('content-protected');
   }
-  if (isAdmin) {
-    box.innerHTML =
-      '<div class="user-card">'
-      + '<span class="user-email">👑 ' + user.email + '</span>'
-      + '<button style="background:rgba(255,255,255,.2);color:#fff;border:1.5px solid rgba(255,255,255,.35);padding:6px 12px;border-radius:16px;cursor:pointer;font-size:12px;font-family:inherit;" onclick="toggleAdminPanel()">⚙️ تحكم</button>'
-      + '<button class="logout-btn" onclick="logoutUser()">خروج</button>'
-      + '</div>';
-    adminLoadSections();
-  } else {
-    box.innerHTML =
-      '<div class="user-card">'
-      + '<span class="user-email">👤 ' + user.email + '</span>'
-      + '<button class="logout-btn" onclick="logoutUser()">خروج</button>'
-      + '</div>';
+
+  // Build avatar - use photo if available
+  const meta = user.user_metadata || {};
+  const photoUrl = meta.avatar_url || meta.picture || null;
+  const displayName = meta.full_name || meta.name || user.email.split('@')[0];
+  const avatarHtml = photoUrl
+    ? '<img src="' + photoUrl + '" style="width:36px;height:36px;border-radius:50%;border:2px solid rgba(255,255,255,.5);object-fit:cover;cursor:pointer;" onclick="openAccountMenu()" onerror="this.outerHTML='<div class=\"ua-initials\" onclick=\"openAccountMenu()\">'+(window._currentDisplayName||'؟')[0].toUpperCase()+'</div>'">'
+    : '<div class="ua-initials" onclick="openAccountMenu()">' + (displayName[0] || '؟').toUpperCase() + '</div>';
+
+  box.innerHTML =
+    '<div class="user-card">'
+    + avatarHtml
+    + '<span class="user-name-nav" onclick="openAccountMenu()">' + displayName.split(' ')[0] + '</span>'
+    + '</div>';
+
+  // Update account menu data
+  _updateAccountMenu(user, role);
+
+  if (isAdmin) adminLoadSections();
+}
+
+function _updateAccountMenu(user, role) {
+  var amAvatar = document.getElementById('am-avatar');
+  var amName = document.getElementById('am-name');
+  var amEmail = document.getElementById('am-email');
+  var amAdminBtn = document.getElementById('am-admin-btn');
+  var amSubBtn = document.getElementById('am-sub-btn');
+  if (!amAvatar) return;
+
+  if (!user) {
+    amName.textContent = '—';
+    amEmail.textContent = '—';
+    amAvatar.innerHTML = '👤';
+    if (amAdminBtn) amAdminBtn.style.display = 'none';
+    if (amSubBtn) amSubBtn.style.display = 'none';
+    return;
   }
+
+  const meta = user.user_metadata || {};
+  const photoUrl = meta.avatar_url || meta.picture || null;
+  const displayName = meta.full_name || meta.name || user.email.split('@')[0];
+  window._currentDisplayName = displayName;
+
+  if (photoUrl) {
+    amAvatar.innerHTML = '<img src="' + photoUrl + '" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" onerror="this.parentElement.innerHTML='' + displayName[0].toUpperCase() + ''">';
+  } else {
+    amAvatar.textContent = displayName[0].toUpperCase();
+  }
+  amName.textContent = displayName;
+  amEmail.textContent = user.email || '';
+
+  if (amAdminBtn) amAdminBtn.style.display = (role === 'admin') ? 'flex' : 'none';
+  if (amSubBtn) amSubBtn.style.display = (role === 'admin') ? 'none' : 'flex';
+}
+
+function openAccountMenu() {
+  var menu = document.getElementById('account-menu');
+  var overlay = document.getElementById('account-menu-overlay');
+  if (!menu) return;
+  // Position near user-box
+  var box = document.getElementById('user-box');
+  if (box) {
+    var rect = box.getBoundingClientRect();
+    menu.style.top = (rect.bottom + 8) + 'px';
+    menu.style.right = (window.innerWidth - rect.right) + 'px';
+  }
+  menu.style.display = 'block';
+  if (overlay) overlay.style.display = 'block';
+  setTimeout(function() { menu.classList.add('am-open'); }, 10);
+}
+
+function closeAccountMenu() {
+  var menu = document.getElementById('account-menu');
+  var overlay = document.getElementById('account-menu-overlay');
+  if (menu) {
+    menu.classList.remove('am-open');
+    setTimeout(function() { menu.style.display = 'none'; }, 200);
+  }
+  if (overlay) overlay.style.display = 'none';
 }
 
 // ── fetchUserRole: جلب الـ role من profiles ──────────────────
@@ -2948,7 +3066,27 @@ window.checkUser = async function() {
   }
 };
 
-document.addEventListener('DOMContentLoaded', function() { window.checkUser(); });
+// تشغيل checkUser بعد ما Supabase يتحمل — مش على DOMContentLoaded مباشرة
+// لأن Supabase بيتحمل async وممكن يأخر على GitHub Pages
+window._supabaseReady.then(function() {
+  if (window.supabase) {
+    window.checkUser();
+  } else {
+    // fallback: انتظر شوية وحاول تاني
+    var tries = 0;
+    var interval = setInterval(function() {
+      tries++;
+      if (window.supabase) {
+        clearInterval(interval);
+        window.checkUser();
+      } else if (tries > 20) {
+        clearInterval(interval);
+        console.warn('[AUTH] Supabase لم يتحمل بعد 10 ثواني');
+        _renderUserBox(null, null);
+      }
+    }, 500);
+  }
+});
 
 </script>
 
@@ -3064,9 +3202,8 @@ window.checkBanStatus = async function(email) {
 
 <style>
 
-#user-box {
-  /* مش fixed — هيتحط جوه الـ navbar */
-}
+/* ===== NEW AUTH & ACCOUNT MENU STYLES ===== */
+#user-box { display: flex; align-items: center; }
 
 .chatgpt-login-btn {
   display: flex;
@@ -3075,48 +3212,149 @@ window.checkBanStatus = async function(email) {
   background: rgba(255,255,255,0.15);
   border: 1.5px solid rgba(255,255,255,0.35);
   color: #fff;
-  padding: 7px 14px;
+  padding: 7px 16px;
   border-radius: 20px;
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 700;
   cursor: pointer;
   backdrop-filter: blur(8px);
-  transition: background .2s;
+  transition: background .2s, transform .15s;
   white-space: nowrap;
   font-family: 'Cairo','Tajawal',sans-serif;
+  min-height: 36px;
 }
-.chatgpt-login-btn:hover { background: rgba(255,255,255,0.25); }
+.chatgpt-login-btn:hover { background: rgba(255,255,255,0.28); transform: scale(1.03); }
+.chatgpt-login-btn:active { transform: scale(.97); }
 
 .user-card {
   display: flex;
   align-items: center;
   gap: 8px;
+  cursor: pointer;
 }
 
-.user-email {
+.user-name-nav {
   color: #fff;
-  font-size: 12px;
-  font-weight: 600;
-  max-width: 130px;
+  font-size: 13px;
+  font-weight: 700;
+  max-width: 100px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  opacity: .9;
+  opacity: .95;
 }
+@media(max-width:480px) { .user-name-nav { display: none; } }
 
-.logout-btn {
-  background: rgba(255,255,255,0.15);
+.ua-initials {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--teal), var(--primary));
   color: #fff;
-  border: 1.5px solid rgba(255,255,255,0.3);
-  padding: 6px 12px;
-  border-radius: 16px;
+  font-size: 15px;
+  font-weight: 900;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid rgba(255,255,255,.5);
   cursor: pointer;
-  font-size: 12px;
-  font-family: 'Cairo','Tajawal',sans-serif;
-  white-space: nowrap;
-  transition: background .2s;
+  flex-shrink: 0;
+  transition: transform .2s;
 }
-.logout-btn:hover { background: rgba(255,255,255,0.28); }
+.ua-initials:hover { transform: scale(1.08); }
+
+/* Backward compat */
+.user-email { display: none; }
+.logout-btn { display: none; }
+
+/* ===== ACCOUNT MENU (ChatGPT-style) ===== */
+.account-menu {
+  position: fixed;
+  background: #fff;
+  border-radius: 16px;
+  box-shadow: 0 20px 60px rgba(10,30,60,.22);
+  min-width: 260px;
+  z-index: 9999;
+  overflow: hidden;
+  border: 1.5px solid #e3eaf5;
+  opacity: 0;
+  transform: translateY(-10px) scale(.97);
+  transition: opacity .2s, transform .2s;
+  pointer-events: none;
+}
+.account-menu.am-open {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  pointer-events: all;
+}
+.am-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 18px 20px 14px;
+  background: linear-gradient(135deg, var(--primary), var(--teal));
+  color: #fff;
+}
+.am-avatar {
+  width: 50px; height: 50px;
+  border-radius: 50%;
+  background: rgba(255,255,255,.25);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.5rem;
+  font-weight: 900;
+  border: 2.5px solid rgba(255,255,255,.5);
+  flex-shrink: 0;
+  overflow: hidden;
+}
+.am-info { flex: 1; min-width: 0; }
+.am-name {
+  font-size: .95rem;
+  font-weight: 800;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-bottom: 2px;
+}
+.am-email {
+  font-size: .72rem;
+  opacity: .8;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  direction: ltr;
+}
+.am-divider {
+  height: 1px;
+  background: #e8f0f8;
+  margin: 4px 0;
+}
+.am-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 20px;
+  font-size: .88rem;
+  font-weight: 600;
+  color: #2c3e50;
+  cursor: pointer;
+  transition: background .15s;
+  font-family: 'Cairo','Tajawal',sans-serif;
+}
+.am-item:hover { background: #f0f6ff; }
+.am-item.am-danger { color: #e74c3c; }
+.am-item.am-danger:hover { background: #fef0ef; }
+.am-item span:first-child { font-size: 1.1rem; }
+
+[data-theme="dark"] .account-menu {
+  background: #1a2535;
+  border-color: #2a3f55;
+  box-shadow: 0 20px 60px rgba(0,0,0,.5);
+}
+[data-theme="dark"] .am-divider { background: #2a3f55; }
+[data-theme="dark"] .am-item { color: #e8f0f8; }
+[data-theme="dark"] .am-item:hover { background: #1e3050; }
+[data-theme="dark"] .am-item.am-danger { color: #ff7070; }
+[data-theme="dark"] .am-item.am-danger:hover { background: #2a1a1a; }
 
 </style>
 
@@ -6540,5 +6778,851 @@ console.log('%c[SECURITY v1] اكتب printSecuritySQL() في الـ Console ل�
 <!-- ============================================================ -->
 <!-- نهاية نظام الحماية v1                                        -->
 <!-- ============================================================ -->
+
+<!-- ============================================================ -->
+<!-- PLATFORM IMPROVEMENTS v2.0 — Authentication, Navigation,    -->
+<!-- PDF Viewer, History API, Performance Cache                   -->
+<!-- ============================================================ -->
+<style>
+/* ===== IMPROVED BREADCRUMB ===== */
+.breadcrumb {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: .78rem;
+  opacity: .9;
+  flex-wrap: nowrap;
+  overflow: hidden;
+  max-width: 500px;
+  padding: 4px 8px;
+  border-radius: 20px;
+  background: rgba(255,255,255,.08);
+  backdrop-filter: blur(6px);
+  border: 1px solid rgba(255,255,255,.15);
+}
+.breadcrumb span {
+  cursor: pointer;
+  transition: color .2s;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 120px;
+  font-weight: 600;
+}
+.breadcrumb span.bc-current {
+  color: #f39c12;
+  font-weight: 800;
+  cursor: default;
+}
+.breadcrumb span:not(.bc-current):not(.sep):hover { color: #f39c12; }
+.breadcrumb .sep { opacity: .5; font-size: .7rem; flex-shrink: 0; }
+@media(max-width: 600px) {
+  .breadcrumb { max-width: 160px; font-size: .7rem; }
+  .breadcrumb span { max-width: 60px; }
+}
+@media(max-width: 400px) {
+  .breadcrumb { display: none; }
+}
+
+/* ===== PDF.JS VIEWER MODAL ===== */
+#pdfjs-modal-overlay {
+  position: fixed; inset: 0; z-index: 999999;
+  background: rgba(5,10,20,.92);
+  backdrop-filter: blur(8px);
+  display: flex; flex-direction: column;
+  animation: rvFadeIn .25s ease;
+}
+#pdfjs-modal {
+  display: flex; flex-direction: column;
+  width: 100%; height: 100%;
+}
+#pdfjs-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  background: linear-gradient(135deg, #0a3d62, #17a589);
+  color: #fff;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+#pdfjs-title {
+  flex: 1;
+  font-size: .88rem;
+  font-weight: 800;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.pdfjs-btn {
+  background: rgba(255,255,255,.18);
+  border: 1px solid rgba(255,255,255,.3);
+  color: #fff;
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-size: .78rem;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: 'Cairo','Tajawal',sans-serif;
+  transition: background .2s;
+  white-space: nowrap;
+  min-height: 34px;
+  display: flex; align-items: center; gap: 4px;
+}
+.pdfjs-btn:hover { background: rgba(255,255,255,.3); }
+.pdfjs-btn:disabled { opacity: .4; cursor: default; }
+#pdfjs-page-input {
+  width: 48px;
+  text-align: center;
+  border: 1px solid rgba(255,255,255,.4);
+  background: rgba(255,255,255,.15);
+  color: #fff;
+  border-radius: 8px;
+  padding: 5px 6px;
+  font-size: .82rem;
+  font-family: 'Cairo','Tajawal',sans-serif;
+}
+#pdfjs-search-input {
+  border: 1px solid rgba(255,255,255,.4);
+  background: rgba(255,255,255,.15);
+  color: #fff;
+  border-radius: 8px;
+  padding: 5px 10px;
+  font-size: .8rem;
+  font-family: 'Cairo','Tajawal',sans-serif;
+  width: 140px;
+  outline: none;
+}
+#pdfjs-search-input::placeholder { color: rgba(255,255,255,.5); }
+#pdfjs-canvas-container {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: auto;
+  background: #1a1a2e;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 20px 16px;
+  gap: 16px;
+  -webkit-overflow-scrolling: touch;
+}
+.pdfjs-page-wrap {
+  position: relative;
+  box-shadow: 0 8px 32px rgba(0,0,0,.6);
+  border-radius: 4px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.pdfjs-page-wrap canvas {
+  display: block;
+}
+.pdfjs-highlight-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.pdfjs-search-highlight {
+  position: absolute;
+  background: rgba(255, 220, 0, 0.45);
+  border: 2px solid rgba(255, 160, 0, 0.8);
+  border-radius: 2px;
+  mix-blend-mode: multiply;
+}
+#pdfjs-status {
+  font-size: .78rem;
+  opacity: .7;
+  flex-shrink: 0;
+}
+#pdfjs-zoom-level {
+  font-size: .78rem;
+  opacity: .8;
+  min-width: 40px;
+  text-align: center;
+}
+@media(max-width: 600px) {
+  #pdfjs-toolbar { padding: 8px 10px; gap: 5px; }
+  #pdfjs-search-input { width: 100px; }
+  .pdfjs-btn { padding: 5px 8px; font-size: .72rem; }
+}
+
+/* ===== PERFORMANCE CACHE INDICATOR ===== */
+.cache-badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  background: rgba(23,165,137,.2);
+  color: #17a589;
+  border-radius: 12px;
+  padding: 2px 8px;
+  font-size: .65rem;
+  font-weight: 700;
+  border: 1px solid rgba(23,165,137,.3);
+  margin-right: 6px;
+  animation: fadeIn .3s ease;
+}
+</style>
+
+<script>
+// ================================================================
+// § IMPROVEMENTS v2.0
+// ================================================================
+
+// ── 1. ENHANCED BREADCRUMB ──────────────────────────────────────
+// Override the existing updateBreadcrumb function
+window.updateBreadcrumb = function() {
+  var bc = document.getElementById('breadcrumb');
+  if (!bc) return;
+  var parts = [
+    '<span onclick="goHome()" style="cursor:pointer;flex-shrink:0;">🏠</span>'
+  ];
+  if (window.state && state.navigationStack && state.navigationStack.length > 0) {
+    state.navigationStack.forEach(function(step, i) {
+      var isLast = i === state.navigationStack.length - 1;
+      var label = (step.label || '').substring(0, 18) + (step.label && step.label.length > 18 ? '…' : '');
+      if (isLast) {
+        parts.push('<span class="sep">›</span>');
+        parts.push('<span class="bc-current">' + label + '</span>');
+      } else {
+        parts.push('<span class="sep">›</span>');
+        parts.push('<span onclick="navigateTo(' + i + ')">' + label + '</span>');
+      }
+    });
+  }
+  bc.innerHTML = parts.join('');
+  // Update History API
+  _pushHistoryState();
+};
+
+// ── 2. HISTORY API NAVIGATION ───────────────────────────────────
+var _historyEnabled = false;
+var _historyBusy = false;
+
+function _pushHistoryState() {
+  if (_historyBusy) return;
+  try {
+    var stackData = [];
+    if (window.state && state.navigationStack) {
+      stackData = state.navigationStack.map(function(s) {
+        return { label: s.label, sectionId: s._sectionId || null };
+      });
+    }
+    var pageId = '';
+    var activePage = document.querySelector('.page.active');
+    if (activePage) pageId = activePage.id;
+
+    history.replaceState({ stackLen: stackData.length, pageId: pageId, stackData: stackData }, '', window.location.href);
+  } catch(e) {}
+}
+
+// Handle browser back/forward
+window.addEventListener('popstate', function(e) {
+  // If resource viewer is open — close it
+  var rvOverlay = document.getElementById('rv-overlay');
+  if (rvOverlay) {
+    ResourceViewer.close();
+    history.pushState(null, '', window.location.href);
+    return;
+  }
+  // Close pdf viewer if open
+  var pdfOverlay = document.getElementById('pdfjs-modal-overlay');
+  if (pdfOverlay) {
+    PDFJSViewer.close();
+    history.pushState(null, '', window.location.href);
+    return;
+  }
+  // Navigate back in app
+  _historyBusy = true;
+  navigateBack();
+  setTimeout(function() { _historyBusy = false; }, 100);
+});
+
+// ── 3. DATA CACHE SYSTEM ────────────────────────────────────────
+var _dataCache = {
+  sections: {},
+  content: {},
+  resources: {},
+  _ts: {},
+  TTL: 5 * 60 * 1000, // 5 minutes
+
+  set: function(key, data) {
+    this[key.split(':')[0]][key] = data;
+    this._ts[key] = Date.now();
+  },
+  get: function(key) {
+    var cat = key.split(':')[0];
+    var item = this[cat] && this[cat][key];
+    if (!item) return null;
+    if (Date.now() - (this._ts[key] || 0) > this.TTL) {
+      delete this[cat][key];
+      delete this._ts[key];
+      return null;
+    }
+    return item;
+  },
+  clear: function() {
+    this.sections = {}; this.content = {}; this.resources = {}; this._ts = {};
+  }
+};
+
+// Override loadSections to use cache
+var _origLoadSections = window.loadSections;
+window.loadSections = async function(parentId) {
+  var key = 'sections:' + (parentId === null || parentId === undefined ? 'root' : parentId);
+  var cached = _dataCache.get(key);
+  if (cached) {
+    console.log('[Cache HIT]', key);
+    return cached;
+  }
+  var data = await _origLoadSections(parentId);
+  if (data && data.length > 0) _dataCache.set(key, data);
+  return data;
+};
+
+var _origLoadContent = window.loadSectionContent;
+window.loadSectionContent = async function(sectionId) {
+  var key = 'content:' + sectionId;
+  var cached = _dataCache.get(key);
+  if (cached) return cached;
+  var data = await _origLoadContent(sectionId);
+  if (data && data.length > 0) _dataCache.set(key, data);
+  return data;
+};
+
+var _origLoadResources = window.loadSectionResources;
+window.loadSectionResources = async function(sectionId) {
+  var key = 'resources:' + sectionId;
+  var cached = _dataCache.get(key);
+  if (cached) return cached;
+  var data = await _origLoadResources(sectionId);
+  if (data) _dataCache.set(key, data);
+  return data;
+};
+
+// ── 4. LAST POSITION MEMORY ─────────────────────────────────────
+// Save and restore last visited page across browser sessions
+(function() {
+  // Save current navigation state every time user navigates
+  var _origGoHome = window.goHome;
+  window.goHome = function() {
+    _clearLastPosition();
+    _origGoHome();
+  };
+
+  function _saveLastPosition(pageId, sectionId, sectionTitle) {
+    try {
+      localStorage.setItem('_platform_last_page', pageId || '');
+      localStorage.setItem('_platform_last_section', String(sectionId || ''));
+      localStorage.setItem('_platform_last_title', sectionTitle || '');
+      localStorage.setItem('_platform_last_ts', String(Date.now()));
+    } catch(e) {}
+  }
+
+  function _clearLastPosition() {
+    try {
+      localStorage.removeItem('_platform_last_page');
+      localStorage.removeItem('_platform_last_section');
+      localStorage.removeItem('_platform_last_title');
+      localStorage.removeItem('_platform_last_ts');
+    } catch(e) {}
+  }
+
+  // Hook into section opens to save position
+  var _origOpenDynamic = window.openDynamicSection;
+  window.openDynamicSection = async function(sec) {
+    _saveLastPosition('page-dynamic-section', sec && sec.id, sec && sec.title);
+    return _origOpenDynamic(sec);
+  };
+
+  // Restore on load (only if recent — within 30 min)
+  window.addEventListener('load', function() {
+    setTimeout(function() {
+      try {
+        var lastTs = parseInt(localStorage.getItem('_platform_last_ts') || '0');
+        if (Date.now() - lastTs > 30 * 60 * 1000) return; // Expired
+        var lastSectionId = localStorage.getItem('_platform_last_section');
+        if (!lastSectionId) return;
+        // Try to restore
+        var sectionData = window['__sectionData_' + lastSectionId];
+        if (sectionData && typeof window.openDynamicSection === 'function') {
+          console.log('[Restore] Last section:', lastSectionId);
+          // Small delay to ensure page is ready
+          setTimeout(function() {
+            if (window.supabase) window.openDynamicSection(sectionData);
+          }, 1500);
+        }
+      } catch(e) {}
+    }, 2000);
+  });
+})();
+
+// ── 5. PDF.JS VIEWER (Full Featured) ────────────────────────────
+var PDFJSViewer = (function() {
+
+  var _pdfDoc = null;
+  var _currentPage = 1;
+  var _totalPages = 0;
+  var _scale = 1.2;
+  var _minScale = 0.5;
+  var _maxScale = 4.0;
+  var _isOpen = false;
+  var _searchText = '';
+  var _renderTask = null;
+  var _pdfUrl = '';
+
+  function _loadPDFJS(callback) {
+    if (window.pdfjsLib) { callback(); return; }
+    var script = document.createElement('script');
+    script.src = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js';
+    script.onload = function() {
+      if (window.pdfjsLib) {
+        window.pdfjsLib.GlobalWorkerOptions.workerSrc =
+          'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
+      }
+      callback();
+    };
+    script.onerror = function() {
+      // Fallback to iframe if PDF.js fails to load
+      console.warn('[PDFViewer] PDF.js failed, using iframe fallback');
+      callback('iframe_fallback');
+    };
+    document.head.appendChild(script);
+  }
+
+  function _buildModal(title) {
+    var existing = document.getElementById('pdfjs-modal-overlay');
+    if (existing) existing.remove();
+
+    var overlay = document.createElement('div');
+    overlay.id = 'pdfjs-modal-overlay';
+    overlay.innerHTML = [
+      '<div id="pdfjs-modal">',
+        '<div id="pdfjs-toolbar">',
+          '<button class="pdfjs-btn" onclick="PDFJSViewer.close()" title="إغلاق">✕</button>',
+          '<div id="pdfjs-title">' + (title || 'PDF Viewer') + '</div>',
+          '<input id="pdfjs-search-input" placeholder="🔍 بحث..." oninput="PDFJSViewer.search(this.value)" onkeydown="if(event.key===\'Enter\')PDFJSViewer.searchNext()">',
+          '<button class="pdfjs-btn" onclick="PDFJSViewer.searchNext()" title="بحث">▼</button>',
+          '<button class="pdfjs-btn" onclick="PDFJSViewer.prevPage()" id="pdfjs-prev" disabled>‹</button>',
+          '<input id="pdfjs-page-input" type="number" min="1" value="1" onchange="PDFJSViewer.goToPage(this.value)" title="رقم الصفحة">',
+          '<span id="pdfjs-status" style="color:rgba(255,255,255,.7);font-size:.75rem;white-space:nowrap;">/ …</span>',
+          '<button class="pdfjs-btn" onclick="PDFJSViewer.nextPage()" id="pdfjs-next" disabled>›</button>',
+          '<button class="pdfjs-btn" onclick="PDFJSViewer.zoomOut()" title="تصغير">－</button>',
+          '<span id="pdfjs-zoom-level">120%</span>',
+          '<button class="pdfjs-btn" onclick="PDFJSViewer.zoomIn()" title="تكبير">＋</button>',
+          '<button class="pdfjs-btn" onclick="PDFJSViewer.toggleFullscreen()" title="ملء الشاشة">⛶</button>',
+        '</div>',
+        '<div id="pdfjs-canvas-container"></div>',
+      '</div>'
+    ].join('');
+
+    document.body.appendChild(overlay);
+    document.body.style.overflow = 'hidden';
+
+    // Close on Escape
+    overlay._keyHandler = function(e) {
+      if (e.key === 'Escape') PDFJSViewer.close();
+      if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+        if (e.key === 'ArrowLeft') PDFJSViewer.nextPage();
+        else PDFJSViewer.prevPage();
+      }
+    };
+    document.addEventListener('keydown', overlay._keyHandler);
+  }
+
+  function _renderPage(pageNum, container) {
+    return _pdfDoc.getPage(pageNum).then(function(page) {
+      var viewport = page.getViewport({ scale: _scale });
+
+      var wrap = document.createElement('div');
+      wrap.className = 'pdfjs-page-wrap';
+      wrap.id = 'pdfjs-page-wrap-' + pageNum;
+
+      var canvas = document.createElement('canvas');
+      canvas.width = viewport.width;
+      canvas.height = viewport.height;
+      canvas.style.display = 'block';
+
+      var highlightLayer = document.createElement('div');
+      highlightLayer.className = 'pdfjs-highlight-layer';
+      highlightLayer.id = 'pdfjs-highlights-' + pageNum;
+
+      wrap.appendChild(canvas);
+      wrap.appendChild(highlightLayer);
+      container.appendChild(wrap);
+
+      var ctx = canvas.getContext('2d');
+      if (_renderTask) { try { _renderTask.cancel(); } catch(e) {} }
+      _renderTask = page.render({ canvasContext: ctx, viewport: viewport });
+      return _renderTask.promise;
+    });
+  }
+
+  function _renderAllPages() {
+    var container = document.getElementById('pdfjs-canvas-container');
+    if (!container) return;
+    container.innerHTML = '<div style="color:#fff;padding:40px;text-align:center;"><div class="spinner-lg" style="width:48px;height:48px;border:4px solid rgba(255,255,255,.15);border-top-color:#17a589;border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 16px;"></div><p>جاري تحميل الصفحات...</p></div>';
+
+    var promises = [];
+    var tempContainer = document.createElement('div');
+
+    for (var i = 1; i <= _totalPages; i++) {
+      promises.push(_renderPage(i, tempContainer));
+    }
+
+    Promise.all(promises).then(function() {
+      container.innerHTML = '';
+      while (tempContainer.firstChild) {
+        container.appendChild(tempContainer.firstChild);
+      }
+      _updateToolbar();
+      if (_searchText) _performSearch(_searchText);
+    }).catch(function(err) {
+      if (err && err.name !== 'RenderingCancelledException') {
+        container.innerHTML = '<div style="color:#fff;padding:40px;text-align:center;"><p>⚠️ خطأ في تحميل الصفحات</p></div>';
+      }
+    });
+  }
+
+  function _renderSinglePage(pageNum) {
+    var container = document.getElementById('pdfjs-canvas-container');
+    if (!container) return;
+    container.innerHTML = '<div style="color:#fff;padding:40px;text-align:center;"><div class="spinner-lg" style="width:48px;height:48px;border:4px solid rgba(255,255,255,.15);border-top-color:#17a589;border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 16px;"></div><p>جاري التحميل...</p></div>';
+    var tempWrap = document.createElement('div');
+    _renderPage(pageNum, tempWrap).then(function() {
+      container.innerHTML = '';
+      container.appendChild(tempWrap.firstChild);
+      _updateToolbar();
+    });
+  }
+
+  function _updateToolbar() {
+    var prevBtn = document.getElementById('pdfjs-prev');
+    var nextBtn = document.getElementById('pdfjs-next');
+    var statusEl = document.getElementById('pdfjs-status');
+    var pageInput = document.getElementById('pdfjs-page-input');
+    var zoomEl = document.getElementById('pdfjs-zoom-level');
+
+    if (prevBtn) prevBtn.disabled = (_currentPage <= 1);
+    if (nextBtn) nextBtn.disabled = (_currentPage >= _totalPages);
+    if (statusEl) statusEl.textContent = '/ ' + _totalPages;
+    if (pageInput) pageInput.value = _currentPage;
+    if (pageInput) pageInput.max = _totalPages;
+    if (zoomEl) zoomEl.textContent = Math.round(_scale * 100) + '%';
+  }
+
+  function _scrollToPage(pageNum) {
+    var wrap = document.getElementById('pdfjs-page-wrap-' + pageNum);
+    if (wrap) wrap.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  function _performSearch(text) {
+    if (!text || !_pdfDoc) return;
+    // Remove old highlights
+    document.querySelectorAll('.pdfjs-search-highlight').forEach(function(el) { el.remove(); });
+    // TODO: For full text search, we'd need getTextContent — simplified highlight for now
+  }
+
+  // ── Public API ──────────────────────────────────────────────
+  function open(url, title) {
+    if (!url) return;
+    _pdfUrl = url;
+    _isOpen = true;
+    _currentPage = 1;
+    _scale = window.innerWidth <= 600 ? 0.9 : 1.2;
+    _searchText = '';
+
+    _loadPDFJS(function(err) {
+      if (err === 'iframe_fallback') {
+        // Fallback to ResourceViewer for PDF
+        _isOpen = false;
+        ResourceViewer && ResourceViewer._openPdfIframe && ResourceViewer._openPdfIframe(url, title);
+        return;
+      }
+      _buildModal(title);
+      var container = document.getElementById('pdfjs-canvas-container');
+      if (container) container.innerHTML = '<div style="color:#fff;padding:40px;text-align:center;"><div class="spinner-lg" style="width:48px;height:48px;border:4px solid rgba(255,255,255,.15);border-top-color:#17a589;border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 16px;"></div><p>جاري فتح الملف...</p></div>';
+
+      window.pdfjsLib.getDocument({
+        url: url,
+        cMapUrl: 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/cmaps/',
+        cMapPacked: true,
+      }).promise.then(function(doc) {
+        _pdfDoc = doc;
+        _totalPages = doc.numPages;
+        _currentPage = 1;
+
+        // For small PDFs render all, for large PDFs render current page only
+        if (_totalPages <= 20) {
+          _renderAllPages();
+        } else {
+          _renderSinglePage(1);
+        }
+        _updateToolbar();
+      }).catch(function(err) {
+        console.error('[PDFViewer] Load error:', err);
+        var container2 = document.getElementById('pdfjs-canvas-container');
+        if (container2) container2.innerHTML = [
+          '<div style="color:#fff;padding:60px 30px;text-align:center;">',
+            '<div style="font-size:3rem;margin-bottom:16px;">⚠️</div>',
+            '<p style="margin-bottom:20px;">تعذّر فتح الملف مباشرةً</p>',
+            '<p style="font-size:.82rem;opacity:.7;margin-bottom:24px;">قد يكون الملف محمياً أو يحتاج CORS</p>',
+            '<button class="pdfjs-btn" style="margin:0 auto;" onclick="window.open('' + url.replace(/'/g,'%27') + '','_blank')">📥 فتح في تبويب جديد</button>',
+          '</div>'
+        ].join('');
+        _updateToolbar();
+      });
+    });
+  }
+
+  function close() {
+    if (_renderTask) { try { _renderTask.cancel(); } catch(e) {} _renderTask = null; }
+    _isOpen = false;
+    _pdfDoc = null;
+    var overlay = document.getElementById('pdfjs-modal-overlay');
+    if (overlay) {
+      document.removeEventListener('keydown', overlay._keyHandler);
+      overlay.remove();
+    }
+    document.body.style.overflow = '';
+    document.body.classList.remove('rv-open');
+    history.pushState(null, '', window.location.href);
+  }
+
+  function prevPage() {
+    if (_currentPage > 1) {
+      _currentPage--;
+      if (_totalPages <= 20) { _scrollToPage(_currentPage); _updateToolbar(); }
+      else _renderSinglePage(_currentPage);
+    }
+  }
+
+  function nextPage() {
+    if (_currentPage < _totalPages) {
+      _currentPage++;
+      if (_totalPages <= 20) { _scrollToPage(_currentPage); _updateToolbar(); }
+      else _renderSinglePage(_currentPage);
+    }
+  }
+
+  function goToPage(n) {
+    n = parseInt(n);
+    if (isNaN(n) || n < 1 || n > _totalPages) return;
+    _currentPage = n;
+    if (_totalPages <= 20) { _scrollToPage(n); _updateToolbar(); }
+    else _renderSinglePage(n);
+  }
+
+  function zoomIn() {
+    if (_scale < _maxScale) {
+      _scale = Math.min(_maxScale, _scale + 0.2);
+      _reRender();
+    }
+  }
+
+  function zoomOut() {
+    if (_scale > _minScale) {
+      _scale = Math.max(_minScale, _scale - 0.2);
+      _reRender();
+    }
+  }
+
+  function _reRender() {
+    if (!_pdfDoc) return;
+    if (_totalPages <= 20) _renderAllPages();
+    else _renderSinglePage(_currentPage);
+  }
+
+  function search(text) {
+    _searchText = text;
+    _performSearch(text);
+  }
+
+  function searchNext() {
+    // TODO: implement full text search navigation
+  }
+
+  function toggleFullscreen() {
+    var el = document.getElementById('pdfjs-modal-overlay');
+    if (!el) return;
+    if (document.fullscreenElement) {
+      document.exitFullscreen && document.exitFullscreen();
+    } else {
+      el.requestFullscreen && el.requestFullscreen();
+    }
+  }
+
+  return { open, close, prevPage, nextPage, goToPage, zoomIn, zoomOut, search, searchNext, toggleFullscreen };
+})();
+
+// ── 6. OVERRIDE PDF OPENING to use PDFJSViewer ──────────────────
+// Override the NativePDFViewer to use our new viewer
+window.NativePDFViewer = {
+  open: function(url, title) {
+    PDFJSViewer.open(url, title);
+  },
+  close: function() {
+    PDFJSViewer.close();
+  }
+};
+
+// ── 7. openResource OVERRIDE for better mobile handling ─────────
+var _origOpenResource = window.openResource;
+window.openResource = function(url, title, type) {
+  if (!url) return;
+
+  var lower = (url || '').toLowerCase().split('?')[0];
+
+  // ── PDF: open with PDF.js viewer ──
+  var isPDF = (type === 'pdf') || lower.endsWith('.pdf') || (type === 'gdrive_pdf');
+  var isGDrive = /drive\.google\.com/.test(url);
+  if (isPDF || isGDrive) {
+    var pdfUrl = url;
+    if (isGDrive && !isPDF) {
+      var m = url.match(/\/d\/([a-zA-Z0-9_-]+)/);
+      if (m) pdfUrl = 'https://drive.google.com/uc?export=download&id=' + m[1];
+    }
+    PDFJSViewer.open(pdfUrl, title || 'ملف PDF');
+    return;
+  }
+
+  // ── Social / External sites that block iframes → open in new tab ──
+  var isSocial = /facebook\.com|fb\.com|instagram\.com|twitter\.com|x\.com|whatsapp\.com|wa\.me|t\.me|telegram\.me|tiktok\.com|linkedin\.com|snapchat\.com|youtube\.com|youtu\.be/.test(url);
+  if (isSocial) {
+    // Show a nice confirmation modal instead of just opening blank tab
+    _showSocialLinkModal(url, title);
+    return;
+  }
+
+  // ── All other types: use ResourceViewer ──
+  if (typeof ResourceViewer !== 'undefined') {
+    ResourceViewer.open(url, title, type);
+  } else if (_origOpenResource) {
+    _origOpenResource(url, title, type);
+  }
+};
+
+// ── Social Link Modal ──────────────────────────────────────────
+function _showSocialLinkModal(url, title) {
+  // Remove existing
+  var existing = document.getElementById('social-link-modal');
+  if (existing) existing.remove();
+
+  // Detect platform
+  var platform = 'رابط خارجي';
+  var icon = '🌐';
+  var color = 'linear-gradient(135deg,#1a3a5c,#2471a3)';
+  if (/facebook\.com|fb\.com/.test(url)) { platform = 'فيسبوك'; icon = '👥'; color = 'linear-gradient(135deg,#1877f2,#0d5ca0)'; }
+  else if (/whatsapp\.com|wa\.me/.test(url)) { platform = 'واتساب'; icon = '💬'; color = 'linear-gradient(135deg,#25D366,#128C7E)'; }
+  else if (/t\.me|telegram/.test(url)) { platform = 'تيليجرام'; icon = '✈️'; color = 'linear-gradient(135deg,#0088cc,#005fa0)'; }
+  else if (/instagram\.com/.test(url)) { platform = 'إنستجرام'; icon = '📸'; color = 'linear-gradient(135deg,#e1306c,#833ab4)'; }
+  else if (/youtube\.com|youtu\.be/.test(url)) { platform = 'يوتيوب'; icon = '▶️'; color = 'linear-gradient(135deg,#ff0000,#cc0000)'; }
+
+  var overlay = document.createElement('div');
+  overlay.id = 'social-link-modal';
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:999999;background:rgba(10,20,40,0.75);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;padding:20px;animation:rvFadeIn .25s ease;direction:rtl;font-family:Cairo,Tajawal,sans-serif;';
+
+  overlay.innerHTML = [
+    '<div style="background:#fff;border-radius:22px;width:100%;max-width:380px;overflow:hidden;box-shadow:0 30px 80px rgba(0,0,0,.45);animation:rvSlideUp .3s cubic-bezier(.16,1,.3,1);">',
+      '<div style="background:' + color + ';padding:28px 24px 22px;text-align:center;color:#fff;">',
+        '<div style="font-size:3rem;margin-bottom:10px;">' + icon + '</div>',
+        '<div style="font-size:1.1rem;font-weight:900;margin-bottom:4px;">' + (title || platform) + '</div>',
+        '<div style="font-size:.78rem;opacity:.8;">سيتم فتح ' + platform + ' في تبويب جديد</div>',
+      '</div>',
+      '<div style="padding:22px 24px;">',
+        '<div style="background:#f0f6ff;border-radius:12px;padding:10px 14px;margin-bottom:18px;font-size:.75rem;color:#666;direction:ltr;word-break:break-all;text-align:left;">' + url.substring(0, 60) + (url.length > 60 ? '...' : '') + '</div>',
+        '<div style="display:flex;gap:10px;">',
+          '<button id="social-open-btn" style="flex:1;padding:12px;background:' + color + ';color:#fff;border:none;border-radius:12px;font-family:Cairo,Tajawal,sans-serif;font-size:.9rem;font-weight:800;cursor:pointer;">🚀 فتح ' + platform + '</button>',
+          '<button id="social-cancel-btn" style="padding:12px 18px;background:#eaf4fb;color:#0a3d62;border:none;border-radius:12px;font-family:Cairo,Tajawal,sans-serif;font-size:.85rem;font-weight:700;cursor:pointer;">إلغاء</button>',
+        '</div>',
+      '</div>',
+    '</div>'
+  ].join('');
+
+  // Close on backdrop click
+  overlay.addEventListener('click', function(e) {
+    if (e.target === overlay) overlay.remove();
+  });
+  // Close on ESC
+  var escHandler = function(e) {
+    if (e.key === 'Escape') { overlay.remove(); document.removeEventListener('keydown', escHandler); }
+  };
+  document.addEventListener('keydown', escHandler);
+
+  document.body.appendChild(overlay);
+
+  // Wire up buttons AFTER appending (so they exist in DOM)
+  var openBtn = document.getElementById('social-open-btn');
+  var cancelBtn = document.getElementById('social-cancel-btn');
+  if (openBtn) {
+    openBtn.addEventListener('click', function() {
+      window.open(url, '_blank', 'noopener,noreferrer');
+      overlay.remove();
+    });
+  }
+  if (cancelBtn) {
+    cancelBtn.addEventListener('click', function() {
+      overlay.remove();
+    });
+  }
+}
+
+// ── 8. MOBILE SWIPE BACK GESTURE ────────────────────────────────
+(function() {
+  var startX = 0;
+  var startY = 0;
+  var isSwipe = false;
+
+  document.addEventListener('touchstart', function(e) {
+    var touch = e.touches[0];
+    startX = touch.clientX;
+    startY = touch.clientY;
+    isSwipe = (startX < 40); // Only from left edge
+  }, { passive: true });
+
+  document.addEventListener('touchend', function(e) {
+    if (!isSwipe) return;
+    var touch = e.changedTouches[0];
+    var dx = touch.clientX - startX;
+    var dy = Math.abs(touch.clientY - startY);
+
+    if (dx > 80 && dy < 60) {
+      // Swipe right from left edge = go back
+      var rvOverlay = document.getElementById('rv-overlay');
+      var pdfOverlay = document.getElementById('pdfjs-modal-overlay');
+      if (rvOverlay) ResourceViewer.close();
+      else if (pdfOverlay) PDFJSViewer.close();
+      else if (window.state && state.navigationStack.length > 0) navigateBack();
+    }
+    isSwipe = false;
+  }, { passive: true });
+})();
+
+// ── 9. BREADCRUMB SAFE AREA on mobile ───────────────────────────
+// Make breadcrumb responsive and collapse gracefully
+(function() {
+  function _trimBreadcrumb() {
+    var bc = document.getElementById('breadcrumb');
+    if (!bc) return;
+    var navW = document.querySelector('.topnav') ? document.querySelector('.topnav').offsetWidth : window.innerWidth;
+    var logoW = document.querySelector('.topnav .logo') ? document.querySelector('.topnav .logo').offsetWidth : 150;
+    var userW = document.getElementById('user-box') ? document.getElementById('user-box').offsetWidth : 100;
+    var btnsW = 50; // dark mode btn
+    var available = navW - logoW - userW - btnsW - 48;
+    if (available < 120) {
+      bc.style.display = 'none';
+    } else {
+      bc.style.display = 'flex';
+      bc.style.maxWidth = Math.max(120, available) + 'px';
+    }
+  }
+  window.addEventListener('resize', _trimBreadcrumb);
+  setTimeout(_trimBreadcrumb, 500);
+})();
+
+console.log('[Platform v2.0] Improvements loaded: Auth ✓ | PDF.js ✓ | Cache ✓ | History API ✓ | Breadcrumb ✓');
+</script>
+<!-- ============================================================ -->
+<!-- END IMPROVEMENTS v2.0                                        -->
+<!-- ============================================================ -->
+
 </body>
 </html>
