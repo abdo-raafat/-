@@ -926,8 +926,6 @@ footer strong { color: var(--accent2); }
 /* منع body scroll عند فتح viewer */
 body.rv-open {
   overflow: hidden !important;
-  position: fixed;
-  width: 100%;
 }
 
 /* تحسين الـ iframe للموبايل */
@@ -993,16 +991,9 @@ body.rv-open {
   transition: background .2s; flex-shrink: 0;
 }
 #native-pdf-close:hover { background: rgba(255,255,255,.35); }
-/* منع النسخ والتحديد داخل الـ PDF viewer */
-#native-pdf-modal canvas {
-  -webkit-user-select: none !important;
-  user-select: none !important;
-  -webkit-touch-callout: none !important;
-  pointer-events: none !important;
-}
-#native-pdf-body {
-  flex: 1; overflow-y: auto; overflow-x: hidden;
-  background: #525659;
+#native-pdf-frame {
+  flex: 1; width: 100%; border: none; display: block;
+  background: #fff;
   -webkit-overflow-scrolling: touch;
 }
 @media (max-width: 768px) {
@@ -1013,12 +1004,60 @@ body.rv-open {
   }
 }
 
+/* ===== منع طباعة المحتوى للطلاب ===== */
+@media print {
+  body.content-protected * { display: none !important; }
+  body.content-protected::after {
+    content: "المحتوى محمي — لا يمكن طباعته";
+    display: block !important;
+    font-size: 2rem;
+    text-align: center;
+    padding: 100px;
+  }
+}
+
+/* ===== حماية PDF frame — يسمح بالتمرير بدون تحميل ===== */
+/* لا نمنع pointer-events على الـ iframe لأن ذلك يمنع التمرير */
+/* الحماية تتم عبر: منع right-click + طبقة شفافة فوق الـ iframe */
+
+/* ===== إخفاء عناصر تتعلق بالتحميل كلياً للطلاب ===== */
+body.content-protected a[download],
+body.content-protected [download],
+body.content-protected .admin-only-el {
+  display: none !important;
+  pointer-events: none !important;
+}
+
 /* ===== CONTENT PROTECTION — GLOBAL ===== */
 body.content-protected,
 body.content-protected * {
   -webkit-user-select: none !important;
   -moz-user-select: none !important;
   user-select: none !important;
+}
+/* منع سحب الصور وحفظها للمحتوى المحمي */
+body.content-protected img {
+  -webkit-user-drag: none !important;
+  -moz-user-drag: none !important;
+  user-drag: none !important;
+  pointer-events: none;
+  -webkit-touch-callout: none !important;
+}
+/* نعيد pointer-events للعناصر التفاعلية فقط */
+body.content-protected button,
+body.content-protected a,
+body.content-protected input,
+body.content-protected [onclick],
+body.content-protected .dept-card,
+body.content-protected .resource-item,
+body.content-protected .link-card,
+body.content-protected .video-placeholder,
+body.content-protected .rv-image-wrap {
+  pointer-events: auto !important;
+}
+/* منع سحب الصور داخل viewer للمحتوى المحمي */
+body.content-protected .rv-image-wrap img {
+  pointer-events: auto !important;
 }
 /* Allow admin selection */
 body.is-admin,
@@ -1027,31 +1066,10 @@ body.is-admin * {
   -moz-user-select: text !important;
   user-select: text !important;
 }
-
-/* ===== CONTENT PROTECTION — IMAGES & CANVAS ===== */
-body.content-protected img,
-body.content-protected canvas {
-  -webkit-user-drag: none !important;
-  user-drag: none !important;
-  -webkit-touch-callout: none !important;
-  pointer-events: none !important;
-}
-/* استعادة pointer-events لعناصر تحتاج نقر (زر الـ toggle) */
-body.content-protected .rv-image-wrap img {
+body.is-admin img {
+  -webkit-user-drag: auto !important;
   pointer-events: auto !important;
-}
-/* منع Print للطلاب */
-@media print {
-  body.content-protected * {
-    display: none !important;
-  }
-  body.content-protected::after {
-    content: '🔒 الطباعة غير مسموح بها';
-    display: block !important;
-    font-size: 2rem;
-    text-align: center;
-    margin-top: 30vh;
-  }
+  -webkit-touch-callout: default !important;
 }
 </style>
 
@@ -1639,8 +1657,13 @@ function showError(containerId, msg) {
 
 // ==================== NAVIGATION ====================
 function showPage(id) {
+  // ضمان إزالة أي lock على الـ scroll من viewer سابق
+  document.body.style.overflow = '';
+  document.body.classList.remove('rv-open');
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-  document.getElementById(id).classList.add('active');
+  var el = document.getElementById(id);
+  if (!el) { console.error('showPage: لم يُعثر على', id); return; }
+  el.classList.add('active');
   window.scrollTo(0, 0);
   updateBreadcrumb();
 }
@@ -2408,7 +2431,7 @@ const ResourceViewer = (function() {
             controlsList="nodownload noplaybackrate nofullscreen"
             disablePictureInPicture
             disableRemotePlayback
-            oncontextmenu="return false;"
+            oncontextmenu="return false"
           >
             <source src="${escUrl(url)}">
             <p style="color:#fff;padding:20px">متصفحك لا يدعم تشغيل الفيديو.</p>
@@ -2452,8 +2475,10 @@ const ResourceViewer = (function() {
               alt="${escHtml(title)}"
               loading="lazy"
               draggable="false"
-              oncontextmenu="return false;"
-              ondragstart="return false;"
+              oncontextmenu="return false"
+              onselectstart="return false"
+              ondragstart="return false"
+              style="-webkit-user-drag:none;-webkit-touch-callout:none;user-select:none;"
               onclick="
                 var el=this;
                 if(el.classList.contains('zoomed-max')){el.classList.remove('zoomed','zoomed-max');}
@@ -2461,7 +2486,6 @@ const ResourceViewer = (function() {
                 else{el.classList.add('zoomed');}
               "
               onerror="document.getElementById('rv-img-wrap').innerHTML='<div class=\\'rv-error\\'><span class=\\'rv-err-icon\\'>🖼️</span><p>تعذّر تحميل الصورة</p></div>'"
-              style="-webkit-touch-callout:none;-webkit-user-select:none;user-select:none;pointer-events:auto;"
             >
             <div style="position:absolute;bottom:10px;right:10px;background:rgba(0,0,0,.5);color:#fff;border-radius:8px;padding:4px 10px;font-size:.72rem;">اضغط للتكبير</div>
           </div>`;
@@ -2471,9 +2495,7 @@ const ResourceViewer = (function() {
           <div class="rv-audio-wrap">
             <div class="rv-audio-icon">🎵</div>
             <div class="rv-audio-title">${escHtml(title)}</div>
-            <audio controls preload="metadata" id="rv-audio-el"
-              controlsList="nodownload"
-              oncontextmenu="return false;">
+            <audio controls preload="metadata" id="rv-audio-el">
               <source src="${escUrl(url)}">
               متصفحك لا يدعم تشغيل الصوت.
             </audio>
@@ -2589,7 +2611,7 @@ const ResourceViewer = (function() {
           <span style="font-size:.75rem;color:#999;direction:ltr;word-break:break-all;flex:1;max-width:55%" id="rv-url-display" class="admin-only-el" style="display:none">${escHtml(url.length > 60 ? url.substring(0,57)+'...' : url)}</span>
           <div class="rv-footer-btns">
             ${type !== 'fallback' ? `<button class="rv-btn rv-btn-outline" onclick="ResourceViewer._reload()">🔄 إعادة التحميل</button>` : ''}
-            ${(type === 'pdf' || type === 'gdrive_pdf' || type === 'image' || type === 'audio' || type === 'video_direct') ? `<a class="rv-btn rv-btn-primary admin-only-el" href="${escUrl(url)}" download style="display:none">⬇️ تحميل</a>` : ''}
+            ${(type === 'pdf' || type === 'gdrive_pdf' || type === 'image' || type === 'audio' || type === 'video_direct') ? `<button class="rv-btn rv-btn-primary admin-only-el" onclick="if(window._isAdminUser){var a=document.createElement('a');a.href='${escUrl(url)}';a.setAttribute('download','');document.body.appendChild(a);a.click();document.body.removeChild(a);}" style="display:none">&#11015;&#65039; تحميل (أدمن)</button>` : ''}
           </div>
         </div>
       </div>`;
@@ -2666,10 +2688,25 @@ const ResourceViewer = (function() {
   }
 
   function _showPdfFallback(url) {
-    // استخدام PDF.js viewer بدل Google Docs
-    var title = window._rvCurrentTitle || 'PDF';
-    close();
-    NativePDFViewer.open(url, title);
+    // جرّب Google Docs Viewer كـ fallback للـ PDF
+    const body = document.getElementById('rv-body');
+    if (!body) return;
+    const gdocsUrl = 'https://docs.google.com/viewer?url=' + encodeURIComponent(url) + '&embedded=true';
+    body.innerHTML = `
+      <div class="rv-loading" id="rv-loading-indicator">
+        <div class="spinner-lg"></div>
+        <p>جاري المحاولة عبر Google Docs Viewer...</p>
+      </div>
+      <iframe
+        class="rv-pdf-frame"
+        src="${gdocsUrl}"
+        style="display:none"
+        id="rv-pdf-iframe"
+        onload="
+          document.getElementById('rv-loading-indicator').style.display='none';
+          this.style.display='block';
+        "
+      ></iframe>`;
   }
 
   function _showGdriveFallback(url) {
@@ -3340,6 +3377,103 @@ window.checkBanStatus = async function(email) {
 [data-theme="dark"] .ap-msg-text { color: #e8f0f8; }
 [data-theme="dark"] .ap-msg-meta { color: #5a7a94; }
 [data-theme="dark"] .ap-btn-ghost { background: #1e3050; color: #7dd0f0; border-color: #2a4060; }
+
+/* ===== USER MANAGEMENT TABLE ===== */
+.um-table-wrap {
+  overflow-x: auto;
+  border-radius: 14px;
+  border: 1.5px solid #e3eaf5;
+  box-shadow: 0 2px 16px rgba(10,61,98,.06);
+}
+.um-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: .8rem;
+  min-width: 700px;
+}
+.um-table th {
+  background: linear-gradient(135deg,#0a3d62,#1a5276);
+  color: #fff;
+  padding: 12px 14px;
+  text-align: right;
+  font-weight: 700;
+  white-space: nowrap;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+.um-table td {
+  padding: 11px 14px;
+  border-bottom: 1px solid #f0f4f8;
+  vertical-align: middle;
+  color: #2c3e50;
+}
+.um-table tr:last-child td { border-bottom: none; }
+.um-table tr:hover td { background: #f5faff; }
+.um-user-row.banned td { background: #fff8f8; }
+.um-user-row.banned td:first-child { border-right: 3px solid #e74c3c; }
+.um-avatar {
+  width: 34px; height: 34px;
+  border-radius: 50%;
+  background: linear-gradient(135deg,#0a3d62,#17a589);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1rem; color: #fff; font-weight: 700;
+  flex-shrink: 0;
+}
+.um-user-info { display: flex; align-items: center; gap: 10px; }
+.um-user-name { font-weight: 700; color: #0a3d62; font-size: .83rem; }
+.um-user-email { font-size: .7rem; color: #888; direction: ltr; }
+.um-actions { display: flex; gap: 5px; flex-wrap: nowrap; }
+.um-btn {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 5px 10px; border-radius: 8px; border: none;
+  font-family: inherit; font-size: .7rem; font-weight: 700;
+  cursor: pointer; transition: opacity .2s; white-space: nowrap;
+}
+.um-btn:hover { opacity: .83; }
+.um-btn-edit   { background: #eaf4fb; color: #0a3d62; border: 1px solid #b8d9f0; }
+.um-btn-sub    { background: linear-gradient(135deg,#e8f5e9,#c8e6c9); color: #1b5e20; border: 1px solid #a5d6a7; }
+.um-btn-unsub  { background: linear-gradient(135deg,#fff3e0,#ffe0b2); color: #e65100; border: 1px solid #ffcc80; }
+.um-btn-ban    { background: linear-gradient(135deg,#fce4ec,#f8bbd0); color: #b71c1c; border: 1px solid #f48fb1; }
+.um-btn-unban  { background: linear-gradient(135deg,#e8f5e9,#c8e6c9); color: #1b5e20; border: 1px solid #a5d6a7; }
+.um-badge {
+  display: inline-flex; align-items: center; gap: 3px;
+  padding: 3px 9px; border-radius: 20px;
+  font-size: .68rem; font-weight: 700;
+}
+.um-badge-admin    { background:#e3f2fd; color:#0a3d62; border:1px solid #90caf9; }
+.um-badge-mod      { background:#f3e5f5; color:#6a1b9a; border:1px solid #ce93d8; }
+.um-badge-user     { background:#f5f5f5; color:#555;    border:1px solid #ddd; }
+.um-badge-active   { background:#e8f5e9; color:#2e7d32; border:1px solid #a5d6a7; }
+.um-badge-pending  { background:#fff8e1; color:#b7770d; border:1px solid #ffe082; }
+.um-badge-expired  { background:#fce4ec; color:#c62828; border:1px solid #f48fb1; }
+.um-badge-none     { background:#f5f5f5; color:#999;    border:1px solid #e0e0e0; }
+.um-badge-banned   { background:#ffebee; color:#c62828; border:1px solid #ef9a9a; }
+.um-pagination {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 16px; border-top: 1px solid #e3eaf5;
+  font-size: .78rem; color: #666; flex-wrap: wrap; gap: 8px;
+}
+.um-page-btns { display: flex; gap: 6px; }
+.um-page-btn {
+  padding: 5px 12px; border-radius: 8px; border: 1.5px solid #d5e8f5;
+  background: #fff; color: #0a3d62; font-family: inherit;
+  font-size: .75rem; cursor: pointer; font-weight: 700; transition: all .2s;
+}
+.um-page-btn:hover { background: #0a3d62; color: #fff; border-color: #0a3d62; }
+.um-page-btn.active { background: #0a3d62; color: #fff; border-color: #0a3d62; }
+.um-page-btn:disabled { opacity: .4; cursor: not-allowed; }
+/* dark mode */
+[data-theme="dark"] .um-table-wrap { border-color: #2a3f55; }
+[data-theme="dark"] .um-table td { color: #e8f0f8; border-bottom-color: #2a3f55; }
+[data-theme="dark"] .um-table tr:hover td { background: #1e2d40; }
+[data-theme="dark"] .um-user-row.banned td { background: #2a1a1a; }
+[data-theme="dark"] .um-user-name { color: #7dd0f0; }
+[data-theme="dark"] .um-btn-edit { background: #1e3050; color: #7dd0f0; border-color: #2a4060; }
+[data-theme="dark"] .um-page-btn { background: #1e2d40; border-color: #2a3f55; color: #7dd0f0; }
+[data-theme="dark"] #um-edit-modal > div { background: #1a2535; }
+[data-theme="dark"] #um-edit-modal .ap-label { color: #7dd0f0; }
+[data-theme="dark"] .um-pagination { border-top-color: #2a3f55; color: #9ab0c6; }
 </style>
 
 <!-- ADMIN PANEL OVERLAY -->
@@ -3360,7 +3494,8 @@ window.checkBanStatus = async function(email) {
       <button class="ap-nav-btn active" onclick="apSwitchTab('dashboard')" id="ap-tab-dashboard" role="tab">📊 Dashboard</button>
       <button class="ap-nav-btn" onclick="apSwitchTab('requests')"  id="ap-tab-requests"  role="tab">📝 Requests</button>
       <button class="ap-nav-btn" onclick="apSwitchTab('subscriptions')" id="ap-tab-subscriptions" role="tab">🎓 Subscriptions</button>
-      <button class="ap-nav-btn" onclick="apSwitchTab('users')"     id="ap-tab-users"     role="tab">👥 Users</button>
+      <button class="ap-nav-btn" onclick="apSwitchTab('usermgmt')"  id="ap-tab-usermgmt"  role="tab">👥 إدارة المستخدمين</button>
+      <button class="ap-nav-btn" onclick="apSwitchTab('users')"     id="ap-tab-users"     role="tab">🔒 الحظر</button>
       <button class="ap-nav-btn" onclick="apSwitchTab('messages')"  id="ap-tab-messages"  role="tab">💬 Messages</button>
       <button class="ap-nav-btn" onclick="apSwitchTab('content')"   id="ap-tab-content"   role="tab">➕ المحتوى</button>
     </nav>
@@ -3416,10 +3551,140 @@ window.checkBanStatus = async function(email) {
         </div>
       </div>
 
-      <!-- ═══════════════════ TAB: USERS ═══════════════════ -->
+      <!-- ═══════════════════ TAB: USER MANAGEMENT ═══════════════════ -->
+      <div class="ap-tab-panel" id="ap-panel-usermgmt" role="tabpanel">
+
+        <!-- إحصائيات المستخدمين -->
+        <div class="ap-section-heading">📊 إحصائيات المستخدمين</div>
+        <div class="ap-stats-grid" id="um-stats-grid" style="margin-bottom:24px;">
+          <div class="ap-stat-card">
+            <div class="ap-stat-icon">👥</div>
+            <div class="ap-stat-num" id="um-stat-total">—</div>
+            <div class="ap-stat-lbl">إجمالي المستخدمين</div>
+          </div>
+          <div class="ap-stat-card">
+            <div class="ap-stat-icon">🎓</div>
+            <div class="ap-stat-num" id="um-stat-students">—</div>
+            <div class="ap-stat-lbl">الطلاب</div>
+          </div>
+          <div class="ap-stat-card">
+            <div class="ap-stat-icon">👑</div>
+            <div class="ap-stat-num" id="um-stat-admins">—</div>
+            <div class="ap-stat-lbl">الأدمن</div>
+          </div>
+          <div class="ap-stat-card">
+            <div class="ap-stat-icon">✅</div>
+            <div class="ap-stat-num" id="um-stat-active">—</div>
+            <div class="ap-stat-lbl">المشتركون النشطون</div>
+          </div>
+          <div class="ap-stat-card">
+            <div class="ap-stat-icon">⏳</div>
+            <div class="ap-stat-num" id="um-stat-pending">—</div>
+            <div class="ap-stat-lbl">اشتراكات معلقة</div>
+          </div>
+          <div class="ap-stat-card">
+            <div class="ap-stat-icon">🚫</div>
+            <div class="ap-stat-num" id="um-stat-banned">—</div>
+            <div class="ap-stat-lbl">المحظورون</div>
+          </div>
+        </div>
+
+        <!-- شريط البحث والفلتر -->
+        <div class="ap-section-heading">🔍 البحث والفلتر</div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;align-items:flex-end;">
+          <div style="flex:2;min-width:180px;">
+            <label class="ap-label">البحث بالاسم أو البريد</label>
+            <input class="ap-input" id="um-search" type="text" placeholder="🔍 ابحث عن مستخدم..." oninput="umApplyFilters()">
+          </div>
+          <div style="min-width:130px;">
+            <label class="ap-label">Role</label>
+            <select class="ap-select" id="um-filter-role" onchange="umApplyFilters()">
+              <option value="">الكل</option>
+              <option value="admin">👑 أدمن</option>
+              <option value="user">👤 مستخدم</option>
+            </select>
+          </div>
+          <div style="min-width:150px;">
+            <label class="ap-label">الاشتراك</label>
+            <select class="ap-select" id="um-filter-sub" onchange="umApplyFilters()">
+              <option value="">الكل</option>
+              <option value="active">✅ نشط</option>
+              <option value="pending">⏳ معلق</option>
+              <option value="expired">❌ منتهي</option>
+              <option value="none">— بدون اشتراك</option>
+            </select>
+          </div>
+          <div style="min-width:130px;">
+            <label class="ap-label">الحالة</label>
+            <select class="ap-select" id="um-filter-status" onchange="umApplyFilters()">
+              <option value="">الكل</option>
+              <option value="active">🟢 نشط</option>
+              <option value="banned">🚫 محظور</option>
+            </select>
+          </div>
+          <button class="ap-btn ap-btn-ghost" onclick="umLoadUsers()" style="align-self:flex-end;">🔄 تحديث</button>
+        </div>
+
+        <!-- جدول المستخدمين -->
+        <div id="um-users-body">
+          <div class="ap-loading"><div class="spinner"></div> جاري التحميل...</div>
+        </div>
+
+        <!-- Modal تعديل المستخدم -->
+        <div id="um-edit-modal" style="display:none;position:fixed;inset:0;z-index:9999999;background:rgba(10,20,40,0.82);backdrop-filter:blur(6px);align-items:center;justify-content:center;padding:16px;direction:rtl;font-family:'Cairo','Tajawal',sans-serif;">
+          <div style="background:#fff;border-radius:20px;width:100%;max-width:480px;box-shadow:0 30px 80px rgba(0,0,0,0.4);overflow:hidden;animation:apSlideUp .3s cubic-bezier(.16,1,.3,1);">
+            <div style="background:linear-gradient(135deg,#0a3d62,#17a589);padding:18px 22px;display:flex;align-items:center;justify-content:space-between;color:#fff;">
+              <span style="font-size:1rem;font-weight:900;">✏️ تعديل بيانات المستخدم</span>
+              <button onclick="umCloseEdit()" style="background:rgba(255,255,255,.2);border:none;border-radius:50%;width:32px;height:32px;color:#fff;cursor:pointer;font-size:1rem;">✕</button>
+            </div>
+            <div style="padding:22px;">
+              <div style="text-align:center;margin-bottom:18px;">
+                <div style="width:56px;height:56px;border-radius:50%;background:linear-gradient(135deg,#0a3d62,#17a589);display:flex;align-items:center;justify-content:center;font-size:1.6rem;margin:0 auto 8px;">👤</div>
+                <div style="font-size:.8rem;color:#666;" id="um-edit-email-display">—</div>
+              </div>
+              <div class="ap-field">
+                <label class="ap-label">الاسم الكامل</label>
+                <input class="ap-input" id="um-edit-name" type="text" placeholder="الاسم الكامل...">
+              </div>
+              <div class="ap-field">
+                <label class="ap-label">الصلاحية (Role)</label>
+                <select class="ap-select" id="um-edit-role">
+                  <option value="user">👤 مستخدم عادي</option>
+                  <option value="admin">👑 أدمن</option>
+                  <option value="moderator">🛡️ مشرف</option>
+                </select>
+              </div>
+              <div class="ap-field">
+                <label class="ap-label">حالة الاشتراك</label>
+                <select class="ap-select" id="um-edit-sub-status">
+                  <option value="none">— بدون اشتراك</option>
+                  <option value="pending">⏳ معلق</option>
+                  <option value="active">✅ نشط</option>
+                  <option value="expired">❌ منتهي</option>
+                  <option value="cancelled">🚫 ملغي</option>
+                </select>
+              </div>
+              <div class="ap-field">
+                <label class="ap-label">تاريخ انتهاء الاشتراك</label>
+                <input class="ap-input" id="um-edit-sub-end" type="date">
+              </div>
+              <input type="hidden" id="um-edit-user-id">
+              <div id="um-edit-msg" style="min-height:18px;font-size:.8rem;text-align:center;margin-bottom:12px;"></div>
+              <div style="display:flex;gap:10px;">
+                <button onclick="umSaveEdit()" class="ap-btn ap-btn-primary" style="flex:1;justify-content:center;padding:12px;">💾 حفظ التعديلات</button>
+                <button onclick="umCloseEdit()" class="ap-btn ap-btn-ghost" style="justify-content:center;padding:12px 18px;">إلغاء</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+      <!-- End User Management Tab -->
+
+      <!-- ═══════════════════ TAB: USERS (BAN) ═══════════════════ -->
       <div class="ap-tab-panel" id="ap-panel-users" role="tabpanel">
         <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:16px;">
-          <div class="ap-section-heading" style="margin:0;border:none;padding:0;">👥 إدارة المستخدمين</div>
+          <div class="ap-section-heading" style="margin:0;border:none;padding:0;">🚫 إدارة الحظر</div>
           <button class="ap-btn ap-btn-ghost" onclick="apLoadUsers()">🔄 تحديث</button>
         </div>
         <div class="ap-field" style="margin-bottom:14px;">
@@ -3719,6 +3984,7 @@ function apSwitchTab(tab) {
   if (tab === 'dashboard')     apLoadDashboard();
   else if (tab === 'requests') apLoadRequests();
   else if (tab === 'subscriptions') apLoadSubscriptions();
+  else if (tab === 'usermgmt') umLoadUsers();
   else if (tab === 'users')    apLoadUsers();
   else if (tab === 'messages') apLoadMessages();
   else if (tab === 'content')  { /* already managed by adminTab */ }
@@ -3977,6 +4243,416 @@ async function apUnbanUserDirect(email) {
   await window.unbanUser(email);
   apLoadUsers();
 }
+
+// ────────────────────────────────────────────────────────────────
+// USER MANAGEMENT SYSTEM v1 — نظام إدارة المستخدمين الشامل
+// يعتمد على جدول profiles + banned_users + subscriptions
+// ────────────────────────────────────────────────────────────────
+
+var _umCache = [];          // كاش كل المستخدمين
+var _umBannedEmails = new Set();
+var _umPage    = 1;
+var _umPerPage = 15;
+var _umFiltered = [];
+
+// ── تحميل البيانات ──────────────────────────────────────────────
+async function umLoadUsers() {
+  var el = document.getElementById('um-users-body');
+  if (!el || !window.supabase) return;
+  el.innerHTML = '<div class="ap-loading"><div class="spinner"></div> جاري تحميل المستخدمين...</div>';
+  _umPage = 1;
+  try {
+    var [profRes, bannedRes, subsRes] = await Promise.all([
+      window.supabase.from('profiles').select('*').order('updated_at', { ascending: false }),
+      window.supabase.from('banned_users').select('email, reason, banned_at'),
+      window.supabase.from('subscriptions').select('user_id, status, subscription_type, end_date').order('created_at', { ascending: false }),
+    ]);
+    if (profRes.error) throw profRes.error;
+
+    var profiles  = profRes.data  || [];
+    var banned    = bannedRes.data || [];
+    var subs      = subsRes.data  || [];
+
+    // بناء Map الحظر
+    _umBannedEmails = new Map();
+    banned.forEach(function(b) {
+      _umBannedEmails.set((b.email || '').toLowerCase(), b);
+    });
+
+    // بناء Map الاشتراكات (آخر اشتراك لكل user_id)
+    var subsMap = {};
+    subs.forEach(function(s) {
+      if (!subsMap[s.user_id]) subsMap[s.user_id] = s;
+    });
+
+    // دمج البيانات
+    _umCache = profiles.map(function(p) {
+      var sub = subsMap[p.id] || null;
+      var isBanned = _umBannedEmails.has((p.email || '').toLowerCase());
+      return Object.assign({}, p, {
+        _sub: sub,
+        _isBanned: isBanned,
+        _banInfo: _umBannedEmails.get((p.email || '').toLowerCase()) || null,
+      });
+    });
+
+    // إحصائيات
+    _umRenderStats(_umCache, banned.length);
+
+    // عرض
+    _umFiltered = _umCache.slice();
+    _umRenderTable();
+
+  } catch(err) {
+    el.innerHTML = '<div class="ap-empty" style="color:#e74c3c;">❌ ' + _apEsc(err.message) + '</div>';
+  }
+}
+
+// ── إحصائيات ───────────────────────────────────────────────────
+function _umRenderStats(profiles, bannedCount) {
+  var total    = profiles.length;
+  var admins   = profiles.filter(function(u){ return u.role === 'admin'; }).length;
+  var students = total - admins;
+  var active   = profiles.filter(function(u){ return u.subscription_status === 'active'; }).length;
+  var pending  = profiles.filter(function(u){ return u.subscription_status === 'pending'; }).length;
+
+  function _s(id, val) {
+    var el = document.getElementById(id);
+    if (el) {
+      el.textContent = val;
+      el.style.transition = 'all .4s';
+      el.style.transform  = 'scale(1.15)';
+      setTimeout(function(){ el.style.transform = 'scale(1)'; }, 300);
+    }
+  }
+  _s('um-stat-total',   total);
+  _s('um-stat-students', students);
+  _s('um-stat-admins',   admins);
+  _s('um-stat-active',   active);
+  _s('um-stat-pending',  pending);
+  _s('um-stat-banned',   bannedCount);
+}
+
+// ── الفلتر والبحث ───────────────────────────────────────────────
+function umApplyFilters() {
+  var q      = ((document.getElementById('um-search') || {}).value || '').toLowerCase().trim();
+  var role   = ((document.getElementById('um-filter-role') || {}).value   || '');
+  var subSt  = ((document.getElementById('um-filter-sub')  || {}).value   || '');
+  var status = ((document.getElementById('um-filter-status') || {}).value || '');
+
+  _umFiltered = _umCache.filter(function(u) {
+    if (q) {
+      var inEmail = (u.email || '').toLowerCase().includes(q);
+      var inName  = (u.full_name || '').toLowerCase().includes(q);
+      if (!inEmail && !inName) return false;
+    }
+    if (role && (u.role || 'user') !== role) return false;
+    if (subSt) {
+      var st = u.subscription_status || 'none';
+      if (st !== subSt) return false;
+    }
+    if (status === 'banned'  && !u._isBanned) return false;
+    if (status === 'active'  &&  u._isBanned) return false;
+    return true;
+  });
+
+  _umPage = 1;
+  _umRenderTable();
+}
+
+// ── رسم الجدول مع Pagination ────────────────────────────────────
+function _umRenderTable() {
+  var el = document.getElementById('um-users-body');
+  if (!el) return;
+  if (!_umFiltered || _umFiltered.length === 0) {
+    el.innerHTML = '<div class="ap-empty"><div class="ap-empty-icon">🔍</div>لا يوجد مستخدمون يطابقون البحث</div>';
+    return;
+  }
+  var total = _umFiltered.length;
+  var pages = Math.ceil(total / _umPerPage);
+  _umPage = Math.max(1, Math.min(_umPage, pages));
+  var start = (_umPage - 1) * _umPerPage;
+  var pageData = _umFiltered.slice(start, start + _umPerPage);
+
+  var subLabels = {
+    none: '<span class="um-badge um-badge-none">— لا يوجد</span>',
+    pending: '<span class="um-badge um-badge-pending">⏳ معلق</span>',
+    active:  '<span class="um-badge um-badge-active">✅ نشط</span>',
+    expired: '<span class="um-badge um-badge-expired">❌ منتهي</span>',
+    cancelled: '<span class="um-badge um-badge-expired">🚫 ملغي</span>',
+  };
+  var roleLabels = {
+    admin:     '<span class="um-badge um-badge-admin">👑 أدمن</span>',
+    moderator: '<span class="um-badge um-badge-mod">🛡️ مشرف</span>',
+    user:      '<span class="um-badge um-badge-user">👤 عادي</span>',
+  };
+
+  var rows = pageData.map(function(u) {
+    var isBanned = u._isBanned;
+    var initials = ((u.full_name || u.email || '?')[0]).toUpperCase();
+    var subStatus = u.subscription_status || 'none';
+    var role = u.role || 'user';
+    var endDate = u.subscription_end ? _apDate(u.subscription_end) : (u._sub ? _apDate(u._sub.end_date) : '—');
+    var banInfo  = u._banInfo ? ('🚫 ' + (u._banInfo.reason || 'محظور')) : '';
+
+    var actions = '<div class="um-actions">';
+    actions += '<button class="um-btn um-btn-edit" onclick="umOpenEdit(\'' + _apEsc(u.id) + '\')" title="تعديل">✏️</button>';
+    if (subStatus !== 'active') {
+      actions += '<button class="um-btn um-btn-sub" onclick="umActivateSub(\'' + _apEsc(u.id) + '\',\'' + _apEsc(u.email) + '\')" title="تفعيل الاشتراك">✅</button>';
+    } else {
+      actions += '<button class="um-btn um-btn-unsub" onclick="umDeactivateSub(\'' + _apEsc(u.id) + '\',\'' + _apEsc(u.email) + '\')" title="إلغاء الاشتراك">🚫</button>';
+    }
+    if (!isBanned) {
+      actions += '<button class="um-btn um-btn-ban" onclick="umBanUser(\'' + _apEsc(u.email) + '\')" title="حظر">🔒</button>';
+    } else {
+      actions += '<button class="um-btn um-btn-unban" onclick="umUnbanUser(\'' + _apEsc(u.email) + '\')" title="رفع الحظر">🔓</button>';
+    }
+    actions += '</div>';
+
+    return '<tr class="um-user-row' + (isBanned ? ' banned' : '') + '">'
+      + '<td><div class="um-user-info">'
+      + '<div class="um-avatar">' + initials + '</div>'
+      + '<div><div class="um-user-name">' + _apEsc(u.full_name || 'بدون اسم') + '</div>'
+      + '<div class="um-user-email">' + _apEsc(u.email || '—') + '</div>'
+      + (isBanned ? '<div style="font-size:.65rem;color:#e74c3c;margin-top:2px;">' + _apEsc(banInfo) + '</div>' : '')
+      + '</div></div></td>'
+      + '<td>' + (roleLabels[role] || role) + '</td>'
+      + '<td>' + (subLabels[subStatus] || subStatus) + '</td>'
+      + '<td style="font-size:.72rem;color:#888;">' + endDate + '</td>'
+      + '<td>'
+      + (isBanned ? '<span class="um-badge um-badge-banned">🚫 محظور</span>' : '<span class="um-badge um-badge-active" style="background:#f0fff4;color:#1b5e20;border-color:#a5d6a7;">🟢 نشط</span>')
+      + '</td>'
+      + '<td>' + actions + '</td>'
+      + '</tr>';
+  }).join('');
+
+  var tableHtml = '<div class="um-table-wrap">'
+    + '<table class="um-table"><thead><tr>'
+    + '<th>المستخدم</th><th>الصلاحية</th><th>الاشتراك</th><th>ينتهي</th><th>الحالة</th><th>إجراءات</th>'
+    + '</tr></thead><tbody>' + rows + '</tbody></table>'
+    + '</div>';
+
+  // Pagination
+  var pag = '<div class="um-pagination">'
+    + '<span>' + total + ' مستخدم — صفحة ' + _umPage + ' من ' + pages + '</span>'
+    + '<div class="um-page-btns">'
+    + '<button class="um-page-btn" onclick="umChangePage(' + (_umPage-1) + ')" ' + (_umPage<=1?'disabled':'') + '>◀ السابق</button>';
+  // أرقام الصفحات
+  var from = Math.max(1, _umPage-2), to = Math.min(pages, _umPage+2);
+  for (var p = from; p <= to; p++) {
+    pag += '<button class="um-page-btn' + (p===_umPage?' active':'') + '" onclick="umChangePage('+p+')">' + p + '</button>';
+  }
+  pag += '<button class="um-page-btn" onclick="umChangePage(' + (_umPage+1) + ')" ' + (_umPage>=pages?'disabled':'') + '>التالي ▶</button>'
+    + '</div></div>';
+
+  el.innerHTML = tableHtml + pag;
+}
+
+function umChangePage(page) {
+  _umPage = page;
+  _umRenderTable();
+  var el = document.getElementById('um-users-body');
+  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+// ── Modal التعديل ───────────────────────────────────────────────
+function umOpenEdit(userId) {
+  var user = _umCache.find(function(u){ return u.id === userId; });
+  if (!user) return;
+
+  document.getElementById('um-edit-user-id').value  = user.id;
+  document.getElementById('um-edit-email-display').textContent = user.email || '—';
+  document.getElementById('um-edit-name').value      = user.full_name || '';
+  document.getElementById('um-edit-role').value      = user.role || 'user';
+  document.getElementById('um-edit-sub-status').value = user.subscription_status || 'none';
+
+  // تحويل التاريخ لصيغة input[type=date]
+  var endDate = '';
+  if (user.subscription_end) {
+    try { endDate = new Date(user.subscription_end).toISOString().split('T')[0]; } catch(e){}
+  }
+  document.getElementById('um-edit-sub-end').value   = endDate;
+  document.getElementById('um-edit-msg').textContent = '';
+
+  var modal = document.getElementById('um-edit-modal');
+  if (modal) modal.style.display = 'flex';
+}
+
+function umCloseEdit() {
+  var modal = document.getElementById('um-edit-modal');
+  if (modal) modal.style.display = 'none';
+}
+
+async function umSaveEdit() {
+  var userId    = document.getElementById('um-edit-user-id').value;
+  var name      = document.getElementById('um-edit-name').value.trim();
+  var role      = document.getElementById('um-edit-role').value;
+  var subStatus = document.getElementById('um-edit-sub-status').value;
+  var subEnd    = document.getElementById('um-edit-sub-end').value;
+  var msgEl     = document.getElementById('um-edit-msg');
+
+  if (!userId) return;
+  msgEl.style.color = '#0a3d62';
+  msgEl.textContent = '⏳ جاري الحفظ...';
+
+  try {
+    var updates = {
+      full_name:           name || null,
+      role:                role,
+      subscription_status: subStatus,
+      subscription_end:    subEnd ? new Date(subEnd).toISOString() : null,
+      updated_at:          new Date().toISOString(),
+    };
+
+    var { error } = await window.supabase
+      .from('profiles')
+      .update(updates)
+      .eq('id', userId);
+
+    if (error) throw error;
+
+    msgEl.style.color = '#17a589';
+    msgEl.textContent = '✅ تم الحفظ بنجاح!';
+
+    // تحديث الكاش المحلي
+    var idx = _umCache.findIndex(function(u){ return u.id === userId; });
+    if (idx !== -1) Object.assign(_umCache[idx], updates);
+    _umFiltered = _umCache.slice();
+    umApplyFilters();
+    _umRenderStats(_umCache, _umBannedEmails.size);
+
+    setTimeout(umCloseEdit, 1200);
+  } catch(err) {
+    msgEl.style.color = '#e74c3c';
+    msgEl.textContent = '❌ ' + (err.message || 'حدث خطأ');
+  }
+}
+
+// ── تفعيل الاشتراك ──────────────────────────────────────────────
+async function umActivateSub(userId, email) {
+  if (!confirm('تفعيل اشتراك هذا المستخدم؟')) return;
+  var endDate = new Date();
+  endDate.setFullYear(endDate.getFullYear() + 1); // سنة من اليوم
+  try {
+    var { error } = await window.supabase.from('profiles').update({
+      subscription_status: 'active',
+      subscription_type:   'yearly',
+      subscription_end:    endDate.toISOString(),
+      updated_at:          new Date().toISOString(),
+    }).eq('id', userId);
+    if (error) throw error;
+
+    // تحديث أو إنشاء سجل في subscriptions
+    await window.supabase.from('subscriptions').upsert([{
+      user_id:           userId,
+      user_email:        email,
+      subscription_type: 'yearly',
+      status:            'active',
+      start_date:        new Date().toISOString(),
+      end_date:          endDate.toISOString(),
+      requested_at:      new Date().toISOString(),
+    }], { onConflict: 'user_id' });
+
+    // تحديث الكاش
+    var u = _umCache.find(function(x){ return x.id === userId; });
+    if (u) { u.subscription_status = 'active'; u.subscription_end = endDate.toISOString(); }
+    umApplyFilters();
+    _umRenderStats(_umCache, _umBannedEmails.size);
+    _umShowToast('✅ تم تفعيل الاشتراك بنجاح', 'success');
+  } catch(err) {
+    _umShowToast('❌ ' + (err.message || 'حدث خطأ'), 'error');
+  }
+}
+
+// ── إلغاء الاشتراك ──────────────────────────────────────────────
+async function umDeactivateSub(userId, email) {
+  if (!confirm('إلغاء اشتراك هذا المستخدم؟')) return;
+  try {
+    var { error } = await window.supabase.from('profiles').update({
+      subscription_status: 'cancelled',
+      updated_at:          new Date().toISOString(),
+    }).eq('id', userId);
+    if (error) throw error;
+
+    await window.supabase.from('subscriptions').update({ status: 'cancelled' })
+      .eq('user_id', userId).eq('status', 'active');
+
+    var u = _umCache.find(function(x){ return x.id === userId; });
+    if (u) u.subscription_status = 'cancelled';
+    umApplyFilters();
+    _umRenderStats(_umCache, _umBannedEmails.size);
+    _umShowToast('🚫 تم إلغاء الاشتراك', 'warning');
+  } catch(err) {
+    _umShowToast('❌ ' + (err.message || 'حدث خطأ'), 'error');
+  }
+}
+
+// ── حظر المستخدم ────────────────────────────────────────────────
+async function umBanUser(email) {
+  if (!email) return;
+  var reason = prompt('سبب الحظر (اختياري):') || '';
+  if (reason === null) return; // ضغط Cancel
+  try {
+    await window.banUser(email, reason);
+    var u = _umCache.find(function(x){ return (x.email||'').toLowerCase() === email.toLowerCase(); });
+    if (u) {
+      u._isBanned = true;
+      u._banInfo = { email: email, reason: reason, banned_at: new Date().toISOString() };
+      _umBannedEmails.set(email.toLowerCase(), u._banInfo);
+    }
+    umApplyFilters();
+    _umRenderStats(_umCache, _umBannedEmails.size);
+    _umShowToast('🔒 تم حظر المستخدم', 'warning');
+  } catch(err) {
+    _umShowToast('❌ ' + (err.message || 'حدث خطأ'), 'error');
+  }
+}
+
+// ── رفع الحظر ───────────────────────────────────────────────────
+async function umUnbanUser(email) {
+  if (!email) return;
+  if (!confirm('رفع الحظر عن: ' + email + '؟')) return;
+  try {
+    await window.unbanUser(email);
+    var u = _umCache.find(function(x){ return (x.email||'').toLowerCase() === email.toLowerCase(); });
+    if (u) { u._isBanned = false; u._banInfo = null; }
+    _umBannedEmails.delete(email.toLowerCase());
+    umApplyFilters();
+    _umRenderStats(_umCache, _umBannedEmails.size);
+    _umShowToast('🔓 تم رفع الحظر', 'success');
+  } catch(err) {
+    _umShowToast('❌ ' + (err.message || 'حدث خطأ'), 'error');
+  }
+}
+
+// ── إغلاق modal التعديل بالضغط خارجه ────────────────────────────
+document.addEventListener('click', function(e) {
+  var modal = document.getElementById('um-edit-modal');
+  if (modal && e.target === modal) umCloseEdit();
+});
+
+// ── Toast بسيط خاص بنظام المستخدمين ─────────────────────────────
+function _umShowToast(msg, type) {
+  // نستخدم نظام toast الموجود إن وُجد
+  if (typeof toast === 'function') { toast(msg, type || 'info', 3500); return; }
+  // fallback
+  var t = document.createElement('div');
+  t.setAttribute('style',
+    'position:fixed;top:80px;left:50%;transform:translateX(-50%);z-index:2147483640;'
+    + 'background:#fff;border-radius:12px;padding:12px 22px;box-shadow:0 8px 32px rgba(10,61,98,.22);'
+    + 'font-family:Cairo,sans-serif;font-size:.88rem;font-weight:700;direction:rtl;'
+    + 'border-right:4px solid ' + (type==='success'?'#17a589':type==='error'?'#e74c3c':'#f39c12') + ';'
+  );
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(function(){ t.style.opacity='0'; t.style.transition='opacity .3s'; setTimeout(function(){ t.remove(); }, 350); }, 2800);
+}
+
+// ── ربط التحميل عند فتح التاب ──────────────────────────────────
+// يُستدعى من apSwitchTab عند اختيار تاب usermgmt
+// (تم إضافة الشرط في apSwitchTab أدناه)
+
+// نهاية نظام إدارة المستخدمين
 
 // ────────────────────────────────────────────────────────────────
 // MESSAGES TAB
@@ -4238,26 +4914,37 @@ document.addEventListener('DOMContentLoaded', function() {
       e.preventDefault();
       e.stopPropagation();
 
-      // تحديد نوع الرابط وعرضه داخلياً — دائماً داخلي بدون استثناء
+      // تحديد نوع الرابط وعرضه داخلياً
       var title = target.textContent.trim() || href;
       var type = _guessLinkType(href);
-      openResource(href, title, type);
+
+      if (type === 'download_only') {
+        // تحميل مباشر للأدمن فقط — الطلاب لا يُحمِّلون
+        if (window._isAdminUser) {
+          var a = document.createElement('a');
+          a.href = href;
+          a.setAttribute('download', '');
+          a.click();
+        } else {
+          openResource(href, title, 'link');
+        }
+      } else {
+        openResource(href, title, type);
+      }
     }
   }, true);
 
-  // ── 2. اعتراض window.open — ممنوع تماماً لغير الأدمن ────────────
+  // ── 2. اعتراض window.open ────────────────────────────────────────
   var _origOpen = window.open;
   window.open = function(url, target, features) {
-    // الأدمن: يُسمح بفتح النوافذ بشكل طبيعي
-    if (window._isAdminUser) {
-      return _origOpen.call(window, url, target, features);
-    }
     if (!url) return null;
-    // جميع المستخدمين العاديين → viewer داخلي
-    var title = url.split('/').pop() || url;
-    var type = _guessLinkType(url);
-    openResource(url, title, type);
-    return { closed: false, focus: function(){}, close: function(){} };
+    if (target === '_blank' || !target || target === '_new') {
+      var title = url.split('/').pop() || url;
+      var type = _guessLinkType(url);
+      openResource(url, title, type);
+      return { closed: false, focus: function(){}, close: function(){} };
+    }
+    return _origOpen.call(window, url, target, features);
   };
 
   // ── 3. تخمين نوع الرابط ─────────────────────────────────────────
@@ -4269,7 +4956,7 @@ document.addEventListener('DOMContentLoaded', function() {
     if (/\.(jpe?g|png|webp|gif|svg|bmp)($|\?|#)/.test(lower)) return 'image';
     if (/youtube\.com|youtu\.be/.test(url))                    return 'video';
     if (/drive\.google\.com/.test(url))                        return 'pdf';
-    // ملفات مضغوطة أو غير معروفة — نعرض fallback داخلي
+    if (/\.(zip|rar|7z|tar|gz)($|\?|#)/.test(lower))          return 'download_only';
     return 'link'; // HTML/iframe داخلي
   }
 
@@ -4350,183 +5037,45 @@ async function _getSignedPdfUrl(storagePath) {
   return storagePath;
 }
 
-// ==================== NativePDFViewer — PDF.js Secure Viewer ====================
-// يعرض PDF داخلياً باستخدام PDF.js مع منع التنزيل والنسخ والطباعة بالكامل
+// ==================== NativePDFViewer ====================
 var NativePDFViewer = (function() {
   var _overlayEl = null;
-  var _pdfDoc    = null;
-  var _pageNum   = 1;
-  var _totalPages = 0;
-  var _rendering = false;
-  var _PDFJS_CDN = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
-  var _PDFJS_WORKER = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-  var _pdfJsLoaded = false;
 
   function _esc(s) {
     return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   }
 
-  // تحميل PDF.js إذا لم يكن محمّلاً
-  function _loadPdfJs() {
-    return new Promise(function(resolve, reject) {
-      if (window.pdfjsLib) { resolve(window.pdfjsLib); return; }
-      if (_pdfJsLoaded) {
-        var t = setInterval(function() {
-          if (window.pdfjsLib) { clearInterval(t); resolve(window.pdfjsLib); }
-        }, 100);
-        return;
-      }
-      _pdfJsLoaded = true;
-      var s = document.createElement('script');
-      s.src = _PDFJS_CDN;
-      s.onload = function() {
-        window.pdfjsLib.GlobalWorkerOptions.workerSrc = _PDFJS_WORKER;
-        resolve(window.pdfjsLib);
-      };
-      s.onerror = reject;
-      document.head.appendChild(s);
-    });
-  }
-
-  // رسم صفحة على canvas
-  function _renderPage(num) {
-    if (!_pdfDoc || _rendering) return;
-    _rendering = true;
-    _pdfDoc.getPage(num).then(function(page) {
-      var container = document.getElementById('npdf-canvas-container');
-      if (!container) { _rendering = false; return; }
-
-      var viewport = page.getViewport({ scale: 1.5 });
-      // تحديد العرض بحسب حجم الشاشة
-      var maxW = container.clientWidth || window.innerWidth;
-      var scale = Math.min(1.5, maxW / viewport.width);
-      viewport = page.getViewport({ scale: scale });
-
-      var canvas = document.createElement('canvas');
-      canvas.style.display = 'block';
-      canvas.style.margin = '0 auto 12px';
-      canvas.style.borderRadius = '8px';
-      canvas.style.boxShadow = '0 4px 20px rgba(0,0,0,.4)';
-      canvas.style.maxWidth = '100%';
-      canvas.style.pointerEvents = 'none'; // منع التفاعل المباشر
-      canvas.oncontextmenu = function() { return false; };
-      canvas.width  = viewport.width;
-      canvas.height = viewport.height;
-
-      var ctx = canvas.getContext('2d');
-      var renderCtx = { canvasContext: ctx, viewport: viewport };
-      page.render(renderCtx).promise.then(function() {
-        _rendering = false;
-        container.innerHTML = '';
-        container.appendChild(canvas);
-        _updatePageInfo();
-      }).catch(function() { _rendering = false; });
-    }).catch(function() { _rendering = false; });
-  }
-
-  function _updatePageInfo() {
-    var el = document.getElementById('npdf-page-info');
-    if (el) el.textContent = 'صفحة ' + _pageNum + ' من ' + _totalPages;
-    var prevBtn = document.getElementById('npdf-prev');
-    var nextBtn = document.getElementById('npdf-next');
-    if (prevBtn) prevBtn.disabled = (_pageNum <= 1);
-    if (nextBtn) nextBtn.disabled = (_pageNum >= _totalPages);
-  }
-
   async function open(url, title) {
     if (!url) return;
     close();
-
     var finalUrl = url;
     try { finalUrl = await _getSignedPdfUrl(url); } catch(e) {}
-
     document.body.style.overflow = 'hidden';
     document.body.classList.add('rv-open');
-
     var ol = document.createElement('div');
     ol.id = 'native-pdf-overlay';
 
-    // هيكل الـ overlay
+    var isAdmin = window._isAdminUser === true;
+
     ol.innerHTML =
       '<div id="native-pdf-modal">' +
         '<div id="native-pdf-header">' +
           '<span style="font-size:1.3rem;flex-shrink:0">📄</span>' +
-          '<span id="native-pdf-title" style="flex:1;font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + _esc(title || 'PDF') + '</span>' +
-          // أزرار التنقل بين الصفحات
-          '<div id="npdf-nav" style="display:flex;align-items:center;gap:8px;flex-shrink:0;">' +
-            '<button id="npdf-prev" onclick="NativePDFViewer.prevPage()" style="background:rgba(255,255,255,.2);border:none;color:#fff;border-radius:8px;padding:5px 12px;cursor:pointer;font-size:.82rem;font-family:inherit;" title="الصفحة السابقة">◀</button>' +
-            '<span id="npdf-page-info" style="font-size:.78rem;opacity:.85;white-space:nowrap;"></span>' +
-            '<button id="npdf-next" onclick="NativePDFViewer.nextPage()" style="background:rgba(255,255,255,.2);border:none;color:#fff;border-radius:8px;padding:5px 12px;cursor:pointer;font-size:.82rem;font-family:inherit;" title="الصفحة التالية">▶</button>' +
-          '</div>' +
-          '<button id="native-pdf-close" onclick="NativePDFViewer.close()" title="إغلاق" style="background:rgba(255,255,255,.18);border:none;border-radius:50%;width:34px;height:34px;color:#fff;font-size:1.1rem;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;">✕</button>' +
+          '<span id="native-pdf-title">' + _esc(title || 'PDF') + '</span>' +
+          (isAdmin ? '<button id="native-pdf-dl" onclick="(function(){var a=document.createElement(\'a\');a.href=\''+finalUrl.replace(/'/g,'%27')+'\';a.setAttribute(\'download\',\'\');document.body.appendChild(a);a.click();document.body.removeChild(a);})()" title="تحميل" style="background:rgba(255,255,255,.18);border:none;border-radius:8px;color:#fff;padding:6px 12px;cursor:pointer;font-size:.78rem;font-family:inherit;margin-left:6px;">⬇️ تحميل</button>' : '') +
+          '<button id="native-pdf-close" onclick="NativePDFViewer.close()" title="إغلاق">✕</button>' +
         '</div>' +
-        '<div id="native-pdf-body" style="flex:1;overflow-y:auto;overflow-x:hidden;background:#525659;padding:20px 12px;-webkit-overflow-scrolling:touch;">' +
-          '<div id="npdf-loading" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:60px;color:#fff;">' +
-            '<div style="width:48px;height:48px;border:4px solid rgba(255,255,255,.2);border-top-color:#17a589;border-radius:50%;animation:spin .8s linear infinite;"></div>' +
-            '<p style="font-size:.9rem;opacity:.8;">جاري تحميل الملف...</p>' +
-          '</div>' +
-          '<div id="npdf-canvas-container" style="display:none;max-width:100%;"></div>' +
-          '<div id="npdf-error" style="display:none;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:40px;color:#fff;text-align:center;">' +
-            '<span style="font-size:3rem;">⚠️</span>' +
-            '<p style="font-size:.9rem;opacity:.8;max-width:300px;">تعذّر تحميل الملف. تأكد من الاتصال بالإنترنت وأن الملف متاح.</p>' +
-          '</div>' +
+        '<div style="position:relative;flex:1;display:flex;flex-direction:column;">' +
+          '<iframe id="native-pdf-frame" src="' + finalUrl + '" title="' + _esc(title || 'PDF') + '"></iframe>' +
+          // طبقة شفافة تمنع right-click فقط — pointer-events:none تسمح بالتمرير
+          (!isAdmin ? '<div style="position:absolute;inset:0;z-index:10;background:transparent;pointer-events:none;" oncontextmenu="return false"></div>' : '') +
         '</div>' +
       '</div>';
-
-    // منع Right Click على الـ overlay
-    ol.addEventListener('contextmenu', function(e) { e.preventDefault(); return false; });
-
-    ol._keyHandler = function(e) {
-      if (e.key === 'Escape') { NativePDFViewer.close(); return; }
-      if (e.key === 'ArrowRight' || e.key === 'ArrowDown') NativePDFViewer.nextPage();
-      if (e.key === 'ArrowLeft'  || e.key === 'ArrowUp')   NativePDFViewer.prevPage();
-    };
+    ol._keyHandler = function(e) { if (e.key === 'Escape') NativePDFViewer.close(); };
     document.addEventListener('keydown', ol._keyHandler);
+    ol.addEventListener('click', function(e) { if (e.target === ol) NativePDFViewer.close(); });
     document.body.appendChild(ol);
     _overlayEl = ol;
-
-    // تحميل PDF.js وفتح الملف
-    _loadPdfJs().then(function(pdfjsLib) {
-      return pdfjsLib.getDocument({
-        url: finalUrl,
-        disableFontFace: false,
-        cMapUrl: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/cmaps/',
-        cMapPacked: true,
-      }).promise;
-    }).then(function(doc) {
-      _pdfDoc    = doc;
-      _pageNum   = 1;
-      _totalPages = doc.numPages;
-
-      var loadingEl   = document.getElementById('npdf-loading');
-      var containerEl = document.getElementById('npdf-canvas-container');
-      if (loadingEl)   loadingEl.style.display   = 'none';
-      if (containerEl) containerEl.style.display  = 'block';
-
-      _renderPage(_pageNum);
-    }).catch(function(err) {
-      console.error('[NativePDFViewer] فشل التحميل:', err);
-      var loadingEl = document.getElementById('npdf-loading');
-      var errorEl   = document.getElementById('npdf-error');
-      if (loadingEl) loadingEl.style.display = 'none';
-      if (errorEl)   errorEl.style.display   = 'flex';
-    });
-  }
-
-  function prevPage() {
-    if (_pageNum <= 1) return;
-    _pageNum--;
-    _renderPage(_pageNum);
-    var body = document.getElementById('native-pdf-body');
-    if (body) body.scrollTop = 0;
-  }
-
-  function nextPage() {
-    if (_pageNum >= _totalPages) return;
-    _pageNum++;
-    _renderPage(_pageNum);
-    var body = document.getElementById('native-pdf-body');
-    if (body) body.scrollTop = 0;
   }
 
   function close() {
@@ -4537,15 +5086,11 @@ var NativePDFViewer = (function() {
     }
     var ol = document.getElementById('native-pdf-overlay');
     if (ol) ol.remove();
-    _pdfDoc    = null;
-    _pageNum   = 1;
-    _totalPages = 0;
-    _rendering  = false;
     document.body.style.overflow = '';
     document.body.classList.remove('rv-open');
   }
 
-  return { open, close, prevPage, nextPage };
+  return { open, close };
 })();
 
 // ==================== CONTENT PROTECTION SYSTEM ====================
@@ -4625,47 +5170,6 @@ var NativePDFViewer = (function() {
     }
   }, { passive: false });
 
-  // ── 9. منع Cut ─────────────────────────────────────────────────────
-  document.addEventListener('cut', function(e) {
-    if (window._isAdminUser) return;
-    e.preventDefault(); return false;
-  }, true);
-
-  // ── 10. منع Download من أي عنصر <a download> ───────────────────────
-  document.addEventListener('click', function(e) {
-    if (window._isAdminUser) return;
-    var t = e.target.closest('a[download], a[href$=".pdf"], a[href$=".mp4"], a[href$=".mp3"]');
-    if (t) {
-      e.preventDefault();
-      e.stopPropagation();
-      // إذا كان ملف قابل للعرض — نفتحه داخلياً
-      var href = t.getAttribute('href');
-      if (href && !href.startsWith('#')) {
-        var type = (href.toLowerCase().endsWith('.pdf') || href.toLowerCase().includes('.pdf')) ? 'pdf'
-                 : (href.toLowerCase().endsWith('.mp4') || href.toLowerCase().endsWith('.webm')) ? 'video'
-                 : href.toLowerCase().endsWith('.mp3') ? 'audio' : 'link';
-        openResource(href, t.textContent.trim() || 'ملف', type);
-      }
-      return false;
-    }
-  }, true);
-
-  // ── 11. منع Pointer Events على الـ canvas (صور PDF) ─────────────────
-  document.addEventListener('pointerdown', function(e) {
-    if (window._isAdminUser) return;
-    if (e.target.tagName === 'CANVAS') {
-      e.preventDefault();
-    }
-  }, { passive: false });
-
-  // ── 12. منع Long Press على iOS (لمنع حفظ الصور) ─────────────────────
-  document.addEventListener('touchend', function(e) {
-    if (window._isAdminUser) return;
-    if (e.target.tagName === 'IMG' || e.target.tagName === 'CANVAS') {
-      e.preventDefault();
-    }
-  }, { passive: false });
-
 })();
 
 // ==================== الحماية تُطبَّق بعد تحديد حالة المستخدم ====================
@@ -4680,46 +5184,6 @@ var NativePDFViewer = (function() {
         document.body.classList.add('content-protected');
       }
     }, 1500);
-  });
-})();
-
-// ==================== منع فتح الروابط الخارجية من المحتوى الديناميكي ====================
-// MutationObserver يراقب أي عنصر جديد يُضاف ويُزيل target="_blank" و download
-(function() {
-  function _sanitizeLinks(root) {
-    if (window._isAdminUser) return;
-    // إزالة target="_blank"
-    root.querySelectorAll('a[target="_blank"]').forEach(function(a) {
-      a.removeAttribute('target');
-    });
-    // إزالة download attribute
-    root.querySelectorAll('[download]').forEach(function(el) {
-      el.removeAttribute('download');
-    });
-    // إزالة روابط مباشرة لـ PDF أو ملفات
-    root.querySelectorAll('a[href$=".pdf"], a[href$=".mp4"], a[href$=".zip"], a[href$=".rar"]').forEach(function(a) {
-      if (!a.classList.contains('rv-btn')) {
-        a.addEventListener('click', function(e) {
-          if (window._isAdminUser) return;
-          e.preventDefault();
-          e.stopPropagation();
-          openResource(a.href, a.textContent.trim() || 'ملف', 'link');
-        }, true);
-      }
-    });
-  }
-
-  document.addEventListener('DOMContentLoaded', function() {
-    _sanitizeLinks(document);
-    // مراقبة أي تغييرات لاحقة في DOM
-    var observer = new MutationObserver(function(mutations) {
-      mutations.forEach(function(m) {
-        m.addedNodes.forEach(function(node) {
-          if (node.nodeType === 1) _sanitizeLinks(node);
-        });
-      });
-    });
-    observer.observe(document.body, { childList: true, subtree: true });
   });
 })();
 </script>
@@ -5616,6 +6080,7 @@ CREATE POLICY "admin_all_profiles" ON profiles
     userCard.insertBefore(btn, userCard.firstChild);
   }
 })();
+</script>
 
 <!-- ============================================================ -->
 <!-- SECURITY SYSTEM v1                                           -->
@@ -5757,9 +6222,21 @@ _apFunctions.forEach(function(fnName) {
   document.addEventListener('keydown', function(e) {
     if (window._isAdminUser) return;
     if (!document.body.classList.contains('content-protected')) return;
-    var blocked = (e.ctrlKey || e.metaKey) && ['c','u','s','p','a'].includes(e.key.toLowerCase());
-    if (blocked || e.key === 'F12') {
-      e.preventDefault();
+
+    var isCtrl = e.ctrlKey || e.metaKey;
+    var k = e.key.toLowerCase();
+
+    // Ctrl+C, Ctrl+U, Ctrl+S, Ctrl+P, Ctrl+A, Ctrl+X, Ctrl+V
+    if (isCtrl && ['c','u','s','p','a','x','v'].includes(k)) {
+      e.preventDefault(); return;
+    }
+    // Ctrl+Shift+I, Ctrl+Shift+J, Ctrl+Shift+C
+    if (isCtrl && e.shiftKey && ['i','j','c'].includes(k)) {
+      e.preventDefault(); return;
+    }
+    // F12
+    if (e.key === 'F12') {
+      e.preventDefault(); return;
     }
   });
 
@@ -5770,6 +6247,48 @@ _apFunctions.forEach(function(fnName) {
       try { navigator.clipboard && navigator.clipboard.writeText(''); } catch(x) {}
     }
   });
+
+  // منع Copy و Cut
+  document.addEventListener('copy', function(e) {
+    if (!window._isAdminUser && document.body.classList.contains('content-protected')) {
+      e.preventDefault();
+    }
+  });
+  document.addEventListener('cut', function(e) {
+    if (!window._isAdminUser && document.body.classList.contains('content-protected')) {
+      e.preventDefault();
+    }
+  });
+
+  // منع Select All
+  document.addEventListener('selectstart', function(e) {
+    if (!window._isAdminUser && document.body.classList.contains('content-protected')) {
+      e.preventDefault();
+    }
+  });
+
+  // منع Drag & Drop للمحتوى المحمي
+  document.addEventListener('dragstart', function(e) {
+    if (!window._isAdminUser && document.body.classList.contains('content-protected')) {
+      e.preventDefault();
+    }
+  });
+  document.addEventListener('drop', function(e) {
+    if (!window._isAdminUser && document.body.classList.contains('content-protected')) {
+      e.preventDefault();
+    }
+  });
+
+  // منع الضغط المطول على الهاتف لحفظ الصور
+  document.addEventListener('touchstart', function(e) {
+    if (!window._isAdminUser && document.body.classList.contains('content-protected')) {
+      var el = e.target;
+      if (el && el.tagName === 'IMG') {
+        e.preventDefault();
+      }
+    }
+  }, { passive: false });
+
 })();
 
 // ════════════════════════════════════════════════════════════════
