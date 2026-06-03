@@ -1586,7 +1586,7 @@ button { min-height: 40px; }
 <script>
 // ==================== SUPABASE SETUP ====================
 var _supabaseUrl = "https://xiqeaohemuxgujrcnpzd.supabase.co";
-var _supabaseKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhpcWVhb2hlbXV4Z3VqcmNucHpkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkxMjEwNjUsImV4cCI6MjA5NDY5NzA2NX0.vnpHTfn9KhRUjJDxKGPlzhPHyrrEaBWlACxxv2QEFWY";
+var _supabaseKey = "sb_publishable_xzg8wn0ETQniEItj2Etfmw__klmgUWg";
 
 window._supabaseReady.then(function(lib) {
   if (!lib) {
@@ -2806,7 +2806,24 @@ async function openResource(url, title, resourceType) {
 <script>
 // ==================== AUTH FUNCTIONS ====================
 
-// loginWithGoogle معرَّفة في FIXES PATCH أسفل الصفحة
+window.loginWithGoogle = async function() {
+  if (!window.supabase) { alert('جاري التحميل، حاول مجدداً'); return; }
+  // حفظ الـ navigation stack قبل الـ redirect
+  try {
+    const stackData = state.navigationStack.map(function(s){ return { label: s.label }; });
+    sessionStorage.setItem('_nav_stack_labels', JSON.stringify(stackData));
+    // حفظ آخر section_id كانت مفتوحة
+    if (window._lastOpenSectionId) {
+      sessionStorage.setItem('_last_section_id', String(window._lastOpenSectionId));
+    }
+  } catch(e) {}
+  const redirectTo = window.location.origin + window.location.pathname;
+  const { error } = await window.supabase.auth.signInWithOAuth({
+    provider: 'google',
+    options: { redirectTo: redirectTo, skipBrowserRedirect: false }
+  });
+  if (error) alert('خطأ في تسجيل الدخول: ' + error.message);
+};
 
 window.logoutUser = async function() {
   await window.supabase.auth.signOut();
@@ -5057,11 +5074,73 @@ async function _getSignedPdfUrl(storagePath) {
 }
 
 // ==================== NativePDFViewer ====================
+// يدعم Chrome / Firefox / Safari / موبايل
+// يستخدم PDF.js للـ canvas rendering — لا يعتمد على iframe لعرض PDF
 var NativePDFViewer = (function() {
   var _overlayEl = null;
+  var _pdfjsLoaded = false;
+  var _pdfjsLoading = false;
+  var _pdfjsCallbacks = [];
 
   function _esc(s) {
     return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  // تحميل PDF.js مرة واحدة فقط
+  function _loadPdfJs(cb) {
+    if (_pdfjsLoaded && window.pdfjsLib) { cb(window.pdfjsLib); return; }
+    _pdfjsCallbacks.push(cb);
+    if (_pdfjsLoading) return;
+    _pdfjsLoading = true;
+    var s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js';
+    s.onload = function() {
+      window.pdfjsLib.GlobalWorkerOptions.workerSrc =
+        'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
+      _pdfjsLoaded = true;
+      _pdfjsLoading = false;
+      var cbs = _pdfjsCallbacks.splice(0);
+      cbs.forEach(function(fn) { fn(window.pdfjsLib); });
+    };
+    s.onerror = function() {
+      _pdfjsLoading = false;
+      var cbs = _pdfjsCallbacks.splice(0);
+      cbs.forEach(function(fn) { fn(null); });
+    };
+    document.head.appendChild(s);
+  }
+
+  // رسم الـ PDF باستخدام PDF.js على canvas
+  async function _renderPdfJs(url, container) {
+    return new Promise(function(resolve) {
+      _loadPdfJs(async function(lib) {
+        if (!lib) { resolve(false); return; }
+        try {
+          container.innerHTML = '<div style="text-align:center;padding:30px;color:#fff;font-family:Cairo,sans-serif;">جاري تحميل الملف...</div>';
+          var loadingTask = lib.getDocument({ url: url, cMapUrl: 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/cmaps/', cMapPacked: true });
+          var pdf = await loadingTask.promise;
+          container.innerHTML = '';
+          var wrapper = document.createElement('div');
+          wrapper.style.cssText = 'overflow-y:auto;flex:1;background:#525659;padding:8px;';
+          container.appendChild(wrapper);
+
+          for (var pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+            var page = await pdf.getPage(pageNum);
+            var viewport = page.getViewport({ scale: Math.min(2, (container.clientWidth - 16) / page.getViewport({scale:1}).width) });
+            var canvas = document.createElement('canvas');
+            canvas.width = viewport.width;
+            canvas.height = viewport.height;
+            canvas.style.cssText = 'display:block;margin:0 auto 8px;max-width:100%;border-radius:4px;box-shadow:0 2px 8px rgba(0,0,0,.4);';
+            wrapper.appendChild(canvas);
+            await page.render({ canvasContext: canvas.getContext('2d'), viewport: viewport }).promise;
+          }
+          resolve(true);
+        } catch(e) {
+          console.warn('[PDFjs]', e.message);
+          resolve(false);
+        }
+      });
+    });
   }
 
   async function open(url, title) {
@@ -5071,10 +5150,32 @@ var NativePDFViewer = (function() {
     try { finalUrl = await _getSignedPdfUrl(url); } catch(e) {}
     document.body.style.overflow = 'hidden';
     document.body.classList.add('rv-open');
+
+    var isAdmin = window._isAdminUser === true;
+    var ua = navigator.userAgent;
+    var isMobile = /Mobi|Android|iPhone|iPad|iPod/i.test(ua);
+    var isChrome = /Chrome/.test(ua) && !/Edg/.test(ua);
+    var isFirefox = /Firefox/.test(ua);
+    var isIOS = /iPhone|iPad|iPod/.test(ua);
+
     var ol = document.createElement('div');
     ol.id = 'native-pdf-overlay';
 
-    var isAdmin = window._isAdminUser === true;
+    // نختار طريقة العرض:
+    // Chrome موبايل + iOS → PDF.js canvas (لأن iframe بيفتح برا)
+    // باقي المتصفحات → iframe (أسرع)
+    var usePdfJs = isMobile || isIOS || (isChrome && isMobile);
+
+    var bodyHtml;
+    if (usePdfJs) {
+      bodyHtml = '<div id="native-pdf-pdfjs-container" style="flex:1;display:flex;flex-direction:column;overflow:hidden;"></div>';
+    } else {
+      bodyHtml =
+        '<div style="position:relative;flex:1;display:flex;flex-direction:column;">' +
+          '<iframe id="native-pdf-frame" src="' + finalUrl + '" title="' + _esc(title || 'PDF') + '"></iframe>' +
+          (!isAdmin ? '<div style="position:absolute;inset:0;z-index:10;background:transparent;pointer-events:none;" oncontextmenu="return false"></div>' : '') +
+        '</div>';
+    }
 
     ol.innerHTML =
       '<div id="native-pdf-modal">' +
@@ -5084,17 +5185,39 @@ var NativePDFViewer = (function() {
           (isAdmin ? '<button id="native-pdf-dl" onclick="(function(){var a=document.createElement(\'a\');a.href=\''+finalUrl.replace(/'/g,'%27')+'\';a.setAttribute(\'download\',\'\');document.body.appendChild(a);a.click();document.body.removeChild(a);})()" title="تحميل" style="background:rgba(255,255,255,.18);border:none;border-radius:8px;color:#fff;padding:6px 12px;cursor:pointer;font-size:.78rem;font-family:inherit;margin-left:6px;">⬇️ تحميل</button>' : '') +
           '<button id="native-pdf-close" onclick="NativePDFViewer.close()" title="إغلاق">✕</button>' +
         '</div>' +
-        '<div style="position:relative;flex:1;display:flex;flex-direction:column;">' +
-          '<iframe id="native-pdf-frame" src="' + finalUrl + '" title="' + _esc(title || 'PDF') + '"></iframe>' +
-          // طبقة شفافة تمنع right-click فقط — pointer-events:none تسمح بالتمرير
-          (!isAdmin ? '<div style="position:absolute;inset:0;z-index:10;background:transparent;pointer-events:none;" oncontextmenu="return false"></div>' : '') +
-        '</div>' +
+        bodyHtml +
       '</div>';
+
     ol._keyHandler = function(e) { if (e.key === 'Escape') NativePDFViewer.close(); };
     document.addEventListener('keydown', ol._keyHandler);
     ol.addEventListener('click', function(e) { if (e.target === ol) NativePDFViewer.close(); });
     document.body.appendChild(ol);
     _overlayEl = ol;
+
+    // لو PDF.js: ارسم الملف
+    if (usePdfJs) {
+      var pdfContainer = document.getElementById('native-pdf-pdfjs-container');
+      if (pdfContainer) {
+        var ok = await _renderPdfJs(finalUrl, pdfContainer);
+        // fallback لـ Google Docs Viewer لو PDF.js فشل
+        if (!ok) {
+          var gdocUrl = 'https://docs.google.com/viewer?url=' + encodeURIComponent(finalUrl) + '&embedded=true';
+          pdfContainer.innerHTML = '<iframe src="' + gdocUrl + '" style="width:100%;flex:1;border:none;min-height:70vh;"></iframe>';
+        }
+      }
+    } else if (isFirefox) {
+      // Firefox fallback: لو iframe فارغ بعد 8 ثوانٍ → Google Docs
+      setTimeout(function() {
+        var frame = document.getElementById('native-pdf-frame');
+        if (!frame) return;
+        try {
+          var fd = frame.contentDocument;
+          if (!fd || !fd.body || fd.body.innerHTML.trim() === '') {
+            frame.src = 'https://docs.google.com/viewer?url=' + encodeURIComponent(finalUrl) + '&embedded=true';
+          }
+        } catch(e) { /* cross-origin — شغال عادي */ }
+      }, 8000);
+    }
   }
 
   function close() {
@@ -6572,17 +6695,8 @@ console.log('%c[SECURITY v1] اكتب printSecuritySQL() في الـ Console ل�
 // FIX A — منع PDF من الفتح في تبويب خارجي (كل المتصفحات)
 // ════════════════════════════════════════════════════════
 
-// A1. اعتراض window.open
-var _origOpen = window.open;
-window.open = function(url, target, features) {
-  if (!url) return _origOpen.apply(this, arguments);
-  var u = String(url);
-  if (/\.pdf($|\?|#)/i.test(u) || /drive\.google\.com/.test(u)) {
-    if (window.NativePDFViewer) { NativePDFViewer.open(u, 'PDF'); return null; }
-    if (window.ResourceViewer)  { ResourceViewer.open(u, 'PDF', 'pdf'); return null; }
-  }
-  return _origOpen.apply(this, arguments);
-};
+// A1. window.open — مُعالَج بالفعل في INTERNAL VIEWER SYSTEM أعلى
+// لا نعيد تعريفه هنا لتفادي conflict مع Chrome
 
 // A2. اعتراض click على أي رابط PDF
 document.addEventListener('click', function(e) {
@@ -6606,23 +6720,18 @@ document.addEventListener('click', function(e) {
 // ════════════════════════════════════════════════════════
 
 window.loginWithGoogle = async function() {
-  // انتظر Supabase حتى 8 ثوانٍ
-  var db = null;
-  var waited = 0;
-  while (!db && waited < 8000) {
-    if (window.supabase && window.supabase.auth) { db = window.supabase; break; }
-    await new Promise(function(r) { setTimeout(r, 200); });
-    waited += 200;
-  }
+  var db = await (window._supabaseReady || Promise.resolve(window.supabase));
+  if (!db && window.supabase) db = window.supabase;
   if (!db) {
-    console.error('[AUTH] Supabase not ready after 8s');
+    _showToast('جاري تحميل النظام، حاول مجدداً بعد ثانية', 'warning');
     return;
   }
 
-  // Redirect URL = الـ URL الحالي بالضبط
+  // Redirect URL صحيح لـ GitHub Pages وكل البيئات
   var redirectTo = window.location.origin + window.location.pathname;
-  // تأكد ينتهي بـ /
-  if (!redirectTo.endsWith('/')) redirectTo += '/';
+  if (!redirectTo.endsWith('/') && !redirectTo.endsWith('.html')) {
+    redirectTo += '/';
+  }
 
   // حفظ آخر section
   try {
@@ -6644,11 +6753,13 @@ window.loginWithGoogle = async function() {
         skipBrowserRedirect: false
       }
     });
-    if (result && result.error) {
+    if (result.error) {
       console.error('[AUTH] Google error:', result.error.message);
+      _showToast('خطأ: ' + result.error.message, 'error');
     }
   } catch(err) {
     console.error('[AUTH] Exception:', err);
+    _showToast('تحقق من اتصال الإنترنت وحاول مجدداً', 'error');
   }
 };
 
@@ -6667,48 +6778,9 @@ window.renderHomeSections = async function() {
 };
 
 // ════════════════════════════════════════════════════════
-// FIX D — NativePDFViewer: Google Docs fallback على iOS/Firefox
+// FIX D — محذوف: منطق PDF.js مدمج الآن في NativePDFViewer مباشرةً
 // ════════════════════════════════════════════════════════
-
-var _patchPDFViewer = function() {
-  if (!window.NativePDFViewer || !window.NativePDFViewer.open) return;
-  var _orig = window.NativePDFViewer.open.bind(window.NativePDFViewer);
-  window.NativePDFViewer.open = async function(url, title) {
-    if (!url) return;
-    var finalUrl = url;
-
-    // Signed URL لـ Supabase Storage
-    if (url.includes('supabase') && url.includes('/storage/') && window._getSignedPdfUrl) {
-      try { finalUrl = await _getSignedPdfUrl(url); } catch(e) {}
-    }
-
-    // iOS / Firefox: Google Docs Viewer أكثر استقراراً
-    var ua = navigator.userAgent;
-    var isIOS     = /iPhone|iPad|iPod/.test(ua);
-    var isFirefox = /Firefox/.test(ua);
-    var isSafari  = /Safari/.test(ua) && !/Chrome/.test(ua);
-
-    if ((isIOS || isSafari) && !finalUrl.includes('docs.google.com')) {
-      finalUrl = 'https://docs.google.com/viewer?url=' + encodeURIComponent(finalUrl) + '&embedded=true';
-    }
-
-    _orig(finalUrl, title);
-
-    // Fallback لـ Firefox: لو iframe فشل بعد 8 ثوانٍ → Google Docs
-    if (isFirefox && !finalUrl.includes('docs.google.com')) {
-      setTimeout(function() {
-        var frame = document.getElementById('native-pdf-frame');
-        if (!frame) return;
-        try {
-          var fd = frame.contentDocument;
-          if (!fd || !fd.body || fd.body.innerHTML.trim() === '') {
-            frame.src = 'https://docs.google.com/viewer?url=' + encodeURIComponent(url) + '&embedded=true';
-          }
-        } catch(crossOriginErr) { /* شغال بشكل عادي */ }
-      }, 8000);
-    }
-  };
-};
+var _patchPDFViewer = function() { /* no-op */ };
 
 // ════════════════════════════════════════════════════════
 // FIX E — Toast للأخطاء بدلاً من alert()
