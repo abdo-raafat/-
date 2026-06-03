@@ -5112,32 +5112,73 @@ var NativePDFViewer = (function() {
   }
 
   // رسم الـ PDF باستخدام PDF.js على canvas
-  async function _renderPdfJs(url, container) {
+  async function _renderPdfJs(url, wrapper) {
     return new Promise(function(resolve) {
       _loadPdfJs(async function(lib) {
         if (!lib) { resolve(false); return; }
         try {
-          container.innerHTML = '<div style="text-align:center;padding:30px;color:#fff;font-family:Cairo,sans-serif;">جاري تحميل الملف...</div>';
-          var loadingTask = lib.getDocument({ url: url, cMapUrl: 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/cmaps/', cMapPacked: true });
+          // رسالة التحميل
+          wrapper.innerHTML =
+            '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;' +
+            'height:200px;color:#fff;font-family:Cairo,sans-serif;font-size:1rem;gap:12px;">' +
+            '<div style="width:40px;height:40px;border:4px solid rgba(255,255,255,.3);border-top-color:#fff;' +
+            'border-radius:50%;animation:spin 1s linear infinite;"></div>' +
+            'جاري تحميل الملف...</div>';
+
+          // إضافة CSS للـ spinner لو مش موجود
+          if (!document.getElementById('pdfjs-spin-style')) {
+            var st = document.createElement('style');
+            st.id = 'pdfjs-spin-style';
+            st.textContent = '@keyframes spin{to{transform:rotate(360deg)}}';
+            document.head.appendChild(st);
+          }
+
+          var loadingTask = lib.getDocument({
+            url: url,
+            cMapUrl: 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/cmaps/',
+            cMapPacked: true
+          });
+
           var pdf = await loadingTask.promise;
-          container.innerHTML = '';
-          var wrapper = document.createElement('div');
-          wrapper.style.cssText = 'overflow-y:auto;flex:1;background:#525659;padding:8px;';
-          container.appendChild(wrapper);
+          wrapper.innerHTML = '';
+
+          // حساب الـ width الفعلي — نستنى الـ DOM يتحدّث
+          await new Promise(function(r) { requestAnimationFrame(function() { requestAnimationFrame(r); }); });
+          var containerW = wrapper.clientWidth || window.innerWidth || 375;
+          var pixelRatio = window.devicePixelRatio || 1;
+          // scale مناسب للموبايل: استخدم كل العرض مع هامش 12px من كل جانب
+          var availableW = containerW - 24;
 
           for (var pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
             var page = await pdf.getPage(pageNum);
-            var viewport = page.getViewport({ scale: Math.min(2, (container.clientWidth - 16) / page.getViewport({scale:1}).width) });
+            var baseVP  = page.getViewport({ scale: 1 });
+            var scale   = availableW / baseVP.width;
+            // للتوضيح على شاشات Retina: نضاعف بـ pixelRatio لكن نعرض بحجم CSS أصغر
+            var renderScale = scale * Math.min(pixelRatio, 2);
+            var viewport = page.getViewport({ scale: renderScale });
+
             var canvas = document.createElement('canvas');
-            canvas.width = viewport.width;
-            canvas.height = viewport.height;
-            canvas.style.cssText = 'display:block;margin:0 auto 8px;max-width:100%;border-radius:4px;box-shadow:0 2px 8px rgba(0,0,0,.4);';
+            canvas.width  = Math.floor(viewport.width);
+            canvas.height = Math.floor(viewport.height);
+            // نعرض الـ canvas بحجم CSS = حجم الصفحة الفعلي بدون pixel ratio
+            canvas.style.cssText =
+              'display:block;margin:0 auto 10px;' +
+              'width:' + Math.floor(availableW) + 'px;' +
+              'height:' + Math.floor(availableW * baseVP.height / baseVP.width) + 'px;' +
+              'border-radius:4px;box-shadow:0 2px 10px rgba(0,0,0,.5);' +
+              'background:#fff;';
+
             wrapper.appendChild(canvas);
-            await page.render({ canvasContext: canvas.getContext('2d'), viewport: viewport }).promise;
+
+            await page.render({
+              canvasContext: canvas.getContext('2d'),
+              viewport: viewport
+            }).promise;
           }
+
           resolve(true);
         } catch(e) {
-          console.warn('[PDFjs]', e.message);
+          console.warn('[PDFjs] خطأ:', e.message);
           resolve(false);
         }
       });
@@ -5152,24 +5193,27 @@ var NativePDFViewer = (function() {
     document.body.style.overflow = 'hidden';
     document.body.classList.add('rv-open');
 
-    var isAdmin = window._isAdminUser === true;
-    var ua = navigator.userAgent;
+    var isAdmin  = window._isAdminUser === true;
+    var ua       = navigator.userAgent;
     var isMobile = /Mobi|Android|iPhone|iPad|iPod/i.test(ua);
-    var isChrome = /Chrome/.test(ua) && !/Edg/.test(ua);
-    var isFirefox = /Firefox/.test(ua);
-    var isIOS = /iPhone|iPad|iPod/.test(ua);
+    var isFirefox= /Firefox/.test(ua);
+    var isIOS    = /iPhone|iPad|iPod/.test(ua);
 
     var ol = document.createElement('div');
     ol.id = 'native-pdf-overlay';
 
-    // نختار طريقة العرض:
-    // Chrome موبايل + iOS → PDF.js canvas (لأن iframe بيفتح برا)
-    // باقي المتصفحات → iframe (أسرع)
-    var usePdfJs = isMobile || isIOS || (isChrome && isMobile);
+    // موبايل (أي متصفح) + iOS → PDF.js canvas
+    // ديسكتوب → iframe (أسرع)
+    var usePdfJs = isMobile || isIOS;
 
     var bodyHtml;
     if (usePdfJs) {
-      bodyHtml = '<div id="native-pdf-pdfjs-container" style="flex:1;display:flex;flex-direction:column;overflow:hidden;"></div>';
+      // wrapper قابل للتمرير بالكامل
+      bodyHtml =
+        '<div id="native-pdf-pdfjs-wrapper" ' +
+        'style="flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;' +
+        'background:#525659;padding:12px;box-sizing:border-box;">' +
+        '</div>';
     } else {
       bodyHtml =
         '<div style="position:relative;flex:1;display:flex;flex-direction:column;">' +
@@ -5183,7 +5227,14 @@ var NativePDFViewer = (function() {
         '<div id="native-pdf-header">' +
           '<span style="font-size:1.3rem;flex-shrink:0">📄</span>' +
           '<span id="native-pdf-title">' + _esc(title || 'PDF') + '</span>' +
-          (isAdmin ? '<button id="native-pdf-dl" onclick="(function(){var a=document.createElement(\'a\');a.href=\''+finalUrl.replace(/'/g,'%27')+'\';a.setAttribute(\'download\',\'\');document.body.appendChild(a);a.click();document.body.removeChild(a);})()" title="تحميل" style="background:rgba(255,255,255,.18);border:none;border-radius:8px;color:#fff;padding:6px 12px;cursor:pointer;font-size:.78rem;font-family:inherit;margin-left:6px;">⬇️ تحميل</button>' : '') +
+          (isAdmin
+            ? '<button id="native-pdf-dl" title="تحميل" ' +
+              'style="background:rgba(255,255,255,.18);border:none;border-radius:8px;color:#fff;' +
+              'padding:6px 12px;cursor:pointer;font-size:.78rem;font-family:inherit;margin-left:6px;" ' +
+              'onclick="(function(){var a=document.createElement(\'a\');a.href=\'' + finalUrl.replace(/'/g,'%27') + '\';' +
+              'a.setAttribute(\'download\',\'\');document.body.appendChild(a);a.click();document.body.removeChild(a);})()">' +
+              '⬇️ تحميل</button>'
+            : '') +
           '<button id="native-pdf-close" onclick="NativePDFViewer.close()" title="إغلاق">✕</button>' +
         '</div>' +
         bodyHtml +
@@ -5195,19 +5246,19 @@ var NativePDFViewer = (function() {
     document.body.appendChild(ol);
     _overlayEl = ol;
 
-    // لو PDF.js: ارسم الملف
     if (usePdfJs) {
-      var pdfContainer = document.getElementById('native-pdf-pdfjs-container');
-      if (pdfContainer) {
-        var ok = await _renderPdfJs(finalUrl, pdfContainer);
-        // fallback لـ Google Docs Viewer لو PDF.js فشل
+      var wrapper = document.getElementById('native-pdf-pdfjs-wrapper');
+      if (wrapper) {
+        var ok = await _renderPdfJs(finalUrl, wrapper);
+        // Fallback: Google Docs Viewer لو PDF.js فشل
         if (!ok) {
-          var gdocUrl = 'https://docs.google.com/viewer?url=' + encodeURIComponent(finalUrl) + '&embedded=true';
-          pdfContainer.innerHTML = '<iframe src="' + gdocUrl + '" style="width:100%;flex:1;border:none;min-height:70vh;"></iframe>';
+          wrapper.style.cssText = 'flex:1;display:flex;flex-direction:column;overflow:hidden;';
+          wrapper.innerHTML =
+            '<iframe src="https://docs.google.com/viewer?url=' + encodeURIComponent(finalUrl) +
+            '&embedded=true" style="width:100%;flex:1;border:none;min-height:70vh;"></iframe>';
         }
       }
     } else if (isFirefox) {
-      // Firefox fallback: لو iframe فارغ بعد 8 ثوانٍ → Google Docs
       setTimeout(function() {
         var frame = document.getElementById('native-pdf-frame');
         if (!frame) return;
@@ -5216,7 +5267,7 @@ var NativePDFViewer = (function() {
           if (!fd || !fd.body || fd.body.innerHTML.trim() === '') {
             frame.src = 'https://docs.google.com/viewer?url=' + encodeURIComponent(finalUrl) + '&embedded=true';
           }
-        } catch(e) { /* cross-origin — شغال عادي */ }
+        } catch(e) { /* cross-origin — OK */ }
       }, 8000);
     }
   }
