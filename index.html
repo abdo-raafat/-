@@ -6540,5 +6540,444 @@ console.log('%c[SECURITY v1] اكتب printSecuritySQL() في الـ Console ل�
 <!-- ============================================================ -->
 <!-- نهاية نظام الحماية v1                                        -->
 <!-- ============================================================ -->
+
+<!-- ============================================================ -->
+<!-- FIXES PATCH v1 — إصلاحات شاملة                              -->
+<!-- 1. PDF داخل الموقع فقط — بدون فتح تبويب خارجي              -->
+<!-- 2. Google Login — Redirect URL صحيح                          -->
+<!-- 3. Supabase RLS — SQL جاهز + تشخيص تلقائي                  -->
+<!-- 4. تحسين أداء التحميل للبيانات                              -->
+<!-- 5. منع window.open و target=_blank للـ PDF                   -->
+<!-- ============================================================ -->
+<script>
+(function() {
+'use strict';
+
+// ════════════════════════════════════════════════════════════════
+// FIX #1 — منع PDF من الفتح خارج الموقع نهائياً
+// يُلغي window.open و window.location.href و a[href].click
+// للروابط التي تنتهي بـ .pdf أو تحمل Content-Type: pdf
+// ════════════════════════════════════════════════════════════════
+
+// 1a. اعتراض window.open
+var _origOpen = window.open;
+window.open = function(url, target, features) {
+  if (url && /\.pdf($|\?|#)/i.test(url)) {
+    // بدلاً من فتح تبويب — افتح PDF داخلياً
+    if (window.NativePDFViewer) {
+      NativePDFViewer.open(url, 'PDF');
+    } else if (window.ResourceViewer) {
+      ResourceViewer.open(url, 'PDF', 'pdf');
+    }
+    return null; // منع الفتح الخارجي
+  }
+  // Google Drive PDF
+  if (url && /drive\.google\.com/.test(url)) {
+    if (window.ResourceViewer) {
+      ResourceViewer.open(url, 'Google Drive', 'pdf');
+    }
+    return null;
+  }
+  return _origOpen.call(window, url, target, features);
+};
+
+// 1b. اعتراض click على أي <a> يؤدي لـ PDF
+document.addEventListener('click', function(e) {
+  var el = e.target.closest('a[href]');
+  if (!el) return;
+  var href = el.getAttribute('href') || '';
+  if (/\.pdf($|\?|#)/i.test(href) || /drive\.google\.com/.test(href)) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (window.NativePDFViewer) NativePDFViewer.open(href, el.textContent.trim() || 'PDF');
+    else if (window.openResource) openResource(href, el.textContent.trim() || 'PDF', 'pdf');
+    return false;
+  }
+}, true);
+
+// ════════════════════════════════════════════════════════════════
+// FIX #2 — Google Login Redirect URL صحيح
+// يحل مشكلة "redirect_uri_mismatch" في GitHub Pages
+// ════════════════════════════════════════════════════════════════
+
+// نُعيد كتابة loginWithGoogle مع redirectTo صحيح
+window.loginWithGoogle = async function() {
+  if (!window.supabase) {
+    // انتظر 1.5 ثانية وحاول مرة أخرى
+    setTimeout(function() { window.loginWithGoogle(); }, 1500);
+    return;
+  }
+
+  // بناء redirectTo بشكل صحيح لـ GitHub Pages
+  var origin   = window.location.origin;
+  var pathname = window.location.pathname;
+  // تأكد أنه ينتهي بـ / أو index.html
+  var base = pathname.endsWith('/') ? pathname : pathname.substring(0, pathname.lastIndexOf('/') + 1);
+  var redirectTo = origin + base;
+
+  // حفظ آخر navigation state
+  try {
+    if (window.state && window.state.navigationStack) {
+      var stackData = state.navigationStack.map(function(s) { return { label: s.label }; });
+      sessionStorage.setItem('_nav_stack_labels', JSON.stringify(stackData));
+    }
+    if (window._lastOpenSectionId) {
+      sessionStorage.setItem('_last_section_id', String(window._lastOpenSectionId));
+    }
+  } catch(e) {}
+
+  try {
+    var res = await window.supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: redirectTo,
+        skipBrowserRedirect: false,
+        queryParams: {
+          access_type: 'offline',
+          prompt: 'consent'
+        }
+      }
+    });
+    if (res.error) {
+      console.error('[AUTH] Google login error:', res.error.message);
+      _showLoginError(res.error.message);
+    }
+  } catch(err) {
+    console.error('[AUTH] Exception:', err.message);
+    _showLoginError('حدث خطأ في الاتصال، تحقق من الإنترنت وحاول مجدداً');
+  }
+};
+
+function _showLoginError(msg) {
+  var toast = document.createElement('div');
+  toast.setAttribute('style',
+    'position:fixed;top:80px;left:50%;transform:translateX(-50%);' +
+    'background:#e74c3c;color:#fff;padding:12px 22px;border-radius:12px;' +
+    'z-index:9999999;font-family:Cairo,Tajawal,sans-serif;font-size:.9rem;' +
+    'box-shadow:0 8px 24px rgba(0,0,0,.3);direction:rtl;text-align:center;max-width:90vw;'
+  );
+  toast.textContent = '❌ ' + msg;
+  document.body.appendChild(toast);
+  setTimeout(function() { if (toast.parentNode) toast.remove(); }, 5000);
+}
+
+// ════════════════════════════════════════════════════════════════
+// FIX #3 — تشخيص Supabase تلقائي عند التحميل
+// يطبع في Console تعليمات واضحة لكل مشكلة
+// ════════════════════════════════════════════════════════════════
+
+window._supabaseDiagnoseOnLoad = true;
+
+function _diagnoseSupabase() {
+  if (!window.supabase) {
+    console.warn('[DIAG] ❌ window.supabase غير موجود — تحقق من CDN');
+    return;
+  }
+
+  // فحص RLS و site_sections
+  window.supabase.from('site_sections')
+    .select('id', { count: 'exact', head: true })
+    .then(function(res) {
+      if (res.error) {
+        if (res.error.code === '42501' || res.error.message.includes('permission')) {
+          console.error(
+            '[DIAG] 🔐 RLS مانع القراءة من site_sections\n' +
+            'الحل: شغّل هذا في Supabase SQL Editor:\n\n' +
+            'ALTER TABLE site_sections ENABLE ROW LEVEL SECURITY;\n' +
+            "DROP POLICY IF EXISTS \"public_read_sections\" ON site_sections;\n" +
+            "CREATE POLICY \"public_read_sections\" ON site_sections FOR SELECT USING (true);\n"
+          );
+        } else {
+          console.error('[DIAG] site_sections error:', res.error.message);
+        }
+      } else if (res.count === 0) {
+        console.warn('[DIAG] ⚠️ site_sections فارغ — شغّل printSeedSQL() في Console');
+      } else {
+        console.info('[DIAG] ✅ site_sections يحمل', res.count, 'سجل');
+      }
+    });
+
+  // فحص profiles
+  window.supabase.auth.getSession().then(function(r) {
+    var sess = r && r.data && r.data.session;
+    if (!sess) return;
+    window.supabase.from('profiles')
+      .select('role')
+      .eq('id', sess.user.id)
+      .maybeSingle()
+      .then(function(res) {
+        if (res.error) {
+          console.error('[DIAG] 🔐 RLS مانع قراءة profiles:', res.error.message,
+            '\nالحل: تأكد من وجود policy "profiles_own_read"');
+        } else if (!res.data) {
+          console.warn('[DIAG] ⚠️ لا يوجد profile للمستخدم — الـ Trigger handle_new_user مش شغال');
+        } else {
+          console.info('[DIAG] ✅ Profile:', res.data);
+        }
+      });
+  });
+}
+
+// ════════════════════════════════════════════════════════════════
+// FIX #4 — تحسين تحميل البيانات: Parallel + Retry + Cache
+// ════════════════════════════════════════════════════════════════
+
+// Cache بسيط لتجنب الاستعلامات المتكررة
+var _sectionsCache = null;
+var _sectionsCacheTime = 0;
+var CACHE_TTL = 5 * 60 * 1000; // 5 دقائق
+
+// تسريع loadSections بإضافة Cache
+var _origLoadSections = window.loadSections;
+if (typeof _origLoadSections === 'function') {
+  window.loadSections = async function(parentId) {
+    var now = Date.now();
+    // Cache للـ root sections فقط (parentId === null)
+    if (parentId === null && _sectionsCache && (now - _sectionsCacheTime < CACHE_TTL)) {
+      return _sectionsCache;
+    }
+    var result = await _origLoadSections(parentId);
+    if (parentId === null && result && result.length > 0) {
+      _sectionsCache = result;
+      _sectionsCacheTime = now;
+    }
+    return result;
+  };
+}
+
+// Retry wrapper للاستعلامات الفاشلة
+window._supabaseQuery = async function(queryFn, retries) {
+  retries = retries || 3;
+  for (var i = 0; i < retries; i++) {
+    try {
+      var result = await queryFn();
+      if (!result.error) return result;
+      if (i < retries - 1) {
+        await new Promise(function(r) { setTimeout(r, 500 * (i + 1)); });
+      }
+    } catch(e) {
+      if (i === retries - 1) throw e;
+      await new Promise(function(r) { setTimeout(r, 500 * (i + 1)); });
+    }
+  }
+  return { data: null, error: new Error('فشل بعد ' + retries + ' محاولات') };
+};
+
+// ════════════════════════════════════════════════════════════════
+// FIX #5 — تعزيز NativePDFViewer على الموبايل
+// يستخدم Google Docs Viewer كـ fallback ذكي
+// ════════════════════════════════════════════════════════════════
+
+var _origNativePDFOpen = window.NativePDFViewer && window.NativePDFViewer.open;
+if (_origNativePDFOpen) {
+  var _enhancedOpen = async function(url, title) {
+    if (!url) return;
+
+    // للـ Supabase Storage: احصل على Signed URL أولاً
+    var finalUrl = url;
+    if (url.includes('supabase') && url.includes('/storage/')) {
+      try { finalUrl = await _getSignedPdfUrl(url); } catch(e) {}
+    }
+
+    // اكتشاف نوع المتصفح/الجهاز
+    var isMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+    var isSafari = /Safari/.test(navigator.userAgent) && !/Chrome/.test(navigator.userAgent);
+    var isIOS    = /iPhone|iPad|iPod/.test(navigator.userAgent);
+
+    // على iOS/Safari: استخدم Google Docs Viewer مباشرة (الـ native PDF مش دائماً بيشتغل)
+    if (isIOS || isSafari) {
+      var gdocsUrl;
+      if (finalUrl.includes('drive.google.com')) {
+        var m = finalUrl.match(/\/d\/([a-zA-Z0-9_-]+)/);
+        gdocsUrl = m
+          ? 'https://docs.google.com/viewer?srcid=' + m[1] + '&pid=explorer&efh=false&a=v&chrome=false&embedded=true'
+          : 'https://docs.google.com/viewer?url=' + encodeURIComponent(finalUrl) + '&embedded=true';
+      } else {
+        gdocsUrl = 'https://docs.google.com/viewer?url=' + encodeURIComponent(finalUrl) + '&embedded=true';
+      }
+      finalUrl = gdocsUrl;
+    }
+
+    _origNativePDFOpen.call(window.NativePDFViewer, finalUrl, title);
+
+    // مراقبة iframe — لو فشل في 8 ثوانٍ → fallback لـ Google Docs
+    setTimeout(function() {
+      var frame = document.getElementById('native-pdf-frame');
+      if (!frame) return;
+      // لو الـ src لم يتغير أو الـ frame فارغ، جرّب Google Docs
+      try {
+        var frameDoc = frame.contentDocument || frame.contentWindow && frame.contentWindow.document;
+        if (frameDoc && (frameDoc.body && frameDoc.body.innerHTML === '' || !frameDoc.body)) {
+          if (!isIOS && !isSafari) { // لم نجرب Google Docs بعد
+            var gdFallback = 'https://docs.google.com/viewer?url=' + encodeURIComponent(finalUrl) + '&embedded=true';
+            frame.src = gdFallback;
+          }
+        }
+      } catch(crossOriginErr) {
+        // Cross-origin — الـ frame شغال، لا نتدخل
+      }
+    }, 8000);
+  };
+
+  // استبدال الـ open
+  window.NativePDFViewer = Object.assign({}, window.NativePDFViewer, { open: _enhancedOpen });
+}
+
+// ════════════════════════════════════════════════════════════════
+// FIX #6 — أداء: Lazy loading للأقسام + Loading indicator ذكي
+// ════════════════════════════════════════════════════════════════
+
+// تحسين Loading indicator — يُخفي نفسه عند ظهور البيانات
+var _homeLoaderObserver = null;
+function _watchHomeLoader() {
+  var container = document.getElementById('dynamic-home-sections');
+  if (!container) return;
+  if (_homeLoaderObserver) _homeLoaderObserver.disconnect();
+
+  _homeLoaderObserver = new MutationObserver(function(mutations) {
+    mutations.forEach(function(m) {
+      m.addedNodes.forEach(function(node) {
+        if (node.nodeType === 1 && node.classList && node.classList.contains('home-section-label')) {
+          // الأقسام بدأت تظهر — أخفِ الـ spinner
+          var spinner = container.querySelector('.loading');
+          if (spinner) spinner.style.display = 'none';
+        }
+      });
+    });
+  });
+  _homeLoaderObserver.observe(container, { childList: true, subtree: true });
+}
+
+// ════════════════════════════════════════════════════════════════
+// FIX #7 — إضافة SQL جاهز لإعداد Google Auth في Supabase
+// ════════════════════════════════════════════════════════════════
+
+window.printGoogleAuthSetup = function() {
+  var siteUrl = window.location.origin + window.location.pathname.replace(/[^/]*$/, '');
+  console.group('%c🔐 إعداد Google Auth في Supabase', 'color:#17a589;font-size:1.1em;font-weight:bold');
+  console.log('%cالخطوات المطلوبة:', 'font-weight:bold;color:#0a3d62');
+  console.log('1. افتح Supabase → Authentication → Providers → Google');
+  console.log('2. فعّل Google Provider');
+  console.log('3. أضف Client ID و Client Secret من Google Cloud Console');
+  console.log('%c4. في "Redirect URLs" أضف:', 'font-weight:bold');
+  console.log('   ' + siteUrl);
+  console.log('   ' + window.location.origin + '/');
+  console.log('%c5. في Google Cloud Console → OAuth → Authorized redirect URIs أضف:', 'font-weight:bold');
+  console.log('   https://[YOUR-PROJECT].supabase.co/auth/v1/callback');
+  console.log('%c\nURL الحالي للموقع:', 'font-weight:bold;color:#e74c3c');
+  console.log('   ' + siteUrl);
+  console.log('\n%cSQL لإضافة RLS سريعاً:', 'font-weight:bold;color:#17a589');
+  console.log(`
+-- تأكد من وجود هذه الـ Policies:
+
+-- 1. site_sections — قراءة عامة بدون تسجيل
+ALTER TABLE site_sections ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "public_read" ON site_sections;
+CREATE POLICY "public_read" ON site_sections FOR SELECT USING (true);
+
+-- 2. section_content — قراءة للمسجلين
+ALTER TABLE section_content ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "auth_read_content" ON section_content;
+CREATE POLICY "auth_read_content" ON section_content
+  FOR SELECT USING (auth.uid() IS NOT NULL);
+
+-- 3. profiles — المستخدم يرى ملفه فقط
+ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "own_profile_read" ON profiles;
+CREATE POLICY "own_profile_read" ON profiles
+  FOR SELECT USING (auth.uid() = id);
+
+-- 4. Trigger لإنشاء profile تلقائياً عند التسجيل
+CREATE OR REPLACE FUNCTION handle_new_user()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER AS $$
+BEGIN
+  INSERT INTO profiles (id, email, full_name, role, subscription_status, updated_at)
+  VALUES (NEW.id, NEW.email, COALESCE(NEW.raw_user_meta_data->>'full_name',''), 'user', 'none', NOW())
+  ON CONFLICT (id) DO NOTHING;
+  RETURN NEW;
+END;
+$$;
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+CREATE TRIGGER on_auth_user_created
+  AFTER INSERT ON auth.users
+  FOR EACH ROW EXECUTE FUNCTION handle_new_user();
+`);
+  console.groupEnd();
+  return siteUrl;
+};
+
+// ════════════════════════════════════════════════════════════════
+// FIX #8 — تهيئة Supabase من URL أو من متغيرات المصدر
+// يحل مشكلة "Supabase not initialized" في بعض البيئات
+// ════════════════════════════════════════════════════════════════
+
+function _ensureSupabaseInit() {
+  // لو Supabase موجود — تشخيص سريع
+  if (window.supabase && window.supabase.from) {
+    _diagnoseSupabase();
+    _watchHomeLoader();
+    return;
+  }
+  // لو مش موجود — انتظر حتى 10 ثوانٍ
+  var attempts = 0;
+  var maxAttempts = 20;
+  var interval = setInterval(function() {
+    attempts++;
+    if (window.supabase && window.supabase.from) {
+      clearInterval(interval);
+      _diagnoseSupabase();
+      _watchHomeLoader();
+      return;
+    }
+    if (attempts >= maxAttempts) {
+      clearInterval(interval);
+      console.error(
+        '[INIT] ❌ Supabase لم يتم تهيئته بعد ' + (maxAttempts * 500 / 1000) + ' ثانية\n' +
+        'تحقق من:\n' +
+        '1. رابط CDN صحيح\n' +
+        '2. SUPABASE_URL و SUPABASE_ANON_KEY مضبوطان\n' +
+        '3. لا يوجد خطأ في Console عند تحميل الصفحة'
+      );
+      // عرض رسالة للمستخدم
+      var homeLoader = document.getElementById('dynamic-home-sections');
+      if (homeLoader) {
+        homeLoader.innerHTML =
+          '<div style="text-align:center;padding:40px 20px;direction:rtl;font-family:Cairo,Tajawal,sans-serif">' +
+          '<div style="font-size:2.5rem;margin-bottom:12px">⚠️</div>' +
+          '<p style="font-size:1rem;color:#666;margin-bottom:16px">تعذّر الاتصال بالخادم</p>' +
+          '<button onclick="location.reload()" style="background:linear-gradient(135deg,#0a3d62,#17a589);color:#fff;border:none;border-radius:12px;padding:11px 28px;font-family:Cairo,Tajawal,sans-serif;font-size:.95rem;font-weight:700;cursor:pointer;">🔄 إعادة المحاولة</button>' +
+          '</div>';
+      }
+    }
+  }, 500);
+}
+
+// ════════════════════════════════════════════════════════════════
+// تشغيل كل الإصلاحات عند تحميل الصفحة
+// ════════════════════════════════════════════════════════════════
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', _ensureSupabaseInit);
+} else {
+  _ensureSupabaseInit();
+}
+
+// طباعة تلقائية في Console للمطور
+console.log(
+  '%c[FIXES PATCH v1] مُفعَّل ✅\n' +
+  'أوامر متاحة في Console:\n' +
+  '• printGoogleAuthSetup()  — خطوات إعداد Google Login\n' +
+  '• printSecuritySQL()      — SQL لإعداد RLS الكامل\n' +
+  '• printSeedSQL()          — SQL لإدخال البيانات\n' +
+  '• runDiagnostics()        — تشخيص Supabase\n' +
+  '• printSubscriptionSQL()  — SQL للاشتراكات',
+  'color:#17a589;font-weight:bold;font-size:.9em'
+);
+
+})();
+</script>
+<!-- ============================================================ -->
+<!-- نهاية FIXES PATCH v1                                         -->
+<!-- ============================================================ -->
 </body>
 </html>
