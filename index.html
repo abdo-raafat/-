@@ -14,27 +14,41 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;600;700;900&family=Tajawal:wght@300;400;500;700;800&display=swap" rel="stylesheet">
 <script>
-// ══════════════════════════════════════════════════════
-// تهيئة Supabase — متوافقة مع جميع المتصفحات
-// Chrome / Firefox / Safari / Edge / موبايل
-// ══════════════════════════════════════════════════════
 
-// Promise يحل عند جهوزية Supabase
-window._supabaseReady = new Promise(function(resolve) {
-  var s = document.createElement('script');
-  s.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js';
-  s.crossOrigin = 'anonymous';
-  s.onload  = function() { resolve(window.supabase); };
-  s.onerror = function() {
-    // fallback CDN
-    var s2 = document.createElement('script');
-    s2.src = 'https://unpkg.com/@supabase/supabase-js@2/dist/umd/supabase.js';
-    s2.onload  = function() { resolve(window.supabase); };
-    s2.onerror = function() { console.error('[Supabase] فشل تحميل المكتبة'); resolve(null); };
-    document.head.appendChild(s2);
+(function() {
+
+  // 🔥 أهم سطر: حفظ fetch الأصلي الحقيقي
+  const originalFetch = window.fetch.bind(window);
+
+  window.fetch = async function(input, init) {
+    const res = await originalFetch(input, init);
+
+    let text = '';
+    try { text = await res.text(); } catch(e) {}
+
+    const hdrs = {};
+    try { res.headers.forEach((v,k)=>{ hdrs[k.toLowerCase()] = v; }); } catch(e) {}
+
+    return {
+      ok: res.ok,
+      status: res.status,
+      statusText: res.statusText,
+      url: res.url,
+      headers: {
+        get: (k)=> hdrs[(k||'').toLowerCase()] || null,
+        has: (k)=> (k||'').toLowerCase() in hdrs
+      },
+      text: ()=> Promise.resolve(text),
+      json: ()=>{
+        try { return Promise.resolve(JSON.parse(text)); }
+        catch(e){ return Promise.reject(e); }
+      },
+      clone: ()=> this
+    };
   };
-  document.head.appendChild(s);
-});
+
+})();
+  
 </script>
 <style>
 :root {
