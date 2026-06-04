@@ -3574,6 +3574,7 @@ window.checkBanStatus = async function(email) {
       <button class="ap-nav-btn" onclick="apSwitchTab('quizzes')"   id="ap-tab-quizzes"   role="tab">🧪 Quizzes</button>
       <button class="ap-nav-btn" onclick="apSwitchTab('chat')"      id="ap-tab-chat"      role="tab">💬 Chat</button>
       <button class="ap-nav-btn" onclick="apSwitchTab('notifs')"    id="ap-tab-notifs"    role="tab">🔔 Notifications</button>
+      <button class="ap-nav-btn" onclick="apSwitchTab('sitemsgs')"  id="ap-tab-sitemsgs"  role="tab">📢 رسائل الموقع</button>
     </nav>
 
     <!-- Body -->
@@ -3596,6 +3597,7 @@ window.checkBanStatus = async function(email) {
           <div class="ap-stat-card"><div class="ap-stat-icon">🗨️</div><div class="ap-stat-num" id="ap-stat-chatmsgs">—</div><div class="ap-stat-lbl">رسائل الشات</div></div>
           <div class="ap-stat-card"><div class="ap-stat-icon">🔔</div><div class="ap-stat-num" id="ap-stat-notifs">—</div><div class="ap-stat-lbl">الإشعارات</div></div>
           <div class="ap-stat-card"><div class="ap-stat-icon">📈</div><div class="ap-stat-num" id="ap-stat-progress">—</div><div class="ap-stat-lbl">سجلات التقدم</div></div>
+          <div class="ap-stat-card"><div class="ap-stat-icon">📢</div><div class="ap-stat-num" id="ap-stat-sitemsgs">—</div><div class="ap-stat-lbl">رسائل الموقع</div></div>
         </div>
         <div class="ap-section-heading" style="margin-top:20px;">🕐 آخر النشاطات</div>
         <div id="ap-recent-activity">
@@ -3909,6 +3911,24 @@ window.checkBanStatus = async function(email) {
         </div>
       </div>
 
+      <!-- ═══════════════════ TAB: SITE MESSAGES ═══════════════════ -->
+      <div class="ap-tab-panel" id="ap-panel-sitemsgs" role="tabpanel">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:16px;">
+          <div class="ap-section-heading" style="margin:0;border:none;padding:0;">📢 رسائل الموقع (الرسالة الترحيبية)</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button class="ap-btn ap-btn-ghost" onclick="apLoadSiteMsgs()">🔄 تحديث</button>
+            <button class="ap-btn ap-btn-primary" onclick="apResetWelcome()" style="background:linear-gradient(135deg,#0b6e4f,#17a589);">👁️ اعرض الرسالة دلوقتي</button>
+          </div>
+        </div>
+        <div style="padding:10px 14px;background:#fff8e1;border-radius:10px;font-size:.82rem;color:#7d6608;margin-bottom:14px;border-right:4px solid #f39c12;">
+          💡 الرسالة بتظهر لكل زائر مرة واحدة عند فتح الموقع. لو عدّلت الرسالة أو أضفت رسالة جديدة بـ <strong>id مختلف</strong> — هتظهر تاني للجميع.<br>
+          زر "اعرض الرسالة دلوقتي" بيمسح الذاكرة المحلية ويعرضها فوراً.
+        </div>
+        <div id="ap-sitemsgs-body">
+          <div class="ap-loading"><div class="spinner"></div> جاري التحميل...</div>
+        </div>
+      </div>
+
     </div><!-- /ap-body -->
   </div><!-- /ap-modal -->
 </div><!-- /admin-panel -->
@@ -4126,6 +4146,7 @@ function apSwitchTab(tab) {
   else if (tab === 'quizzes')  apLoadQuizzes();
   else if (tab === 'chat')     apLoadChat();
   else if (tab === 'notifs')   apLoadNotifs();
+  else if (tab === 'sitemsgs') apLoadSiteMsgs();
 }
 
 // ────────────────────────────────────────────────────────────────
@@ -4136,7 +4157,7 @@ async function apLoadDashboard() {
   try {
     var [usersRes, subsRes, msgsRes, contentRes,
          quizzesRes, questionsRes, resultsRes,
-         roomsRes, chatMsgsRes, notifsRes, progressRes] = await Promise.all([
+         roomsRes, chatMsgsRes, notifsRes, progressRes, siteMsgsRes] = await Promise.all([
       window.supabase.from('profiles').select('id', { count: 'exact', head: true }),
       window.supabase.from('subscriptions').select('id, status, full_name, user_email, created_at', { count: 'exact' }),
       window.supabase.from('contact_messages').select('id', { count: 'exact', head: true }),
@@ -4148,6 +4169,7 @@ async function apLoadDashboard() {
       window.supabase.from('chat_messages').select('id', { count: 'exact', head: true }),
       window.supabase.from('notifications').select('id', { count: 'exact', head: true }),
       window.supabase.from('user_progress').select('id', { count: 'exact', head: true }),
+      window.supabase.from('site_messages').select('id', { count: 'exact', head: true }),
     ]);
 
     var totalUsers   = usersRes.count   || 0;
@@ -4171,6 +4193,7 @@ async function apLoadDashboard() {
     _apSetStat('ap-stat-chatmsgs',     chatMsgsRes.count   || 0);
     _apSetStat('ap-stat-notifs',       notifsRes.count     || 0);
     _apSetStat('ap-stat-progress',     progressRes.count   || 0);
+    _apSetStat('ap-stat-sitemsgs',     siteMsgsRes.count   || 0);
 
     // Recent activity: last 8 subscriptions
     var recent = allSubs.slice(0, 8);
@@ -5120,6 +5143,65 @@ async function apDeleteNotif(id) {
   } catch(err) { alert('خطأ: ' + err.message); }
 }
 
+// ────────────────────────────────────────────────────────────────
+// SITE MESSAGES TAB — الرسائل الترحيبية
+// ────────────────────────────────────────────────────────────────
+async function apLoadSiteMsgs() {
+  var el = document.getElementById('ap-sitemsgs-body');
+  if (!el || !window.supabase) return;
+  el.innerHTML = '<div class="ap-loading"><div class="spinner"></div> جاري التحميل...</div>';
+  try {
+    var { data, error } = await window.supabase
+      .from('site_messages')
+      .select('id, title, message, location, is_active, display_order, created_at')
+      .order('display_order', { ascending: true });
+    if (error) throw error;
+    if (!data || data.length === 0) {
+      el.innerHTML = '<div class="ap-empty"><div class="ap-empty-icon">📢</div>لا توجد رسائل بعد — أضف رسالة من Supabase</div>';
+      return;
+    }
+    el.innerHTML = '<div class="ap-table-wrap"><table class="ap-table"><thead><tr>'
+      + '<th>ID</th><th>العنوان</th><th>الرسالة</th><th>المكان</th><th>الترتيب</th><th>نشطة؟</th><th>التاريخ</th>'
+      + '</tr></thead><tbody>'
+      + data.map(function(m) {
+        return '<tr style="' + (m.is_active ? 'background:#f0fff4;' : 'opacity:.6;') + '">'
+          + '<td><strong>' + m.id + '</strong></td>'
+          + '<td><strong>' + _apEsc(m.title || '—') + '</strong></td>'
+          + '<td style="max-width:220px;">' + _apEsc(m.message || '—') + '</td>'
+          + '<td><span style="background:#e8f4f8;padding:2px 8px;border-radius:6px;font-size:.78rem;">' + _apEsc(m.location || 'global') + '</span></td>'
+          + '<td>' + (m.display_order || 0) + '</td>'
+          + '<td>' + (m.is_active ? '<span class="ap-badge active">✅ نشطة</span>' : '<span class="ap-badge expired">❌ معطّلة</span>') + '</td>'
+          + '<td>' + _apDate(m.created_at) + '</td>'
+          + '</tr>';
+      }).join('')
+      + '</tbody></table></div>'
+      + '<div style="margin-top:14px;padding:10px 14px;background:#f0f4f8;border-radius:10px;font-size:.8rem;color:#555;">'
+      + '✏️ لتعديل الرسائل: اذهب إلى Supabase → Table Editor → site_messages'
+      + '</div>';
+  } catch(err) {
+    el.innerHTML = '<div class="ap-empty" style="color:#e74c3c;">❌ ' + _apEsc(err.message) + '</div>';
+  }
+}
+
+// مسح الذاكرة المحلية وإعادة عرض الرسالة الترحيبية فوراً
+function apResetWelcome() {
+  try {
+    // احذف كل مفاتيح welcome_seen من localStorage
+    var keys = [];
+    for (var i = 0; i < localStorage.length; i++) {
+      var k = localStorage.key(i);
+      if (k && (k.startsWith('welcome_seen') )) keys.push(k);
+    }
+    keys.forEach(function(k) { localStorage.removeItem(k); });
+    console.log('[WELCOME] تم مسح ' + keys.length + ' مفتاح من localStorage');
+  } catch(e) {}
+  // أعد تشغيل الرسالة
+  if (typeof loadAndShowWelcome === 'function') {
+    loadAndShowWelcome();
+  }
+  _apToast('✅ تم مسح الذاكرة — ستظهر الرسالة الآن');
+}
+
 // نهاية لوحة التحكم
 </script>
 
@@ -5212,15 +5294,10 @@ async function loadAndShowWelcome() {
   }
 
   try {
-    // ① تحقق هل المستخدم مسجل دخول — لو مسجل ماتظهرش الرسالة خالص
-    var sessionResult = await window.supabase.auth.getSession();
-    var currentSession = sessionResult && sessionResult.data && sessionResult.data.session;
-    if (currentSession && currentSession.user) return; // مسجل دخول → لا popup
-
-    // ② اجلب الرسالة النشطة
+    // ① اجلب الرسالة النشطة من site_messages
     var result = await window.supabase
       .from('site_messages')
-      .select('id, title, message, location, is_active, created_at')
+      .select('id, title, message, location, is_active, created_at, display_order')
       .eq('is_active', true)
       .order('display_order', { ascending: true })
       .limit(1)
@@ -5231,37 +5308,48 @@ async function loadAndShowWelcome() {
       return;
     }
 
-    if (!result.data) return; // لا توجد رسائل نشطة
+    if (!result.data) {
+      console.log('[WELCOME] لا توجد رسائل نشطة في site_messages');
+      return;
+    }
 
     var row = result.data;
 
-    // ③ مفتاح الحفظ يعتمد على ID + created_at
-    var seenKey = 'welcome_seen_' + row.id + '_' + (row.created_at || '');
+    // ② مفتاح الحفظ يعتمد على ID فقط — لو تغيّر الـ ID تظهر من جديد
+    var seenKey = 'welcome_seen_v2_' + row.id;
     var alreadySeen = '';
     try { alreadySeen = localStorage.getItem(seenKey); } catch(e) {}
-    // ④ لو المستخدم ضغط "حسناً" قبل كده على نفس الرسالة → ماتظهرش
-    if (alreadySeen) return;
 
-    // ⑤ ملأ الـ popup بالبيانات من قاعدة البيانات
+    // ③ لو المستخدم ضغط "حسناً" قبل كده على نفس الرسالة → ماتظهرش
+    if (alreadySeen) {
+      console.log('[WELCOME] تم عرض هذه الرسالة سابقاً (id=' + row.id + ')');
+      return;
+    }
+
+    // ④ ملأ الـ popup بالبيانات من قاعدة البيانات
     var titleEl = document.getElementById('w-title');
     var msgEl   = document.getElementById('w-message');
     var extraEl = document.getElementById('w-extra');
+    var iconEl  = document.getElementById('w-icon');
 
-    if (titleEl && row.title)   titleEl.textContent = row.title;
-    if (msgEl   && row.message) msgEl.textContent   = row.message;
+    if (titleEl) titleEl.textContent = row.title   || 'مرحباً بك في المنصة التعليمية';
+    if (msgEl)   msgEl.textContent   = row.message || 'منصة معهد فني صحي بني سويف';
 
-    // لو الرسالة طويلة — اعرضها في body بشكل كامل
-    if (extraEl && row.message && row.message.length > 80) {
-      extraEl.textContent  = row.message;
+    // لو الرسالة طويلة (أكتر من 60 حرف) — اعرضها في body منفصل
+    if (extraEl && row.message && row.message.length > 60) {
+      extraEl.textContent   = row.message;
       extraEl.style.display = 'block';
       if (msgEl) msgEl.textContent = row.title || 'مرحباً بك';
     }
 
-    // ⑥ اعرض الـ popup
+    // ⑤ اعرض الـ popup
     var overlay = document.getElementById('welcome-overlay');
-    if (overlay) overlay.style.display = 'flex';
+    if (overlay) {
+      overlay.style.display = 'flex';
+      console.log('[WELCOME] ✅ تم عرض الرسالة:', row.title);
+    }
 
-    // ⑦ احفظ الـ key — بس لما المستخدم يضغط "حسناً" في closeWelcome()
+    // ⑥ احفظ الـ key — بس لما المستخدم يضغط "حسناً" في closeWelcome()
     window._welcomeSeenKey = seenKey;
 
   } catch(err) {
