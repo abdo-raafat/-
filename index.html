@@ -48,7 +48,20 @@
   };
 
 })();
-  
+  window._supabaseReady = new Promise(function(resolve) {
+  var s = document.createElement('script');
+  s.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js';
+
+  s.onload = function() {
+    resolve(window.supabase);
+  };
+
+  s.onerror = function() {
+    resolve(null);
+  };
+
+  document.head.appendChild(s);
+});
 </script>
 <style>
 :root {
