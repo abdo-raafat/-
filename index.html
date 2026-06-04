@@ -1717,7 +1717,10 @@ async function loadSections(parentId) {
   try {
     var db = await _waitForSupabase();
     if (!db) return [];
-    let query = db.from('site_sections').select('*').order('display_order', { ascending: true });
+    let query = db.from('site_sections')
+      .select('id, parent_id, title, subtitle, icon, type, display_order, description, tags, is_active, gradient_color')
+      .eq('is_active', true)
+      .order('display_order', { ascending: true });
     if (parentId === null || parentId === undefined) {
       query = query.is('parent_id', null);
     } else {
@@ -1783,42 +1786,75 @@ const SECTION_DISPLAY_MAP = {
 };
 
 // ==================== BUILD SECTION CARD ====================
+// ملاحظة: بيانات Supabase لها الأولوية دائماً — DISPLAY_MAP fallback فقط
+
+function _resolveSectionDisplay(sec) {
+  // جلب القيم من الـ database أولاً، ثم DISPLAY_MAP كـ fallback
+  const map = SECTION_DISPLAY_MAP[sec.title] || {};
+
+  // icon: Supabase أولاً → DISPLAY_MAP → افتراضي
+  const icon = (sec.icon && sec.icon.trim()) ? sec.icon.trim()
+             : (map.icon || '📁');
+
+  // color / gradient: Supabase أولاً → DISPLAY_MAP → افتراضي
+  const color = (sec.gradient_color && sec.gradient_color.trim()) ? sec.gradient_color.trim()
+              : (map.color || 'linear-gradient(135deg,#1a3a5c,#17a589)');
+
+  // tags: Supabase أولاً → DISPLAY_MAP → فارغ
+  const tagsArr = (sec.tags && sec.tags.trim())
+    ? sec.tags.split(',').map(t => t.trim()).filter(Boolean)
+    : (map.tags || []);
+
+  // subtitle: من Supabase فقط
+  const subtitle = sec.subtitle || '';
+
+  // description: من Supabase
+  const description = sec.description || '';
+
+  // btnLabel: DISPLAY_MAP → افتراضي
+  const btnLabel = map.btnLabel || 'ادخل القسم ←';
+
+  // action: DISPLAY_MAP → openDynamicSection
+  const action = map.action || ((s) => openDynamicSection(s));
+
+  return { icon, color, tagsArr, subtitle, description, btnLabel, action };
+}
+
 function buildSectionCard(sec) {
-  const display = SECTION_DISPLAY_MAP[sec.title] || {
-    icon: sec.icon || '📁',
-    color: sec.gradient_color || 'linear-gradient(135deg,#1a3a5c,#17a589)',
-    tags: (sec.tags || '').split(',').map(t => t.trim()).filter(Boolean),
-    btnLabel: 'ادخل القسم ←',
-    action: (s) => openDynamicSection(s),
-  };
-  const tagsHtml = (display.tags || []).map(t => `<span class="tag">${t}</span>`).join('');
+  const d = _resolveSectionDisplay(sec);
+  const tagsHtml = d.tagsArr.map(t => `<span class="tag">${t}</span>`).join('');
+  const descHtml = d.description ? `<div class="card-desc" style="font-size:.78rem;color:#555;margin-top:4px;padding:0 4px;">${d.description}</div>` : '';
   return `
     <div class="dept-card" onclick="window.__sectionAction_${sec.id}(window.__sectionData_${sec.id})" data-section-id="${sec.id}">
-      <div class="card-top" style="background:${display.color}">
-        <span class="card-icon">${display.icon}</span>
+      <div class="card-top" style="background:${d.color}">
+        <span class="card-icon">${d.icon}</span>
         <div class="card-title">${sec.title}</div>
-        <div class="card-sub">${sec.subtitle || ''}</div>
+        ${d.subtitle ? `<div class="card-sub">${d.subtitle}</div>` : ''}
       </div>
-      <div class="card-body"><div class="tag-row">${tagsHtml}</div></div>
-      <button class="btn-enter">${display.btnLabel}</button>
+      <div class="card-body">
+        <div class="tag-row">${tagsHtml}</div>
+        ${descHtml}
+      </div>
+      <button class="btn-enter">${d.btnLabel}</button>
     </div>`;
 }
 
 function buildSubSectionCard(sec) {
-  const display = SECTION_DISPLAY_MAP[sec.title] || {};
-  const icon  = display.icon  || sec.icon           || '📁';
-  const color = display.color || sec.gradient_color || 'linear-gradient(135deg,#1a3a5c,#17a589)';
-  const tags  = (sec.tags || '').split(',').map(t => t.trim()).filter(Boolean)
-                  .map(t => `<span class="tag">${t}</span>`).join('');
+  const d = _resolveSectionDisplay(sec);
+  const tagsHtml = d.tagsArr.map(t => `<span class="tag">${t}</span>`).join('');
+  const descHtml = d.description ? `<div class="card-desc" style="font-size:.78rem;color:#555;margin-top:4px;padding:0 4px;">${d.description}</div>` : '';
   return `
     <div class="dept-card" onclick="window.__sectionAction_${sec.id}(window.__sectionData_${sec.id})" data-section-id="${sec.id}">
-      <div class="card-top" style="background:${color}">
-        <span class="card-icon">${icon}</span>
+      <div class="card-top" style="background:${d.color}">
+        <span class="card-icon">${d.icon}</span>
         <div class="card-title">${sec.title}</div>
-        <div class="card-sub">${sec.subtitle || ''}</div>
+        ${d.subtitle ? `<div class="card-sub">${d.subtitle}</div>` : ''}
       </div>
-      <div class="card-body"><div class="tag-row">${tags}</div></div>
-      <button class="btn-enter">ادخل ←</button>
+      <div class="card-body">
+        <div class="tag-row">${tagsHtml}</div>
+        ${descHtml}
+      </div>
+      <button class="btn-enter">${d.btnLabel || 'ادخل ←'}</button>
     </div>`;
 }
 
@@ -3535,6 +3571,9 @@ window.checkBanStatus = async function(email) {
       <button class="ap-nav-btn" onclick="apSwitchTab('users')"     id="ap-tab-users"     role="tab">🔒 الحظر</button>
       <button class="ap-nav-btn" onclick="apSwitchTab('messages')"  id="ap-tab-messages"  role="tab">💬 Messages</button>
       <button class="ap-nav-btn" onclick="apSwitchTab('content')"   id="ap-tab-content"   role="tab">➕ المحتوى</button>
+      <button class="ap-nav-btn" onclick="apSwitchTab('quizzes')"   id="ap-tab-quizzes"   role="tab">🧪 Quizzes</button>
+      <button class="ap-nav-btn" onclick="apSwitchTab('chat')"      id="ap-tab-chat"      role="tab">💬 Chat</button>
+      <button class="ap-nav-btn" onclick="apSwitchTab('notifs')"    id="ap-tab-notifs"    role="tab">🔔 Notifications</button>
     </nav>
 
     <!-- Body -->
@@ -3550,6 +3589,13 @@ window.checkBanStatus = async function(email) {
           <div class="ap-stat-card"><div class="ap-stat-icon">✅</div><div class="ap-stat-num" id="ap-stat-active">—</div><div class="ap-stat-lbl">اشتراكات نشطة</div></div>
           <div class="ap-stat-card"><div class="ap-stat-icon">💬</div><div class="ap-stat-num" id="ap-stat-msgs">—</div><div class="ap-stat-lbl">الرسائل</div></div>
           <div class="ap-stat-card"><div class="ap-stat-icon">📁</div><div class="ap-stat-num" id="ap-stat-content">—</div><div class="ap-stat-lbl">عناصر المحتوى</div></div>
+          <div class="ap-stat-card"><div class="ap-stat-icon">🧪</div><div class="ap-stat-num" id="ap-stat-quizzes">—</div><div class="ap-stat-lbl">الاختبارات</div></div>
+          <div class="ap-stat-card"><div class="ap-stat-icon">❓</div><div class="ap-stat-num" id="ap-stat-questions">—</div><div class="ap-stat-lbl">أسئلة الكويز</div></div>
+          <div class="ap-stat-card"><div class="ap-stat-icon">📝</div><div class="ap-stat-num" id="ap-stat-quiz-results">—</div><div class="ap-stat-lbl">نتائج الطلاب</div></div>
+          <div class="ap-stat-card"><div class="ap-stat-icon">💬</div><div class="ap-stat-num" id="ap-stat-chatrooms">—</div><div class="ap-stat-lbl">غرف المحادثة</div></div>
+          <div class="ap-stat-card"><div class="ap-stat-icon">🗨️</div><div class="ap-stat-num" id="ap-stat-chatmsgs">—</div><div class="ap-stat-lbl">رسائل الشات</div></div>
+          <div class="ap-stat-card"><div class="ap-stat-icon">🔔</div><div class="ap-stat-num" id="ap-stat-notifs">—</div><div class="ap-stat-lbl">الإشعارات</div></div>
+          <div class="ap-stat-card"><div class="ap-stat-icon">📈</div><div class="ap-stat-num" id="ap-stat-progress">—</div><div class="ap-stat-lbl">سجلات التقدم</div></div>
         </div>
         <div class="ap-section-heading" style="margin-top:20px;">🕐 آخر النشاطات</div>
         <div id="ap-recent-activity">
@@ -3811,6 +3857,58 @@ window.checkBanStatus = async function(email) {
       </div>
       <!-- End Content Tab -->
 
+      <!-- ═══════════════════ TAB: QUIZZES ═══════════════════ -->
+      <div class="ap-tab-panel" id="ap-panel-quizzes" role="tabpanel">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:16px;">
+          <div class="ap-section-heading" style="margin:0;border:none;padding:0;">🧪 الاختبارات والأسئلة</div>
+          <button class="ap-btn ap-btn-ghost" onclick="apLoadQuizzes()">🔄 تحديث</button>
+        </div>
+        <!-- Quizzes -->
+        <div class="ap-section-heading" style="font-size:.85rem;">📋 قائمة الاختبارات</div>
+        <div id="ap-quizzes-body">
+          <div class="ap-loading"><div class="spinner"></div> جاري التحميل...</div>
+        </div>
+        <!-- Quiz Results -->
+        <div class="ap-section-heading" style="font-size:.85rem;margin-top:20px;">📊 نتائج الطلاب (آخر 50)</div>
+        <div id="ap-quiz-results-body">
+          <div class="ap-loading"><div class="spinner"></div> جاري التحميل...</div>
+        </div>
+        <!-- User Progress -->
+        <div class="ap-section-heading" style="font-size:.85rem;margin-top:20px;">📈 تقدم المستخدمين (آخر 50)</div>
+        <div id="ap-user-progress-body">
+          <div class="ap-loading"><div class="spinner"></div> جاري التحميل...</div>
+        </div>
+      </div>
+
+      <!-- ═══════════════════ TAB: CHAT ═══════════════════ -->
+      <div class="ap-tab-panel" id="ap-panel-chat" role="tabpanel">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:16px;">
+          <div class="ap-section-heading" style="margin:0;border:none;padding:0;">💬 غرف المحادثة والرسائل</div>
+          <button class="ap-btn ap-btn-ghost" onclick="apLoadChat()">🔄 تحديث</button>
+        </div>
+        <!-- Chat Rooms -->
+        <div class="ap-section-heading" style="font-size:.85rem;">🚪 غرف المحادثة</div>
+        <div id="ap-chatrooms-body">
+          <div class="ap-loading"><div class="spinner"></div> جاري التحميل...</div>
+        </div>
+        <!-- Chat Messages -->
+        <div class="ap-section-heading" style="font-size:.85rem;margin-top:20px;">🗨️ آخر الرسائل (50 رسالة)</div>
+        <div id="ap-chatmsgs-body">
+          <div class="ap-loading"><div class="spinner"></div> جاري التحميل...</div>
+        </div>
+      </div>
+
+      <!-- ═══════════════════ TAB: NOTIFICATIONS ═══════════════════ -->
+      <div class="ap-tab-panel" id="ap-panel-notifs" role="tabpanel">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:16px;">
+          <div class="ap-section-heading" style="margin:0;border:none;padding:0;">🔔 الإشعارات</div>
+          <button class="ap-btn ap-btn-ghost" onclick="apLoadNotifs()">🔄 تحديث</button>
+        </div>
+        <div id="ap-notifs-body">
+          <div class="ap-loading"><div class="spinner"></div> جاري التحميل...</div>
+        </div>
+      </div>
+
     </div><!-- /ap-body -->
   </div><!-- /ap-modal -->
 </div><!-- /admin-panel -->
@@ -4025,6 +4123,9 @@ function apSwitchTab(tab) {
   else if (tab === 'users')    apLoadUsers();
   else if (tab === 'messages') apLoadMessages();
   else if (tab === 'content')  { /* already managed by adminTab */ }
+  else if (tab === 'quizzes')  apLoadQuizzes();
+  else if (tab === 'chat')     apLoadChat();
+  else if (tab === 'notifs')   apLoadNotifs();
 }
 
 // ────────────────────────────────────────────────────────────────
@@ -4033,27 +4134,43 @@ function apSwitchTab(tab) {
 async function apLoadDashboard() {
   if (!window.supabase) return;
   try {
-    var [usersRes, subsRes, msgsRes, contentRes] = await Promise.all([
+    var [usersRes, subsRes, msgsRes, contentRes,
+         quizzesRes, questionsRes, resultsRes,
+         roomsRes, chatMsgsRes, notifsRes, progressRes] = await Promise.all([
       window.supabase.from('profiles').select('id', { count: 'exact', head: true }),
       window.supabase.from('subscriptions').select('id, status, full_name, user_email, created_at', { count: 'exact' }),
       window.supabase.from('contact_messages').select('id', { count: 'exact', head: true }),
       window.supabase.from('section_content').select('id', { count: 'exact', head: true }),
+      window.supabase.from('quizzes').select('id', { count: 'exact', head: true }),
+      window.supabase.from('quiz_questions').select('id', { count: 'exact', head: true }),
+      window.supabase.from('quiz_results').select('id', { count: 'exact', head: true }),
+      window.supabase.from('chat_rooms').select('id', { count: 'exact', head: true }),
+      window.supabase.from('chat_messages').select('id', { count: 'exact', head: true }),
+      window.supabase.from('notifications').select('id', { count: 'exact', head: true }),
+      window.supabase.from('user_progress').select('id', { count: 'exact', head: true }),
     ]);
 
-    var totalUsers   = usersRes.count || 0;
-    var totalSubs    = subsRes.count  || 0;
-    var allSubs      = subsRes.data   || [];
+    var totalUsers   = usersRes.count   || 0;
+    var totalSubs    = subsRes.count    || 0;
+    var allSubs      = subsRes.data     || [];
     var pending      = allSubs.filter(function(s){ return s.status === 'pending'; }).length;
     var active       = allSubs.filter(function(s){ return s.status === 'active';  }).length;
-    var totalMsgs    = msgsRes.count  || 0;
+    var totalMsgs    = msgsRes.count    || 0;
     var totalContent = contentRes.count || 0;
 
-    _apSetStat('ap-stat-users',   totalUsers);
-    _apSetStat('ap-stat-subs',    totalSubs);
-    _apSetStat('ap-stat-pending', pending);
-    _apSetStat('ap-stat-active',  active);
-    _apSetStat('ap-stat-msgs',    totalMsgs);
-    _apSetStat('ap-stat-content', totalContent);
+    _apSetStat('ap-stat-users',        totalUsers);
+    _apSetStat('ap-stat-subs',         totalSubs);
+    _apSetStat('ap-stat-pending',      pending);
+    _apSetStat('ap-stat-active',       active);
+    _apSetStat('ap-stat-msgs',         totalMsgs);
+    _apSetStat('ap-stat-content',      totalContent);
+    _apSetStat('ap-stat-quizzes',      quizzesRes.count    || 0);
+    _apSetStat('ap-stat-questions',    questionsRes.count  || 0);
+    _apSetStat('ap-stat-quiz-results', resultsRes.count    || 0);
+    _apSetStat('ap-stat-chatrooms',    roomsRes.count      || 0);
+    _apSetStat('ap-stat-chatmsgs',     chatMsgsRes.count   || 0);
+    _apSetStat('ap-stat-notifs',       notifsRes.count     || 0);
+    _apSetStat('ap-stat-progress',     progressRes.count   || 0);
 
     // Recent activity: last 8 subscriptions
     var recent = allSubs.slice(0, 8);
@@ -4747,6 +4864,260 @@ function _apDate(d) {
   try {
     return new Date(d).toLocaleDateString('ar-EG', { year:'numeric', month:'short', day:'numeric' });
   } catch(e) { return String(d); }
+}
+
+// ────────────────────────────────────────────────────────────────
+// QUIZZES TAB — quizzes + quiz_questions + quiz_results + user_progress
+// ────────────────────────────────────────────────────────────────
+async function apLoadQuizzes() {
+  if (!window.supabase) return;
+
+  // ── quizzes ──────────────────────────────────────────────────
+  var qzEl = document.getElementById('ap-quizzes-body');
+  if (qzEl) {
+    qzEl.innerHTML = '<div class="ap-loading"><div class="spinner"></div> جاري التحميل...</div>';
+    try {
+      var { data: quizzes, error: e1 } = await window.supabase
+        .from('quizzes')
+        .select('id, title, description, section_id, is_active, created_at, time_limit, pass_score')
+        .order('created_at', { ascending: false });
+      if (e1) throw e1;
+      if (!quizzes || quizzes.length === 0) {
+        qzEl.innerHTML = '<div class="ap-empty"><div class="ap-empty-icon">🧪</div>لا توجد اختبارات بعد</div>';
+      } else {
+        qzEl.innerHTML = '<div class="ap-table-wrap"><table class="ap-table"><thead><tr>'
+          + '<th>#</th><th>العنوان</th><th>الوصف</th><th>القسم</th><th>الوقت (دقيقة)</th><th>درجة النجاح</th><th>الحالة</th><th>التاريخ</th>'
+          + '</tr></thead><tbody>'
+          + quizzes.map(function(q) {
+            return '<tr>'
+              + '<td>' + q.id + '</td>'
+              + '<td>' + _apEsc(q.title || '—') + '</td>'
+              + '<td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + _apEsc(q.description || '—') + '</td>'
+              + '<td>' + (q.section_id || '—') + '</td>'
+              + '<td>' + (q.time_limit || '—') + '</td>'
+              + '<td>' + (q.pass_score != null ? q.pass_score + '%' : '—') + '</td>'
+              + '<td>' + (q.is_active ? '<span class="ap-badge active">✅ نشط</span>' : '<span class="ap-badge expired">❌ غير نشط</span>') + '</td>'
+              + '<td>' + _apDate(q.created_at) + '</td>'
+              + '</tr>';
+          }).join('')
+          + '</tbody></table></div>';
+      }
+    } catch(err) {
+      qzEl.innerHTML = '<div class="ap-empty" style="color:#e74c3c;">❌ ' + _apEsc(err.message) + '</div>';
+    }
+  }
+
+  // ── quiz_results ──────────────────────────────────────────────
+  var rEl = document.getElementById('ap-quiz-results-body');
+  if (rEl) {
+    rEl.innerHTML = '<div class="ap-loading"><div class="spinner"></div> جاري التحميل...</div>';
+    try {
+      var { data: results, error: e2 } = await window.supabase
+        .from('quiz_results')
+        .select('id, user_id, quiz_id, score, passed, answers, created_at')
+        .order('created_at', { ascending: false })
+        .limit(50);
+      if (e2) throw e2;
+      if (!results || results.length === 0) {
+        rEl.innerHTML = '<div class="ap-empty"><div class="ap-empty-icon">📊</div>لا توجد نتائج بعد</div>';
+      } else {
+        rEl.innerHTML = '<div class="ap-table-wrap"><table class="ap-table"><thead><tr>'
+          + '<th>#</th><th>المستخدم</th><th>الاختبار</th><th>النتيجة</th><th>نجح؟</th><th>التاريخ</th>'
+          + '</tr></thead><tbody>'
+          + results.map(function(r) {
+            return '<tr>'
+              + '<td>' + r.id + '</td>'
+              + '<td style="font-size:.75rem;">' + _apEsc((r.user_id || '').substring(0,12) + '…') + '</td>'
+              + '<td>' + (r.quiz_id || '—') + '</td>'
+              + '<td><strong>' + (r.score != null ? r.score + '%' : '—') + '</strong></td>'
+              + '<td>' + (r.passed ? '<span class="ap-badge active">✅ نجح</span>' : '<span class="ap-badge expired">❌ رسب</span>') + '</td>'
+              + '<td>' + _apDate(r.created_at) + '</td>'
+              + '</tr>';
+          }).join('')
+          + '</tbody></table></div>';
+      }
+    } catch(err) {
+      rEl.innerHTML = '<div class="ap-empty" style="color:#e74c3c;">❌ ' + _apEsc(err.message) + '</div>';
+    }
+  }
+
+  // ── user_progress ──────────────────────────────────────────────
+  var pEl = document.getElementById('ap-user-progress-body');
+  if (pEl) {
+    pEl.innerHTML = '<div class="ap-loading"><div class="spinner"></div> جاري التحميل...</div>';
+    try {
+      var { data: progress, error: e3 } = await window.supabase
+        .from('user_progress')
+        .select('id, user_id, section_id, content_id, status, progress_pct, last_accessed')
+        .order('last_accessed', { ascending: false })
+        .limit(50);
+      if (e3) throw e3;
+      if (!progress || progress.length === 0) {
+        pEl.innerHTML = '<div class="ap-empty"><div class="ap-empty-icon">📈</div>لا توجد سجلات تقدم بعد</div>';
+      } else {
+        pEl.innerHTML = '<div class="ap-table-wrap"><table class="ap-table"><thead><tr>'
+          + '<th>#</th><th>المستخدم</th><th>القسم</th><th>المحتوى</th><th>الحالة</th><th>التقدم%</th><th>آخر دخول</th>'
+          + '</tr></thead><tbody>'
+          + progress.map(function(p) {
+            var pct = p.progress_pct != null ? p.progress_pct : '—';
+            var bar = p.progress_pct != null
+              ? '<div style="width:60px;height:6px;background:#e0e0e0;border-radius:3px;display:inline-block;vertical-align:middle;margin-right:4px;">'
+                + '<div style="width:' + Math.min(100, p.progress_pct) + '%;height:100%;background:#17a589;border-radius:3px;"></div></div>'
+              : '';
+            return '<tr>'
+              + '<td>' + p.id + '</td>'
+              + '<td style="font-size:.75rem;">' + _apEsc((p.user_id || '').substring(0,12) + '…') + '</td>'
+              + '<td>' + (p.section_id || '—') + '</td>'
+              + '<td>' + (p.content_id || '—') + '</td>'
+              + '<td>' + _apEsc(p.status || '—') + '</td>'
+              + '<td>' + bar + pct + (p.progress_pct != null ? '%' : '') + '</td>'
+              + '<td>' + _apDate(p.last_accessed) + '</td>'
+              + '</tr>';
+          }).join('')
+          + '</tbody></table></div>';
+      }
+    } catch(err) {
+      pEl.innerHTML = '<div class="ap-empty" style="color:#e74c3c;">❌ ' + _apEsc(err.message) + '</div>';
+    }
+  }
+}
+
+// ────────────────────────────────────────────────────────────────
+// CHAT TAB — chat_rooms + chat_messages
+// ────────────────────────────────────────────────────────────────
+async function apLoadChat() {
+  if (!window.supabase) return;
+
+  // ── chat_rooms ────────────────────────────────────────────────
+  var crEl = document.getElementById('ap-chatrooms-body');
+  if (crEl) {
+    crEl.innerHTML = '<div class="ap-loading"><div class="spinner"></div> جاري التحميل...</div>';
+    try {
+      var { data: rooms, error: e1 } = await window.supabase
+        .from('chat_rooms')
+        .select('id, name, description, section_id, is_active, created_at, created_by')
+        .order('created_at', { ascending: false });
+      if (e1) throw e1;
+      if (!rooms || rooms.length === 0) {
+        crEl.innerHTML = '<div class="ap-empty"><div class="ap-empty-icon">🚪</div>لا توجد غرف بعد</div>';
+      } else {
+        crEl.innerHTML = '<div class="ap-table-wrap"><table class="ap-table"><thead><tr>'
+          + '<th>#</th><th>الاسم</th><th>الوصف</th><th>القسم</th><th>الحالة</th><th>أُنشئت بواسطة</th><th>التاريخ</th>'
+          + '</tr></thead><tbody>'
+          + rooms.map(function(r) {
+            return '<tr>'
+              + '<td>' + r.id + '</td>'
+              + '<td><strong>' + _apEsc(r.name || '—') + '</strong></td>'
+              + '<td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + _apEsc(r.description || '—') + '</td>'
+              + '<td>' + (r.section_id || '—') + '</td>'
+              + '<td>' + (r.is_active ? '<span class="ap-badge active">✅ نشطة</span>' : '<span class="ap-badge expired">❌ مغلقة</span>') + '</td>'
+              + '<td style="font-size:.75rem;">' + _apEsc((r.created_by || '—').substring(0,12)) + '</td>'
+              + '<td>' + _apDate(r.created_at) + '</td>'
+              + '</tr>';
+          }).join('')
+          + '</tbody></table></div>';
+      }
+    } catch(err) {
+      crEl.innerHTML = '<div class="ap-empty" style="color:#e74c3c;">❌ ' + _apEsc(err.message) + '</div>';
+    }
+  }
+
+  // ── chat_messages ─────────────────────────────────────────────
+  var cmEl = document.getElementById('ap-chatmsgs-body');
+  if (cmEl) {
+    cmEl.innerHTML = '<div class="ap-loading"><div class="spinner"></div> جاري التحميل...</div>';
+    try {
+      var { data: msgs, error: e2 } = await window.supabase
+        .from('chat_messages')
+        .select('id, room_id, user_id, message, is_deleted, created_at')
+        .order('created_at', { ascending: false })
+        .limit(50);
+      if (e2) throw e2;
+      if (!msgs || msgs.length === 0) {
+        cmEl.innerHTML = '<div class="ap-empty"><div class="ap-empty-icon">🗨️</div>لا توجد رسائل بعد</div>';
+      } else {
+        cmEl.innerHTML = '<div class="ap-table-wrap"><table class="ap-table"><thead><tr>'
+          + '<th>#</th><th>الغرفة</th><th>المستخدم</th><th>الرسالة</th><th>محذوفة؟</th><th>الوقت</th><th>حذف</th>'
+          + '</tr></thead><tbody>'
+          + msgs.map(function(m) {
+            return '<tr' + (m.is_deleted ? ' style="opacity:.5;"' : '') + '>'
+              + '<td>' + m.id + '</td>'
+              + '<td>' + (m.room_id || '—') + '</td>'
+              + '<td style="font-size:.75rem;">' + _apEsc((m.user_id || '—').substring(0,12) + '…') + '</td>'
+              + '<td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + _apEsc(m.message || '—') + '</td>'
+              + '<td>' + (m.is_deleted ? '🗑️ نعم' : '—') + '</td>'
+              + '<td>' + _apDate(m.created_at) + '</td>'
+              + '<td>' + (!m.is_deleted ? '<button class="ap-btn ap-btn-danger" style="padding:3px 8px;font-size:.72rem;" onclick="apDeleteChatMsg(' + m.id + ')">🗑️</button>' : '') + '</td>'
+              + '</tr>';
+          }).join('')
+          + '</tbody></table></div>';
+      }
+    } catch(err) {
+      cmEl.innerHTML = '<div class="ap-empty" style="color:#e74c3c;">❌ ' + _apEsc(err.message) + '</div>';
+    }
+  }
+}
+
+async function apDeleteChatMsg(id) {
+  if (!confirm('حذف هذه الرسالة نهائياً؟')) return;
+  try {
+    var { error } = await window.supabase.from('chat_messages').update({ is_deleted: true }).eq('id', id);
+    if (error) throw error;
+    apLoadChat();
+  } catch(err) { alert('خطأ: ' + err.message); }
+}
+
+// ────────────────────────────────────────────────────────────────
+// NOTIFICATIONS TAB
+// ────────────────────────────────────────────────────────────────
+async function apLoadNotifs() {
+  var el = document.getElementById('ap-notifs-body');
+  if (!el || !window.supabase) return;
+  el.innerHTML = '<div class="ap-loading"><div class="spinner"></div> جاري التحميل...</div>';
+  try {
+    var { data, error } = await window.supabase
+      .from('notifications')
+      .select('id, user_id, title, message, type, is_read, created_at')
+      .order('created_at', { ascending: false })
+      .limit(100);
+    if (error) throw error;
+    if (!data || data.length === 0) {
+      el.innerHTML = '<div class="ap-empty"><div class="ap-empty-icon">🔔</div>لا توجد إشعارات بعد</div>';
+      return;
+    }
+    var unread = data.filter(function(n){ return !n.is_read; }).length;
+    el.innerHTML =
+      '<div style="margin-bottom:12px;padding:10px 14px;background:#f0f8ff;border-radius:10px;font-size:.85rem;color:#0a3d62;">'
+      + '🔔 إجمالي: <strong>' + data.length + '</strong> &nbsp;|&nbsp; غير مقروءة: <strong style="color:#e74c3c;">' + unread + '</strong>'
+      + '</div>'
+      + '<div class="ap-table-wrap"><table class="ap-table"><thead><tr>'
+      + '<th>#</th><th>المستخدم</th><th>العنوان</th><th>الرسالة</th><th>النوع</th><th>مقروءة؟</th><th>التاريخ</th><th>حذف</th>'
+      + '</tr></thead><tbody>'
+      + data.map(function(n) {
+        return '<tr' + (!n.is_read ? ' style="font-weight:700;"' : '') + '>'
+          + '<td>' + n.id + '</td>'
+          + '<td style="font-size:.75rem;">' + _apEsc((n.user_id || 'عام').substring(0,12)) + '</td>'
+          + '<td>' + _apEsc(n.title || '—') + '</td>'
+          + '<td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + _apEsc(n.message || '—') + '</td>'
+          + '<td>' + _apEsc(n.type || '—') + '</td>'
+          + '<td>' + (n.is_read ? '✅' : '<span style="color:#e74c3c;">●</span> لا') + '</td>'
+          + '<td>' + _apDate(n.created_at) + '</td>'
+          + '<td><button class="ap-btn ap-btn-danger" style="padding:3px 8px;font-size:.72rem;" onclick="apDeleteNotif(' + n.id + ')">🗑️</button></td>'
+          + '</tr>';
+      }).join('')
+      + '</tbody></table></div>';
+  } catch(err) {
+    el.innerHTML = '<div class="ap-empty" style="color:#e74c3c;">❌ ' + _apEsc(err.message) + '</div>';
+  }
+}
+
+async function apDeleteNotif(id) {
+  if (!confirm('حذف هذا الإشعار؟')) return;
+  try {
+    var { error } = await window.supabase.from('notifications').delete().eq('id', id);
+    if (error) throw error;
+    apLoadNotifs();
+  } catch(err) { alert('خطأ: ' + err.message); }
 }
 
 // نهاية لوحة التحكم
