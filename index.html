@@ -2972,23 +2972,51 @@ window.loginWithGoogle = async function() {
   } catch(e) {}
 
   // Redirect URL صحيح لجميع البيئات
-  var redirectTo = window.location.origin + window.location.pathname;
-  if (!redirectTo.endsWith('/') && !redirectTo.endsWith('.html')) {
+  var isLocalFile = window.location.protocol === 'file:';
+
+  // بناء redirectTo بدقة - دايما origin + pathname فقط
+  var redirectTo = isLocalFile ? null : (window.location.origin + window.location.pathname);
+  if (redirectTo && !redirectTo.endsWith('/') && !redirectTo.endsWith('.html')) {
     redirectTo += '/';
   }
 
   try {
-    var result = await db.auth.signInWithOAuth({
+    var oauthOptions = {
       provider: 'google',
       options: {
-        redirectTo: redirectTo,
-        skipBrowserRedirect: false,
         queryParams: {
           access_type: 'offline',
-          prompt: 'consent'
+          prompt: 'select_account'
         }
       }
-    });
+    };
+
+    if (isLocalFile) {
+      oauthOptions.options.skipBrowserRedirect = true;
+    } else {
+      oauthOptions.options.redirectTo = redirectTo;
+      oauthOptions.options.skipBrowserRedirect = false;
+    }
+
+    var result = await db.auth.signInWithOAuth(oauthOptions);
+
+    // لو file:// نفتح popup
+    if (isLocalFile && result && result.data && result.data.url) {
+      var popup = window.open(result.data.url, 'google_login', 'width=500,height=600,scrollbars=yes');
+      if (!popup) { window.location.href = result.data.url; return; }
+      var popupTimer = setInterval(async function() {
+        try {
+          if (popup.closed) {
+            clearInterval(popupTimer);
+            var sessionRes = await db.auth.getSession();
+            if (sessionRes && sessionRes.data && sessionRes.data.session) {
+              if (typeof window.checkUser === 'function') window.checkUser();
+            }
+          }
+        } catch(e) {}
+      }, 500);
+      return;
+    }
     if (result && result.error) {
       console.error('[AUTH] Google error:', result.error.message);
       if (typeof _showToast === 'function') {
@@ -7088,6 +7116,662 @@ console.log('اكتب printGoogleAuthSetup() للحصول على خطوات إع
 </script>
 <!-- ============================================================ -->
 <!-- نهاية CROSS-BROWSER FIXES PATCH v2                          -->
+<!-- ============================================================ -->
+
+<!-- ============================================================ -->
+<!-- NEW TABLES DATA LAYER v1                                     -->
+<!-- chat_messages / chat_rooms / notifications / quiz_* /        -->
+<!-- user_progress                                                -->
+<!-- ============================================================ -->
+<script>
+(function() {
+'use strict';
+
+// ════════════════════════════════════════════════════════════════
+// HELPER — انتظر Supabase قبل أي عملية
+// ════════════════════════════════════════════════════════════════
+async function _db() {
+  if (window.supabase && window.supabase.from) return window.supabase;
+  if (window._supabaseReady) {
+    try { await window._supabaseReady; } catch(e) {}
+  }
+  return (window.supabase && window.supabase.from) ? window.supabase : null;
+}
+
+// ════════════════════════════════════════════════════════════════
+// 1. USER PROGRESS
+// ════════════════════════════════════════════════════════════════
+
+/**
+ * getUserProgress(userId)
+ * بيجيب كل تقدم المستخدم عبر الأقسام
+ */
+window.getUserProgress = async function(userId) {
+  try {
+    var db = await _db();
+    if (!db || !userId) return [];
+    var { data, error } = await db
+      .from('user_progress')
+      .select('*')
+      .eq('user_id', userId)
+      .order('updated_at', { ascending: false });
+    if (error) { console.warn('[user_progress] load error:', error.message); return []; }
+    return data || [];
+  } catch(e) { console.warn('[user_progress] exception:', e); return []; }
+};
+
+/**
+ * getSectionProgress(userId, sectionId)
+ * بيجيب تقدم المستخدم في قسم معين
+ */
+window.getSectionProgress = async function(userId, sectionId) {
+  try {
+    var db = await _db();
+    if (!db || !userId || !sectionId) return null;
+    var { data, error } = await db
+      .from('user_progress')
+      .select('*')
+      .eq('user_id', userId)
+      .eq('section_id', sectionId)
+      .maybeSingle();
+    if (error) { console.warn('[user_progress] getSectionProgress error:', error.message); return null; }
+    return data || null;
+  } catch(e) { console.warn('[user_progress] exception:', e); return null; }
+};
+
+/**
+ * upsertUserProgress(userId, sectionId, progressData)
+ * يحفظ أو يحدّث تقدم المستخدم في قسم
+ * progressData: { completed_items, total_items, last_item_id, ... }
+ */
+window.upsertUserProgress = async function(userId, sectionId, progressData) {
+  try {
+    var db = await _db();
+    if (!db || !userId || !sectionId) return null;
+    var record = Object.assign({
+      user_id: userId,
+      section_id: sectionId,
+      updated_at: new Date().toISOString()
+    }, progressData || {});
+    var { data, error } = await db
+      .from('user_progress')
+      .upsert([record], { onConflict: 'user_id,section_id' })
+      .select()
+      .maybeSingle();
+    if (error) { console.warn('[user_progress] upsert error:', error.message); return null; }
+    return data || null;
+  } catch(e) { console.warn('[user_progress] upsert exception:', e); return null; }
+};
+
+// ════════════════════════════════════════════════════════════════
+// 2. NOTIFICATIONS
+// ════════════════════════════════════════════════════════════════
+
+/**
+ * getNotifications(userId, { unreadOnly, limit })
+ * بيجيب إشعارات المستخدم
+ */
+window.getNotifications = async function(userId, opts) {
+  try {
+    var db = await _db();
+    if (!db || !userId) return [];
+    opts = opts || {};
+    var query = db
+      .from('notifications')
+      .select('*')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false })
+      .limit(opts.limit || 50);
+    if (opts.unreadOnly) query = query.eq('is_read', false);
+    var { data, error } = await query;
+    if (error) { console.warn('[notifications] load error:', error.message); return []; }
+    return data || [];
+  } catch(e) { console.warn('[notifications] exception:', e); return []; }
+};
+
+/**
+ * markNotificationsRead(userId, notifIds)
+ * يعلّم الإشعارات كمقروءة
+ * notifIds: array أو null (كلهم)
+ */
+window.markNotificationsRead = async function(userId, notifIds) {
+  try {
+    var db = await _db();
+    if (!db || !userId) return false;
+    var query = db
+      .from('notifications')
+      .update({ is_read: true })
+      .eq('user_id', userId);
+    if (notifIds && notifIds.length) query = query.in('id', notifIds);
+    var { error } = await query;
+    if (error) { console.warn('[notifications] markRead error:', error.message); return false; }
+    return true;
+  } catch(e) { console.warn('[notifications] markRead exception:', e); return false; }
+};
+
+/**
+ * getUnreadNotifCount(userId)
+ * بيجيب عدد الإشعارات غير المقروءة
+ */
+window.getUnreadNotifCount = async function(userId) {
+  try {
+    var db = await _db();
+    if (!db || !userId) return 0;
+    var { count, error } = await db
+      .from('notifications')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .eq('is_read', false);
+    if (error) { console.warn('[notifications] count error:', error.message); return 0; }
+    return count || 0;
+  } catch(e) { console.warn('[notifications] count exception:', e); return 0; }
+};
+
+/**
+ * subscribeToNotifications(userId, callback)
+ * يشترك في الإشعارات الجديدة real-time
+ * callback(notification)
+ * يرجع channel object لإلغاء الاشتراك لاحقاً
+ */
+window.subscribeToNotifications = async function(userId, callback) {
+  try {
+    var db = await _db();
+    if (!db || !userId || typeof callback !== 'function') return null;
+    var channel = db
+      .channel('notif_' + userId)
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'notifications',
+        filter: 'user_id=eq.' + userId
+      }, function(payload) {
+        try { callback(payload.new); } catch(e) {}
+      })
+      .subscribe();
+    return channel;
+  } catch(e) { console.warn('[notifications] subscribe exception:', e); return null; }
+};
+
+// ════════════════════════════════════════════════════════════════
+// 3. CHAT ROOMS
+// ════════════════════════════════════════════════════════════════
+
+/**
+ * getChatRooms({ publicOnly, userId })
+ * بيجيب غرف الشات المتاحة
+ */
+window.getChatRooms = async function(opts) {
+  try {
+    var db = await _db();
+    if (!db) return [];
+    opts = opts || {};
+    var query = db
+      .from('chat_rooms')
+      .select('*')
+      .order('created_at', { ascending: false });
+    if (opts.publicOnly) query = query.eq('is_public', true);
+    var { data, error } = await query;
+    if (error) { console.warn('[chat_rooms] load error:', error.message); return []; }
+    return data || [];
+  } catch(e) { console.warn('[chat_rooms] exception:', e); return []; }
+};
+
+/**
+ * getChatRoom(roomId)
+ * بيجيب بيانات غرفة واحدة
+ */
+window.getChatRoom = async function(roomId) {
+  try {
+    var db = await _db();
+    if (!db || !roomId) return null;
+    var { data, error } = await db
+      .from('chat_rooms')
+      .select('*')
+      .eq('id', roomId)
+      .maybeSingle();
+    if (error) { console.warn('[chat_rooms] getRoom error:', error.message); return null; }
+    return data || null;
+  } catch(e) { console.warn('[chat_rooms] getRoom exception:', e); return null; }
+};
+
+/**
+ * createChatRoom(roomData)
+ * إنشاء غرفة شات جديدة (أدمن فقط)
+ * roomData: { name, description, is_public, ... }
+ */
+window.createChatRoom = async function(roomData) {
+  try {
+    var db = await _db();
+    if (!db || !window._isAdminUser) {
+      console.warn('[chat_rooms] createRoom: requires admin');
+      return null;
+    }
+    var { data, error } = await db
+      .from('chat_rooms')
+      .insert([Object.assign({ created_at: new Date().toISOString() }, roomData)])
+      .select()
+      .maybeSingle();
+    if (error) { console.warn('[chat_rooms] create error:', error.message); return null; }
+    return data || null;
+  } catch(e) { console.warn('[chat_rooms] create exception:', e); return null; }
+};
+
+// ════════════════════════════════════════════════════════════════
+// 4. CHAT MESSAGES
+// ════════════════════════════════════════════════════════════════
+
+/**
+ * getChatMessages(roomId, { limit, before })
+ * بيجيب رسائل غرفة شات
+ * before: ISO timestamp للـ pagination
+ */
+window.getChatMessages = async function(roomId, opts) {
+  try {
+    var db = await _db();
+    if (!db || !roomId) return [];
+    opts = opts || {};
+    var query = db
+      .from('chat_messages')
+      .select('*, profiles:user_id(full_name, email)')
+      .eq('room_id', roomId)
+      .order('created_at', { ascending: false })
+      .limit(opts.limit || 50);
+    if (opts.before) query = query.lt('created_at', opts.before);
+    var { data, error } = await query;
+    if (error) { console.warn('[chat_messages] load error:', error.message); return []; }
+    return (data || []).reverse();
+  } catch(e) { console.warn('[chat_messages] exception:', e); return []; }
+};
+
+/**
+ * sendChatMessage(roomId, userId, content)
+ * يرسل رسالة جديدة في غرفة
+ */
+window.sendChatMessage = async function(roomId, userId, content) {
+  try {
+    var db = await _db();
+    if (!db || !roomId || !userId || !content) return null;
+    var msg = {
+      room_id: roomId,
+      user_id: userId,
+      content: String(content).trim(),
+      created_at: new Date().toISOString()
+    };
+    var { data, error } = await db
+      .from('chat_messages')
+      .insert([msg])
+      .select()
+      .maybeSingle();
+    if (error) { console.warn('[chat_messages] send error:', error.message); return null; }
+    return data || null;
+  } catch(e) { console.warn('[chat_messages] send exception:', e); return null; }
+};
+
+/**
+ * deleteChatMessage(messageId, userId)
+ * حذف رسالة (صاحبها أو الأدمن فقط)
+ */
+window.deleteChatMessage = async function(messageId, userId) {
+  try {
+    var db = await _db();
+    if (!db || !messageId) return false;
+    var query = db.from('chat_messages').delete().eq('id', messageId);
+    if (!window._isAdminUser) query = query.eq('user_id', userId);
+    var { error } = await query;
+    if (error) { console.warn('[chat_messages] delete error:', error.message); return false; }
+    return true;
+  } catch(e) { console.warn('[chat_messages] delete exception:', e); return false; }
+};
+
+/**
+ * subscribeToChatMessages(roomId, callback)
+ * يشترك في الرسائل الجديدة real-time
+ * callback(message)
+ * يرجع channel object
+ */
+window.subscribeToChatMessages = async function(roomId, callback) {
+  try {
+    var db = await _db();
+    if (!db || !roomId || typeof callback !== 'function') return null;
+    var channel = db
+      .channel('chat_' + roomId)
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'chat_messages',
+        filter: 'room_id=eq.' + roomId
+      }, function(payload) {
+        try { callback(payload.new); } catch(e) {}
+      })
+      .subscribe();
+    return channel;
+  } catch(e) { console.warn('[chat_messages] subscribe exception:', e); return null; }
+};
+
+/**
+ * unsubscribeChat(channel)
+ * إلغاء اشتراك real-time
+ */
+window.unsubscribeChat = async function(channel) {
+  try {
+    var db = await _db();
+    if (!db || !channel) return;
+    await db.removeChannel(channel);
+  } catch(e) {}
+};
+
+// ════════════════════════════════════════════════════════════════
+// 5. QUIZZES
+// ════════════════════════════════════════════════════════════════
+
+/**
+ * getQuizzes({ sectionId, published })
+ * بيجيب الكويزات المتاحة
+ */
+window.getQuizzes = async function(opts) {
+  try {
+    var db = await _db();
+    if (!db) return [];
+    opts = opts || {};
+    var query = db
+      .from('quizzes')
+      .select('*')
+      .order('created_at', { ascending: false });
+    if (opts.sectionId) query = query.eq('section_id', opts.sectionId);
+    if (opts.published)  query = query.eq('is_published', true);
+    var { data, error } = await query;
+    if (error) { console.warn('[quizzes] load error:', error.message); return []; }
+    return data || [];
+  } catch(e) { console.warn('[quizzes] exception:', e); return []; }
+};
+
+/**
+ * getQuiz(quizId)
+ * بيجيب بيانات كويز واحد
+ */
+window.getQuiz = async function(quizId) {
+  try {
+    var db = await _db();
+    if (!db || !quizId) return null;
+    var { data, error } = await db
+      .from('quizzes')
+      .select('*')
+      .eq('id', quizId)
+      .maybeSingle();
+    if (error) { console.warn('[quizzes] getQuiz error:', error.message); return null; }
+    return data || null;
+  } catch(e) { console.warn('[quizzes] getQuiz exception:', e); return null; }
+};
+
+// ════════════════════════════════════════════════════════════════
+// 6. QUIZ QUESTIONS
+// ════════════════════════════════════════════════════════════════
+
+/**
+ * getQuizQuestions(quizId)
+ * بيجيب أسئلة كويز
+ */
+window.getQuizQuestions = async function(quizId) {
+  try {
+    var db = await _db();
+    if (!db || !quizId) return [];
+    var { data, error } = await db
+      .from('quiz_questions')
+      .select('*')
+      .eq('quiz_id', quizId)
+      .order('display_order', { ascending: true });
+    if (error) { console.warn('[quiz_questions] load error:', error.message); return []; }
+    return data || [];
+  } catch(e) { console.warn('[quiz_questions] exception:', e); return []; }
+};
+
+/**
+ * getFullQuiz(quizId)
+ * بيجيب الكويز + أسئلته في نفس الوقت
+ * يرجع: { quiz, questions }
+ */
+window.getFullQuiz = async function(quizId) {
+  try {
+    var db = await _db();
+    if (!db || !quizId) return { quiz: null, questions: [] };
+    var [quizRes, questionsRes] = await Promise.all([
+      db.from('quizzes').select('*').eq('id', quizId).maybeSingle(),
+      db.from('quiz_questions').select('*').eq('quiz_id', quizId).order('display_order', { ascending: true })
+    ]);
+    if (quizRes.error) console.warn('[getFullQuiz] quiz error:', quizRes.error.message);
+    if (questionsRes.error) console.warn('[getFullQuiz] questions error:', questionsRes.error.message);
+    return {
+      quiz: quizRes.data || null,
+      questions: questionsRes.data || []
+    };
+  } catch(e) { console.warn('[getFullQuiz] exception:', e); return { quiz: null, questions: [] }; }
+};
+
+// ════════════════════════════════════════════════════════════════
+// 7. QUIZ RESULTS
+// ════════════════════════════════════════════════════════════════
+
+/**
+ * submitQuizResult(userId, quizId, resultData)
+ * يحفظ نتيجة الكويز
+ * resultData: { score, total_questions, correct_answers, time_taken, answers_json }
+ */
+window.submitQuizResult = async function(userId, quizId, resultData) {
+  try {
+    var db = await _db();
+    if (!db || !userId || !quizId) return null;
+    var record = Object.assign({
+      user_id: userId,
+      quiz_id: quizId,
+      submitted_at: new Date().toISOString()
+    }, resultData || {});
+    var { data, error } = await db
+      .from('quiz_results')
+      .insert([record])
+      .select()
+      .maybeSingle();
+    if (error) { console.warn('[quiz_results] submit error:', error.message); return null; }
+
+    // تحديث تلقائي لـ user_progress بعد الكويز
+    try {
+      var quiz = await window.getQuiz(quizId);
+      if (quiz && quiz.section_id) {
+        await window.upsertUserProgress(userId, quiz.section_id, {
+          last_quiz_id: quizId,
+          last_quiz_score: resultData.score || 0
+        });
+      }
+    } catch(pe) {}
+
+    return data || null;
+  } catch(e) { console.warn('[quiz_results] submit exception:', e); return null; }
+};
+
+/**
+ * getUserQuizResults(userId, { quizId })
+ * بيجيب نتائج المستخدم في الكويزات
+ */
+window.getUserQuizResults = async function(userId, opts) {
+  try {
+    var db = await _db();
+    if (!db || !userId) return [];
+    opts = opts || {};
+    var query = db
+      .from('quiz_results')
+      .select('*, quizzes:quiz_id(title, section_id)')
+      .eq('user_id', userId)
+      .order('submitted_at', { ascending: false });
+    if (opts.quizId) query = query.eq('quiz_id', opts.quizId);
+    var { data, error } = await query;
+    if (error) { console.warn('[quiz_results] getUserResults error:', error.message); return []; }
+    return data || [];
+  } catch(e) { console.warn('[quiz_results] getUserResults exception:', e); return []; }
+};
+
+/**
+ * getBestQuizResult(userId, quizId)
+ * بيجيب أفضل نتيجة للمستخدم في كويز معين
+ */
+window.getBestQuizResult = async function(userId, quizId) {
+  try {
+    var db = await _db();
+    if (!db || !userId || !quizId) return null;
+    var { data, error } = await db
+      .from('quiz_results')
+      .select('*')
+      .eq('user_id', userId)
+      .eq('quiz_id', quizId)
+      .order('score', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error) { console.warn('[quiz_results] getBest error:', error.message); return null; }
+    return data || null;
+  } catch(e) { console.warn('[quiz_results] getBest exception:', e); return null; }
+};
+
+// ════════════════════════════════════════════════════════════════
+// ADMIN EXTENSIONS
+// إضافة الجداول الجديدة لـ Dashboard الأدمن
+// ════════════════════════════════════════════════════════════════
+
+// نضيف إحصائيات إضافية على dashboard الأدمن
+var _origApLoadDashboard = window.apLoadDashboard || null;
+window.apLoadDashboard = async function() {
+  // شغّل الـ dashboard الأصلي
+  if (typeof _origApLoadDashboard === 'function') {
+    await _origApLoadDashboard();
+  }
+
+  // أضف الإحصائيات الجديدة
+  try {
+    var db = await _db();
+    if (!db) return;
+
+    var [quizzesRes, resultsRes, notifRes, progressRes, roomsRes, msgsRes] = await Promise.all([
+      db.from('quizzes').select('id', { count: 'exact', head: true }),
+      db.from('quiz_results').select('id', { count: 'exact', head: true }),
+      db.from('notifications').select('id', { count: 'exact', head: true }),
+      db.from('user_progress').select('id', { count: 'exact', head: true }),
+      db.from('chat_rooms').select('id', { count: 'exact', head: true }),
+      db.from('chat_messages').select('id', { count: 'exact', head: true }),
+    ]);
+
+    // احتفظ بالإحصائيات متاحة عالمياً
+    window._adminStats = window._adminStats || {};
+    window._adminStats.quizzes       = quizzesRes.count  || 0;
+    window._adminStats.quiz_results  = resultsRes.count  || 0;
+    window._adminStats.notifications = notifRes.count    || 0;
+    window._adminStats.user_progress = progressRes.count || 0;
+    window._adminStats.chat_rooms    = roomsRes.count    || 0;
+    window._adminStats.chat_messages = msgsRes.count     || 0;
+
+    // إضافة stat cards جديدة للـ Dashboard لو مش موجودة
+    var grid = document.getElementById('ap-dashboard-stats');
+    if (grid && !document.getElementById('ap-stat-quizzes')) {
+      var extra = [
+        { id: 'ap-stat-quizzes',    icon: '📝', val: window._adminStats.quizzes,       lbl: 'الكويزات' },
+        { id: 'ap-stat-qresults',   icon: '🏆', val: window._adminStats.quiz_results,  lbl: 'نتائج الكويز' },
+        { id: 'ap-stat-notifs',     icon: '🔔', val: window._adminStats.notifications, lbl: 'الإشعارات' },
+        { id: 'ap-stat-progress',   icon: '📈', val: window._adminStats.user_progress, lbl: 'سجلات التقدم' },
+        { id: 'ap-stat-chatrooms',  icon: '💬', val: window._adminStats.chat_rooms,    lbl: 'غرف الشات' },
+        { id: 'ap-stat-chatmsgs',   icon: '📨', val: window._adminStats.chat_messages, lbl: 'رسائل الشات' },
+      ];
+      extra.forEach(function(item) {
+        var card = document.createElement('div');
+        card.className = 'ap-stat-card';
+        card.innerHTML =
+          '<div class="ap-stat-icon">' + item.icon + '</div>' +
+          '<div class="ap-stat-num" id="' + item.id + '">' + item.val + '</div>' +
+          '<div class="ap-stat-lbl">' + item.lbl + '</div>';
+        grid.appendChild(card);
+      });
+    } else if (grid) {
+      // تحديث القيم لو الـ cards موجودة
+      var map = {
+        'ap-stat-quizzes':   window._adminStats.quizzes,
+        'ap-stat-qresults':  window._adminStats.quiz_results,
+        'ap-stat-notifs':    window._adminStats.notifications,
+        'ap-stat-progress':  window._adminStats.user_progress,
+        'ap-stat-chatrooms': window._adminStats.chat_rooms,
+        'ap-stat-chatmsgs':  window._adminStats.chat_messages,
+      };
+      Object.keys(map).forEach(function(id) {
+        var el = document.getElementById(id);
+        if (el) el.textContent = map[id];
+      });
+    }
+
+  } catch(err) {
+    console.warn('[NEW TABLES DASHBOARD] error:', err.message || err);
+  }
+};
+
+// ════════════════════════════════════════════════════════════════
+// AUTO-INIT: تحميل تقدم المستخدم بعد تسجيل الدخول
+// ════════════════════════════════════════════════════════════════
+(function() {
+  // انتظر حتى يتوفر Supabase + checkUser
+  var _origCheckUser = window.checkUser;
+  var _progressLoaded = false;
+
+  function _loadProgressIfNeeded() {
+    if (_progressLoaded) return;
+    if (!window.supabase || !window.supabase.auth) return;
+    window.supabase.auth.getSession().then(function(res) {
+      var session = res && res.data && res.data.session;
+      if (!session || !session.user) return;
+      _progressLoaded = true;
+      // تحميل تقدم المستخدم في الخلفية
+      window.getUserProgress(session.user.id).then(function(progress) {
+        window._userProgress = progress || [];
+        console.log('[user_progress] loaded:', window._userProgress.length, 'records');
+      });
+      // تحميل عدد الإشعارات غير المقروءة
+      window.getUnreadNotifCount(session.user.id).then(function(count) {
+        window._unreadNotifCount = count || 0;
+        if (count > 0) {
+          console.log('[notifications] unread count:', count);
+        }
+      });
+    }).catch(function() {});
+  }
+
+  // شغّل عند جهوزية Supabase
+  if (window._supabaseReady && typeof window._supabaseReady.then === 'function') {
+    window._supabaseReady.then(function() {
+      setTimeout(_loadProgressIfNeeded, 1500);
+    });
+  }
+
+  // شغّل كمان عند أي SIGNED_IN event
+  var _authInterval = setInterval(function() {
+    if (!window.supabase || !window.supabase.auth) return;
+    clearInterval(_authInterval);
+    window.supabase.auth.onAuthStateChange(function(event) {
+      if (event === 'SIGNED_IN') {
+        _progressLoaded = false;
+        setTimeout(_loadProgressIfNeeded, 800);
+      }
+      if (event === 'SIGNED_OUT') {
+        _progressLoaded = false;
+        window._userProgress = [];
+        window._unreadNotifCount = 0;
+      }
+    });
+  }, 300);
+  setTimeout(function() { clearInterval(_authInterval); }, 10000);
+
+})();
+
+console.log(
+  '%c[NEW TABLES v1] ✅ chat_messages / chat_rooms / notifications / quiz_* / user_progress',
+  'color:#17a589;font-weight:bold'
+);
+
+})();
+</script>
+<!-- ============================================================ -->
+<!-- نهاية NEW TABLES DATA LAYER v1                              -->
 <!-- ============================================================ -->
 
 </body>
