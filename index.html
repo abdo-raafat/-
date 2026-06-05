@@ -4122,7 +4122,11 @@ window.checkBanStatus = async function(email) {
 async function adminLoadSections() {
   if (!window.supabase) return;
   try {
-    const { data } = await window.supabase.from('site_sections').select('id, title, parent_id, subtitle').order('display_order');
+const { data } = await window.supabase
+  .from('site_sections')
+  .select('id, title, parent_id, subtitle')
+  .eq('is_hidden', false)
+  .order('display_order');
     if (!data) return;
     window._adminSections = data;
     const selAdd  = document.getElementById('admin-section-select');
