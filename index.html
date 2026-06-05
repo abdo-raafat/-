@@ -1668,6 +1668,10 @@ window._supabaseReady.then(function(lib) {
     });
 
   renderHomeSections();
+
+  // ── Pre-warm cache: حمّل الـ root sections فوراً (بدون انتظار) ──
+  // هذا يضمن أن أول click يكون فورياً من الـ cache
+  loadSections(null).catch(function(e) { console.warn('[prefetch] root sections:', e); });
 });
 
 // ==================== STATE ====================
@@ -1787,59 +1791,155 @@ async function _waitForSupabase(timeoutMs) {
   return null;
 }
 
+// ==================== GLOBAL DATA CACHE ====================
+// كل البيانات تُحمَّل مرة واحدة فقط وتُخزَّن هنا
+window._dataCache = {
+  sections:   {},  // key: parentId (string) → []
+  content:    {},  // key: sectionId → []
+  resources:  {},  // key: sectionId → []
+  _pending:   {},  // منع طلبات متوازية لنفس الـ key
+};
+
+// الـ TIMEOUT الكلي لأي fetch: 8 ثوانٍ
+var _FETCH_TIMEOUT_MS = 8000;
+
+function _cacheKey(prefix, id) {
+  return prefix + ':' + (id === null || id === undefined ? 'null' : String(id));
+}
+
+async function _fetchWithTimeout(promiseFn, timeoutMs) {
+  return Promise.race([
+    promiseFn(),
+    new Promise(function(_, rej) {
+      setTimeout(function() { rej(new Error('fetch_timeout')); }, timeoutMs || _FETCH_TIMEOUT_MS);
+    })
+  ]);
+}
+
 async function loadSections(parentId) {
-  try {
-    var db = await _waitForSupabase();
-    if (!db) return [];
-    let query = db.from('site_sections').select('*').order('display_order', { ascending: true });
-    if (parentId === null || parentId === undefined) {
-      query = query.is('parent_id', null);
-    } else {
-      const safeId = toValidId(parentId);
-      if (safeId === null) { console.warn('[loadSections] invalid parentId blocked:', parentId); return []; }
-      query = query.eq('parent_id', safeId);
-    }
-    const { data, error } = await query;
-    if (error) { console.error('[loadSections] error:', error.message); return []; }
-    console.log(`[loadSections] parentId=${parentId ?? 'null'} → ${data?.length ?? 0} rows`);
-    return data || [];
-  } catch (err) {
-    console.error('[loadSections] unexpected error:', err?.message || String(err));
-    return [];
+  var key = _cacheKey('sec', parentId);
+
+  // 1) Cache hit
+  if (window._dataCache.sections[key] !== undefined) {
+    return window._dataCache.sections[key];
   }
+
+  // 2) منع طلبات متوازية — لو في طلب جاري انتظره
+  if (window._dataCache._pending[key]) {
+    return window._dataCache._pending[key];
+  }
+
+  var fetchPromise = (async function() {
+    try {
+      var db = await _waitForSupabase();
+      if (!db) { window._dataCache.sections[key] = []; return []; }
+      let query = db.from('site_sections').select('*').order('display_order', { ascending: true });
+      if (parentId === null || parentId === undefined) {
+        query = query.is('parent_id', null);
+      } else {
+        const safeId = toValidId(parentId);
+        if (safeId === null) { window._dataCache.sections[key] = []; return []; }
+        query = query.eq('parent_id', safeId);
+      }
+      const { data, error } = await _fetchWithTimeout(function() { return query; });
+      if (error) { console.error('[loadSections] error:', error.message); window._dataCache.sections[key] = []; return []; }
+      const result = data || [];
+      window._dataCache.sections[key] = result;
+      console.log('[loadSections] cached → parentId=' + (parentId ?? 'null') + ', rows=' + result.length);
+      return result;
+    } catch (err) {
+      console.error('[loadSections] error:', err?.message || String(err));
+      window._dataCache.sections[key] = [];
+      return [];
+    } finally {
+      delete window._dataCache._pending[key];
+    }
+  })();
+
+  window._dataCache._pending[key] = fetchPromise;
+  return fetchPromise;
 }
 
 async function loadSectionContent(sectionId) {
-  try {
-    var db = await _waitForSupabase();
-    if (!db) return [];
-    const safeId = toValidId(sectionId);
-    if (safeId === null) { console.warn('[loadSectionContent] invalid sectionId blocked:', sectionId); return []; }
-    const { data, error } = await db
-      .from('section_content').select('*').eq('section_id', safeId).order('display_order', { ascending: true });
-    if (error) { console.error('[loadSectionContent] error:', error.message); return []; }
-    return data || [];
-  } catch (err) {
-    console.error('[loadSectionContent] unexpected error:', err?.message || String(err));
-    return [];
+  var key = _cacheKey('content', sectionId);
+
+  if (window._dataCache.content[key] !== undefined) {
+    return window._dataCache.content[key];
   }
+  if (window._dataCache._pending[key]) {
+    return window._dataCache._pending[key];
+  }
+
+  var fetchPromise = (async function() {
+    try {
+      var db = await _waitForSupabase();
+      if (!db) { window._dataCache.content[key] = []; return []; }
+      const safeId = toValidId(sectionId);
+      if (safeId === null) { window._dataCache.content[key] = []; return []; }
+      const { data, error } = await _fetchWithTimeout(function() {
+        return db.from('section_content').select('*').eq('section_id', safeId).order('display_order', { ascending: true });
+      });
+      if (error) { console.error('[loadSectionContent] error:', error.message); window._dataCache.content[key] = []; return []; }
+      const result = data || [];
+      window._dataCache.content[key] = result;
+      return result;
+    } catch (err) {
+      console.error('[loadSectionContent] error:', err?.message || String(err));
+      window._dataCache.content[key] = [];
+      return [];
+    } finally {
+      delete window._dataCache._pending[key];
+    }
+  })();
+
+  window._dataCache._pending[key] = fetchPromise;
+  return fetchPromise;
 }
 
 async function loadSectionResources(sectionId) {
-  try {
-    var db = await _waitForSupabase();
-    if (!db) return [];
-    const safeId = toValidId(sectionId);
-    if (safeId === null) { console.warn('[loadSectionResources] invalid sectionId blocked:', sectionId); return []; }
-    const { data, error } = await db
-      .from('section_resources').select('*').eq('section_id', safeId).order('id');
-    if (error) { console.error('[loadSectionResources] error:', error.message); return []; }
-    return data || [];
-  } catch (err) {
-    console.error('[loadSectionResources] unexpected error:', err?.message || String(err));
-    return [];
+  var key = _cacheKey('res', sectionId);
+
+  if (window._dataCache.resources[key] !== undefined) {
+    return window._dataCache.resources[key];
   }
+  if (window._dataCache._pending[key]) {
+    return window._dataCache._pending[key];
+  }
+
+  var fetchPromise = (async function() {
+    try {
+      var db = await _waitForSupabase();
+      if (!db) { window._dataCache.resources[key] = []; return []; }
+      const safeId = toValidId(sectionId);
+      if (safeId === null) { window._dataCache.resources[key] = []; return []; }
+      const { data, error } = await _fetchWithTimeout(function() {
+        return db.from('section_resources').select('*').eq('section_id', safeId).order('id');
+      });
+      if (error) { console.error('[loadSectionResources] error:', error.message); window._dataCache.resources[key] = []; return []; }
+      const result = data || [];
+      window._dataCache.resources[key] = result;
+      return result;
+    } catch (err) {
+      console.error('[loadSectionResources] error:', err?.message || String(err));
+      window._dataCache.resources[key] = [];
+      return [];
+    } finally {
+      delete window._dataCache._pending[key];
+    }
+  })();
+
+  window._dataCache._pending[key] = fetchPromise;
+  return fetchPromise;
 }
+
+// ── دالة مساعدة: مسح الـ cache (للأدمن فقط بعد الإضافة/الحذف) ──
+window._clearDataCache = function() {
+  window._dataCache.sections = {};
+  window._dataCache.content  = {};
+  window._dataCache.resources = {};
+  window._dataCache._pending  = {};
+  console.log('[Cache] ✅ تم مسح الـ cache — سيتم إعادة تحميل البيانات عند الحاجة');
+};
 
 // ==================== SECTION DISPLAY MAP ====================
 const SECTION_DISPLAY_MAP = {
@@ -1898,14 +1998,14 @@ function buildSubSectionCard(sec) {
 
 // ==================== HOME: RENDER DYNAMIC SECTIONS ====================
 async function renderHomeSections() {
-  // منع infinite loading — لو 15 ثانية بدون نتيجة نعرض fallback
+  // منع infinite loading — لو 8 ثوانٍ بدون نتيجة نعرض fallback
   var _loadingTimeout = setTimeout(function() {
     var el = document.getElementById('dynamic-home-sections');
     if (el && el.querySelector('.spinner')) {
       console.warn('[renderHomeSections] timeout — عرض الـ fallback');
       renderHomeFallback();
     }
-  }, 15000);
+  }, 8000);
 
   try {
     const sections = await loadSections(null);
@@ -1997,16 +2097,20 @@ async function _renderDynamicSectionPage(sec) {
   window.scrollTo(0, 0);
   updateBreadcrumb();
 
-  // موارد القسم
+  // تحميل الأبناء والموارد بالتوازي — مرة واحدة فقط (الـ cache يمنع التكرار)
+  const [children, sectionResources] = await Promise.all([
+    loadSections(sec.id),
+    loadSectionResources(sec.id)
+  ]);
+
+  // عرض الموارد
   const resourcesEl = document.getElementById('dynamic-section-resources-container');
   if (resourcesEl) {
-    resourcesEl.innerHTML = '';
-    loadSectionResources(sec.id).then(res => { resourcesEl.innerHTML = buildResourcesHTML(res); });
+    resourcesEl.innerHTML = buildResourcesHTML(sectionResources);
   }
 
-  const children = await loadSections(sec.id);
-
   if (children.length === 0) {
+    // قسم نهائي — حمّل المحتوى (من الـ cache لو موجود)
     const content = await loadSectionContent(sec.id);
     if (content.length > 0) {
       renderResourceCards('dynamic-section-grid', content);
@@ -2049,19 +2153,26 @@ async function openDynamicSection(sec) {
 
 /**
  * openDynamicSubSection — فتح قسم فرعي (يُضاف للـ stack)
+ * الـ children محمّلة مسبقاً من الـ cache — لا يوجد double-fetch
  */
 async function openDynamicSubSection(sec) {
   if (!sec || !sec.id) return;
 
-  // إذا كان له أبناء — افتحه كقسم كامل
+  // نجلب الـ children من الـ cache (أو نحمّلها مرة واحدة فقط)
   const children = await loadSections(sec.id);
+
   if (children.length > 0) {
+    // له أبناء → افتحه كقسم ديناميكي (البيانات محفوظة في الـ cache)
     await openDynamicSection(sec);
     return;
   }
 
   // قسم نهائي — اعرض محتواه في صفحة content
-  const content = await loadSectionContent(sec.id);
+  // نحمّل المحتوى والموارد معاً بـ Promise.all (مرة واحدة فقط)
+  const [content, resources] = await Promise.all([
+    loadSectionContent(sec.id),
+    loadSectionResources(sec.id)
+  ]);
   const secCopy = { ...sec };
 
   // أضف للـ stack مع restore يُعيد رسم صفحة content
@@ -2072,18 +2183,20 @@ async function openDynamicSubSection(sec) {
     },
   });
 
-  await _openContentPage(sec);
+  await _openContentPage(sec, content, resources);
 }
 
 /**
  * _openContentPage — يرسم صفحة المحتوى النهائي
+ * يقبل البيانات المحمّلة مسبقاً لتجنب double-fetch
  */
-async function _openContentPage(sec) {
+async function _openContentPage(sec, _preloadedContent, _preloadedResources) {
   // حفظ القسم الحالي لإعادة التحميل التلقائي
   window._currentContentSec = sec;
 
-  const content   = await loadSectionContent(sec.id);
-  const resources = await loadSectionResources(sec.id);
+  // استخدام البيانات المحمّلة مسبقاً أو جلبها من الـ cache
+  const content   = _preloadedContent  !== undefined ? _preloadedContent  : await loadSectionContent(sec.id);
+  const resources = _preloadedResources !== undefined ? _preloadedResources : await loadSectionResources(sec.id);
 
   document.getElementById('content-icon').textContent = sec.icon || '📁';
   document.getElementById('content-title').textContent = sec.title;
@@ -2880,17 +2993,44 @@ const ResourceViewer = (function() {
 
 /**
  * openResource — الدالة الموحدة لفتح أي مورد داخل الموقع
+ * ✅ الروابط (link/html) تُفتح فوراً بدون أي API calls أو fetch
+ * ✅ PDF تُفتح في NativePDFViewer
+ * ✅ فيديو / صور تُفتح في ResourceViewer
  */
-async function openResource(url, title, resourceType) {
+function openResource(url, title, resourceType) {
   if (!url) return;
-  // للـ PDF: احصل على Signed URL إذا كان Supabase Storage
-  if (resourceType === 'pdf' || /\.pdf($|\?)/i.test(url)) {
+
+  var rt = (resourceType || '').toLowerCase();
+
+  // ── الروابط الخارجية: فتح فوري بدون أي loading أو fetch ──
+  if (rt === 'link' || rt === 'html' || rt === 'external_link') {
+    window.open(url, '_blank', 'noopener,noreferrer');
+    return;
+  }
+
+  // ── PDF ──
+  if (rt === 'pdf' || /\.pdf($|\?)/i.test(url)) {
     NativePDFViewer.open(url, title);
     return;
   }
+
+  // ── روابط اجتماعية / خارجية (فيسبوك، واتساب، تيليجرام، ...) ──
+  // لو مش PDF أو فيديو أو صورة — افتحها مباشرة
+  var lower = url.toLowerCase().split('?')[0];
+  var isMedia = (
+    /\.(mp4|webm|ogg|mov|avi|mkv|mp3|wav|aac|flac|m4a|jpe?g|png|webp|gif|svg|bmp)$/.test(lower) ||
+    /youtube\.com|youtu\.be|vimeo\.com|dailymotion\.com/.test(url) ||
+    /drive\.google\.com|cloudinary\.com/.test(url)
+  );
+
+  if (!isMedia) {
+    window.open(url, '_blank', 'noopener,noreferrer');
+    return;
+  }
+
+  // ── ميديا: استخدام ResourceViewer ──
   ResourceViewer.open(url, title, resourceType);
 }
-
 
 </script>
 <!-- Supabase already initialized above via _supabaseReady -->
@@ -4058,6 +4198,12 @@ async function adminSaveContent() {
     document.getElementById('admin-content-desc').value  = '';
     setTimeout(() => { msgEl.textContent = ''; }, 3000);
 
+    // ✅ مسح الـ cache للقسم المُحدَّث فقط (لإجبار إعادة التحميل)
+    var cKey = 'content:' + sectionId;
+    if (window._dataCache && window._dataCache.content) {
+      delete window._dataCache.content[cKey];
+    }
+
     // ✅ تحديث تلقائي للصفحة المفتوحة لو كانت نفس القسم
     const savedSectionId = Number(sectionId);
     const activePage = document.querySelector('.page.active');
@@ -4108,6 +4254,10 @@ async function adminDeleteContent(id) {
   try {
     const { error } = await window.supabase.from('section_content').delete().eq('id', id);
     if (error) throw error;
+    // مسح الـ cache الكامل للـ content (لا نعرف id القسم هنا)
+    if (window._dataCache && window._dataCache.content) {
+      window._dataCache.content = {};
+    }
     adminLoadContentList();
   } catch(e) { alert('خطأ في الحذف: ' + e.message); }
 }
@@ -6887,13 +7037,14 @@ CREATE TRIGGER on_auth_user_created
 // اعزم printSecuritySQL() في الـ Console لرؤيته
 console.log('%c[SECURITY v1] اكتب printSecuritySQL() في الـ Console لعرض SQL الإعداد', 'color:#0a3d62;font-weight:bold');
 
-// ── Startup Diagnostic: يتنفذ بعد 3 ثوانٍ لفحص حالة الأقسام ──
+// ── Startup Diagnostic: يتنفذ بعد 10 ثوانٍ لفحص حالة الأقسام ──
+// (بعد الـ 8 ثوانٍ timeout للـ renderHomeSections + هامش أمان)
 setTimeout(async function() {
   var el = document.getElementById('dynamic-home-sections');
   var stillLoading = el && el.querySelector('.spinner');
   if (!stillLoading) return; // الأقسام ظهرت ✅
 
-  console.group('%c[BOOT DIAGNOSTIC] 🔍 الأقسام لم تظهر بعد 3 ثوانٍ', 'color:#e74c3c;font-weight:bold');
+  console.group('%c[BOOT DIAGNOSTIC] 🔍 الأقسام لم تظهر بعد 10 ثوانٍ', 'color:#e74c3c;font-weight:bold');
   console.log('URL:', window.location.href);
   console.log('window.supabase:', typeof window.supabase, window.supabase ? '(موجود)' : '(غير موجود)');
 
@@ -6916,14 +7067,16 @@ setTimeout(async function() {
       console.warn('⚠️ جدول site_sections فارغ — شغّل printSeedSQL() لإضافة البيانات الافتراضية');
       renderHomeFallback && renderHomeFallback();
     } else {
-      console.log('✅ site_sections يحتوي بيانات — إعادة محاولة renderHomeSections...');
+      console.log('✅ site_sections يحتوي بيانات — مسح الـ cache وإعادة محاولة renderHomeSections...');
+      // مسح الـ cache لأن المشكلة كانت في الـ fetch وليس في البيانات
+      if (window._dataCache) { window._dataCache.sections = {}; window._dataCache._pending = {}; }
       renderHomeSections && renderHomeSections();
     }
   } catch(e) {
     console.error('❌ استثناء:', e.message);
   }
   console.groupEnd();
-}, 3000);
+}, 10000);
 
 </script>
 <!-- ============================================================ -->
