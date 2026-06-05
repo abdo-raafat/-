@@ -20,21 +20,53 @@
 // ══════════════════════════════════════════════════════
 
 // Promise يحل عند جهوزية Supabase
-window._supabaseReady = new Promise(function(resolve) {
-  var s = document.createElement('script');
-  s.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js';
-  s.crossOrigin = 'anonymous';
-  s.onload  = function() { resolve(window.supabase); };
-  s.onerror = function() {
-    // fallback CDN
-    var s2 = document.createElement('script');
-    s2.src = 'https://unpkg.com/@supabase/supabase-js@2/dist/umd/supabase.js';
-    s2.onload  = function() { resolve(window.supabase); };
-    s2.onerror = function() { console.error('[Supabase] فشل تحميل المكتبة'); resolve(null); };
-    document.head.appendChild(s2);
-  };
-  document.head.appendChild(s);
-});
+// ── _supabaseLibReady: يُحلّ بـ UMD lib { createClient }
+// ── _supabaseClientReady: يُحلّ بالـ CLIENT الجاهز (فيه .from)
+var _sbLibResolve;
+window._supabaseReady = new Promise(function(resolve) { _sbLibResolve = resolve; });
+
+// ── clientReady: الـ Promise الصحيح الذي يُنتظر في كل مكان
+var _sbClientResolve;
+window._supabaseClientReady = new Promise(function(resolve) { _sbClientResolve = resolve; });
+
+(function() {
+  function _loadLib(src, onSuccess, onFail) {
+    var s = document.createElement('script');
+    s.src = src;
+    s.crossOrigin = 'anonymous';
+    s.onload  = onSuccess;
+    s.onerror = onFail;
+    document.head.appendChild(s);
+  }
+
+  function _onLibLoaded() {
+    var lib = window.supabase; // UMD يضع { createClient } على window.supabase
+    if (!lib || typeof lib.createClient !== 'function') {
+      console.error('[Supabase] المكتبة لم تُعرِّف createClient');
+      _sbLibResolve(null);
+      _sbClientResolve(null);
+      return;
+    }
+    _sbLibResolve(lib); // أطلع _supabaseReady بالـ lib
+  }
+
+  _loadLib(
+    'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js',
+    _onLibLoaded,
+    function() {
+      console.warn('[Supabase] jsdelivr فشل — جاري تجربة unpkg...');
+      _loadLib(
+        'https://unpkg.com/@supabase/supabase-js@2/dist/umd/supabase.js',
+        _onLibLoaded,
+        function() {
+          console.error('[Supabase] ❌ فشل تحميل المكتبة من كل CDNs');
+          _sbLibResolve(null);
+          _sbClientResolve(null);
+        }
+      );
+    }
+  );
+})();
 </script>
 <style>
 :root {
@@ -1590,25 +1622,51 @@ var _supabaseUrl = "https://xiqeaohemuxgujrcnpzd.supabase.co";
 var _supabaseKey = "sb_publishable_xzg8wn0ETQniEItj2Etfmw__klmgUWg";
 
 window._supabaseReady.then(function(lib) {
-  if (!lib) {
-    console.error("❌ مكتبة Supabase لم تُحمَّل");
+  if (!lib || typeof lib.createClient !== 'function') {
+    console.error("❌ مكتبة Supabase لم تُحمَّل أو createClient غير موجود");
+    window._sbClientResolve && window._sbClientResolve(null);
     renderHomeFallback();
     return;
   }
-  if (!window._db) {
-    window._db = lib.createClient(_supabaseUrl, _supabaseKey, {
-      auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
-    });
+  try {
+    if (!window._db) {
+      window._db = lib.createClient(_supabaseUrl, _supabaseKey, {
+        auth: {
+          persistSession: true,
+          autoRefreshToken: true,
+          detectSessionInUrl: true,
+          storageKey: 'benisuef_auth'
+        }
+      });
+    }
+    // نعيّن window.supabase للـ CLIENT (فيه .from) وليس للـ lib
+    window.supabase = window._db;
+    // أطلق clientReady بالـ client الجاهز ✅
+    window._sbClientResolve && window._sbClientResolve(window._db);
+    console.log("✅ Supabase Client جاهز");
+  } catch(initErr) {
+    console.error("❌ فشل إنشاء Supabase client:", initErr.message);
+    window._sbClientResolve && window._sbClientResolve(null);
+    renderHomeFallback();
+    return;
   }
-  window.supabase = window._db;
+
+  // فحص الاتصال
   window._db.from('site_sections').select('id').limit(1)
     .then(function(res) {
-      if (res.error) console.error("❌ Supabase Connection Failed:", res.error.message);
-      else console.log("✅ Supabase Connected");
+      if (res.error) {
+        console.error("❌ Supabase Connection Failed:", res.error.message, "| code:", res.error.code);
+        if (res.error.code === 'PGRST301' || res.error.message.includes('permission')) {
+          console.error("🔒 RLS مفعّل على site_sections — شغّل: printSecuritySQL() ثم أضف policy للـ anon");
+        }
+      } else {
+        console.log("✅ Supabase Connected & site_sections يستجيب");
+      }
     })
     .catch(function(err) {
-      console.error("❌ Supabase Connection Failed:", err.message || String(err));
+      console.error("❌ Supabase Connection Error:", err.message || String(err));
     });
+
   renderHomeSections();
 });
 
@@ -1694,23 +1752,39 @@ function updateBreadcrumb() {
 
 // ==================== SUPABASE DATA LAYER ====================
 
-// انتظر Supabase — يعمل على Chrome/Firefox/Safari/Edge
+// انتظر Supabase CLIENT — يعمل على Chrome/Firefox/Safari/Edge
 async function _waitForSupabase(timeoutMs) {
-  timeoutMs = timeoutMs || 10000;
-  if (window.supabase && window.supabase.from) return window.supabase;
-  if (window._supabaseReady) {
+  timeoutMs = timeoutMs || 12000;
+  // ① الحالة المثالية: client جاهز بالفعل
+  if (window.supabase && typeof window.supabase.from === 'function') return window.supabase;
+
+  // ② انتظر _supabaseClientReady (يُحلّ بالـ CLIENT الحقيقي فيه .from)
+  var readyPromise = window._supabaseClientReady || window._supabaseReady;
+  if (readyPromise) {
     var raceTimeout = new Promise(function(_, reject) {
       setTimeout(function() { reject(new Error('timeout')); }, timeoutMs);
     });
-    try { await Promise.race([window._supabaseReady, raceTimeout]); } catch(e) {}
+    try {
+      var client = await Promise.race([readyPromise, raceTimeout]);
+      if (client && typeof client.from === 'function') {
+        if (!window.supabase) window.supabase = client;
+        return client;
+      }
+    } catch(e) {
+      console.warn('[_waitForSupabase] timeout بعد', timeoutMs, 'ms');
+    }
   }
-  // Polling fallback للـ Firefox
+
+  // ③ Polling fallback (للحالات الغريبة)
   var waited = 0;
-  while ((!window.supabase || !window.supabase.from) && waited < timeoutMs) {
+  while ((!window.supabase || typeof window.supabase.from !== 'function') && waited < 5000) {
     await new Promise(function(r) { setTimeout(r, 100); });
     waited += 100;
   }
-  return (window.supabase && window.supabase.from) ? window.supabase : null;
+
+  if (window.supabase && typeof window.supabase.from === 'function') return window.supabase;
+  console.error('[_waitForSupabase] ❌ فشل الاتصال — تحقق من: CDN / API Key / RLS / CORS');
+  return null;
 }
 
 async function loadSections(parentId) {
@@ -1824,30 +1898,47 @@ function buildSubSectionCard(sec) {
 
 // ==================== HOME: RENDER DYNAMIC SECTIONS ====================
 async function renderHomeSections() {
-  const sections = await loadSections(null);
-  if (!sections || sections.length === 0) {
-    console.warn('[Supabase] لا توجد بيانات في site_sections');
-    renderHomeFallback();
-    return;
-  }
-  _registerSectionHandlers(sections);
-  const grouped = {};
-  sections.forEach(sec => {
-    const cat = sec.category || 'أخرى';
-    if (!grouped[cat]) grouped[cat] = [];
-    grouped[cat].push(sec);
-  });
-  const rowIcons = { 'المراحل الدراسية':'📚', 'خدمات وموارد إضافية':'🌐', 'أخرى':'📌' };
-  let html = '';
-  for (const [cat, items] of Object.entries(grouped)) {
-    html += `
+  // منع infinite loading — لو 15 ثانية بدون نتيجة نعرض fallback
+  var _loadingTimeout = setTimeout(function() {
+    var el = document.getElementById('dynamic-home-sections');
+    if (el && el.querySelector('.spinner')) {
+      console.warn('[renderHomeSections] timeout — عرض الـ fallback');
+      renderHomeFallback();
+    }
+  }, 15000);
+
+  try {
+    const sections = await loadSections(null);
+    clearTimeout(_loadingTimeout);
+
+    if (!sections || sections.length === 0) {
+      console.warn('[Supabase] لا توجد بيانات في site_sections — تأكد من RLS policy');
+      renderHomeFallback();
+      return;
+    }
+    _registerSectionHandlers(sections);
+    const grouped = {};
+    sections.forEach(sec => {
+      const cat = sec.category || 'أخرى';
+      if (!grouped[cat]) grouped[cat] = [];
+      grouped[cat].push(sec);
+    });
+    const rowIcons = { 'المراحل الدراسية':'📚', 'خدمات وموارد إضافية':'🌐', 'أخرى':'📌' };
+    let html = '';
+    for (const [cat, items] of Object.entries(grouped)) {
+      html += `
       <div class="home-section-label">
         <span class="home-section-icon">${rowIcons[cat] || '📌'}</span>
         <span>${cat}</span>
       </div>
       <div class="cards-grid home-cards-grid">${items.map(sec => buildSectionCard(sec)).join('')}</div>`;
+    }
+    document.getElementById('dynamic-home-sections').innerHTML = html;
+  } catch(err) {
+    clearTimeout(_loadingTimeout);
+    console.error('[renderHomeSections] خطأ غير متوقع:', err.message);
+    renderHomeFallback();
   }
-  document.getElementById('dynamic-home-sections').innerHTML = html;
 }
 
 function renderHomeFallback() {
@@ -2808,22 +2899,41 @@ async function openResource(url, title, resourceType) {
 // ==================== AUTH FUNCTIONS ====================
 
 window.loginWithGoogle = async function() {
-  if (!window.supabase) { alert('جاري التحميل، حاول مجدداً'); return; }
+  var db = window.supabase;
+  if (!db) {
+    // انتظر لو supabase لسه بيتحمّل
+    db = await (window._supabaseClientReady || Promise.resolve(null)).catch(function(){ return null; });
+    if (!db) { _showToast ? _showToast('جاري التحميل، حاول مجدداً', 'warning') : alert('جاري التحميل، حاول مجدداً'); return; }
+  }
   // حفظ الـ navigation stack قبل الـ redirect
   try {
     const stackData = state.navigationStack.map(function(s){ return { label: s.label }; });
     sessionStorage.setItem('_nav_stack_labels', JSON.stringify(stackData));
-    // حفظ آخر section_id كانت مفتوحة
     if (window._lastOpenSectionId) {
       sessionStorage.setItem('_last_section_id', String(window._lastOpenSectionId));
     }
   } catch(e) {}
-  const redirectTo = window.location.origin + window.location.pathname;
-  const { error } = await window.supabase.auth.signInWithOAuth({
-    provider: 'google',
-    options: { redirectTo: redirectTo, skipBrowserRedirect: false }
-  });
-  if (error) alert('خطأ في تسجيل الدخول: ' + error.message);
+  // redirectTo: الـ URL الحالي بدقة (يعمل على GitHub Pages, localhost, إلخ)
+  var redirectTo = window.location.origin + window.location.pathname;
+  if (!redirectTo.endsWith('/') && !redirectTo.endsWith('.html')) redirectTo += '/';
+  console.log('[AUTH] loginWithGoogle → redirectTo:', redirectTo);
+  try {
+    const { error } = await db.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: redirectTo,
+        skipBrowserRedirect: false,
+        queryParams: { access_type: 'offline', prompt: 'consent' }
+      }
+    });
+    if (error) {
+      console.error('[AUTH] Google OAuth error:', error.message);
+      _showToast ? _showToast('خطأ: ' + error.message, 'error') : alert('خطأ في تسجيل الدخول: ' + error.message);
+    }
+  } catch(err) {
+    console.error('[AUTH] loginWithGoogle exception:', err);
+    _showToast ? _showToast('تحقق من اتصال الإنترنت وحاول مجدداً', 'error') : alert('حدث خطأ، حاول مجدداً');
+  }
 };
 
 window.logoutUser = async function() {
@@ -2835,6 +2945,37 @@ window.logoutUser = async function() {
 // _renderUserBox — يعتمد على profiles.role من Supabase
 // لا يحتوي على بريد إلكتروني مُشفَّر هنا
 // ============================================================
+
+// ── فحص الاشتراك النشط للمستخدم العادي ──────────────────────
+async function _checkAndApplySubscription(userId) {
+  if (!window.supabase || !userId) return false;
+  try {
+    var today = new Date().toISOString().split('T')[0];
+    var { data, error } = await window.supabase
+      .from('subscriptions')
+      .select('id, status, end_date')
+      .eq('user_id', userId)
+      .eq('status', 'active')
+      .gte('end_date', today)
+      .maybeSingle();
+    if (error) { console.warn('[SUB CHECK] error:', error.message); return false; }
+    if (data) {
+      // اشتراك نشط → أزل الحماية
+      document.body.classList.remove('content-protected');
+      console.log('[SUB CHECK] ✅ اشتراك نشط — تم رفع الحماية');
+      return true;
+    } else {
+      // لا اشتراك نشط → أبق الحماية
+      document.body.classList.add('content-protected');
+      console.log('[SUB CHECK] ⛔ لا يوجد اشتراك نشط');
+      return false;
+    }
+  } catch(e) {
+    console.warn('[SUB CHECK] exception:', e.message);
+    return false;
+  }
+}
+
 function _renderUserBox(user, role) {
   const box = document.getElementById('user-box');
   if (!box) return;
@@ -2855,7 +2996,9 @@ function _renderUserBox(user, role) {
     document.body.classList.remove('content-protected');
   } else {
     document.body.classList.remove('is-admin');
-    document.body.classList.add('content-protected');
+    // ← لا نضيف content-protected هنا مباشرةً للمستخدم العادي
+    // بدل كده نفحص الاشتراك أولاً
+    _checkAndApplySubscription(user.id);
   }
   if (isAdmin) {
     box.innerHTML =
@@ -2889,7 +3032,18 @@ async function _fetchUserRole(userId) {
 }
 
 window.checkUser = async function() {
-  if (!window.supabase) return;
+  // انتظر CLIENT الجاهز (فيه .auth)
+  if (!window.supabase || typeof window.supabase.auth === 'undefined') {
+    var rp = window._supabaseClientReady || window._supabaseReady;
+    if (rp) {
+      var c = await rp.catch(function(){ return null; });
+      if (c && typeof c.auth !== 'undefined') window.supabase = c;
+    }
+    if (!window.supabase || typeof window.supabase.auth === 'undefined') {
+      console.warn('[checkUser] Supabase client غير جاهز بعد');
+      return;
+    }
+  }
 
   // ============================================================
   // [AUTH v3] onAuthStateChange — يجلب الـ role من profiles.role
@@ -5372,11 +5526,14 @@ var NativePDFViewer = (function() {
 (function() {
   var _orig = window._renderUserBox;
   // apply protection immediately for non-logged users
+  // لكن لا نلغي نتيجة فحص الاشتراك لو المستخدم مسجّل دخول
   document.addEventListener('DOMContentLoaded', function() {
     setTimeout(function() {
-      if (!window._isAdminUser) {
+      if (!window._isAdminUser && !window._currentUserRole) {
+        // غير مسجّل دخول على الإطلاق → حماية فورية
         document.body.classList.add('content-protected');
       }
+      // لو مسجّل دخول (user عادي) → _checkAndApplySubscription هي المسؤولة
     }, 1500);
   });
 })();
@@ -6730,6 +6887,44 @@ CREATE TRIGGER on_auth_user_created
 // اعزم printSecuritySQL() في الـ Console لرؤيته
 console.log('%c[SECURITY v1] اكتب printSecuritySQL() في الـ Console لعرض SQL الإعداد', 'color:#0a3d62;font-weight:bold');
 
+// ── Startup Diagnostic: يتنفذ بعد 3 ثوانٍ لفحص حالة الأقسام ──
+setTimeout(async function() {
+  var el = document.getElementById('dynamic-home-sections');
+  var stillLoading = el && el.querySelector('.spinner');
+  if (!stillLoading) return; // الأقسام ظهرت ✅
+
+  console.group('%c[BOOT DIAGNOSTIC] 🔍 الأقسام لم تظهر بعد 3 ثوانٍ', 'color:#e74c3c;font-weight:bold');
+  console.log('URL:', window.location.href);
+  console.log('window.supabase:', typeof window.supabase, window.supabase ? '(موجود)' : '(غير موجود)');
+
+  if (!window.supabase || typeof window.supabase.from !== 'function') {
+    console.error('❌ Supabase client غير جاهز — تحقق من CDN (jsdelivr/unpkg)');
+    console.groupEnd();
+    renderHomeFallback && renderHomeFallback();
+    return;
+  }
+
+  // اختبر الاستعلام مباشرةً
+  try {
+    var testRes = await window.supabase.from('site_sections').select('id').limit(1);
+    if (testRes.error) {
+      console.error('❌ خطأ RLS أو DB:', testRes.error.message, '| code:', testRes.error.code);
+      console.log('%c🔧 الحل: شغّل هذا الـ SQL في Supabase Dashboard → SQL Editor:', 'color:#17a589;font-weight:bold');
+      console.log('%cDROP POLICY IF EXISTS "allow_public_read" ON site_sections;\nCREATE POLICY "allow_public_read" ON site_sections FOR SELECT USING (true);', 'background:#f0f4f8;padding:8px;');
+      console.log('%cأو اكتب: printSeedSQL()', 'color:#0a3d62');
+    } else if (!testRes.data || testRes.data.length === 0) {
+      console.warn('⚠️ جدول site_sections فارغ — شغّل printSeedSQL() لإضافة البيانات الافتراضية');
+      renderHomeFallback && renderHomeFallback();
+    } else {
+      console.log('✅ site_sections يحتوي بيانات — إعادة محاولة renderHomeSections...');
+      renderHomeSections && renderHomeSections();
+    }
+  } catch(e) {
+    console.error('❌ استثناء:', e.message);
+  }
+  console.groupEnd();
+}, 3000);
+
 </script>
 <!-- ============================================================ -->
 <!-- نهاية نظام الحماية v1                                        -->
@@ -6772,8 +6967,12 @@ document.addEventListener('click', function(e) {
 // ════════════════════════════════════════════════════════
 
 window.loginWithGoogle = async function() {
-  var db = await (window._supabaseReady || Promise.resolve(window.supabase));
-  if (!db && window.supabase) db = window.supabase;
+  var db = window.supabase;
+  if (!db) {
+    var rp = window._supabaseClientReady || window._supabaseReady;
+    db = rp ? await rp.catch(function(){ return null; }) : null;
+    if (db && typeof db.from !== 'function') db = window.supabase || null;
+  }
   if (!db) {
     _showToast('جاري تحميل النظام، حاول مجدداً بعد ثانية', 'warning');
     return;
@@ -6797,12 +6996,14 @@ window.loginWithGoogle = async function() {
     }
   } catch(e) {}
 
+  console.log('[AUTH FIX B] loginWithGoogle → redirectTo:', redirectTo);
   try {
     var result = await db.auth.signInWithOAuth({
       provider: 'google',
       options: {
         redirectTo: redirectTo,
-        skipBrowserRedirect: false
+        skipBrowserRedirect: false,
+        queryParams: { access_type: 'offline', prompt: 'consent' }
       }
     });
     if (result.error) {
@@ -6816,14 +7017,19 @@ window.loginWithGoogle = async function() {
 };
 
 // ════════════════════════════════════════════════════════
-// FIX C — renderHomeSections تنتظر Supabase صح
+// FIX C — renderHomeSections تنتظر Supabase CLIENT صح
 // ════════════════════════════════════════════════════════
 
 var _origRenderHome = window.renderHomeSections;
 window.renderHomeSections = async function() {
-  // انتظر Supabase
-  var db = await (window._supabaseReady || Promise.resolve(window.supabase));
-  if (db && !window.supabase) window.supabase = db;
+  // انتظر CLIENT الجاهز (فيه .from) لا lib فقط
+  var readyP = window._supabaseClientReady || window._supabaseReady;
+  if (readyP) {
+    var client = await readyP;
+    if (client && typeof client.from === 'function' && !window.supabase) {
+      window.supabase = client;
+    }
+  }
   if (typeof _origRenderHome === 'function') {
     return _origRenderHome();
   }
