@@ -1833,9 +1833,12 @@ async function loadSections(parentId) {
     try {
       var db = await _waitForSupabase();
       if (!db) { window._dataCache.sections[key] = []; return []; }
-      let query = db.from('site_sections').select('*').order('display_order', { ascending: true });
-      if (parentId === null || parentId === undefined) {
-        query = query.is('parent_id', null);
+let query = db
+  .from('site_sections')
+  .select('*')
+  .eq('is_hidden', false)
+  .order('display_order', { ascending: true });
+      query = query.is('parent_id', null);
       } else {
         const safeId = toValidId(parentId);
         if (safeId === null) { window._dataCache.sections[key] = []; return []; }
