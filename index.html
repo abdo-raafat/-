@@ -1833,12 +1833,9 @@ async function loadSections(parentId) {
     try {
       var db = await _waitForSupabase();
       if (!db) { window._dataCache.sections[key] = []; return []; }
-let query = db
-  .from('site_sections')
-  .select('*')
-  .eq('is_hidden', false)
-  .order('display_order', { ascending: true });
-      query = query.is('parent_id', null);
+      let query = db.from('site_sections').select('*').order('display_order', { ascending: true });
+      if (parentId === null || parentId === undefined) {
+        query = query.is('parent_id', null);
       } else {
         const safeId = toValidId(parentId);
         if (safeId === null) { window._dataCache.sections[key] = []; return []; }
@@ -3007,7 +3004,7 @@ function openResource(url, title, resourceType) {
 
   // ── الروابط الخارجية: فتح فوري بدون أي loading أو fetch ──
   if (rt === 'link' || rt === 'html' || rt === 'external_link') {
-    window.open(url, '_blank', 'noopener,noreferrer');
+    (window._origWindowOpen || window.open).call(window, url, '_blank', 'noopener,noreferrer');
     return;
   }
 
@@ -3027,7 +3024,7 @@ function openResource(url, title, resourceType) {
   );
 
   if (!isMedia) {
-    window.open(url, '_blank', 'noopener,noreferrer');
+    (window._origWindowOpen || window.open).call(window, url, '_blank', 'noopener,noreferrer');
     return;
   }
 
@@ -5239,6 +5236,9 @@ document.addEventListener('DOMContentLoaded', function() {
 
 // ==================== INTERNAL VIEWER SYSTEM ====================
 // اعتراض شامل لمنع أي فتح خارجي نهائياً
+
+// حفظ window.open الأصلي قبل أي اعتراض — يُستخدم في openResource للروابط الخارجية
+window._origWindowOpen = window.open;
 
 (function() {
 
