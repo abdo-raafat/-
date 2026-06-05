@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<title>تشخيص تسجيل الدخول</title>
+<style>
+body { font-family: Arial; background: #f0f4f8; padding: 30px; direction: rtl; }
+.card { background: #fff; border-radius: 12px; padding: 24px; margin: 16px 0; box-shadow: 0 2px 12px rgba(0,0,0,0.1); }
+.ok { color: #17a589; font-weight: bold; }
+.err { color: #e74c3c; font-weight: bold; }
+.warn { color: #f39c12; font-weight: bold; }
+button { background: #0a3d62; color: #fff; border: none; padding: 12px 28px; border-radius: 8px; font-size: 1rem; cursor: pointer; margin: 8px 4px; }
+button:hover { opacity: 0.85; }
+#log { font-family: monospace; font-size: 0.85rem; background: #1a1a2e; color: #a8d8ea; padding: 16px; border-radius: 8px; max-height: 300px; overflow-y: auto; direction: ltr; text-align: left; }
+</style>
+</head>
+<body>
+<h2>🔍 تشخيص تسجيل الدخول بجوجل</h2>
+
+<div class="card">
+  <h3>معلومات البيئة</h3>
+  <p>🌐 URL الحالي: <strong id="current-url"></strong></p>
+  <p>📡 البروتوكول: <strong id="protocol"></strong></p>
+  <p>🔗 Origin: <strong id="origin"></strong></p>
+  <p>📂 Pathname: <strong id="pathname"></strong></p>
+  <p>⚙️ redirectTo المُرسَل لـ Supabase: <strong id="redirect-to" style="color:#0a3d62"></strong></p>
+</div>
+
+<div class="card">
+  <h3>حالة Supabase</h3>
+  <div id="supabase-status">⏳ جاري الفحص...</div>
+</div>
+
+<div class="card">
+  <h3>اختبار تسجيل الدخول</h3>
+  <button onclick="testGoogleLogin()">🔐 تجربة تسجيل الدخول بجوجل</button>
+  <button onclick="checkSession()">🔎 فحص الـ Session الحالي</button>
+  <button onclick="clearLog()">🗑️ مسح السجل</button>
+</div>
+
+<div class="card">
+  <h3>سجل الأحداث</h3>
+  <div id="log">انتظر...</div>
+</div>
+
+<script>
+var SUPABASE_URL = "https://xiqeaohemuxgujrcnpzd.supabase.co";
+var SUPABASE_KEY = "sb_publishable_xzg8wn0ETQniEItj2Etfmw__klmgUWg";
+
+function log(msg, type) {
+  var el = document.getElementById('log');
+  var color = type === 'ok' ? '#2ecc71' : type === 'err' ? '#e74c3c' : type === 'warn' ? '#f39c12' : '#a8d8ea';
+  el.innerHTML += '<span style="color:' + color + '">[' + new Date().toLocaleTimeString() + '] ' + msg + '</span>\n';
+  el.scrollTop = el.scrollHeight;
+}
+
+function clearLog() { document.getElementById('log').innerHTML = ''; }
+
+// عرض معلومات البيئة
+document.getElementById('current-url').textContent = window.location.href;
+document.getElementById('protocol').textContent = window.location.protocol;
+document.getElementById('origin').textContent = window.location.origin;
+document.getElementById('pathname').textContent = window.location.pathname;
+
+var redirectTo = window.location.origin + window.location.pathname;
+if (!redirectTo.endsWith('/') && !redirectTo.endsWith('.html')) redirectTo += '/';
+document.getElementById('redirect-to').textContent = redirectTo;
+
+// تحميل Supabase
+var sb = null;
+var script = document.createElement('script');
+script.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js';
+script.onload = function() {
+  try {
+    sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
+      auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
+    });
+    document.getElementById('supabase-status').innerHTML = '<span class="ok">✅ Supabase متصل بنجاح</span>';
+    log('✅ Supabase loaded OK', 'ok');
+    
+    // مراقبة تغييرات الـ auth
+    sb.auth.onAuthStateChange(function(event, session) {
+      log('🔔 Auth event: ' + event + (session ? ' | user: ' + session.user.email : ''), 
+          event === 'SIGNED_IN' ? 'ok' : 'warn');
+      if (event === 'SIGNED_IN') {
+        document.getElementById('supabase-status').innerHTML = 
+          '<span class="ok">✅ تم تسجيل الدخول: ' + session.user.email + '</span>';
+      }
+    });
+    
+    checkSession();
+  } catch(e) {
+    document.getElementById('supabase-status').innerHTML = '<span class="err">❌ خطأ: ' + e.message + '</span>';
+    log('❌ Supabase init error: ' + e.message, 'err');
+  }
+};
+script.onerror = function() {
+  document.getElementById('supabase-status').innerHTML = '<span class="err">❌ فشل تحميل مكتبة Supabase</span>';
+  log('❌ Failed to load Supabase library', 'err');
+};
+document.head.appendChild(script);
+
+async function checkSession() {
+  if (!sb) { log('⚠️ Supabase غير جاهز بعد', 'warn'); return; }
+  try {
+    var res = await sb.auth.getSession();
+    if (res.error) { log('❌ getSession error: ' + res.error.message, 'err'); return; }
+    if (res.data && res.data.session) {
+      log('✅ Session موجود: ' + res.data.session.user.email, 'ok');
+    } else {
+      log('ℹ️ لا يوجد session حالي (المستخدم مش مسجل)', 'warn');
+    }
+  } catch(e) { log('❌ Exception: ' + e.message, 'err'); }
+}
+
+async function testGoogleLogin() {
+  if (!sb) { log('⚠️ Supabase غير جاهز', 'warn'); return; }
+  log('🔄 جاري بدء تسجيل الدخول بجوجل...', '');
+  log('📤 redirectTo = ' + redirectTo, '');
+  try {
+    var result = await sb.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: redirectTo,
+        queryParams: { access_type: 'offline', prompt: 'select_account' }
+      }
+    });
+    if (result.error) {
+      log('❌ OAuth Error: ' + result.error.message, 'err');
+    } else {
+      log('✅ OAuth initiated - سيتم التحويل لجوجل...', 'ok');
+      if (result.data && result.data.url) {
+        log('🔗 URL: ' + result.data.url.substring(0, 80) + '...', '');
+      }
+    }
+  } catch(e) {
+    log('❌ Exception: ' + e.message, 'err');
+    log('Stack: ' + (e.stack || ''), 'err');
+  }
+}
+</script>
+</body>
+</html>
