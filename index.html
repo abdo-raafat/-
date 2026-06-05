@@ -1819,12 +1819,9 @@ async function _fetchWithTimeout(promiseFn, timeoutMs) {
 async function loadSections(parentId) {
   var key = _cacheKey('sec', parentId);
 
-  // 1) Cache hit
   if (window._dataCache.sections[key] !== undefined) {
     return window._dataCache.sections[key];
   }
-
-  // 2) منع طلبات متوازية — لو في طلب جاري انتظره
   if (window._dataCache._pending[key]) {
     return window._dataCache._pending[key];
   }
@@ -1833,22 +1830,35 @@ async function loadSections(parentId) {
     try {
       var db = await _waitForSupabase();
       if (!db) { window._dataCache.sections[key] = []; return []; }
-      let query = db.from('site_sections').select('*').order('display_order', { ascending: true });
+
+      var query = db.from('site_sections').select('*').order('display_order', { ascending: true });
       if (parentId === null || parentId === undefined) {
         query = query.is('parent_id', null);
       } else {
-        const safeId = toValidId(parentId);
+        var safeId = toValidId(parentId);
         if (safeId === null) { window._dataCache.sections[key] = []; return []; }
         query = query.eq('parent_id', safeId);
       }
-      const { data, error } = await _fetchWithTimeout(function() { return query; });
-      if (error) { console.error('[loadSections] error:', error.message); window._dataCache.sections[key] = []; return []; }
-      const result = data || [];
-      window._dataCache.sections[key] = result;
-      console.log('[loadSections] cached → parentId=' + (parentId ?? 'null') + ', rows=' + result.length);
-      return result;
+
+      // تنفيذ الـ query مع timeout صريح
+      var result = await Promise.race([
+        query,
+        new Promise(function(_, rej) {
+          setTimeout(function() { rej(new Error('sections_timeout')); }, _FETCH_TIMEOUT_MS);
+        })
+      ]);
+
+      if (result.error) {
+        console.error('[loadSections] error:', result.error.message);
+        window._dataCache.sections[key] = [];
+        return [];
+      }
+      var rows = result.data || [];
+      window._dataCache.sections[key] = rows;
+      console.log('[loadSections] cached → parentId=' + (parentId == null ? 'null' : parentId) + ', rows=' + rows.length);
+      return rows;
     } catch (err) {
-      console.error('[loadSections] error:', err?.message || String(err));
+      console.error('[loadSections] error:', err && err.message || String(err));
       window._dataCache.sections[key] = [];
       return [];
     } finally {
@@ -1874,17 +1884,26 @@ async function loadSectionContent(sectionId) {
     try {
       var db = await _waitForSupabase();
       if (!db) { window._dataCache.content[key] = []; return []; }
-      const safeId = toValidId(sectionId);
+      var safeId = toValidId(sectionId);
       if (safeId === null) { window._dataCache.content[key] = []; return []; }
-      const { data, error } = await _fetchWithTimeout(function() {
-        return db.from('section_content').select('*').eq('section_id', safeId).order('display_order', { ascending: true });
-      });
-      if (error) { console.error('[loadSectionContent] error:', error.message); window._dataCache.content[key] = []; return []; }
-      const result = data || [];
-      window._dataCache.content[key] = result;
-      return result;
+
+      var result = await Promise.race([
+        db.from('section_content').select('*').eq('section_id', safeId).order('display_order', { ascending: true }),
+        new Promise(function(_, rej) {
+          setTimeout(function() { rej(new Error('content_timeout')); }, _FETCH_TIMEOUT_MS);
+        })
+      ]);
+
+      if (result.error) {
+        console.error('[loadSectionContent] error:', result.error.message);
+        window._dataCache.content[key] = [];
+        return [];
+      }
+      var rows = result.data || [];
+      window._dataCache.content[key] = rows;
+      return rows;
     } catch (err) {
-      console.error('[loadSectionContent] error:', err?.message || String(err));
+      console.error('[loadSectionContent] error:', err && err.message || String(err));
       window._dataCache.content[key] = [];
       return [];
     } finally {
@@ -1910,17 +1929,26 @@ async function loadSectionResources(sectionId) {
     try {
       var db = await _waitForSupabase();
       if (!db) { window._dataCache.resources[key] = []; return []; }
-      const safeId = toValidId(sectionId);
+      var safeId = toValidId(sectionId);
       if (safeId === null) { window._dataCache.resources[key] = []; return []; }
-      const { data, error } = await _fetchWithTimeout(function() {
-        return db.from('section_resources').select('*').eq('section_id', safeId).order('id');
-      });
-      if (error) { console.error('[loadSectionResources] error:', error.message); window._dataCache.resources[key] = []; return []; }
-      const result = data || [];
-      window._dataCache.resources[key] = result;
-      return result;
+
+      var result = await Promise.race([
+        db.from('section_resources').select('*').eq('section_id', safeId).order('id'),
+        new Promise(function(_, rej) {
+          setTimeout(function() { rej(new Error('resources_timeout')); }, _FETCH_TIMEOUT_MS);
+        })
+      ]);
+
+      if (result.error) {
+        console.error('[loadSectionResources] error:', result.error.message);
+        window._dataCache.resources[key] = [];
+        return [];
+      }
+      var rows = result.data || [];
+      window._dataCache.resources[key] = rows;
+      return rows;
     } catch (err) {
-      console.error('[loadSectionResources] error:', err?.message || String(err));
+      console.error('[loadSectionResources] error:', err && err.message || String(err));
       window._dataCache.resources[key] = [];
       return [];
     } finally {
@@ -2085,51 +2113,92 @@ function _registerSectionHandlers(sections) {
  * يُستخدم من openDynamicSection ومن restore عند الرجوع
  */
 async function _renderDynamicSectionPage(sec) {
-  window._currentDynamicSec = sec; // حفظ للتحديث التلقائي
+  window._currentDynamicSec = sec;
   document.getElementById('dynamic-section-title').textContent = sec.title;
   document.getElementById('dynamic-section-sub').textContent = sec.subtitle || '';
 
   showLoading('dynamic-section-grid');
 
-  // عرض الصفحة فوراً ثم نحمّل البيانات
+  // عرض الصفحة فوراً
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.getElementById('page-dynamic-section').classList.add('active');
   window.scrollTo(0, 0);
   updateBreadcrumb();
 
-  // تحميل الأبناء والموارد بالتوازي — مرة واحدة فقط (الـ cache يمنع التكرار)
-  const [children, sectionResources] = await Promise.all([
-    loadSections(sec.id),
-    loadSectionResources(sec.id)
-  ]);
-
-  // عرض الموارد
-  const resourcesEl = document.getElementById('dynamic-section-resources-container');
-  if (resourcesEl) {
-    resourcesEl.innerHTML = buildResourcesHTML(sectionResources);
-  }
-
-  if (children.length === 0) {
-    // قسم نهائي — حمّل المحتوى (من الـ cache لو موجود)
-    const content = await loadSectionContent(sec.id);
-    if (content.length > 0) {
-      renderResourceCards('dynamic-section-grid', content);
-    } else {
-      document.getElementById('dynamic-section-grid').innerHTML = `
-        <div style="text-align:center;padding:40px;color:#999;grid-column:1/-1">
-          <div style="font-size:2.5rem;margin-bottom:12px">🚧</div>
-          <p>هذا القسم قيد الإعداد — سيتم إضافة المحتوى قريباً</p>
-        </div>`;
+  // ── Timeout محلي 6 ثوانٍ — منع infinite loading ──
+  var _localTimeout = setTimeout(function() {
+    var grid = document.getElementById('dynamic-section-grid');
+    if (grid && grid.querySelector('.spinner')) {
+      // مسح الـ cache للقسم ده (ممكن الطلب تعلق في الـ pending)
+      if (window._dataCache) {
+        var sKey = 'sec:' + sec.id;
+        delete window._dataCache.sections[sKey];
+        delete window._dataCache._pending[sKey];
+      }
+      grid.innerHTML =
+        '<div style="text-align:center;padding:40px;color:#e74c3c;grid-column:1/-1">' +
+        '<div style="font-size:2.5rem;margin-bottom:12px">⚠️</div>' +
+        '<p style="font-weight:700">تعذّر تحميل البيانات</p>' +
+        '<p style="font-size:.85rem;color:#888;margin-top:8px">تحقق من اتصال الإنترنت وحاول مجدداً</p>' +
+        '<button onclick="window._currentDynamicSec&&_renderDynamicSectionPage(window._currentDynamicSec);" ' +
+        'style="margin-top:16px;padding:10px 22px;background:linear-gradient(135deg,#0a3d62,#17a589);' +
+        'color:#fff;border:none;border-radius:10px;font-family:Cairo,Tajawal,sans-serif;' +
+        'font-size:.88rem;font-weight:700;cursor:pointer;">🔄 إعادة المحاولة</button>' +
+        '</div>';
     }
-    return;
-  }
+  }, 6000);
 
-  children.forEach(child => {
-    window[`__sectionData_${child.id}`] = child;
-    window[`__sectionAction_${child.id}`] = (s) => openDynamicSubSection(s);
-  });
-  document.getElementById('dynamic-section-grid').innerHTML =
-    children.map(child => buildSubSectionCard(child)).join('');
+  try {
+    // تحميل الأبناء والموارد بالتوازي — من الـ cache أو Supabase مرة واحدة
+    var results = await Promise.all([
+      loadSections(sec.id),
+      loadSectionResources(sec.id)
+    ]);
+    clearTimeout(_localTimeout);
+    var children = results[0];
+    var sectionResources = results[1];
+
+    // عرض الموارد
+    var resourcesEl = document.getElementById('dynamic-section-resources-container');
+    if (resourcesEl) {
+      resourcesEl.innerHTML = buildResourcesHTML(sectionResources);
+    }
+
+    if (children.length === 0) {
+      // قسم نهائي — حمّل المحتوى
+      var content = await loadSectionContent(sec.id);
+      if (content.length > 0) {
+        renderResourceCards('dynamic-section-grid', content);
+      } else {
+        document.getElementById('dynamic-section-grid').innerHTML =
+          '<div style="text-align:center;padding:40px;color:#999;grid-column:1/-1">' +
+          '<div style="font-size:2.5rem;margin-bottom:12px">🚧</div>' +
+          '<p>هذا القسم قيد الإعداد — سيتم إضافة المحتوى قريباً</p>' +
+          '</div>';
+      }
+      return;
+    }
+
+    children.forEach(function(child) {
+      window['__sectionData_' + child.id] = child;
+      window['__sectionAction_' + child.id] = function(s) { openDynamicSubSection(s); };
+    });
+    document.getElementById('dynamic-section-grid').innerHTML =
+      children.map(function(child) { return buildSubSectionCard(child); }).join('');
+
+  } catch(err) {
+    clearTimeout(_localTimeout);
+    console.error('[_renderDynamicSectionPage] خطأ:', err && err.message || err);
+    document.getElementById('dynamic-section-grid').innerHTML =
+      '<div style="text-align:center;padding:40px;color:#e74c3c;grid-column:1/-1">' +
+      '<div style="font-size:2.5rem;margin-bottom:12px">⚠️</div>' +
+      '<p style="font-weight:700">حدث خطأ أثناء التحميل</p>' +
+      '<button onclick="window._currentDynamicSec&&_renderDynamicSectionPage(window._currentDynamicSec);" ' +
+      'style="margin-top:16px;padding:10px 22px;background:linear-gradient(135deg,#0a3d62,#17a589);' +
+      'color:#fff;border:none;border-radius:10px;font-family:Cairo,Tajawal,sans-serif;' +
+      'font-size:.88rem;font-weight:700;cursor:pointer;">🔄 إعادة المحاولة</button>' +
+      '</div>';
+  }
 }
 
 /**
