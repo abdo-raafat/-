@@ -561,17 +561,6 @@ body {
 }
 .back-btn:hover { background: var(--primary); color: #fff; border-color: var(--primary); }
 
-/* ===== LINK BUTTONS FIX — ضمان عمل الأزرار على كل المتصفحات والموبايل ===== */
-.link-card .lc-btn,
-.link-card,
-.resource-item,
-[onclick] {
-  pointer-events: auto !important;
-  touch-action: manipulation;
-  -webkit-tap-highlight-color: transparent;
-  cursor: pointer;
-}
-
 /* ===== LINKS PAGE ===== */
 .links-page {
   max-width: 900px;
@@ -788,13 +777,9 @@ footer strong { color: var(--accent2); }
 }
 .rv-close:hover { background: rgba(255,255,255,.32); }
 .rv-body {
-  flex: 1;
-  overflow: hidden; /* الـ iframe نفسه يعمل scroll */
-  position: relative;
+  flex: 1; overflow: auto; position: relative;
   background: #0d1117;
   min-height: 200px;
-  display: flex;
-  flex-direction: column;
 }
 .rv-footer {
   padding: 10px 20px; display: flex; align-items: center; justify-content: space-between;
@@ -838,22 +823,7 @@ footer strong { color: var(--accent2); }
 }
 /* YouTube / embed iframe */
 .rv-embed-frame {
-  width: 100%;
-  height: 75vh;
-  border: none;
-  display: block;
-  flex: 1;
-  /* منع white screen على الموبايل */
-  -webkit-overflow-scrolling: touch;
-  overflow: auto;
-  background: #fff;
-}
-/* على الموبايل: كمّل ملء الـ modal */
-@media (max-width: 600px) {
-  .rv-embed-frame {
-    height: calc(100vh - 120px);
-    min-height: 300px;
-  }
+  width: 100%; height: 75vh; border: none; display: block;
 }
 /* Image viewer */
 .rv-image-wrap {
@@ -2759,55 +2729,40 @@ const ResourceViewer = (function() {
           ></iframe>`;
 
       case 'html':
-        // ── ملفات HTML — عرض داخلي مع دعم كامل للـ scripts وال CSS ──
-        // تأكد من أن الـ URL absolute للتوافق مع GitHub Pages
-        var htmlAbsUrl = url;
-        if (url && !url.startsWith('http') && !url.startsWith('//')) {
-          var htmlBase = window.location.origin + window.location.pathname.replace(/\/[^/]*$/, '/');
-          htmlAbsUrl = url.startsWith('/') ? window.location.origin + url : htmlBase + url;
-        }
         return `
-          <div class="rv-loading" id="rv-loading-indicator" style="color:#fff;padding:30px;text-align:center;">
-            <div class="spinner-lg"></div>
-            <p>جاري تحميل الصفحة...</p>
-          </div>
-          <iframe
-            class="rv-embed-frame"
-            src="${escUrl(htmlAbsUrl)}"
-            style="display:none;background:#fff;width:100%;height:100%;border:none;"
-            id="rv-embed-iframe"
-            sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-top-navigation-by-user-activation"
-            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
-            loading="eager"
-            onload="(function(el){
-              var ind = document.getElementById('rv-loading-indicator');
-              if(ind) ind.style.display='none';
-              el.style.display='block';
-              el.style.flex='1';
-            })(this)"
-            onerror="ResourceViewer._showExternalFallback('${escUrl(htmlAbsUrl)}')"
-          ></iframe>`;
-
-      case 'external_link':
-        return `
-          <div class="rv-loading" id="rv-loading-indicator" style="color:#fff;padding:30px;text-align:center;">
+          <div class="rv-loading" id="rv-loading-indicator">
             <div class="spinner-lg"></div>
             <p>جاري تحميل الصفحة...</p>
           </div>
           <iframe
             class="rv-embed-frame"
             src="${escUrl(url)}"
-            style="display:none;background:#fff;width:100%;height:100%;border:none;"
+            style="display:none;background:#fff;"
             id="rv-embed-iframe"
-            sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-top-navigation-by-user-activation"
-            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
-            loading="eager"
-            onload="(function(el){
-              var ind = document.getElementById('rv-loading-indicator');
-              if(ind) ind.style.display='none';
-              el.style.display='block';
-              el.style.flex='1';
-            })(this)"
+            sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+            onload="
+              document.getElementById('rv-loading-indicator').style.display='none';
+              this.style.display='block';
+            "
+          ></iframe>`;
+
+      case 'external_link':
+        return `
+          <div class="rv-loading" id="rv-loading-indicator">
+            <div class="spinner-lg"></div>
+            <p>جاري تحميل الصفحة...</p>
+          </div>
+          <iframe
+            class="rv-embed-frame"
+            src="${escUrl(url)}"
+            style="display:none;background:#fff;"
+            id="rv-embed-iframe"
+            sandbox="allow-scripts allow-same-origin allow-forms allow-popups-to-escape-sandbox"
+            allow="accelerometer;autoplay;clipboard-write;encrypted-media;gyroscope;picture-in-picture"
+            onload="
+              document.getElementById('rv-loading-indicator').style.display='none';
+              this.style.display='block';
+            "
             onerror="ResourceViewer._showExternalFallback('${escUrl(url)}')"
           ></iframe>`;
     }
@@ -3007,30 +2962,9 @@ const ResourceViewer = (function() {
   }
 
   function _showExternalFallback(url) {
+    // fallback: نحاول Google Docs Viewer
     const body = document.getElementById('rv-body');
     if (!body) return;
-    const lower = (url || '').toLowerCase();
-
-    // ── ملفات HTML — زر فتح مباشر في تبويب جديد ──
-    if (/\.html?($|\?|#)/i.test(url) || !lower.includes('.pdf')) {
-      body.innerHTML = `
-        <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;
-          height:100%;min-height:200px;color:#fff;text-align:center;padding:30px;gap:16px;">
-          <div style="font-size:3rem;">🌐</div>
-          <p style="font-size:1rem;opacity:.9;">تعذّر عرض الصفحة داخلياً</p>
-          <p style="font-size:.82rem;opacity:.7;">(قد يكون السبب قيود الـ iframe من الموقع المستهدف)</p>
-          <a href="${url}" target="_blank" rel="noopener noreferrer"
-             style="background:linear-gradient(135deg,#17a589,#0a3d62);color:#fff;
-               padding:12px 28px;border-radius:12px;text-decoration:none;
-               font-family:Cairo,Tajawal,sans-serif;font-weight:700;font-size:.9rem;
-               display:inline-block;margin-top:8px;">
-            🔗 فتح في تبويب جديد
-          </a>
-        </div>`;
-      return;
-    }
-
-    // ── ملفات PDF — Google Docs Viewer fallback ──
     const gdocsUrl = 'https://docs.google.com/viewer?url=' + encodeURIComponent(url) + '&embedded=true';
     body.innerHTML = `
       <div class="rv-loading" id="rv-loading-indicator">
@@ -3040,13 +2974,12 @@ const ResourceViewer = (function() {
       <iframe
         class="rv-embed-frame"
         src="${gdocsUrl}"
-        style="display:none;width:100%;height:100%;border:none;"
+        style="display:none"
         id="rv-embed-iframe"
-        onload="(function(el){
-          var ind=document.getElementById('rv-loading-indicator');
-          if(ind)ind.style.display='none';
-          el.style.display='block';
-        })(this)"
+        onload="
+          document.getElementById('rv-loading-indicator').style.display='none';
+          this.style.display='block';
+        "
       ></iframe>
       <div style="text-align:center;padding:12px;background:#f8fbff;border-top:1px solid #e3eaf5">
         <p style="font-size:.8rem;color:#666;margin-bottom:8px">لو الملف لا يظهر، جرّب زر التحميل أدناه</p>
@@ -3068,74 +3001,35 @@ function openResource(url, title, resourceType) {
   if (!url) return;
 
   var rt = (resourceType || '').toLowerCase();
-  var lower = url.toLowerCase().split('?')[0];
+
+  // ── الروابط الخارجية: فتح فوري بدون أي loading أو fetch ──
+  if (rt === 'link' || rt === 'html' || rt === 'external_link') {
+    window.open(url, '_blank', 'noopener,noreferrer');
+    return;
+  }
 
   // ── PDF ──
-  if (rt === 'pdf' || /\.pdf($|\?)/i.test(url) || /\/raw\//.test(url)) {
+  if (rt === 'pdf' || /\.pdf($|\?)/i.test(url)) {
     NativePDFViewer.open(url, title);
     return;
   }
 
-  // ── ملفات HTML — افتحها داخلياً في ResourceViewer ──
-  // سواء على نفس الـ domain أو خارجي
-  if (rt === 'html' || /\.html?($|\?|#)/i.test(lower)) {
-    ResourceViewer.open(url, title || url.split('/').pop() || 'صفحة', 'html');
-    return;
-  }
-
-  // ── ميديا: استخدام ResourceViewer ──
+  // ── روابط اجتماعية / خارجية (فيسبوك، واتساب، تيليجرام، ...) ──
+  // لو مش PDF أو فيديو أو صورة — افتحها مباشرة
+  var lower = url.toLowerCase().split('?')[0];
   var isMedia = (
     /\.(mp4|webm|ogg|mov|avi|mkv|mp3|wav|aac|flac|m4a|jpe?g|png|webp|gif|svg|bmp)$/.test(lower) ||
     /youtube\.com|youtu\.be|vimeo\.com|dailymotion\.com/.test(url) ||
     /drive\.google\.com|cloudinary\.com/.test(url)
   );
-  if (isMedia) {
-    ResourceViewer.open(url, title, resourceType);
+
+  if (!isMedia) {
+    window.open(url, '_blank', 'noopener,noreferrer');
     return;
   }
 
-  // ── روابط external_link — عرض داخلي في iframe ──
-  if (rt === 'external_link') {
-    ResourceViewer.open(url, title || url.split('/').pop() || 'رابط', 'external_link');
-    return;
-  }
-
-  // ── روابط link / عامة ──
-  // لو على نفس الـ domain أو relative → افتح داخلياً
-  var isSameDomain = url.startsWith('/') || url.startsWith('./') || url.startsWith('../')
-    || (!url.startsWith('http') && !url.startsWith('//'))
-    || (url.startsWith('http') && url.includes(window.location.hostname));
-
-  if (isSameDomain) {
-    // حوّل الـ relative URL لـ absolute للتأكد
-    var absUrl = url;
-    if (!url.startsWith('http') && !url.startsWith('//')) {
-      var base = window.location.origin + window.location.pathname.replace(/\/[^/]*$/, '/');
-      absUrl = url.startsWith('/') ? window.location.origin + url : base + url;
-    }
-    ResourceViewer.open(absUrl, title || url.split('/').pop() || 'صفحة', 'external_link');
-    return;
-  }
-
-  // ── روابط خارجية حقيقية ─ افتح في تبويب جديد ──
-  // استخدم <a> element لضمان فتح الرابط على كل المتصفحات والموبايل
-  // window.open قد يُمنع على بعض المتصفحات بسبب popup blockers
-  try {
-    var _a = document.createElement('a');
-    _a.href = url;
-    _a.target = '_blank';
-    _a.rel = 'noopener noreferrer';
-    _a.style.display = 'none';
-    document.body.appendChild(_a);
-    _a.click();
-    setTimeout(function() {
-      try { document.body.removeChild(_a); } catch(e) {}
-    }, 100);
-  } catch(err) {
-    // fallback: window.__origOpen أو window.open
-    var _origOpenFn = window.__origOpen || window.open;
-    _origOpenFn.call(window, url, '_blank', 'noopener,noreferrer');
-  }
+  // ── ميديا: استخدام ResourceViewer ──
+  ResourceViewer.open(url, title, resourceType);
 }
 
 </script>
@@ -3358,8 +3252,7 @@ window.checkUser = async function() {
 // ══════════════════════════════════════════════════════
 (function() {
   function _runWhenReady() {
-    // تأكد من وجود CLIENT (فيه .from و .auth) لا مجرد lib
-    if (window.supabase && typeof window.supabase.from === 'function' && typeof window.checkUser === 'function') {
+    if (window.supabase && typeof window.checkUser === 'function') {
       window.checkUser();
       return true;
     }
@@ -3369,14 +3262,9 @@ window.checkUser = async function() {
   // المسار الأسرع: لو كل شيء جاهز
   if (_runWhenReady()) return;
 
-  // انتظر _supabaseClientReady أولاً (CLIENT الحقيقي فيه .from)
-  var clientReady = window._supabaseClientReady || window._supabaseReady;
-  if (clientReady && typeof clientReady.then === 'function') {
-    clientReady.then(function(client) {
-      // لو جه client من _supabaseClientReady → عيّنه على window.supabase
-      if (client && typeof client.from === 'function' && !window.supabase) {
-        window.supabase = client;
-      }
+  // انتظر _supabaseReady (Promise)
+  if (window._supabaseReady && typeof window._supabaseReady.then === 'function') {
+    window._supabaseReady.then(function() {
       if (!_runWhenReady()) {
         // checkUser نفسها لم تُعرَّف بعد — انتظر DOMContentLoaded
         document.addEventListener('DOMContentLoaded', function() { _runWhenReady(); });
@@ -3385,11 +3273,11 @@ window.checkUser = async function() {
     return;
   }
 
-  // Fallback: polling حتى 15 ثوانٍ (زيادة للموبايل)
+  // Fallback: polling حتى 10 ثوانٍ
   var attempts = 0;
   var poll = setInterval(function() {
     attempts++;
-    if (_runWhenReady() || attempts > 60) clearInterval(poll);
+    if (_runWhenReady() || attempts > 40) clearInterval(poll);
   }, 250);
 })();
 
@@ -3409,15 +3297,10 @@ window.checkUser = async function() {
  *   - null إذا لم يكن محظوراً أو حدث خطأ
  */
 async function _isBanned(email) {
-  if (!email) return null;
-  var db = window.supabase;
-  if (!db || typeof db.from !== 'function') {
-    db = await window._waitForSupabase(5000).catch(function(){ return null; });
-  }
-  if (!db) return null;
+  if (!window.supabase || !email) return null;
   try {
     var cleanEmail = email.toLowerCase().trim();
-    var result = await db
+    var result = await window.supabase
       .from('banned_users')
       .select('email, reason, banned_at')
       .eq('email', cleanEmail)
@@ -3425,9 +3308,9 @@ async function _isBanned(email) {
 
     if (result.error) {
       console.warn('[BAN] خطأ في فحص الحظر:', result.error.message);
-      return null;
+      return null; // عند الخطأ نسمح بالدخول (fail-open) لتجنب تعطيل الموقع
     }
-    return result.data || null;
+    return result.data || null; // يُرجع الصف إذا موجود، أو null
   } catch(err) {
     console.error('[BAN] خطأ غير متوقع:', err.message || err);
     return null;
@@ -5364,127 +5247,45 @@ document.addEventListener('DOMContentLoaded', function() {
     var href = target.getAttribute('href');
     if (!href || href.startsWith('#') || href.startsWith('javascript:') || href.startsWith('mailto:') || href.startsWith('tel:')) return;
 
-    var lower = href.toLowerCase().split('?')[0];
-    var title = target.textContent.trim() || href.split('/').pop() || href;
-
-    // ── ملفات HTML — افتح داخلياً دائماً ──
-    if (/\.html?($|\?|#)/i.test(href)) {
-      e.preventDefault();
-      e.stopPropagation();
-      // حوّل لـ absolute URL لو relative
-      var absHtml = href;
-      if (!href.startsWith('http') && !href.startsWith('//')) {
-        var base = window.location.origin + window.location.pathname.replace(/\/[^/]*$/, '/');
-        absHtml = href.startsWith('/') ? window.location.origin + href : base + href;
-      }
-      if (window.ResourceViewer) window.ResourceViewer.open(absHtml, title, 'html');
-      return false;
-    }
-
-    // ── روابط على نفس الـ domain — افتح داخلياً ──
-    var isSameDomain = (href.startsWith('http') && href.includes(window.location.hostname))
-      || href.startsWith('/') || href.startsWith('./') || href.startsWith('../')
-      || (!href.startsWith('http') && !href.startsWith('//') && !href.startsWith('#'));
-
-    if (isSameDomain && target.getAttribute('target') !== '_blank') {
-      // روابط نسبية أو نفس الـ domain بدون target blank → navigation طبيعي
-      return; // اسمح بالـ default browser behavior
-    }
-
-    // ── روابط خارجية بـ target=_blank ──
+    // منع أي فتح خارجي
     var isExternal = target.getAttribute('target') === '_blank'
       || (href.startsWith('http') && !href.includes(window.location.hostname));
 
     if (isExternal) {
-      var type = _guessLinkType(href);
-
-      // ── روابط عادية خارجية (Facebook/WhatsApp/Telegram/etc.) ──
-      // لا نعترضها — الـ onclick على الـ button يستدعي openResource مباشرةً
-      // ومنعها هنا يسبب مشاكل على الموبايل مع popup blockers
-      if (type === 'link') {
-        return; // السماح بالسلوك الافتراضي
-      }
-
       e.preventDefault();
       e.stopPropagation();
 
-      if (type === 'pdf') {
-        if (window.NativePDFViewer) window.NativePDFViewer.open(href, title);
-        else if (window.openResource) window.openResource(href, title, 'pdf');
-        return false;
-      }
+      // تحديد نوع الرابط وعرضه داخلياً
+      var title = target.textContent.trim() || href;
+      var type = _guessLinkType(href);
+
       if (type === 'download_only') {
+        // تحميل مباشر للأدمن فقط — الطلاب لا يُحمِّلون
         if (window._isAdminUser) {
           var a = document.createElement('a');
           a.href = href;
           a.setAttribute('download', '');
           a.click();
         } else {
-          if (window.openResource) window.openResource(href, title, 'link');
+          openResource(href, title, 'link');
         }
-        return false;
+      } else {
+        openResource(href, title, type);
       }
-      if (window.openResource) window.openResource(href, title, type);
-      return false;
     }
   }, true);
 
   // ── 2. اعتراض window.open ────────────────────────────────────────
-  // حفظ الـ original أولاً قبل أي override
-  window.__origOpen = window.__origOpen || window.open.bind(window);
-  var _origOpen = window.__origOpen;
-
+  var _origOpen = window.open;
   window.open = function(url, target, features) {
     if (!url) return null;
-
-    // لو مش _blank أو _new — تصرف طبيعي (مثل popups عند Google OAuth)
-    if (target && target !== '_blank' && target !== '_new' && target !== '') {
-      return _origOpen.call(window, url, target, features);
-    }
-
-    var lower = (url || '').toLowerCase().split('?')[0];
-
-    // ── PDF: افتح في NativePDFViewer ──
-    if (/\.pdf($|\?|#)/i.test(url) || /drive\.google\.com/.test(url)) {
-      var pdfTitle = url.split('/').pop() || 'PDF';
-      if (window.NativePDFViewer) NativePDFViewer.open(url, pdfTitle);
-      else if (window.openResource) window.openResource(url, pdfTitle, 'pdf');
+    if (target === '_blank' || !target || target === '_new') {
+      var title = url.split('/').pop() || url;
+      var type = _guessLinkType(url);
+      openResource(url, title, type);
       return { closed: false, focus: function(){}, close: function(){} };
     }
-
-    // ── ملفات HTML — عرض داخلي ──
-    if (/\.html?($|\?|#)/i.test(lower)) {
-      var htmlTitle = url.split('/').pop() || 'صفحة';
-      if (window.ResourceViewer) window.ResourceViewer.open(url, htmlTitle, 'html');
-      else _origOpen.call(window, url, '_blank', features);
-      return { closed: false, focus: function(){}, close: function(){} };
-    }
-
-    // ── ميديا معروفة — ResourceViewer ──
-    var isMedia = (
-      /\.(mp4|webm|ogg|mov|avi|mkv|mp3|wav|aac|flac|m4a|jpe?g|png|webp|gif|svg|bmp)($|\?|#)/.test(lower) ||
-      /youtube\.com|youtu\.be|vimeo\.com|dailymotion\.com/.test(url) ||
-      /cloudinary\.com/.test(url)
-    );
-    if (isMedia) {
-      var mediaTitle = url.split('/').pop() || url;
-      var mediaType = _guessLinkType(url);
-      if (window.openResource) window.openResource(url, mediaTitle, mediaType);
-      return { closed: false, focus: function(){}, close: function(){} };
-    }
-
-    // ── روابط على نفس الـ domain — عرض داخلي في iframe ──
-    var isSameDomain = url.startsWith('/') || url.startsWith('./') || url.startsWith('../')
-      || (!url.startsWith('http') && !url.startsWith('//'))
-      || (url.startsWith('http') && url.includes(window.location.hostname));
-    if (isSameDomain) {
-      var sameTitle = url.split('/').pop() || 'صفحة';
-      if (window.ResourceViewer) window.ResourceViewer.open(url, sameTitle, 'external_link');
-      return { closed: false, focus: function(){}, close: function(){} };
-    }
-
-    // ── روابط خارجية حقيقية — افتح في تبويب جديد بشكل طبيعي ──
-    return _origOpen.call(window, url, '_blank', features);
+    return _origOpen.call(window, url, target, features);
   };
 
   // ── 3. تخمين نوع الرابط ─────────────────────────────────────────
@@ -7469,472 +7270,6 @@ console.log('اكتب printGoogleAuthSetup() للحصول على خطوات إع
 </script>
 <!-- ============================================================ -->
 <!-- نهاية CROSS-BROWSER FIXES PATCH v2                          -->
-<!-- ============================================================ -->
-
-<!-- ============================================================ -->
-<!-- MOBILE FIX PATCH v3 — إصلاح عدم جلب البيانات على الموبايل  -->
-<!-- المشكلة: Supabase بيتأخر على الموبايل → queries تفشل       -->
-<!-- الحل: انتظار حقيقي للـ client قبل أي query                 -->
-<!-- ============================================================ -->
-<script>
-(function() {
-'use strict';
-
-// ════════════════════════════════════════════════════════
-// MOBILE FIX A — _waitForSupabase الموحّد والمحسَّن
-// بيضمن إن أي دالة تستنى الـ client الحقيقي
-// ════════════════════════════════════════════════════════
-
-// Override _waitForSupabase بنسخة أقوى تناسب الموبايل
-window._waitForSupabase = async function(timeoutMs) {
-  timeoutMs = timeoutMs || 15000; // زودنا الـ timeout لـ 15 ثانية على الموبايل
-
-  // ① الحالة المثالية: client جاهز بالفعل
-  if (window.supabase && typeof window.supabase.from === 'function') {
-    return window.supabase;
-  }
-
-  // ② انتظر _supabaseClientReady مع timeout
-  var readyPromise = window._supabaseClientReady || window._supabaseReady;
-  if (readyPromise) {
-    var raceTimeout = new Promise(function(_, reject) {
-      setTimeout(function() { reject(new Error('timeout')); }, timeoutMs);
-    });
-    try {
-      var client = await Promise.race([readyPromise, raceTimeout]);
-      if (client && typeof client.from === 'function') {
-        if (!window.supabase) window.supabase = client;
-        return client;
-      }
-      // لو client جه ولكن مش فيه .from — ممكن يكون الـ lib مش الـ client
-      if (window._db && typeof window._db.from === 'function') {
-        window.supabase = window._db;
-        return window._db;
-      }
-    } catch(e) {
-      console.warn('[Mobile Fix] _waitForSupabase timeout بعد', timeoutMs, 'ms');
-    }
-  }
-
-  // ③ Polling fallback — 15 ثانية كاملة
-  var waited = 0;
-  while (waited < 15000) {
-    await new Promise(function(r) { setTimeout(r, 200); });
-    waited += 200;
-    var c = window.supabase || window._db;
-    if (c && typeof c.from === 'function') {
-      if (!window.supabase) window.supabase = c;
-      return c;
-    }
-  }
-
-  console.error('[Mobile Fix] ❌ فشل الاتصال بـ Supabase بعد 15 ثانية');
-  return null;
-};
-
-// ════════════════════════════════════════════════════════
-// MOBILE FIX B — إعادة محاولة renderHomeSections على الموبايل
-// لو الأقسام ما اتحملوش خلال 3 ثواني → حاول تاني
-// ════════════════════════════════════════════════════════
-
-var _mobileRetryDone = false;
-var _isMobileDev = /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-
-if (_isMobileDev) {
-  // انتظر 3 ثواني ثم تحقق من وجود بيانات
-  setTimeout(async function() {
-    if (_mobileRetryDone) return;
-    var homeGrid = document.getElementById('dynamic-home-sections');
-    if (!homeGrid) return;
-    var hasContent = homeGrid.children.length > 0
-      && !homeGrid.querySelector('.loading')
-      && !homeGrid.querySelector('.spinner');
-    if (!hasContent) {
-      console.log('[Mobile Fix] الأقسام لم تُحمَّل — إعادة المحاولة...');
-      _mobileRetryDone = true;
-      var db = await window._waitForSupabase(10000);
-      if (db && typeof window.renderHomeSections === 'function') {
-        // مسح الـ cache لإجبار إعادة الجلب
-        if (window._dataCache) {
-          window._dataCache.sections = {};
-          window._dataCache._pending = {};
-        }
-        window.renderHomeSections();
-      }
-    }
-  }, 3000);
-
-  // محاولة ثانية بعد 8 ثواني لو لسه مفيش حاجة
-  setTimeout(async function() {
-    var homeGrid = document.getElementById('dynamic-home-sections');
-    if (!homeGrid) return;
-    var hasContent = homeGrid.children.length > 0
-      && !homeGrid.querySelector('.loading')
-      && !homeGrid.querySelector('.spinner');
-    if (!hasContent) {
-      console.log('[Mobile Fix] محاولة ثانية بعد 8 ثواني...');
-      var db = await window._waitForSupabase(5000);
-      if (db && typeof window.renderHomeSections === 'function') {
-        if (window._dataCache) {
-          window._dataCache.sections = {};
-          window._dataCache._pending = {};
-        }
-        window.renderHomeSections();
-      }
-    }
-  }, 8000);
-}
-
-// ════════════════════════════════════════════════════════
-// MOBILE FIX C — checkUser يعمل صح على الموبايل
-// ════════════════════════════════════════════════════════
-
-// تشغيل checkUser بعد ما Supabase يكون جاهز
-window._supabaseClientReady && window._supabaseClientReady.then(function(client) {
-  if (!client) return;
-  // تأكد إن checkUser اتشغل
-  if (typeof window.checkUser === 'function') {
-    // على الموبايل نديه وقت أطل شوية
-    setTimeout(function() {
-      window.checkUser().catch(function(e) {
-        console.warn('[Mobile Fix] checkUser error:', e.message);
-      });
-    }, _isMobileDev ? 500 : 0);
-  }
-});
-
-// ════════════════════════════════════════════════════════
-// MOBILE FIX D — إضافة SQL helper للجداول الجديدة
-// ════════════════════════════════════════════════════════
-
-/**
- * printNewTablesSQL()
- * اكتبها في الـ console للحصول على SQL إنشاء الجداول الجديدة
- */
-window.printNewTablesSQL = function() {
-  var sql = `
--- ============================================================
--- SQL: الجداول الجديدة — شغّل في Supabase SQL Editor
--- banned_users / chat_rooms / chat_messages / notifications
--- quiz_questions / quiz_results / quizzes / user_progress
--- ============================================================
-
--- ① banned_users
-CREATE TABLE IF NOT EXISTS banned_users (
-  id         UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  email      TEXT NOT NULL UNIQUE,
-  reason     TEXT,
-  banned_at  TIMESTAMPTZ DEFAULT NOW()
-);
-ALTER TABLE banned_users ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "admin_all_banned" ON banned_users;
-CREATE POLICY "admin_all_banned" ON banned_users FOR ALL USING (
-  EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
-);
--- السماح للـ anon بالقراءة (لفحص الحظر عند تسجيل الدخول)
-DROP POLICY IF EXISTS "anon_read_banned" ON banned_users;
-CREATE POLICY "anon_read_banned" ON banned_users FOR SELECT USING (true);
-
--- ② chat_rooms
-CREATE TABLE IF NOT EXISTS chat_rooms (
-  id          UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  name        TEXT NOT NULL,
-  description TEXT,
-  created_by  UUID REFERENCES auth.users(id),
-  is_active   BOOLEAN DEFAULT true,
-  created_at  TIMESTAMPTZ DEFAULT NOW()
-);
-ALTER TABLE chat_rooms ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "auth_read_rooms" ON chat_rooms;
-CREATE POLICY "auth_read_rooms" ON chat_rooms FOR SELECT USING (auth.uid() IS NOT NULL);
-DROP POLICY IF EXISTS "admin_all_rooms" ON chat_rooms;
-CREATE POLICY "admin_all_rooms" ON chat_rooms FOR ALL USING (
-  EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
-);
-
--- ③ chat_messages
-CREATE TABLE IF NOT EXISTS chat_messages (
-  id         UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  room_id    UUID REFERENCES chat_rooms(id) ON DELETE CASCADE,
-  user_id    UUID REFERENCES auth.users(id),
-  user_email TEXT,
-  message    TEXT NOT NULL,
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
-ALTER TABLE chat_messages ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "auth_read_messages" ON chat_messages;
-CREATE POLICY "auth_read_messages" ON chat_messages FOR SELECT USING (auth.uid() IS NOT NULL);
-DROP POLICY IF EXISTS "users_insert_messages" ON chat_messages;
-CREATE POLICY "users_insert_messages" ON chat_messages FOR INSERT WITH CHECK (auth.uid() = user_id);
-DROP POLICY IF EXISTS "admin_all_messages" ON chat_messages;
-CREATE POLICY "admin_all_messages" ON chat_messages FOR ALL USING (
-  EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
-);
-
--- ④ notifications
-CREATE TABLE IF NOT EXISTS notifications (
-  id         UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  user_id    UUID REFERENCES auth.users(id) ON DELETE CASCADE,
-  title      TEXT,
-  body       TEXT NOT NULL,
-  type       TEXT DEFAULT 'info',
-  is_read    BOOLEAN DEFAULT false,
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
-ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "users_own_notifications" ON notifications;
-CREATE POLICY "users_own_notifications" ON notifications FOR ALL USING (auth.uid() = user_id);
-DROP POLICY IF EXISTS "admin_all_notifications" ON notifications;
-CREATE POLICY "admin_all_notifications" ON notifications FOR ALL USING (
-  EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
-);
-
--- ⑤ quizzes
-CREATE TABLE IF NOT EXISTS quizzes (
-  id          UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  title       TEXT NOT NULL,
-  description TEXT,
-  section_id  INT,
-  time_limit  INT DEFAULT 30,
-  is_active   BOOLEAN DEFAULT true,
-  created_by  UUID REFERENCES auth.users(id),
-  created_at  TIMESTAMPTZ DEFAULT NOW()
-);
-ALTER TABLE quizzes ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "auth_read_quizzes" ON quizzes;
-CREATE POLICY "auth_read_quizzes" ON quizzes FOR SELECT USING (auth.uid() IS NOT NULL AND is_active = true);
-DROP POLICY IF EXISTS "admin_all_quizzes" ON quizzes;
-CREATE POLICY "admin_all_quizzes" ON quizzes FOR ALL USING (
-  EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
-);
-
--- ⑥ quiz_questions
-CREATE TABLE IF NOT EXISTS quiz_questions (
-  id             UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  quiz_id        UUID REFERENCES quizzes(id) ON DELETE CASCADE,
-  question_text  TEXT NOT NULL,
-  option_a       TEXT,
-  option_b       TEXT,
-  option_c       TEXT,
-  option_d       TEXT,
-  correct_option TEXT CHECK (correct_option IN ('a','b','c','d')),
-  sort_order     INT DEFAULT 0,
-  created_at     TIMESTAMPTZ DEFAULT NOW()
-);
-ALTER TABLE quiz_questions ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "auth_read_questions" ON quiz_questions;
-CREATE POLICY "auth_read_questions" ON quiz_questions FOR SELECT USING (auth.uid() IS NOT NULL);
-DROP POLICY IF EXISTS "admin_all_questions" ON quiz_questions;
-CREATE POLICY "admin_all_questions" ON quiz_questions FOR ALL USING (
-  EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
-);
-
--- ⑦ quiz_results
-CREATE TABLE IF NOT EXISTS quiz_results (
-  id         UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  quiz_id    UUID REFERENCES quizzes(id) ON DELETE CASCADE,
-  user_id    UUID REFERENCES auth.users(id) ON DELETE CASCADE,
-  score      INT,
-  total      INT,
-  answers    JSONB,
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
-ALTER TABLE quiz_results ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "users_own_results" ON quiz_results;
-CREATE POLICY "users_own_results" ON quiz_results FOR ALL USING (auth.uid() = user_id);
-DROP POLICY IF EXISTS "admin_all_results" ON quiz_results;
-CREATE POLICY "admin_all_results" ON quiz_results FOR ALL USING (
-  EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
-);
-
--- ⑧ user_progress
-CREATE TABLE IF NOT EXISTS user_progress (
-  id            UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  user_id       UUID REFERENCES auth.users(id) ON DELETE CASCADE,
-  section_id    INT,
-  content_id    INT,
-  completed     BOOLEAN DEFAULT false,
-  progress_pct  INT DEFAULT 0,
-  last_accessed TIMESTAMPTZ DEFAULT NOW(),
-  created_at    TIMESTAMPTZ DEFAULT NOW(),
-  UNIQUE(user_id, section_id, content_id)
-);
-ALTER TABLE user_progress ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "users_own_progress" ON user_progress;
-CREATE POLICY "users_own_progress" ON user_progress FOR ALL USING (auth.uid() = user_id);
-DROP POLICY IF EXISTS "admin_all_progress" ON user_progress;
-CREATE POLICY "admin_all_progress" ON user_progress FOR ALL USING (
-  EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
-);
-
--- ============================================================
--- تأكيد وجود profiles.role
--- ============================================================
-ALTER TABLE profiles ADD COLUMN IF NOT EXISTS role TEXT DEFAULT 'user'
-  CHECK (role IN ('user','admin'));
-
--- ============================================================`;
-
-  console.group('%c📋 SQL الجداول الجديدة:', 'color:#17a589;font-weight:bold;font-size:1.1em');
-  console.log(sql);
-  console.groupEnd();
-  console.log('%c↑ انسخ الـ SQL ده وشغّله في Supabase → SQL Editor', 'color:#e74c3c;font-weight:bold');
-  return sql;
-};
-
-console.log('%c[MOBILE FIX v3] ✅ تم تحميل إصلاح الموبايل', 'color:#17a589;font-weight:bold');
-console.log('اكتب printNewTablesSQL() للحصول على SQL الجداول الجديدة');
-
-})();
-</script>
-<!-- ============================================================ -->
-<!-- نهاية MOBILE FIX PATCH v3                                   -->
-<!-- ============================================================ -->
-
-<!-- ============================================================ -->
-<!-- HTML FILES NAVIGATION FIX v1                                 -->
-<!-- يضمن فتح ملفات HTML بشكل صحيح على GitHub Pages وكل المتصفحات -->
-<!-- ============================================================ -->
-<script>
-(function() {
-'use strict';
-
-// ════════════════════════════════════════════════════════
-// HTML NAV FIX A — تصحيح المسارات النسبية لـ GitHub Pages
-// GitHub Pages: الـ repo اسمه مثلاً /my-repo/
-// الـ relative paths لازم تحسب من الـ root صح
-// ════════════════════════════════════════════════════════
-
-/**
- * resolveUrl(href) — يحوّل أي href لـ absolute URL صح
- * يعمل على: GitHub Pages / localhost / أي hosting
- */
-function resolveUrl(href) {
-  if (!href) return '';
-  // Absolute URL — اتركه كما هو
-  if (href.startsWith('http://') || href.startsWith('https://') || href.startsWith('//')) {
-    return href;
-  }
-  // Root-relative — أضف الـ origin
-  if (href.startsWith('/')) {
-    return window.location.origin + href;
-  }
-  // Relative — احسب من موقع الملف الحالي
-  var base = window.location.href.replace(/\/[^/]*$/, '/');
-  // لو URL فيه query string أو hash — نزلهم
-  var cleanBase = base.split('?')[0].split('#')[0];
-  if (!cleanBase.endsWith('/')) cleanBase += '/';
-  return cleanBase + href;
-}
-
-// ════════════════════════════════════════════════════════
-// HTML NAV FIX B — اعتراض موحّد لكل ملفات HTML
-// يعمل بالتعاون مع INTERNAL VIEWER SYSTEM
-// ════════════════════════════════════════════════════════
-
-// انتظر حتى تكون كل العناصر موجودة
-function _initHtmlNavFix() {
-  // اعتراض إضافي خاص بملفات HTML — يعمل كـ safety net
-  document.addEventListener('click', function(e) {
-    var el = e.target;
-    // ابحث عن أقرب <a>
-    while (el && el.tagName !== 'A') el = el.parentElement;
-    if (!el) return;
-
-    var href = el.getAttribute('href') || '';
-    if (!href || href.startsWith('#') || href.startsWith('javascript:')) return;
-
-    var lower = href.toLowerCase().split('?')[0].split('#')[0];
-
-    // فقط ملفات HTML
-    if (!/\.html?$/.test(lower)) return;
-
-    // منع السلوك الافتراضي (تحميل الصفحة)
-    e.preventDefault();
-    e.stopImmediatePropagation();
-
-    var absUrl = resolveUrl(href);
-    var title = el.textContent.trim() || href.split('/').pop() || 'صفحة';
-
-    // فتح في ResourceViewer
-    if (window.ResourceViewer) {
-      window.ResourceViewer.open(absUrl, title, 'html');
-    } else {
-      // Fallback: فتح في تبويب جديد باستخدام الـ original open
-      var opener = window.__origOpen || function(u){ window.location.href = u; };
-      opener.call(window, absUrl, '_blank', 'noopener,noreferrer');
-    }
-  }, true); // capture phase — قبل أي handler تاني
-}
-
-// ════════════════════════════════════════════════════════
-// HTML NAV FIX C — إصلاح touch على الموبايل
-// بعض عناصر الموبايل بتحتاج touch-action: manipulation
-// ════════════════════════════════════════════════════════
-
-function _fixTouchLinks() {
-  // كل الـ divs اللي فيها onclick أو cursor:pointer
-  var clickables = document.querySelectorAll('[onclick], .dept-card, .resource-item, .link-card, .rv-btn, button');
-  clickables.forEach(function(el) {
-    el.style.touchAction = 'manipulation';
-    el.style.webkitTapHighlightColor = 'transparent';
-    // تأكد مفيش overlay بيمنع clicks
-    var currentPointer = window.getComputedStyle(el).pointerEvents;
-    if (currentPointer === 'none') {
-      el.style.pointerEvents = 'auto';
-    }
-  });
-}
-
-// ════════════════════════════════════════════════════════
-// HTML NAV FIX D — GitHub Pages: تحقق من case sensitivity
-// GitHub Pages على Linux — case sensitive!
-// ════════════════════════════════════════════════════════
-
-/**
- * normalizeGitHubPagesUrl(url)
- * GitHub Pages: لو الـ URL فيه uppercase → قد يفشل
- * الحل: استخدم URL كما هو (المستخدم يحدد الـ case الصح في DB)
- */
-function normalizeGitHubPagesUrl(url) {
-  // لا نغير الـ URL — بس نتأكد من عدم وجود double slashes
-  return url.replace(/([^:]\/)\/+/g, '$1');
-}
-
-// ════════════════════════════════════════════════════════
-// التشغيل
-// ════════════════════════════════════════════════════════
-
-// شغّل فوراً
-_initHtmlNavFix();
-
-// بعد DOMContentLoaded — أصلح الـ touch
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', function() {
-    _fixTouchLinks();
-    // أعد تطبيق على dynamic content
-    setTimeout(_fixTouchLinks, 2000);
-    setTimeout(_fixTouchLinks, 5000);
-  });
-} else {
-  _fixTouchLinks();
-  setTimeout(_fixTouchLinks, 2000);
-  setTimeout(_fixTouchLinks, 5000);
-}
-
-// expose للاستخدام الخارجي
-window._htmlNavFix = {
-  resolveUrl: resolveUrl,
-  normalizeGitHubPagesUrl: normalizeGitHubPagesUrl,
-  fixTouchLinks: _fixTouchLinks
-};
-
-console.log('%c[HTML NAV FIX v1] ✅ إصلاح ملفات HTML جاهز', 'color:#17a589;font-weight:bold');
-
-})();
-</script>
-<!-- ============================================================ -->
-<!-- نهاية HTML FILES NAVIGATION FIX v1                          -->
 <!-- ============================================================ -->
 
 </body>
