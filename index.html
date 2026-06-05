@@ -15,127 +15,26 @@
 <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;600;700;900&family=Tajawal:wght@300;400;500;700;800&display=swap" rel="stylesheet">
 <script>
 // ══════════════════════════════════════════════════════
-// [ENHANCED INIT v3]
-// تهيئة Supabase + Safe Fetch Layer
-// Chrome / Firefox / Safari / Edge / iOS / Android
+// تهيئة Supabase — متوافقة مع جميع المتصفحات
+// Chrome / Firefox / Safari / Edge / موبايل
 // ══════════════════════════════════════════════════════
 
-(function() {
-'use strict';
-
-// ─── 1. Safe Fetch Override ───────────────────────────
-// يحمي أي fetch من الانهيار بدون كسر أي request أصلية
-var _originalFetch = window.fetch;
-window.fetch = function safeFetch(input, init) {
-  try {
-    var req = _originalFetch.call(this, input, init);
-    return req.then(function(response) {
-      // نعيد Response نفسه بدون تعديل
-      return response;
-    }).catch(function(err) {
-      // خطأ في الشبكة — نعيد Response فارغ بدلاً من crash
-      console.warn('[SafeFetch] network error:', err && err.message ? err.message : String(err), '| url:', typeof input === 'string' ? input : (input && input.url ? input.url : ''));
-      // نعيد Response شبه-فارغ حتى لا يتوقف الكود
-      return new Response(JSON.stringify({ error: 'network_error', message: String(err) }), {
-        status: 0,
-        headers: { 'Content-Type': 'application/json' }
-      });
-    });
-  } catch (syncErr) {
-    console.warn('[SafeFetch] sync error:', syncErr);
-    return Promise.resolve(new Response(JSON.stringify({ error: 'sync_error' }), {
-      status: 0,
-      headers: { 'Content-Type': 'application/json' }
-    }));
-  }
-};
-
-// ─── 2. Supabase Loading Promise ──────────────────────
-// يحمّل المكتبة بعد تجهيز البيئة (fetch override أعلاه)
+// Promise يحل عند جهوزية Supabase
 window._supabaseReady = new Promise(function(resolve) {
-
-  function tryLoad(src, fallbackSrc) {
-    var s = document.createElement('script');
-    s.src = src;
-    s.crossOrigin = 'anonymous';
-    s.async = true;
-
-    s.onload = function() {
-      // تأكد أن createClient موجود قبل الحل
-      if (window.supabase && window.supabase.createClient) {
-        resolve(window.supabase);
-      } else {
-        // انتظر frame واحد إضافي
-        setTimeout(function() { resolve(window.supabase || null); }, 50);
-      }
-    };
-
-    s.onerror = function() {
-      if (fallbackSrc) {
-        tryLoad(fallbackSrc, null);
-      } else {
-        console.error('[Supabase] فشل تحميل المكتبة من كل CDNs');
-        resolve(null);
-      }
-    };
-
-    document.head.appendChild(s);
-  }
-
-  // CDN الأول ← CDN الاحتياطي
-  tryLoad(
-    'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js',
-    'https://unpkg.com/@supabase/supabase-js@2/dist/umd/supabase.js'
-  );
+  var s = document.createElement('script');
+  s.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js';
+  s.crossOrigin = 'anonymous';
+  s.onload  = function() { resolve(window.supabase); };
+  s.onerror = function() {
+    // fallback CDN
+    var s2 = document.createElement('script');
+    s2.src = 'https://unpkg.com/@supabase/supabase-js@2/dist/umd/supabase.js';
+    s2.onload  = function() { resolve(window.supabase); };
+    s2.onerror = function() { console.error('[Supabase] فشل تحميل المكتبة'); resolve(null); };
+    document.head.appendChild(s2);
+  };
+  document.head.appendChild(s);
 });
-
-// ─── 3. OAuth Hash Cleanup ────────────────────────────
-// يمنع parsing errors عند redirect callback من Google
-(function() {
-  try {
-    var hash = window.location.hash;
-    if (hash && (hash.indexOf('access_token') !== -1 || hash.indexOf('error=') !== -1)) {
-      // احتفظ بالـ hash للـ Supabase ليقرأه، لكن لا تحاول parse يدوياً
-      // بعد ما Supabase يقرأه، امسح الـ hash بهدوء
-      window._oauthCallbackDetected = true;
-    }
-  } catch(e) {}
-})();
-
-// ─── 4. Session Persistence Guard ────────────────────
-// يضمن بقاء الـ session حتى لو localStorage مقفول
-(function() {
-  try {
-    localStorage.setItem('_sb_test', '1');
-    localStorage.removeItem('_sb_test');
-  } catch(e) {
-    // localStorage محجوب (Safari Private / بعض الأجهزة)
-    // Supabase سيستخدم memory storage تلقائياً — لا نتدخل
-    console.warn('[Auth] localStorage unavailable — Supabase will use in-memory session');
-  }
-})();
-
-// ─── 5. Global Error Guard ────────────────────────────
-// أي خطأ غير متوقع لا يكسر التطبيق
-window.addEventListener('unhandledrejection', function(event) {
-  var reason = event.reason;
-  if (reason && typeof reason.message === 'string') {
-    var msg = reason.message;
-    // تجاهل أخطاء Supabase المتوقعة بهدوء
-    if (
-      msg.indexOf('Failed to fetch') !== -1 ||
-      msg.indexOf('NetworkError') !== -1 ||
-      msg.indexOf('Load failed') !== -1 ||
-      msg.indexOf('CORS') !== -1 ||
-      msg.indexOf('JSON') !== -1
-    ) {
-      console.warn('[GlobalGuard] Suppressed unhandled rejection:', msg);
-      event.preventDefault();
-    }
-  }
-});
-
-})(); // end IIFE
 </script>
 <style>
 :root {
@@ -846,15 +745,9 @@ footer strong { color: var(--accent2); }
 }
 .rv-close:hover { background: rgba(255,255,255,.32); }
 .rv-body {
-  flex: 1;
-  overflow-y: auto;
-  overflow-x: hidden;
-  position: relative;
+  flex: 1; overflow: auto; position: relative;
   background: #0d1117;
   min-height: 200px;
-  -webkit-overflow-scrolling: touch;
-  overscroll-behavior: contain;
-  touch-action: pan-y;
 }
 .rv-footer {
   padding: 10px 20px; display: flex; align-items: center; justify-content: space-between;
@@ -888,14 +781,8 @@ footer strong { color: var(--accent2); }
 
 /* PDF iframe */
 .rv-pdf-frame {
-  width: 100%;
-  height: 75vh;
-  border: none;
-  display: block;
+  width: 100%; height: 75vh; border: none; display: block;
   background: #fff;
-  -webkit-overflow-scrolling: touch;
-  overflow-y: auto;
-  touch-action: pan-y pan-x;
 }
 /* Video player */
 .rv-video {
@@ -904,12 +791,7 @@ footer strong { color: var(--accent2); }
 }
 /* YouTube / embed iframe */
 .rv-embed-frame {
-  width: 100%;
-  height: 75vh;
-  border: none;
-  display: block;
-  -webkit-overflow-scrolling: touch;
-  touch-action: pan-y pan-x;
+  width: 100%; height: 75vh; border: none; display: block;
 }
 /* Image viewer */
 .rv-image-wrap {
@@ -945,13 +827,7 @@ footer strong { color: var(--accent2); }
 
 @media(max-width: 600px) {
   .rv-modal { border-radius: 14px; max-height: 96vh; }
-  .rv-pdf-frame, .rv-embed-frame {
-    height: calc(96vh - 116px);
-    min-height: 300px;
-    overflow-y: auto;
-    -webkit-overflow-scrolling: touch;
-    touch-action: pan-y;
-  }
+  .rv-pdf-frame, .rv-embed-frame { height: 60vh; }
   .rv-video { max-height: 55vw; }
   .rv-footer { flex-direction: column; align-items: stretch; }
   .rv-footer-btns { justify-content: center; }
@@ -1022,14 +898,10 @@ footer strong { color: var(--accent2); }
   }
   .rv-pdf-frame,
   .rv-embed-frame {
-    height: calc(98vh - 116px) !important;
-    min-height: 0;
-    overflow-y: auto !important;
-    -webkit-overflow-scrolling: touch !important;
-    touch-action: pan-y !important;
+    height: calc(98vh - 120px) !important;
   }
   .rv-video {
-    max-height: calc(98vh - 116px) !important;
+    max-height: calc(98vh - 120px) !important;
   }
 }
 
@@ -1105,20 +977,12 @@ body.rv-open {
   flex: 1; width: 100%; border: none; display: block;
   background: #fff;
   -webkit-overflow-scrolling: touch;
-  overflow-y: auto;
-  touch-action: pan-y pan-x;
-  min-height: 0;
 }
 @media (max-width: 768px) {
   #native-pdf-overlay { padding: 0; align-items: flex-end; }
   #native-pdf-modal {
     border-radius: 16px 16px 0 0;
     height: 98vh; max-width: 100vw; width: 100vw;
-  }
-  #native-pdf-frame {
-    overflow-y: auto !important;
-    -webkit-overflow-scrolling: touch !important;
-    touch-action: pan-y !important;
   }
 }
 
@@ -2944,77 +2808,26 @@ async function openResource(url, title, resourceType) {
 // ==================== AUTH FUNCTIONS ====================
 
 window.loginWithGoogle = async function() {
-  // انتظر Supabase بشكل آمن
-  var db = null;
-  try {
-    db = await (window._supabaseReady || Promise.resolve(window.supabase));
-    if (!db && window.supabase) db = window.supabase;
-  } catch(e) { db = window.supabase || null; }
-
-  if (!db || !db.auth) {
-    if (typeof _showToast === 'function') {
-      _showToast('جاري تحميل النظام، حاول مجدداً بعد ثانية', 'warning');
-    } else {
-      alert('جاري التحميل، حاول مجدداً');
-    }
-    return;
-  }
-
+  if (!window.supabase) { alert('جاري التحميل، حاول مجدداً'); return; }
   // حفظ الـ navigation stack قبل الـ redirect
   try {
-    if (window.state && window.state.navigationStack) {
-      var stackData = state.navigationStack.map(function(s){ return { label: s.label }; });
-      sessionStorage.setItem('_nav_stack_labels', JSON.stringify(stackData));
-    }
+    const stackData = state.navigationStack.map(function(s){ return { label: s.label }; });
+    sessionStorage.setItem('_nav_stack_labels', JSON.stringify(stackData));
+    // حفظ آخر section_id كانت مفتوحة
     if (window._lastOpenSectionId) {
       sessionStorage.setItem('_last_section_id', String(window._lastOpenSectionId));
     }
   } catch(e) {}
-
-  // Redirect URL صحيح لجميع البيئات
-  var redirectTo = window.location.origin + window.location.pathname;
-  if (!redirectTo.endsWith('/') && !redirectTo.endsWith('.html')) {
-    redirectTo += '/';
-  }
-
-  try {
-    var result = await db.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo: redirectTo,
-        skipBrowserRedirect: false,
-        queryParams: {
-          access_type: 'offline',
-          prompt: 'consent'
-        }
-      }
-    });
-    if (result && result.error) {
-      console.error('[AUTH] Google error:', result.error.message);
-      if (typeof _showToast === 'function') {
-        _showToast('خطأ: ' + result.error.message, 'error');
-      } else {
-        alert('خطأ في تسجيل الدخول: ' + result.error.message);
-      }
-    }
-  } catch(err) {
-    console.error('[AUTH] Exception during Google login:', err);
-    if (typeof _showToast === 'function') {
-      _showToast('تحقق من اتصال الإنترنت وحاول مجدداً', 'error');
-    } else {
-      alert('تحقق من اتصال الإنترنت وحاول مجدداً');
-    }
-  }
+  const redirectTo = window.location.origin + window.location.pathname;
+  const { error } = await window.supabase.auth.signInWithOAuth({
+    provider: 'google',
+    options: { redirectTo: redirectTo, skipBrowserRedirect: false }
+  });
+  if (error) alert('خطأ في تسجيل الدخول: ' + error.message);
 };
 
 window.logoutUser = async function() {
-  try {
-    if (window.supabase && window.supabase.auth) {
-      await window.supabase.auth.signOut();
-    }
-  } catch(e) {
-    console.warn('[AUTH] signOut error:', e);
-  }
+  await window.supabase.auth.signOut();
   location.reload();
 };
 
@@ -3063,31 +2876,20 @@ function _renderUserBox(user, role) {
 
 // ── fetchUserRole: جلب الـ role من profiles ──────────────────
 async function _fetchUserRole(userId) {
-  var db = window.supabase;
-  if (!db || !userId) return null;
+  if (!window.supabase || !userId) return null;
   try {
-    var result = await db
+    var { data, error } = await window.supabase
       .from('profiles')
       .select('role')
       .eq('id', userId)
       .maybeSingle();
-    if (result && result.error) { console.warn('[AUTH] fetchUserRole error:', result.error.message); return null; }
-    return (result && result.data && result.data.role) ? result.data.role : 'user';
-  } catch(e) {
-    console.warn('[AUTH] fetchUserRole exception:', e);
-    return null;
-  }
+    if (error) { console.warn('[AUTH] fetchUserRole error:', error.message); return null; }
+    return (data && data.role) ? data.role : 'user';
+  } catch(e) { return null; }
 }
 
 window.checkUser = async function() {
-  // انتظر Supabase بشكل آمن
-  var db = await _waitForSupabase(12000);
-  if (!db) {
-    console.warn('[AUTH] checkUser: Supabase not available');
-    return;
-  }
-  // تأكد من تعيين window.supabase للاستخدام المباشر
-  if (!window.supabase) window.supabase = db;
+  if (!window.supabase) return;
 
   // ============================================================
   // [AUTH v3] onAuthStateChange — يجلب الـ role من profiles.role
@@ -3099,7 +2901,7 @@ window.checkUser = async function() {
     if (session && session.user && session.user.email) {
       var isBanned = await _isBanned(session.user.email);
       if (isBanned) {
-        try { await db.auth.signOut(); } catch(e) {}
+        await window.supabase.auth.signOut();
         _renderUserBox(null, null);
         _showBanMessage(isBanned.reason);
         return;
@@ -3116,13 +2918,6 @@ window.checkUser = async function() {
 
     // استعادة آخر صفحة بعد Google OAuth redirect
     if (event === 'SIGNED_IN') {
-      // امسح الـ hash بهدوء بعد ما Supabase يقرأه
-      try {
-        if (window._oauthCallbackDetected && window.history && window.history.replaceState) {
-          window.history.replaceState(null, '', window.location.pathname + window.location.search);
-          window._oauthCallbackDetected = false;
-        }
-      } catch(e) {}
       try {
         var lastId = sessionStorage.getItem('_last_section_id');
         sessionStorage.removeItem('_last_section_id');
@@ -3138,19 +2933,12 @@ window.checkUser = async function() {
   });
 
   // فحص الـ session الحالية عند تحميل الصفحة
-  var sessionResult;
-  try {
-    sessionResult = await db.auth.getSession();
-  } catch(e) {
-    console.warn('[AUTH] getSession error:', e);
-    sessionResult = { data: { session: null } };
-  }
-  var session = (sessionResult && sessionResult.data) ? sessionResult.data.session : null;
+  const { data: { session } } = await window.supabase.auth.getSession();
 
   if (session && session.user && session.user.email) {
     var isBanned = await _isBanned(session.user.email);
     if (isBanned) {
-      try { await db.auth.signOut(); } catch(e) {}
+      await window.supabase.auth.signOut();
       _renderUserBox(null, null);
       _showBanMessage(isBanned.reason);
       return;
@@ -6981,14 +6769,49 @@ document.addEventListener('click', function(e) {
 
 // ════════════════════════════════════════════════════════
 // FIX B — Google Login يعمل صح على كل المتصفحات
-// (الدالة الرئيسية مُعرَّفة في قسم AUTH FUNCTIONS — لا نعيد تعريفها هنا)
 // ════════════════════════════════════════════════════════
 
-// نتأكد فقط من أن _showToast متاحة قبل أي login call
-var _loginWithGoogleOriginal = window.loginWithGoogle;
 window.loginWithGoogle = async function() {
-  if (typeof _loginWithGoogleOriginal === 'function') {
-    return _loginWithGoogleOriginal();
+  var db = await (window._supabaseReady || Promise.resolve(window.supabase));
+  if (!db && window.supabase) db = window.supabase;
+  if (!db) {
+    _showToast('جاري تحميل النظام، حاول مجدداً بعد ثانية', 'warning');
+    return;
+  }
+
+  // Redirect URL صحيح لـ GitHub Pages وكل البيئات
+  var redirectTo = window.location.origin + window.location.pathname;
+  if (!redirectTo.endsWith('/') && !redirectTo.endsWith('.html')) {
+    redirectTo += '/';
+  }
+
+  // حفظ آخر section
+  try {
+    if (window.state && window.state.navigationStack) {
+      sessionStorage.setItem('_nav_stack_labels', JSON.stringify(
+        state.navigationStack.map(function(s) { return { label: s.label }; })
+      ));
+    }
+    if (window._lastOpenSectionId) {
+      sessionStorage.setItem('_last_section_id', String(window._lastOpenSectionId));
+    }
+  } catch(e) {}
+
+  try {
+    var result = await db.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: redirectTo,
+        skipBrowserRedirect: false
+      }
+    });
+    if (result.error) {
+      console.error('[AUTH] Google error:', result.error.message);
+      _showToast('خطأ: ' + result.error.message, 'error');
+    }
+  } catch(err) {
+    console.error('[AUTH] Exception:', err);
+    _showToast('تحقق من اتصال الإنترنت وحاول مجدداً', 'error');
   }
 };
 
