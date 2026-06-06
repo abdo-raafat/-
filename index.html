@@ -1667,7 +1667,13 @@ window._supabaseReady.then(function(lib) {
       console.error("❌ Supabase Connection Error:", err.message || String(err));
     });
 
-  renderHomeSections();
+  // تشغيل renderHomeSections بعد ضمان جاهزية window.supabase
+  // نستخدم setTimeout(0) لضمان أن FIX C override يكون قد تحمّل
+  setTimeout(function() {
+    if (typeof window.renderHomeSections === 'function') {
+      window.renderHomeSections();
+    }
+  }, 0);
 
   // ── Pre-warm cache: حمّل الـ root sections فوراً (بدون انتظار) ──
   // هذا يضمن أن أول click يكون فورياً من الـ cache
@@ -1758,12 +1764,18 @@ function updateBreadcrumb() {
 
 // انتظر Supabase CLIENT — يعمل على Chrome/Firefox/Safari/Edge
 async function _waitForSupabase(timeoutMs) {
-  timeoutMs = timeoutMs || 12000;
+  timeoutMs = timeoutMs || 20000; // زيادة الـ timeout لـ 20 ثانية لأجهزة الموبايل البطيئة
   // ① الحالة المثالية: client جاهز بالفعل
   if (window.supabase && typeof window.supabase.from === 'function') return window.supabase;
+  // ① أيضاً: _db جاهز لكن supabase لم يُعيَّن
+  if (window._db && typeof window._db.from === 'function') {
+    window.supabase = window._db;
+    return window.supabase;
+  }
 
-  // ② انتظر _supabaseClientReady (يُحلّ بالـ CLIENT الحقيقي فيه .from)
-  var readyPromise = window._supabaseClientReady || window._supabaseReady;
+  // ② انتظر _supabaseClientReady أولاً (يُحلّ بالـ CLIENT الحقيقي فيه .from)
+  // لا نستخدم _supabaseReady لأنه يُحلّ بالـ lib لا الـ client
+  var readyPromise = window._supabaseClientReady;
   if (readyPromise) {
     var raceTimeout = new Promise(function(_, reject) {
       setTimeout(function() { reject(new Error('timeout')); }, timeoutMs);
@@ -1800,8 +1812,8 @@ window._dataCache = {
   _pending:   {},  // منع طلبات متوازية لنفس الـ key
 };
 
-// الـ TIMEOUT الكلي لأي fetch: 8 ثوانٍ
-var _FETCH_TIMEOUT_MS = 8000;
+// الـ TIMEOUT الكلي لأي fetch: 15 ثانية (زيادة لأجهزة الموبايل)
+var _FETCH_TIMEOUT_MS = 15000;
 
 function _cacheKey(prefix, id) {
   return prefix + ':' + (id === null || id === undefined ? 'null' : String(id));
@@ -1998,14 +2010,14 @@ function buildSubSectionCard(sec) {
 
 // ==================== HOME: RENDER DYNAMIC SECTIONS ====================
 async function renderHomeSections() {
-  // منع infinite loading — لو 8 ثوانٍ بدون نتيجة نعرض fallback
+  // منع infinite loading — 20 ثانية للموبايل بدل 8
   var _loadingTimeout = setTimeout(function() {
     var el = document.getElementById('dynamic-home-sections');
     if (el && el.querySelector('.spinner')) {
       console.warn('[renderHomeSections] timeout — عرض الـ fallback');
       renderHomeFallback();
     }
-  }, 8000);
+  }, 20000);
 
   try {
     const sections = await loadSections(null);
@@ -7178,12 +7190,22 @@ window.loginWithGoogle = async function() {
 
 var _origRenderHome = window.renderHomeSections;
 window.renderHomeSections = async function() {
-  // انتظر CLIENT الجاهز (فيه .from) لا lib فقط
-  var readyP = window._supabaseClientReady || window._supabaseReady;
-  if (readyP) {
-    var client = await readyP;
-    if (client && typeof client.from === 'function' && !window.supabase) {
-      window.supabase = client;
+  // انتظر CLIENT الجاهز (فيه .from) — نستخدم _supabaseClientReady فقط
+  // لأن _supabaseReady يُحلّ بالـ lib لا الـ client
+  if (window._supabaseClientReady) {
+    try {
+      var client = await window._supabaseClientReady;
+      if (client && typeof client.from === 'function') {
+        window.supabase = window._db = client;
+      }
+    } catch(e) { console.warn('[FIX C] clientReady error:', e); }
+  }
+  // تأكد إضافي: لو supabase لسه مش جاهز انتظر polling قصير
+  if (!window.supabase || typeof window.supabase.from !== 'function') {
+    var waited = 0;
+    while ((!window.supabase || typeof window.supabase.from !== 'function') && waited < 8000) {
+      await new Promise(function(r) { setTimeout(r, 150); });
+      waited += 150;
     }
   }
   if (typeof _origRenderHome === 'function') {
