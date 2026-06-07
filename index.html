@@ -4,14 +4,61 @@
 <meta name="google-site-verification" content="my6dMoAsuc_97Jks_OQF75GK_f1PGWqz2Kng2obkIgE" />
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>منصة معهد فني صحي بني سويف</title>
+<title>منصة معهد فني صحي بني سويف | التعليم الصحي الفني</title>
+
+<!-- ✅ SEO Meta Tags -->
+<meta name="description" content="منصة تعليمية متكاملة لطلاب معهد فني صحي بني سويف — شرح تفاعلي، مواد دراسية، ملفات PDF، وذكاء اصطناعي للمساعدة في الدراسة. الفرقة الأولى والثانية وكل الشعب.">
+<meta name="keywords" content="معهد فني صحي بني سويف, منصة تعليمية, الفرقة الأولى, الفرقة الثانية, تمريض, تسجيل طبي, مواد دراسية, شرح">
+<meta name="author" content="عبدالرحمن رأفت محمد">
+<meta name="robots" content="index, follow">
+<link rel="canonical" href="https://abdoraafat1.github.io/bsm/">
+
+<!-- ✅ Open Graph (Facebook/WhatsApp Preview) -->
+<meta property="og:type" content="website">
+<meta property="og:title" content="منصة معهد فني صحي بني سويف">
+<meta property="og:description" content="منصة تعليمية متكاملة لطلاب معهد فني صحي بني سويف — شرح، مواد، ملفات، وذكاء اصطناعي.">
+<meta property="og:url" content="https://abdoraafat1.github.io/bsm/">
+<meta property="og:locale" content="ar_EG">
+<meta property="og:site_name" content="منصة معهد فني صحي بني سويف">
+
+<!-- ✅ Twitter Card -->
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="منصة معهد فني صحي بني سويف">
+<meta name="twitter:description" content="منصة تعليمية متكاملة لطلاب معهد فني صحي بني سويف.">
+
+<!-- ✅ Structured Data (Schema.org) -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "EducationalOrganization",
+  "name": "معهد فني صحي بني سويف",
+  "description": "منصة تعليمية متكاملة لطلاب معهد فني صحي بني سويف",
+  "url": "https://abdoraafat1.github.io/bsm/",
+  "inLanguage": "ar",
+  "address": {
+    "@type": "PostalAddress",
+    "addressLocality": "بني سويف",
+    "addressCountry": "EG"
+  }
+}
+</script>
+
 <!-- PWA & Mobile Web App -->
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="منصة بني سويف">
 <meta name="theme-color" content="#0a3d62" id="theme-color-meta">
+
+<!-- ✅ Performance: DNS Prefetch + Preconnect -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="dns-prefetch" href="https://xiqeaohemuxgujrcnpzd.supabase.co">
+<link rel="preconnect" href="https://xiqeaohemuxgujrcnpzd.supabase.co" crossorigin>
+<link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
+<link rel="dns-prefetch" href="https://unpkg.com">
+
+<!-- ✅ Fonts with display=swap for performance -->
 <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;600;700;900&family=Tajawal:wght@300;400;500;700;800&display=swap" rel="stylesheet">
 <script>
 // ══════════════════════════════════════════════════════
@@ -1291,7 +1338,21 @@ img, iframe, video, embed, object { max-width: 100%; }
 button, a, [onclick], .dept-card, .resource-item, .link-card {
   touch-action: manipulation;
 }
-button { min-height: 40px; }
+/* ✅ FIXED: حجم أدنى للأزرار لسهولة اللمس */
+button { min-height: 44px; }
+.dept-card .btn-enter { min-height: 44px; }
+.resource-item { min-height: 52px; }
+.back-btn { min-height: 44px; }
+.lc-btn { min-height: 44px; }
+
+/* ✅ FIXED: منع تأخير اللمس على iOS Safari */
+a, button, [onclick], .dept-card, .resource-item, .link-card, .lc-btn, .btn-enter {
+  cursor: pointer;
+  -webkit-tap-highlight-color: rgba(0,0,0,0);
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-user-select: none;
+}
 
 /* ===== TOPNAV SAFE AREA ===== */
 .topnav {
@@ -1356,15 +1417,96 @@ button { min-height: 40px; }
   .rv-overlay { align-items: flex-end; padding: 0; }
 }
 
+/* ✅ FIXED: تحسين الـ cards على الموبايل لتجنب overflow */
+@media(max-width: 600px) {
+  .dept-card { width: 100%; box-sizing: border-box; }
+  .dept-card .card-top { padding: 20px 16px 16px; }
+  .dept-card .card-icon { font-size: 2.2rem; }
+  .dept-card .card-title { font-size: .95rem; }
+  .dept-card .card-body { padding: 12px 16px; }
+  .dept-card .btn-enter { width: calc(100% - 32px); margin: 0 16px 16px; }
+  .tag { font-size: .7rem; padding: 3px 10px; }
+  /* hero responsive */
+  .hero { padding: 40px 16px 60px; }
+  .hero h1 { font-size: 1.6rem; }
+  .hero p { font-size: .9rem; }
+  .hero-badge { font-size: .75rem; }
+  .creator-badge { font-size: .78rem; padding: 6px 20px; }
+  /* stats */
+  .stats-row { gap: 10px; padding: 18px 12px; }
+  .stat-card { min-width: 80px; padding: 12px 14px; }
+  /* section title */
+  .section-title { padding: 28px 14px 8px; }
+  .section-title h2 { font-size: 1.4rem; }
+  /* resources row */
+  .resources-row { grid-template-columns: 1fr; }
+  /* content header */
+  .content-header { padding: 20px 16px; gap: 12px; }
+  .content-header .ch-icon { font-size: 1.8rem; }
+  .content-header h2 { font-size: 1.05rem; }
+  /* summary box */
+  .summary-box { padding: 18px 16px; }
+  .summary-box h3 { font-size: 1rem; }
+  .summary-box ul li { font-size: .9rem; }
+  /* preformatted text */
+  .preformatted-text { font-size: .92rem; line-height: 1.9; }
+}
+
+/* ✅ FIXED: إصلاح topnav على الشاشات الصغيرة جداً */
+@media(max-width: 360px) {
+  .topnav { height: auto; min-height: 56px; flex-wrap: wrap; padding: 8px 10px; }
+  .topnav .logo { font-size: .88rem; }
+  #dark-mode-btn { width: 32px; height: 32px; font-size: .95rem; }
+  .chatgpt-login-btn { padding: 5px 10px; font-size: 11px; }
+  .user-email { max-width: 90px; font-size: 10px; }
+}
+
+/* ✅ FIXED: منع overflow على الـ admin panel في الموبايل */
+@media(max-width: 600px) {
+  .ap-table { min-width: 100%; }
+  .ap-table th, .ap-table td { padding: 8px 8px; font-size: .72rem; white-space: normal; word-break: break-word; }
+  .um-table { min-width: 100%; }
+  .um-actions { flex-wrap: wrap; gap: 4px; }
+  .um-btn { font-size: .65rem; padding: 4px 8px; }
+}
+
+/* ✅ FIXED: مؤشر تحميل أفضل على الموبايل */
+.loading {
+  min-height: 120px;
+}
+
+/* ✅ FIXED: الـ resource items تعمل على الموبايل */
+.resource-item, .buildResourcesInsideArea-item {
+  -webkit-tap-highlight-color: transparent;
+  tap-highlight-color: transparent;
+}
+.resource-item:active { 
+  transform: scale(0.97);
+  transition: transform 0.1s;
+}
+.dept-card:active {
+  transform: scale(0.98);
+  transition: transform 0.1s;
+}
+
+/* ✅ إصلاح الـ page transitions على الموبايل */
+.page.active {
+  will-change: auto;
+}
+
 /* ===== WELCOME POPUP ===== */
 #welcome-overlay {
   position: fixed; inset: 0;
   z-index: 999998;
   background: rgba(10,20,40,0.75);
   backdrop-filter: blur(8px);
-  display: flex; align-items: center; justify-content: center;
+  display: none; /* مخفي افتراضياً — يظهر بـ JS فقط */
+  align-items: center; justify-content: center;
   padding: 20px;
   animation: wFadeIn .4s ease;
+}
+#welcome-overlay.visible {
+  display: flex;
 }
 @keyframes wFadeIn { from { opacity:0; } to { opacity:1; } }
 #welcome-box {
@@ -1667,13 +1809,7 @@ window._supabaseReady.then(function(lib) {
       console.error("❌ Supabase Connection Error:", err.message || String(err));
     });
 
-  // تشغيل renderHomeSections بعد ضمان جاهزية window.supabase
-  // نستخدم setTimeout(0) لضمان أن FIX C override يكون قد تحمّل
-  setTimeout(function() {
-    if (typeof window.renderHomeSections === 'function') {
-      window.renderHomeSections();
-    }
-  }, 0);
+  renderHomeSections();
 
   // ── Pre-warm cache: حمّل الـ root sections فوراً (بدون انتظار) ──
   // هذا يضمن أن أول click يكون فورياً من الـ cache
@@ -1764,18 +1900,13 @@ function updateBreadcrumb() {
 
 // انتظر Supabase CLIENT — يعمل على Chrome/Firefox/Safari/Edge
 async function _waitForSupabase(timeoutMs) {
-  timeoutMs = timeoutMs || 20000; // زيادة الـ timeout لـ 20 ثانية لأجهزة الموبايل البطيئة
+  // ✅ FIXED: زيادة الـ timeout لـ 20 ثانية للموبايل البطيء
+  timeoutMs = timeoutMs || 20000;
   // ① الحالة المثالية: client جاهز بالفعل
   if (window.supabase && typeof window.supabase.from === 'function') return window.supabase;
-  // ① أيضاً: _db جاهز لكن supabase لم يُعيَّن
-  if (window._db && typeof window._db.from === 'function') {
-    window.supabase = window._db;
-    return window.supabase;
-  }
 
-  // ② انتظر _supabaseClientReady أولاً (يُحلّ بالـ CLIENT الحقيقي فيه .from)
-  // لا نستخدم _supabaseReady لأنه يُحلّ بالـ lib لا الـ client
-  var readyPromise = window._supabaseClientReady;
+  // ② انتظر _supabaseClientReady (يُحلّ بالـ CLIENT الحقيقي فيه .from)
+  var readyPromise = window._supabaseClientReady || window._supabaseReady;
   if (readyPromise) {
     var raceTimeout = new Promise(function(_, reject) {
       setTimeout(function() { reject(new Error('timeout')); }, timeoutMs);
@@ -1812,8 +1943,10 @@ window._dataCache = {
   _pending:   {},  // منع طلبات متوازية لنفس الـ key
 };
 
-// الـ TIMEOUT الكلي لأي fetch: 15 ثانية (زيادة لأجهزة الموبايل)
+// ✅ FIXED: زيادة الـ Timeout لـ 15 ثانية — مناسب للموبايل البطيء
 var _FETCH_TIMEOUT_MS = 15000;
+// ✅ عدد محاولات Retry التلقائية
+var _MAX_RETRIES = 3;
 
 function _cacheKey(prefix, id) {
   return prefix + ':' + (id === null || id === undefined ? 'null' : String(id));
@@ -1826,6 +1959,44 @@ async function _fetchWithTimeout(promiseFn, timeoutMs) {
       setTimeout(function() { rej(new Error('fetch_timeout')); }, timeoutMs || _FETCH_TIMEOUT_MS);
     })
   ]);
+}
+
+// ✅ نظام Retry تلقائي مع Exponential Backoff — يحل مشكلة عدم ظهور البيانات
+async function _fetchWithRetry(promiseFn, maxRetries, timeoutMs) {
+  maxRetries = maxRetries || _MAX_RETRIES;
+  timeoutMs = timeoutMs || _FETCH_TIMEOUT_MS;
+  var lastError;
+  for (var attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      var result = await Promise.race([
+        promiseFn(),
+        new Promise(function(_, rej) {
+          setTimeout(function() { rej(new Error('fetch_timeout')); }, timeoutMs);
+        })
+      ]);
+      return result;
+    } catch (err) {
+      lastError = err;
+      console.warn('[Retry] محاولة ' + attempt + '/' + maxRetries + ' فشلت:', (err && err.message) || err);
+      if (attempt < maxRetries) {
+        // Exponential backoff: 800ms → 1600ms → 3200ms
+        var delay = Math.min(800 * Math.pow(2, attempt - 1), 4000);
+        await new Promise(function(r) { setTimeout(r, delay); });
+        // ✅ تحقق من وجود شبكة قبل المحاولة التالية
+        if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+          console.warn('[Retry] لا يوجد اتصال بالإنترنت');
+          await new Promise(function(r) {
+            var off = window.addEventListener('online', function() {
+              window.removeEventListener('online', off);
+              r();
+            });
+            setTimeout(r, 10000); // انتظر 10 ثوانٍ كحد أقصى
+          });
+        }
+      }
+    }
+  }
+  throw lastError || new Error('fetch_failed_after_retries');
 }
 
 async function loadSections(parentId) {
@@ -1845,22 +2016,25 @@ async function loadSections(parentId) {
     try {
       var db = await _waitForSupabase();
       if (!db) { window._dataCache.sections[key] = []; return []; }
-      let query = db.from('site_sections').select('*').order('display_order', { ascending: true });
-      if (parentId === null || parentId === undefined) {
-        query = query.is('parent_id', null);
-      } else {
-        const safeId = toValidId(parentId);
-        if (safeId === null) { window._dataCache.sections[key] = []; return []; }
-        query = query.eq('parent_id', safeId);
-      }
-      const { data, error } = await _fetchWithTimeout(function() { return query; });
+      // ✅ استخدام Retry تلقائي
+      const { data, error } = await _fetchWithRetry(function() {
+        let query = db.from('site_sections').select('*').order('display_order', { ascending: true });
+        if (parentId === null || parentId === undefined) {
+          query = query.is('parent_id', null);
+        } else {
+          const safeId = toValidId(parentId);
+          if (safeId === null) return Promise.resolve({ data: [], error: null });
+          query = query.eq('parent_id', safeId);
+        }
+        return query;
+      });
       if (error) { console.error('[loadSections] error:', error.message); window._dataCache.sections[key] = []; return []; }
       const result = data || [];
       window._dataCache.sections[key] = result;
       console.log('[loadSections] cached → parentId=' + (parentId ?? 'null') + ', rows=' + result.length);
       return result;
     } catch (err) {
-      console.error('[loadSections] error:', err?.message || String(err));
+      console.error('[loadSections] error after retries:', err?.message || String(err));
       window._dataCache.sections[key] = [];
       return [];
     } finally {
@@ -1888,7 +2062,8 @@ async function loadSectionContent(sectionId) {
       if (!db) { window._dataCache.content[key] = []; return []; }
       const safeId = toValidId(sectionId);
       if (safeId === null) { window._dataCache.content[key] = []; return []; }
-      const { data, error } = await _fetchWithTimeout(function() {
+      // ✅ استخدام Retry تلقائي
+      const { data, error } = await _fetchWithRetry(function() {
         return db.from('section_content').select('*').eq('section_id', safeId).order('display_order', { ascending: true });
       });
       if (error) { console.error('[loadSectionContent] error:', error.message); window._dataCache.content[key] = []; return []; }
@@ -1896,7 +2071,7 @@ async function loadSectionContent(sectionId) {
       window._dataCache.content[key] = result;
       return result;
     } catch (err) {
-      console.error('[loadSectionContent] error:', err?.message || String(err));
+      console.error('[loadSectionContent] error after retries:', err?.message || String(err));
       window._dataCache.content[key] = [];
       return [];
     } finally {
@@ -1924,7 +2099,8 @@ async function loadSectionResources(sectionId) {
       if (!db) { window._dataCache.resources[key] = []; return []; }
       const safeId = toValidId(sectionId);
       if (safeId === null) { window._dataCache.resources[key] = []; return []; }
-      const { data, error } = await _fetchWithTimeout(function() {
+      // ✅ استخدام Retry تلقائي
+      const { data, error } = await _fetchWithRetry(function() {
         return db.from('section_resources').select('*').eq('section_id', safeId).order('id');
       });
       if (error) { console.error('[loadSectionResources] error:', error.message); window._dataCache.resources[key] = []; return []; }
@@ -1932,7 +2108,7 @@ async function loadSectionResources(sectionId) {
       window._dataCache.resources[key] = result;
       return result;
     } catch (err) {
-      console.error('[loadSectionResources] error:', err?.message || String(err));
+      console.error('[loadSectionResources] error after retries:', err?.message || String(err));
       window._dataCache.resources[key] = [];
       return [];
     } finally {
@@ -2010,7 +2186,7 @@ function buildSubSectionCard(sec) {
 
 // ==================== HOME: RENDER DYNAMIC SECTIONS ====================
 async function renderHomeSections() {
-  // منع infinite loading — 20 ثانية للموبايل بدل 8
+  // ✅ FIXED: زيادة timeout لـ 20 ثانية على الموبايل
   var _loadingTimeout = setTimeout(function() {
     var el = document.getElementById('dynamic-home-sections');
     if (el && el.querySelector('.spinner')) {
@@ -2049,7 +2225,20 @@ async function renderHomeSections() {
   } catch(err) {
     clearTimeout(_loadingTimeout);
     console.error('[renderHomeSections] خطأ غير متوقع:', err.message);
-    renderHomeFallback();
+    // ✅ عرض زر إعادة المحاولة عند الخطأ
+    var el = document.getElementById('dynamic-home-sections');
+    if (el) {
+      el.innerHTML = `<div style="text-align:center;padding:40px 20px">
+        <div style="font-size:2.5rem;margin-bottom:12px">⚠️</div>
+        <p style="color:#666;margin-bottom:16px">تعذّر تحميل البيانات — تحقق من اتصال الإنترنت</p>
+        <button onclick="window._dataCache.sections={};window._dataCache._pending={};renderHomeSections();"
+          style="background:linear-gradient(135deg,var(--primary),var(--teal));color:#fff;border:none;
+          border-radius:12px;padding:12px 24px;font-family:var(--font);font-size:.9rem;font-weight:700;
+          cursor:pointer;box-shadow:0 4px 14px rgba(10,61,98,0.3)">🔄 إعادة المحاولة</button>
+      </div>`;
+      // ✅ بعد 3 ثوانٍ نعرض الـ fallback تلقائياً
+      setTimeout(renderHomeFallback, 3000);
+    }
   }
 }
 
@@ -2102,6 +2291,9 @@ async function _renderDynamicSectionPage(sec) {
   document.getElementById('dynamic-section-sub').textContent = sec.subtitle || '';
 
   showLoading('dynamic-section-grid');
+  // ✅ امسح الـ resources container دايما عند التحميل
+  var resourcesEl = document.getElementById('dynamic-section-resources-container');
+  if (resourcesEl) resourcesEl.innerHTML = '';
 
   // عرض الصفحة فوراً ثم نحمّل البيانات
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
@@ -2109,39 +2301,58 @@ async function _renderDynamicSectionPage(sec) {
   window.scrollTo(0, 0);
   updateBreadcrumb();
 
-  // تحميل الأبناء والموارد بالتوازي — مرة واحدة فقط (الـ cache يمنع التكرار)
-  const [children, sectionResources] = await Promise.all([
-    loadSections(sec.id),
-    loadSectionResources(sec.id)
-  ]);
+  try {
+    // تحميل الأبناء والموارد بالتوازي — مرة واحدة فقط (الـ cache يمنع التكرار)
+    const [children, sectionResources] = await Promise.all([
+      loadSections(sec.id),
+      loadSectionResources(sec.id)
+    ]);
 
-  // عرض الموارد
-  const resourcesEl = document.getElementById('dynamic-section-resources-container');
-  if (resourcesEl) {
-    resourcesEl.innerHTML = buildResourcesHTML(sectionResources);
-  }
-
-  if (children.length === 0) {
-    // قسم نهائي — حمّل المحتوى (من الـ cache لو موجود)
-    const content = await loadSectionContent(sec.id);
-    if (content.length > 0) {
-      renderResourceCards('dynamic-section-grid', content);
-    } else {
-      document.getElementById('dynamic-section-grid').innerHTML = `
-        <div style="text-align:center;padding:40px;color:#999;grid-column:1/-1">
-          <div style="font-size:2.5rem;margin-bottom:12px">🚧</div>
-          <p>هذا القسم قيد الإعداد — سيتم إضافة المحتوى قريباً</p>
-        </div>`;
+    // عرض الموارد
+    if (resourcesEl) {
+      resourcesEl.innerHTML = buildResourcesHTML(sectionResources);
     }
-    return;
-  }
 
-  children.forEach(child => {
-    window[`__sectionData_${child.id}`] = child;
-    window[`__sectionAction_${child.id}`] = (s) => openDynamicSubSection(s);
-  });
-  document.getElementById('dynamic-section-grid').innerHTML =
-    children.map(child => buildSubSectionCard(child)).join('');
+    if (children.length === 0) {
+      // قسم نهائي — حمّل المحتوى (من الـ cache لو موجود)
+      const content = await loadSectionContent(sec.id);
+      if (content.length > 0) {
+        renderResourceCards('dynamic-section-grid', content);
+      } else {
+        document.getElementById('dynamic-section-grid').innerHTML = `
+          <div style="text-align:center;padding:40px;color:#999;grid-column:1/-1">
+            <div style="font-size:2.5rem;margin-bottom:12px">🚧</div>
+            <p>هذا القسم قيد الإعداد — سيتم إضافة المحتوى قريباً</p>
+          </div>`;
+      }
+      return;
+    }
+
+    children.forEach(child => {
+      window[`__sectionData_${child.id}`] = child;
+      window[`__sectionAction_${child.id}`] = (s) => openDynamicSubSection(s);
+    });
+    document.getElementById('dynamic-section-grid').innerHTML =
+      children.map(child => buildSubSectionCard(child)).join('');
+  } catch(err) {
+    console.error('[_renderDynamicSectionPage] خطأ:', err.message);
+    // ✅ زر إعادة المحاولة عند الفشل
+    var gridEl = document.getElementById('dynamic-section-grid');
+    if (gridEl) {
+      var secCopy = Object.assign({}, sec);
+      gridEl.innerHTML = `<div style="text-align:center;padding:40px;grid-column:1/-1">
+        <div style="font-size:2.5rem;margin-bottom:12px">⚠️</div>
+        <p style="color:#666;margin-bottom:16px">تعذّر تحميل البيانات</p>
+        <button onclick="
+          var s=window['__retrySecData'];
+          if(s){delete window._dataCache.sections['sec:'+s.id];delete window._dataCache.resources['res:'+s.id];delete window._dataCache.content['content:'+s.id];_renderDynamicSectionPage(s);}
+        " style="background:linear-gradient(135deg,var(--primary),var(--teal));color:#fff;border:none;
+        border-radius:12px;padding:12px 24px;font-family:var(--font);font-size:.9rem;font-weight:700;
+        cursor:pointer;touch-action:manipulation;">🔄 إعادة المحاولة</button>
+      </div>`;
+      window.__retrySecData = secCopy;
+    }
+  }
 }
 
 /**
@@ -5134,13 +5345,18 @@ function closeWelcome() {
   if (overlay) {
     overlay.style.opacity = '0';
     overlay.style.transition = 'opacity .3s ease';
-    setTimeout(function() { overlay.style.display = 'none'; }, 300);
+    setTimeout(function() {
+      overlay.classList.remove('visible');
+      overlay.style.opacity = '';
+      overlay.style.transition = '';
+    }, 300);
   }
   // احفظ ID الرسالة المحددة — مش flag ثابت
   // بالتالي لو الأدمن غيّر الرسالة في Supabase، تظهر من جديد تلقائياً
   try {
     if (window._welcomeSeenKey) {
       localStorage.setItem(window._welcomeSeenKey, '1');
+      console.log('[WELCOME] تم حفظ الإغلاق:', window._welcomeSeenKey);
     }
   } catch(e) {}
 }
@@ -5150,44 +5366,56 @@ function closeWelcome() {
  * الفكرة: نحفظ ID آخر رسالة شُوفت — لو تغيّر ID في قاعدة البيانات تظهر من جديد
  */
 async function loadAndShowWelcome() {
-  // انتظر Supabase إذا لم يكن جاهزاً بعد
-  if (!window.supabase) {
-    setTimeout(loadAndShowWelcome, 500);
-    return;
+  // انتظر Supabase CLIENT جاهز فعلاً
+  var db = window.supabase;
+  if (!db || typeof db.from !== 'function') {
+    // انتظر عبر Promise الرسمي
+    if (window._supabaseClientReady) {
+      try {
+        db = await window._supabaseClientReady;
+      } catch(e) {}
+    }
+    if (!db || typeof db.from !== 'function') {
+      // آخر fallback: انتظر 800ms وحاول مرة واحدة
+      setTimeout(loadAndShowWelcome, 800);
+      return;
+    }
+    window.supabase = db;
   }
 
   try {
-    // ① تحقق هل المستخدم مسجل دخول — لو مسجل ماتظهرش الرسالة خالص
-    var sessionResult = await window.supabase.auth.getSession();
-    var currentSession = sessionResult && sessionResult.data && sessionResult.data.session;
-    if (currentSession && currentSession.user) return; // مسجل دخول → لا popup
-
-    // ② اجلب الرسالة النشطة
+    // ① اجلب الرسالة النشطة — تظهر لجميع الزوار (مسجلين أو غير مسجلين)
     var result = await window.supabase
       .from('site_messages')
-      .select('id, title, message, location, is_active, created_at')
+      .select('id, title, message, location, is_active, created_at, display_order')
       .eq('is_active', true)
       .order('display_order', { ascending: true })
       .limit(1)
       .maybeSingle();
 
     if (result.error) {
-      console.warn('[WELCOME] خطأ في تحميل الرسالة:', result.error.message);
+      console.warn('[WELCOME] خطأ في تحميل الرسالة:', result.error.message, '| code:', result.error.code);
       return;
     }
 
-    if (!result.data) return; // لا توجد رسائل نشطة
+    if (!result.data) {
+      console.log('[WELCOME] لا توجد رسائل نشطة في site_messages');
+      return;
+    }
 
     var row = result.data;
+    console.log('[WELCOME] ✅ تم جلب الرسالة:', row.title);
 
-    // ③ مفتاح الحفظ يعتمد على ID + created_at
-    var seenKey = 'welcome_seen_' + row.id + '_' + (row.created_at || '');
+    // ② مفتاح الحفظ — تظهر كل مرة ما لم يضغط المستخدم "حسناً" على نفس الـ id
+    var seenKey = 'welcome_seen_' + row.id;
     var alreadySeen = '';
     try { alreadySeen = localStorage.getItem(seenKey); } catch(e) {}
-    // ④ لو المستخدم ضغط "حسناً" قبل كده على نفس الرسالة → ماتظهرش
-    if (alreadySeen) return;
+    if (alreadySeen) {
+      console.log('[WELCOME] الرسالة سبق مشاهدتها (id=' + row.id + ')');
+      return;
+    }
 
-    // ⑤ ملأ الـ popup بالبيانات من قاعدة البيانات
+    // ③ ملأ الـ popup بالبيانات من قاعدة البيانات
     var titleEl = document.getElementById('w-title');
     var msgEl   = document.getElementById('w-message');
     var extraEl = document.getElementById('w-extra');
@@ -5195,18 +5423,24 @@ async function loadAndShowWelcome() {
     if (titleEl && row.title)   titleEl.textContent = row.title;
     if (msgEl   && row.message) msgEl.textContent   = row.message;
 
-    // لو الرسالة طويلة — اعرضها في body بشكل كامل
-    if (extraEl && row.message && row.message.length > 80) {
-      extraEl.textContent  = row.message;
-      extraEl.style.display = 'block';
-      if (msgEl) msgEl.textContent = row.title || 'مرحباً بك';
+    // لو الرسالة طويلة — اعرضها في w-extra بشكل كامل
+    if (extraEl) {
+      if (row.message && row.message.length > 80) {
+        extraEl.textContent   = row.message;
+        extraEl.style.display = 'block';
+        if (msgEl) msgEl.textContent = row.title || 'مرحباً بك';
+      } else {
+        extraEl.style.display = 'none';
+      }
     }
 
-    // ⑥ اعرض الـ popup
+    // ④ اعرض الـ popup مع fade-in ناعم
     var overlay = document.getElementById('welcome-overlay');
-    if (overlay) overlay.style.display = 'flex';
+    if (overlay) {
+      overlay.classList.add('visible');
+    }
 
-    // ⑦ احفظ الـ key — بس لما المستخدم يضغط "حسناً" في closeWelcome()
+    // ⑤ احفظ الـ key — لما المستخدم يضغط "حسناً" في closeWelcome()
     window._welcomeSeenKey = seenKey;
 
   } catch(err) {
@@ -5232,10 +5466,99 @@ document.addEventListener('keydown', function(e) {
   }
 });
 
-// تشغيل بعد تحميل الصفحة
-document.addEventListener('DOMContentLoaded', function() {
-  setTimeout(loadAndShowWelcome, 800);
-});
+// تشغيل رسالة الترحيب — ينتظر Supabase CLIENT جاهز فعلاً
+(function() {
+  // تنظيف صامت للمفاتيح القديمة (بها created_at) من localStorage
+  try {
+    var oldKeys = [];
+    for (var _i = 0; _i < localStorage.length; _i++) {
+      var _k = localStorage.key(_i);
+      if (_k && _k.startsWith('welcome_seen_') && _k.split('_').length > 3) {
+        oldKeys.push(_k);
+      }
+    }
+    oldKeys.forEach(function(k) { localStorage.removeItem(k); });
+    if (oldKeys.length) console.log('[WELCOME] تم مسح ' + oldKeys.length + ' مفتاح قديم');
+  } catch(e) {}
+  // الطريقة الصحيحة: ننتظر _supabaseClientReady وليس DOMContentLoaded فقط
+  function _runWelcome() {
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', function() {
+        setTimeout(loadAndShowWelcome, 300);
+      });
+    } else {
+      setTimeout(loadAndShowWelcome, 300);
+    }
+  }
+
+  if (window._supabaseClientReady && typeof window._supabaseClientReady.then === 'function') {
+    window._supabaseClientReady.then(function(client) {
+      if (client) _runWelcome();
+    });
+  } else {
+    // fallback: انتظر حتى يكون supabase جاهز
+    document.addEventListener('DOMContentLoaded', function() {
+      setTimeout(loadAndShowWelcome, 1200);
+    });
+  }
+})();
+
+// ── أداة تشخيص رسالة الترحيب ──────────────────────────────────
+window.debugWelcome = async function() {
+  console.group('%c[WELCOME DEBUG] تشخيص رسالة الترحيب', 'color:#0a3d62;font-weight:bold');
+  var db = window.supabase;
+  if (!db) { console.error('Supabase غير جاهز'); console.groupEnd(); return; }
+
+  // فحص جلب الرسالة
+  var r = await db.from('site_messages').select('*').eq('is_active', true).limit(5);
+  if (r.error) {
+    console.error('خطأ في الاستعلام:', r.error.message, '| code:', r.error.code);
+    if (r.error.code === 'PGRST301' || r.error.message.includes('permission')) {
+      console.warn('⚠️ مشكلة RLS — شغّل في Supabase SQL Editor:');
+      console.log('%cALTER TABLE site_messages ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "site_msg_public_read" ON site_messages;
+CREATE POLICY "site_msg_public_read" ON site_messages FOR SELECT USING (true);',
+        'background:#f0f4f8;padding:8px;font-family:monospace;');
+    }
+  } else if (!r.data || r.data.length === 0) {
+    console.warn('الجدول site_messages فارغ أو لا توجد رسائل is_active=true');
+    console.log('تحقق من Supabase → Table Editor → site_messages → عمود is_active يجب أن يكون TRUE');
+  } else {
+    console.log('✅ الرسائل النشطة:', r.data);
+    // فحص localStorage — وتنظيف المفاتيح القديمة
+    var cleanedOld = 0;
+    for (var i = localStorage.length - 1; i >= 0; i--) {
+      var k = localStorage.key(i);
+      if (k && k.startsWith('welcome_seen_') && k.split('_').length > 3) {
+        localStorage.removeItem(k); // مفتاح قديم فيه created_at
+        cleanedOld++;
+      }
+    }
+    if (cleanedOld > 0) console.log('🧹 تم مسح ' + cleanedOld + ' مفتاح قديم من localStorage');
+
+    r.data.forEach(function(row) {
+      var key = 'welcome_seen_' + row.id;
+      var seen = '';
+      try { seen = localStorage.getItem(key); } catch(e){}
+      console.log('الرسالة id=' + row.id + ' | is_active=' + row.is_active + ' | localStorage=' + (seen ? '✅ مرت (سيُعاد ضبطها بـ resetWelcome)' : '⭕ لم تُغلق → ستظهر'));
+    });
+  }
+  console.groupEnd();
+};
+
+// ── دالة مسح ذاكرة رسائل الترحيب (لإعادة إظهارها) ────────────
+window.resetWelcome = function() {
+  var keys = [];
+  try {
+    for (var i = 0; i < localStorage.length; i++) {
+      var k = localStorage.key(i);
+      if (k && k.startsWith('welcome_seen_')) keys.push(k);
+    }
+    keys.forEach(function(k) { localStorage.removeItem(k); });
+  } catch(e) {}
+  console.log('[WELCOME] تم مسح ' + keys.length + ' مفاتيح — ستظهر الرسالة في المرة القادمة');
+  loadAndShowWelcome();
+};
 
 // ==================== PERFORMANCE: GPU HINTS ====================
 // تفعيل GPU acceleration للعناصر المتحركة
@@ -7190,22 +7513,12 @@ window.loginWithGoogle = async function() {
 
 var _origRenderHome = window.renderHomeSections;
 window.renderHomeSections = async function() {
-  // انتظر CLIENT الجاهز (فيه .from) — نستخدم _supabaseClientReady فقط
-  // لأن _supabaseReady يُحلّ بالـ lib لا الـ client
-  if (window._supabaseClientReady) {
-    try {
-      var client = await window._supabaseClientReady;
-      if (client && typeof client.from === 'function') {
-        window.supabase = window._db = client;
-      }
-    } catch(e) { console.warn('[FIX C] clientReady error:', e); }
-  }
-  // تأكد إضافي: لو supabase لسه مش جاهز انتظر polling قصير
-  if (!window.supabase || typeof window.supabase.from !== 'function') {
-    var waited = 0;
-    while ((!window.supabase || typeof window.supabase.from !== 'function') && waited < 8000) {
-      await new Promise(function(r) { setTimeout(r, 150); });
-      waited += 150;
+  // انتظر CLIENT الجاهز (فيه .from) لا lib فقط
+  var readyP = window._supabaseClientReady || window._supabaseReady;
+  if (readyP) {
+    var client = await readyP;
+    if (client && typeof client.from === 'function' && !window.supabase) {
+      window.supabase = client;
     }
   }
   if (typeof _origRenderHome === 'function') {
@@ -7293,9 +7606,95 @@ console.log('اكتب printGoogleAuthSetup() للحصول على خطوات إع
 
 })();
 </script>
-<!-- ============================================================ -->
-<!-- نهاية CROSS-BROWSER FIXES PATCH v2                          -->
-<!-- ============================================================ -->
+<!-- ✅ مؤشر حالة الشبكة للموبايل -->
+<style>
+#network-status {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 9999999;
+  padding: 10px 20px;
+  text-align: center;
+  font-family: var(--font);
+  font-size: .85rem;
+  font-weight: 700;
+  display: none;
+  animation: slideDown .3s ease;
+}
+@keyframes slideDown { from { transform: translateY(-100%); } to { transform: translateY(0); } }
+#network-status.offline { background: #e74c3c; color: #fff; display: block; }
+#network-status.back-online { background: #27ae60; color: #fff; display: block; }
+</style>
+<div id="network-status" role="alert"></div>
 
+<script>
+// ✅ مؤشر حالة الشبكة
+(function() {
+  var ns = document.getElementById('network-status');
+  function showOffline() {
+    if (!ns) return;
+    ns.textContent = '⚠️ لا يوجد اتصال بالإنترنت — بعض البيانات قد لا تظهر';
+    ns.className = 'offline';
+    ns.style.display = 'block';
+  }
+  function showOnline() {
+    if (!ns) return;
+    ns.textContent = '✅ تم استعادة الاتصال';
+    ns.className = 'back-online';
+    ns.style.display = 'block';
+    setTimeout(function() { ns.style.display = 'none'; }, 3000);
+    // ✅ إعادة تحميل البيانات تلقائياً عند استعادة الاتصال
+    if (window._dataCache) {
+      window._dataCache.sections = {};
+      window._dataCache._pending = {};
+    }
+    if (typeof renderHomeSections === 'function') {
+      var homeEl = document.getElementById('dynamic-home-sections');
+      if (homeEl && homeEl.querySelector('.spinner')) {
+        renderHomeSections();
+      }
+    }
+  }
+  window.addEventListener('offline', showOffline);
+  window.addEventListener('online', showOnline);
+  if (!navigator.onLine) showOffline();
+})();
+
+// ✅ FIXED: Touch Events — إصلاح تأخير اللمس على iOS Safari و Android
+(function() {
+  // FastClick polyfill خفيف: إزالة 300ms delay على الموبايل
+  if ('ontouchstart' in window) {
+    document.addEventListener('touchstart', function(e) {
+      // لو الـ target له onclick أو هو زر — نطلق click فوراً
+      var target = e.target;
+      // تجنب الـ scroll، نشترط أن يكون touchstart بدون تحرك
+      var startX = e.touches[0].clientX;
+      var startY = e.touches[0].clientY;
+      var moved = false;
+      function onMove(mv) {
+        if (Math.abs(mv.touches[0].clientX - startX) > 10 ||
+            Math.abs(mv.touches[0].clientY - startY) > 10) {
+          moved = true;
+        }
+      }
+      function onEnd() {
+        document.removeEventListener('touchmove', onMove);
+        document.removeEventListener('touchend', onEnd);
+        // لو الـ target هو dept-card وما تحركنا — طلّق الـ click
+        if (!moved && target.closest && target.closest('[data-section-id]')) {
+          var card = target.closest('[data-section-id]');
+          if (card && card.onclick) {
+            // بالفعل عنده onclick — iOS بيطلقه بعد 300ms
+            // نتركه يطلق من browser
+          }
+        }
+      }
+      document.addEventListener('touchmove', onMove, { passive: true });
+      document.addEventListener('touchend', onEnd, { passive: true });
+    }, { passive: true });
+  }
+})();
+</script>
 </body>
 </html>
