@@ -1247,25 +1247,52 @@ body.content-protected .rv-image-wrap {
 body.content-protected .rv-image-wrap img {
   pointer-events: auto !important;
 }
-/* ===== FIX: MOBILE PDF SCROLL ===== */
-/* منع تجميد التمرير في PDF على الموبايل */
-#native-pdf-pdfjs-wrapper,
-#native-pdf-frame,
+/* ===== FIX: MOBILE PDF SCROLL — COMPREHENSIVE ===== */
+/* wrapper الرئيسي — يأخذ باقي الارتفاع ويسمح بالتمرير */
+#native-pdf-pdfjs-wrapper {
+  flex: 1 !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  -webkit-overflow-scrolling: touch !important;
+  touch-action: pan-y pinch-zoom !important;
+  overscroll-behavior: contain !important;
+  min-height: 0 !important;
+  position: relative !important;
+}
+/* iframe الـ PDF على ديسكتوب */
+#native-pdf-frame {
+  flex: 1 !important;
+  width: 100% !important;
+  border: none !important;
+  min-height: 0 !important;
+  overflow: auto !important;
+  -webkit-overflow-scrolling: touch !important;
+  touch-action: pan-y !important;
+}
+/* الـ modal نفسه — يمنع overflow الخارجي لكن يسمح للداخل */
+#native-pdf-modal {
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+  touch-action: pan-y !important;
+}
+/* الـ overlay لا يمنع touch events الداخلية */
+#native-pdf-overlay {
+  touch-action: auto !important;
+}
+/* canvas داخل PDF.js — يجب ألا يمنع الـ scroll */
+#native-pdf-pdfjs-wrapper canvas {
+  display: block !important;
+  touch-action: pan-y pinch-zoom !important;
+  pointer-events: none !important;
+}
+/* rv-pdf-frame */
 .rv-pdf-frame,
 .rv-embed-frame {
   -webkit-overflow-scrolling: touch !important;
   touch-action: pan-y !important;
+  overflow: auto !important;
   overscroll-behavior: contain;
-}
-/* الـ modal الخارجي لا يمنع الـ scroll الداخلي */
-#native-pdf-modal,
-.rv-modal {
-  touch-action: pan-y;
-}
-/* الـ overlay يسمح بتمرير المحتوى الداخلي */
-#native-pdf-overlay,
-.rv-overlay {
-  touch-action: none;
 }
 /* منع pointer-events: none على الـ content protection من كسر الـ scroll */
 body.content-protected #native-pdf-pdfjs-wrapper,
@@ -1273,30 +1300,45 @@ body.content-protected #native-pdf-frame,
 body.content-protected .rv-pdf-frame,
 body.content-protected .rv-embed-frame {
   pointer-events: auto !important;
-  touch-action: pan-y !important;
+  touch-action: pan-y pinch-zoom !important;
   -webkit-overflow-scrolling: touch !important;
+}
+body.content-protected #native-pdf-pdfjs-wrapper canvas {
+  pointer-events: none !important;
 }
 
 /* ===== FIX: BREADCRUMB MOBILE ===== */
+.breadcrumb {
+  -webkit-overflow-scrolling: touch;
+  overflow-x: auto;
+  overflow-y: hidden;
+  white-space: nowrap;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  display: flex;
+  flex-wrap: nowrap;
+}
+.breadcrumb::-webkit-scrollbar { display: none; }
+.breadcrumb span,
+.breadcrumb .sep { flex-shrink: 0; white-space: nowrap; }
+
 @media (max-width: 768px) {
   .breadcrumb {
-    max-width: calc(100vw - 180px);
+    max-width: calc(100vw - 175px);
     font-size: .76rem;
   }
-  .topnav {
-    gap: 8px;
-  }
+  .topnav { gap: 8px; }
 }
 @media (max-width: 480px) {
   .breadcrumb {
-    max-width: calc(100vw - 150px);
-    font-size: .72rem;
+    max-width: calc(100vw - 140px);
+    font-size: .70rem;
   }
-  .breadcrumb .sep {
-    flex-shrink: 0;
-  }
-  .breadcrumb span {
-    flex-shrink: 0;
+}
+@media (max-width: 360px) {
+  .breadcrumb {
+    max-width: calc(100vw - 120px);
+    font-size: .66rem;
   }
 }
 
@@ -1536,7 +1578,6 @@ a, button, [onclick], .dept-card, .resource-item, .link-card, .lc-btn, .btn-ente
 
 /* ===== MOBILE BREADCRUMB FIX ===== */
 @media(max-width: 480px) {
-  .breadcrumb { display: none; }
   .topnav .logo div:first-child { display: none; }
   .topnav .logo { font-size: 1rem; }
 }
@@ -1676,7 +1717,6 @@ html, body {
   .chatgpt-login-btn { padding: 6px 10px; font-size: 11px; gap: 4px; }
   .user-email { max-width: 80px; font-size: 10px; }
   .logout-btn { padding: 5px 9px; font-size: 11px; }
-  .breadcrumb { display: none; }
 }
 
 /* ── Cards Mobile ── */
@@ -1952,6 +1992,7 @@ table { table-layout: auto; }
     <strong>منصة معهد فني صحي بني سويف</strong><br>
     تم إنشاء هذه المنصة بواسطة <strong>عبدالرحمن رأفت محمد</strong><br>
     شعبة تسجيل طبي وإحصاء — دفعة 2025<br>
+    📞 للتواصل: <a href="tel:01147908978" style="color:var(--accent2);font-weight:700;text-decoration:none;">01147908978</a><br>
     جميع الحقوق محفوظة © 2025
   </footer>
 </div>
@@ -1963,6 +2004,36 @@ table { table-layout: auto; }
     <div class="page-header">
       <h2>🔗 روابط وجروبات مهمة</h2>
       <p>أهم الروابط والجروبات الرسمية والمهمة لطلاب المعاهد الفنية الصحية</p>
+    </div>
+
+    <div style="margin-bottom: 30px;">
+      <h3 class="links-section-title">📞 تواصل مع المنصة</h3>
+      <div class="link-card lc-blue">
+        <div class="lc-top">
+          <div class="lc-icon">📱</div>
+          <div class="lc-info">
+            <h3>عبدالرحمن رأفت محمد</h3>
+            <p>منشئ المنصة — للإبلاغ عن مشاكل أو اقتراحات أو إضافة محتوى</p>
+          </div>
+        </div>
+        <div class="lc-footer">
+          <span class="lc-url">01147908978</span>
+          <a href="tel:01147908978" class="lc-btn" style="background:linear-gradient(135deg,#1a3a5c,#2471a3);color:#fff;border:none;cursor:pointer;font-family:inherit;text-decoration:none;display:inline-flex;align-items:center;padding:8px 16px;border-radius:8px;font-size:.85rem;font-weight:700;">📞 اتصل الآن</a>
+        </div>
+      </div>
+      <div class="link-card lc-green">
+        <div class="lc-top">
+          <div class="lc-icon">💬</div>
+          <div class="lc-info">
+            <h3>واتساب</h3>
+            <p>تواصل عبر واتساب للرد السريع</p>
+          </div>
+        </div>
+        <div class="lc-footer">
+          <span class="lc-url">wa.me/201147908978</span>
+          <a href="https://wa.me/201147908978" target="_blank" rel="noopener" class="lc-btn" style="background:linear-gradient(135deg,#1a5c2a,#25a346);color:#fff;border:none;cursor:pointer;font-family:inherit;text-decoration:none;display:inline-flex;align-items:center;padding:8px 16px;border-radius:8px;font-size:.85rem;font-weight:700;">💬 واتساب</a>
+        </div>
+      </div>
     </div>
 
     <div style="margin-bottom: 30px;">
@@ -6176,8 +6247,8 @@ var NativePDFViewer = (function() {
       // wrapper قابل للتمرير بالكامل
       bodyHtml =
         '<div id="native-pdf-pdfjs-wrapper" ' +
-        'style="flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;touch-action:pan-y;' +
-        'background:#525659;padding:12px;box-sizing:border-box;min-height:0;">' +
+        'style="flex:1;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;touch-action:pan-y pinch-zoom;' +
+        'overscroll-behavior:contain;background:#525659;padding:12px;box-sizing:border-box;min-height:0;position:relative;">' +
         '</div>';
     } else {
       bodyHtml =
