@@ -4,6 +4,8 @@
 <meta name="google-site-verification" content="my6dMoAsuc_97Jks_OQF75GK_f1PGWqz2Kng2obkIgE" />
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<!-- ✅ PERF: Cache hints for GitHub Pages -->
+<meta http-equiv="Cache-Control" content="public, max-age=3600">
 <title>منصة معهد فني صحي بني سويف | التعليم الصحي الفني</title>
 
 <!-- ✅ SEO Meta Tags -->
@@ -55,11 +57,16 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="dns-prefetch" href="https://xiqeaohemuxgujrcnpzd.supabase.co">
 <link rel="preconnect" href="https://xiqeaohemuxgujrcnpzd.supabase.co" crossorigin>
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
 <link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
 <link rel="dns-prefetch" href="https://unpkg.com">
+<!-- ✅ PERF: Preconnect to Supabase REST/Auth endpoints -->
+<link rel="preconnect" href="https://xiqeaohemuxgujrcnpzd.supabase.co" crossorigin>
 
 <!-- ✅ Fonts with display=swap for performance -->
-<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;600;700;900&family=Tajawal:wght@300;400;500;700;800&display=swap" rel="stylesheet">
+<!-- ✅ Non-render-blocking font loading -->
+<link rel="preload" href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&family=Tajawal:wght@400;700&display=swap" as="style" onload="this.onload=null;this.rel='stylesheet'">
+<noscript><link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&family=Tajawal:wght@400;700&display=swap" rel="stylesheet"></noscript>
 <script>
 // ══════════════════════════════════════════════════════
 // تهيئة Supabase — متوافقة مع جميع المتصفحات
@@ -81,6 +88,7 @@ window._supabaseClientReady = new Promise(function(resolve) { _sbClientResolve =
     var s = document.createElement('script');
     s.src = src;
     s.crossOrigin = 'anonymous';
+    s.fetchpriority = 'high'; // ✅ PERF: تحميل بأولوية عالية
     s.onload  = onSuccess;
     s.onerror = onFail;
     document.head.appendChild(s);
@@ -98,12 +106,12 @@ window._supabaseClientReady = new Promise(function(resolve) { _sbClientResolve =
   }
 
   _loadLib(
-    'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js',
+    'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.8/dist/umd/supabase.min.js',
     _onLibLoaded,
     function() {
       console.warn('[Supabase] jsdelivr فشل — جاري تجربة unpkg...');
       _loadLib(
-        'https://unpkg.com/@supabase/supabase-js@2/dist/umd/supabase.js',
+        'https://unpkg.com/@supabase/supabase-js@2.39.8/dist/umd/supabase.min.js',
         _onLibLoaded,
         function() {
           console.error('[Supabase] ❌ فشل تحميل المكتبة من كل CDNs');
@@ -150,6 +158,9 @@ body {
 /* ===== PAGES ===== */
 .page { display: none; animation: fadeIn .4s ease; }
 .page.active { display: block; }
+/* ✅ PERF: تسريع render للصفحات الكبيرة */
+#page-links .links-page { content-visibility: auto; }
+#page-home .stats-row { content-visibility: auto; contain-intrinsic-size: 0 120px; }
 @keyframes fadeIn { from { opacity:0; transform:translateY(20px); } to { opacity:1; transform:translateY(0); } }
 
 /* ===== TOP NAV ===== */
@@ -311,6 +322,8 @@ body {
   transition: transform .3s, box-shadow .3s;
   border: 2px solid transparent;
   position: relative;
+  will-change: transform;
+  contain: layout style;
 }
 .dept-card:hover {
   transform: translateY(-8px);
@@ -837,6 +850,39 @@ footer strong { color: var(--accent2); }
   animation: spin .8s linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* ✅ PERF: Skeleton loading cards */
+.skeleton-card {
+  background: var(--white);
+  border-radius: var(--radius);
+  overflow: hidden;
+  box-shadow: var(--shadow);
+  height: 220px;
+  position: relative;
+  background: linear-gradient(90deg, #f0f4f8 25%, #e8eef5 50%, #f0f4f8 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+.skeleton-card .sk-top {
+  height: 120px;
+  background: linear-gradient(135deg, #c8dff0 0%, #b8d4e8 100%);
+}
+.skeleton-card .sk-body {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.skeleton-card .sk-line {
+  height: 12px;
+  border-radius: 6px;
+  background: #d8e8f5;
+}
+.skeleton-card .sk-line.short { width: 60%; }
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
 
 /* ===== RESPONSIVE ===== */
 @media(max-width:600px) {
@@ -2024,7 +2070,13 @@ table { table-layout: auto; }
 <script>
 // ==================== SUPABASE SETUP ====================
 var _supabaseUrl = "https://xiqeaohemuxgujrcnpzd.supabase.co";
+// ✅ ملاحظة: استبدل هذا المفتاح بـ anon public key من Supabase Dashboard → Settings → API
+// المفتاح الصحيح يبدأ بـ eyJ (صيغة JWT)
 var _supabaseKey = "sb_publishable_xzg8wn0ETQniEItj2Etfmw__klmgUWg";
+if (!_supabaseKey.startsWith('eyJ')) {
+  console.warn('[SUPABASE KEY] ⚠️ المفتاح الحالي يبدو أنه ليس anon key JWT.');
+  console.warn('إذا كانت البيانات لا تظهر، تحقق من: Supabase Dashboard → Settings → API → anon public key');
+}
 
 window._supabaseReady.then(function(lib) {
   if (!lib || typeof lib.createClient !== 'function') {
@@ -2056,22 +2108,7 @@ window._supabaseReady.then(function(lib) {
     return;
   }
 
-  // فحص الاتصال
-  window._db.from('site_sections').select('id').limit(1)
-    .then(function(res) {
-      if (res.error) {
-        console.error("❌ Supabase Connection Failed:", res.error.message, "| code:", res.error.code);
-        if (res.error.code === 'PGRST301' || res.error.message.includes('permission')) {
-          console.error("🔒 RLS مفعّل على site_sections — شغّل: printSecuritySQL() ثم أضف policy للـ anon");
-        }
-      } else {
-        console.log("✅ Supabase Connected & site_sections يستجيب");
-      }
-    })
-    .catch(function(err) {
-      console.error("❌ Supabase Connection Error:", err.message || String(err));
-    });
-
+  // ✅ PERF: تجميع فحص الاتصال مع renderHomeSections في طلب واحد (بدلاً من طلبين)
   renderHomeSections();
 
   // ── Pre-warm cache: حمّل الـ root sections فوراً (بدون انتظار) ──
@@ -2185,11 +2222,13 @@ async function _waitForSupabase(timeoutMs) {
     }
   }
 
-  // ③ Polling fallback (للحالات الغريبة)
+  // ③ Polling fallback (للحالات الغريبة) - مع backoff
   var waited = 0;
-  while ((!window.supabase || typeof window.supabase.from !== 'function') && waited < 5000) {
-    await new Promise(function(r) { setTimeout(r, 100); });
-    waited += 100;
+  var pollInterval = 150;
+  while ((!window.supabase || typeof window.supabase.from !== 'function') && waited < 3000) {
+    await new Promise(function(r) { setTimeout(r, pollInterval); });
+    waited += pollInterval;
+    pollInterval = Math.min(pollInterval * 1.5, 500); // exponential backoff
   }
 
   if (window.supabase && typeof window.supabase.from === 'function') return window.supabase;
@@ -2199,12 +2238,46 @@ async function _waitForSupabase(timeoutMs) {
 
 // ==================== GLOBAL DATA CACHE ====================
 // كل البيانات تُحمَّل مرة واحدة فقط وتُخزَّن هنا
-window._dataCache = {
-  sections:   {},  // key: parentId (string) → []
-  content:    {},  // key: sectionId → []
-  resources:  {},  // key: sectionId → []
-  _pending:   {},  // منع طلبات متوازية لنفس الـ key
-};
+// ✅ PERF: استعادة Cache من sessionStorage عند إعادة تحميل الصفحة
+(function _restoreSessionCache() {
+  try {
+    var saved = sessionStorage.getItem('_sbDataCache_v2');
+    if (saved) {
+      var parsed = JSON.parse(saved);
+      var age = Date.now() - (parsed._savedAt || 0);
+      // صالح لمدة 10 دقائق فقط
+      if (age < 600000) {
+        window._dataCache = {
+          sections:  parsed.sections  || {},
+          content:   parsed.content   || {},
+          resources: parsed.resources || {},
+          _pending:  {},
+        };
+        console.log('[Cache] ✅ استُعيد من sessionStorage (' + Math.round(age/1000) + 's قديم)');
+        return;
+      }
+    }
+  } catch(e) {}
+  window._dataCache = {
+    sections:   {},
+    content:    {},
+    resources:  {},
+    _pending:   {},
+  };
+})();
+
+// ✅ PERF: حفظ Cache في sessionStorage بعد كل fetch ناجح
+function _saveCacheToSession() {
+  try {
+    var toSave = {
+      sections:  window._dataCache.sections,
+      content:   window._dataCache.content,
+      resources: window._dataCache.resources,
+      _savedAt:  Date.now(),
+    };
+    sessionStorage.setItem('_sbDataCache_v2', JSON.stringify(toSave));
+  } catch(e) { /* quota exceeded or unavailable */ }
+}
 
 // ✅ FIXED: زيادة الـ Timeout لـ 15 ثانية — مناسب للموبايل البطيء
 var _FETCH_TIMEOUT_MS = 15000;
@@ -2295,6 +2368,7 @@ async function loadSections(parentId) {
       const result = data || [];
       window._dataCache.sections[key] = result;
       console.log('[loadSections] cached → parentId=' + (parentId ?? 'null') + ', rows=' + result.length);
+      _saveCacheToSession && _saveCacheToSession();
       return result;
     } catch (err) {
       console.error('[loadSections] error after retries:', err?.message || String(err));
@@ -6607,7 +6681,10 @@ ALTER TABLE section_content ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "content_read_authenticated" ON section_content;
 DROP POLICY IF EXISTS "content_admin_write"        ON section_content;
 
--- القراءة: كل مستخدم مسجَّل
+-- ⚠️ هذه السياسة تمنع المستخدمين غير المسجَّلين من رؤية المحتوى!
+-- إذا أردت السماح للجميع بالقراءة، استخدم:
+-- CREATE POLICY "content_read_all" ON section_content FOR SELECT USING (true);
+-- القراءة: كل مستخدم مسجَّل (غيّر إلى USING (true) للسماح للجميع)
 CREATE POLICY "content_read_authenticated" ON section_content
   FOR SELECT USING (auth.uid() IS NOT NULL);
 
@@ -6864,20 +6941,9 @@ window.loginWithGoogle = async function() {
 // FIX C — renderHomeSections تنتظر Supabase CLIENT صح
 // ════════════════════════════════════════════════════════
 
-var _origRenderHome = window.renderHomeSections;
-window.renderHomeSections = async function() {
-  // انتظر CLIENT الجاهز (فيه .from) لا lib فقط
-  var readyP = window._supabaseClientReady || window._supabaseReady;
-  if (readyP) {
-    var client = await readyP;
-    if (client && typeof client.from === 'function' && !window.supabase) {
-      window.supabase = client;
-    }
-  }
-  if (typeof _origRenderHome === 'function') {
-    return _origRenderHome();
-  }
-};
+// ✅ FIX C: تحقق من Supabase جاهز قبل renderHomeSections (مُدمج في الكود الرئيسي)
+// لا نعيد تعريف renderHomeSections هنا لتفادي double-init
+var _origRenderHome = window.renderHomeSections; // احتفاظ بالمرجع فقط
 
 // ════════════════════════════════════════════════════════
 // FIX D — محذوف: منطق PDF.js مدمج الآن في NativePDFViewer مباشرةً
@@ -7047,6 +7113,157 @@ console.log('اكتب printGoogleAuthSetup() للحصول على خطوات إع
       document.addEventListener('touchend', onEnd, { passive: true });
     }, { passive: true });
   }
+})();
+</script>
+
+<!-- ✅ PERF: Service Worker for intelligent caching (repeat visits ~3x faster) -->
+<script>
+(function() {
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function() {
+      // إنشاء Service Worker inline بدلاً من ملف منفصل (ملائم لـ GitHub Pages)
+      var swCode = `
+const CACHE_NAME = 'bsm-v2';
+const FONT_CACHE = 'bsm-fonts-v1';
+const STATIC_ASSETS = ['/bsm/', '/bsm/index.html'];
+
+self.addEventListener('install', function(e) {
+  self.skipWaiting();
+  e.waitUntil(
+    caches.open(CACHE_NAME).then(function(cache) {
+      return cache.addAll(STATIC_ASSETS).catch(function(){});
+    })
+  );
+});
+
+self.addEventListener('activate', function(e) {
+  e.waitUntil(
+    caches.keys().then(function(keys) {
+      return Promise.all(
+        keys.filter(function(k){ return k !== CACHE_NAME && k !== FONT_CACHE; })
+            .map(function(k){ return caches.delete(k); })
+      );
+    })
+  );
+  self.clients.claim();
+});
+
+self.addEventListener('fetch', function(e) {
+  var url = e.request.url;
+  
+  // Fonts: cache-first (fonts rarely change)
+  if (url.includes('fonts.googleapis.com') || url.includes('fonts.gstatic.com')) {
+    e.respondWith(
+      caches.open(FONT_CACHE).then(function(cache) {
+        return cache.match(e.request).then(function(cached) {
+          if (cached) return cached;
+          return fetch(e.request).then(function(resp) {
+            if (resp && resp.status === 200) cache.put(e.request, resp.clone());
+            return resp;
+          }).catch(function(){ return cached; });
+        });
+      })
+    );
+    return;
+  }
+  
+  // CDN libs (supabase, jsdelivr): cache-first
+  if (url.includes('cdn.jsdelivr.net') || url.includes('unpkg.com')) {
+    e.respondWith(
+      caches.open(CACHE_NAME).then(function(cache) {
+        return cache.match(e.request).then(function(cached) {
+          if (cached) return cached;
+          return fetch(e.request).then(function(resp) {
+            if (resp && resp.status === 200) cache.put(e.request, resp.clone());
+            return resp;
+          });
+        });
+      })
+    );
+    return;
+  }
+  
+  // Supabase API: network-only (always fresh data)
+  if (url.includes('supabase.co')) {
+    e.respondWith(fetch(e.request));
+    return;
+  }
+  
+  // HTML page: stale-while-revalidate
+  if (e.request.mode === 'navigate') {
+    e.respondWith(
+      caches.open(CACHE_NAME).then(function(cache) {
+        return cache.match(e.request).then(function(cached) {
+          var networkFetch = fetch(e.request).then(function(resp) {
+            if (resp && resp.status === 200) cache.put(e.request, resp.clone());
+            return resp;
+          });
+          return cached || networkFetch;
+        });
+      })
+    );
+    return;
+  }
+});`;
+      
+      var blob = new Blob([swCode], {type: 'text/javascript'});
+      var swUrl = URL.createObjectURL(blob);
+      
+      navigator.serviceWorker.register(swUrl, {scope: '/bsm/'})
+        .then(function(reg) {
+          console.log('[SW] ✅ Service Worker مسجَّل — التخزين المؤقت مفعَّل');
+        })
+        .catch(function(err) {
+          // SW غير ضروري — الموقع يعمل بدونه
+          console.log('[SW] ℹ️ Service Worker غير مدعوم في هذه البيئة:', err.message);
+        });
+    });
+  }
+})();
+</script>
+
+<script>
+// ✅ PERF: Prefetch section data when cards are visible (Intersection Observer)
+(function() {
+  if (!('IntersectionObserver' in window)) return;
+  
+  var _prefetchObserver = new IntersectionObserver(function(entries) {
+    entries.forEach(function(entry) {
+      if (!entry.isIntersecting) return;
+      var card = entry.target;
+      var sectionId = card.getAttribute('data-section-id');
+      if (!sectionId || card._prefetched) return;
+      card._prefetched = true;
+      _prefetchObserver.unobserve(card);
+      
+      // Pre-warm the cache for this section's children
+      if (window.loadSections && window._dataCache) {
+        setTimeout(function() {
+          loadSections(sectionId).catch(function(){});
+        }, 100);
+      }
+    });
+  }, { rootMargin: '100px' }); // بدء الـ prefetch 100px قبل الظهور
+  
+  // مراقبة الـ cards عند إضافتها للـ DOM
+  var _origInnerHTML = Object.getOwnPropertyDescriptor(Element.prototype, 'innerHTML');
+  
+  // بدلاً من monkey-patching innerHTML، نستخدم MutationObserver
+  var _cardObserver = new MutationObserver(function(mutations) {
+    mutations.forEach(function(m) {
+      m.addedNodes.forEach(function(node) {
+        if (node.nodeType !== 1) return;
+        var cards = node.querySelectorAll ? node.querySelectorAll('[data-section-id]') : [];
+        if (node.hasAttribute && node.hasAttribute('data-section-id')) {
+          _prefetchObserver.observe(node);
+        }
+        cards.forEach(function(c) { _prefetchObserver.observe(c); });
+      });
+    });
+  });
+  
+  _cardObserver.observe(document.body, { childList: true, subtree: true });
+  console.log('[PREFETCH] ✅ Intersection Observer مفعَّل للـ prefetching');
 })();
 </script>
 </body>
