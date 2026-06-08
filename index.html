@@ -182,8 +182,16 @@ body {
   gap: 6px;
   font-size: .82rem;
   opacity: .85;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  white-space: nowrap;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  max-width: calc(100vw - 220px);
+  padding-bottom: 2px;
 }
+.breadcrumb::-webkit-scrollbar { display: none; }
 .breadcrumb span { cursor: pointer; transition: color .2s; }
 .breadcrumb span:hover { color: var(--accent2); text-decoration: underline; }
 .breadcrumb .sep { opacity: .5; }
@@ -491,11 +499,14 @@ body {
 }
 
 /* ===== AI ASSISTANT ===== */
+/* ===== AI ASSISTANT — Mobile First ===== */
 .ai-widget {
   position: fixed;
   bottom: 24px;
   left: 24px;
   z-index: 9999;
+  bottom: calc(24px + var(--safe-bottom, 0px));
+  left: max(24px, calc(24px + var(--safe-left, 0px)));
 }
 .ai-toggle {
   width: 60px; height: 60px;
@@ -507,86 +518,146 @@ body {
   box-shadow: 0 6px 24px rgba(231,76,60,0.5);
   transition: transform .3s;
   border: 3px solid #fff;
+  touch-action: manipulation;
 }
 .ai-toggle:hover { transform: scale(1.1) rotate(10deg); }
+.ai-toggle:active { transform: scale(0.95); }
+
+/* Panel — Desktop */
 .ai-panel {
-  position: absolute;
-  bottom: 74px;
-  left: 0;
-  width: 340px;
+  position: fixed;
+  bottom: 96px;
+  left: 24px;
+  width: min(360px, calc(100vw - 32px));
+  max-height: 70vh;
   background: #fff;
   border-radius: 20px;
-  box-shadow: 0 20px 60px rgba(10,61,98,0.2);
+  box-shadow: 0 20px 60px rgba(10,61,98,0.25);
   overflow: hidden;
   display: none;
+  flex-direction: column;
   border: 1.5px solid #d5e8f5;
+  z-index: 99998;
 }
-.ai-panel.open { display: flex; flex-direction: column; animation: fadeIn .3s ease; }
+.ai-panel.open { display: flex; animation: aiPanelIn .3s cubic-bezier(.16,1,.3,1); }
+@keyframes aiPanelIn { from { opacity:0; transform:translateY(20px) scale(.97); } to { opacity:1; transform:none; } }
+
+/* Panel Header */
 .ai-panel-head {
   background: linear-gradient(135deg, var(--primary), var(--teal));
   color: #fff;
-  padding: 16px 18px;
+  padding: 12px 14px;
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
+  flex-shrink: 0;
 }
 .ai-panel-head .ai-avatar {
-  width: 38px; height: 38px;
+  width: 36px; height: 36px;
   background: rgba(255,255,255,0.2);
   border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
-  font-size: 1.3rem;
+  font-size: 1.2rem;
+  flex-shrink: 0;
 }
-.ai-panel-head .ai-name { font-weight: 700; font-size: .95rem; }
-.ai-panel-head .ai-status { font-size: .72rem; opacity: .8; }
+.ai-panel-head .ai-head-info { flex: 1; min-width: 0; }
+.ai-panel-head .ai-name { font-weight: 700; font-size: .9rem; }
+.ai-panel-head .ai-status { font-size: .68rem; opacity: .8; }
+.ai-head-actions { display: flex; gap: 6px; flex-shrink: 0; }
+.ai-minimize-btn, .ai-close-btn {
+  width: 30px; height: 30px;
+  background: rgba(255,255,255,.18);
+  border: none; border-radius: 50%;
+  color: #fff; font-size: .9rem;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: background .2s;
+  touch-action: manipulation;
+  min-height: 30px;
+}
+.ai-minimize-btn:hover, .ai-close-btn:hover { background: rgba(255,255,255,.35); }
+
+/* Messages */
 .ai-messages {
   flex: 1;
-  height: 260px;
   overflow-y: auto;
-  padding: 16px;
+  padding: 14px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  min-height: 0;
 }
-.msg { max-width: 85%; }
+.msg { max-width: 88%; }
 .msg.bot { align-self: flex-start; }
 .msg.user { align-self: flex-end; }
 .msg-bubble {
-  padding: 10px 14px;
+  padding: 9px 13px;
   border-radius: 14px;
   font-size: .84rem;
   line-height: 1.6;
+  word-break: break-word;
 }
 .msg.bot .msg-bubble { background: var(--light); color: var(--text); border-bottom-right-radius: 4px; }
 .msg.user .msg-bubble { background: linear-gradient(135deg, var(--primary), var(--teal)); color: #fff; border-bottom-left-radius: 4px; }
+
+/* Input */
 .ai-input-row {
   display: flex;
   gap: 8px;
-  padding: 12px 14px;
+  padding: 10px 12px;
   border-top: 1px solid #e3eaf5;
+  flex-shrink: 0;
 }
 .ai-input {
   flex: 1;
   border: 1.5px solid #d5e8f5;
-  border-radius: 10px;
-  padding: 9px 13px;
+  border-radius: 12px;
+  padding: 10px 13px;
   font-family: var(--font);
-  font-size: .84rem;
+  font-size: .85rem;
   outline: none;
   direction: rtl;
+  min-height: 44px;
+  background: #f8fbff;
 }
-.ai-input:focus { border-color: var(--primary); }
+.ai-input:focus { border-color: var(--primary); background: #fff; }
 .ai-send {
-  background: var(--primary);
+  background: linear-gradient(135deg, var(--primary), var(--teal));
   color: #fff;
   border: none;
-  border-radius: 10px;
-  width: 40px;
+  border-radius: 12px;
+  width: 44px;
+  min-height: 44px;
   font-size: 1.1rem;
   cursor: pointer;
-  transition: background .2s;
+  transition: opacity .2s;
+  touch-action: manipulation;
+  flex-shrink: 0;
 }
-.ai-send:hover { background: var(--teal); }
+.ai-send:hover { opacity: .88; }
+.ai-send:active { opacity: .7; }
+
+/* Mobile: Full-screen sheet */
+@media(max-width: 600px) {
+  .ai-panel {
+    position: fixed !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    max-height: 80vh !important;
+    border-radius: 20px 20px 0 0 !important;
+    border-left: none !important;
+    border-right: none !important;
+    border-bottom: none !important;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  .ai-messages { max-height: calc(80vh - 140px); }
+  .ai-input { font-size: .9rem; }
+}
 
 /* ===== BREADCRUMB NAV ===== */
 .back-btn {
@@ -772,7 +843,7 @@ footer strong { color: var(--accent2); }
   .topnav { height: 56px; padding: 0 14px; }
   .cards-grid { padding: 16px 14px 40px; gap: 14px; }
   .content-page, .selector-page { padding: 16px 12px 50px; }
-  .ai-panel { width: 290px; }
+  /* ai-panel width: handled in mobile-first CSS */
   .content-area { padding: 18px; }
 }
 
@@ -827,6 +898,8 @@ footer strong { color: var(--accent2); }
   flex: 1; overflow: auto; position: relative;
   background: #0d1117;
   min-height: 200px;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
 }
 .rv-footer {
   padding: 10px 20px; display: flex; align-items: center; justify-content: space-between;
@@ -862,6 +935,9 @@ footer strong { color: var(--accent2); }
 .rv-pdf-frame {
   width: 100%; height: 75vh; border: none; display: block;
   background: #fff;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
 }
 /* Video player */
 .rv-video {
@@ -993,6 +1069,8 @@ body.rv-open {
 .rv-pdf-frame,
 .rv-embed-frame {
   -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+  overflow: auto;
 }
 
 /* نبذة إشارة Swipe للإغلاق على الموبايل */
@@ -1055,7 +1133,10 @@ body.rv-open {
 #native-pdf-frame {
   flex: 1; width: 100%; border: none; display: block;
   background: #fff;
+  overflow: auto;
   -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+  min-height: 0;
 }
 @media (max-width: 768px) {
   #native-pdf-overlay { padding: 0; align-items: flex-end; }
@@ -1120,23 +1201,63 @@ body.content-protected .rv-image-wrap {
 body.content-protected .rv-image-wrap img {
   pointer-events: auto !important;
 }
-/* Allow admin selection */
-body.is-admin,
-body.is-admin * {
-  -webkit-user-select: text !important;
-  -moz-user-select: text !important;
-  user-select: text !important;
+/* ===== FIX: MOBILE PDF SCROLL ===== */
+/* منع تجميد التمرير في PDF على الموبايل */
+#native-pdf-pdfjs-wrapper,
+#native-pdf-frame,
+.rv-pdf-frame,
+.rv-embed-frame {
+  -webkit-overflow-scrolling: touch !important;
+  touch-action: pan-y !important;
+  overscroll-behavior: contain;
 }
-body.is-admin img {
-  -webkit-user-drag: auto !important;
+/* الـ modal الخارجي لا يمنع الـ scroll الداخلي */
+#native-pdf-modal,
+.rv-modal {
+  touch-action: pan-y;
+}
+/* الـ overlay يسمح بتمرير المحتوى الداخلي */
+#native-pdf-overlay,
+.rv-overlay {
+  touch-action: none;
+}
+/* منع pointer-events: none على الـ content protection من كسر الـ scroll */
+body.content-protected #native-pdf-pdfjs-wrapper,
+body.content-protected #native-pdf-frame,
+body.content-protected .rv-pdf-frame,
+body.content-protected .rv-embed-frame {
   pointer-events: auto !important;
-  -webkit-touch-callout: default !important;
+  touch-action: pan-y !important;
+  -webkit-overflow-scrolling: touch !important;
 }
+
+/* ===== FIX: BREADCRUMB MOBILE ===== */
+@media (max-width: 768px) {
+  .breadcrumb {
+    max-width: calc(100vw - 180px);
+    font-size: .76rem;
+  }
+  .topnav {
+    gap: 8px;
+  }
+}
+@media (max-width: 480px) {
+  .breadcrumb {
+    max-width: calc(100vw - 150px);
+    font-size: .72rem;
+  }
+  .breadcrumb .sep {
+    flex-shrink: 0;
+  }
+  .breadcrumb span {
+    flex-shrink: 0;
+  }
+}
+
 </style>
 
 <!-- ============================================================ -->
 <!-- ADDITIONS: Dark Mode + PWA + Mobile + Welcome Popup         -->
-<!-- لا يُعدَّل أي كود أعلاه — هذه إضافات فقط                  -->
 <!-- ============================================================ -->
 <style>
 /* ===== SAFE AREA & PWA VARIABLES ===== */
@@ -1391,19 +1512,7 @@ a, button, [onclick], .dept-card, .resource-item, .link-card, .lc-btn, .btn-ente
   .link-card .lc-footer { padding: 8px 14px 14px; }
   .stat-card { padding: 14px 16px; min-width: 100px; }
   .stat-card .num { font-size: 1.6rem; }
-  /* AI Panel Full Screen on mobile */
-  .ai-panel {
-    position: fixed !important;
-    inset: 0 !important;
-    bottom: 0 !important;
-    left: 0 !important;
-    width: 100% !important;
-    height: 100% !important;
-    border-radius: 0 !important;
-    max-height: 100% !important;
-    z-index: 99998 !important;
-  }
-  .ai-messages { height: calc(100vh - 180px); }
+  /* AI Panel mobile: handled in main ai-panel CSS above */
   .rv-modal {
     border-radius: 16px 16px 0 0;
     max-height: 94vh;
@@ -1493,6 +1602,156 @@ a, button, [onclick], .dept-card, .resource-item, .link-card, .lc-btn, .btn-ente
 .page.active {
   will-change: auto;
 }
+
+/* ====================================================
+   MOBILE FIRST — إصلاحات شاملة للموبايل
+   ==================================================== */
+
+/* منع أي Overflow أفقي في أي ظرف */
+*, *::before, *::after {
+  box-sizing: border-box;
+  max-width: 100%;
+}
+html, body {
+  overflow-x: hidden !important;
+  max-width: 100vw;
+}
+
+/* ── Topnav Mobile ── */
+@media(max-width: 480px) {
+  .topnav {
+    height: 56px;
+    padding: 0 12px;
+    gap: 6px;
+  }
+  .topnav .logo .icon { font-size: 1.5rem; }
+  .topnav .logo { font-size: .9rem; gap: 6px; }
+  #dark-mode-btn { width: 34px; height: 34px; font-size: 1rem; }
+  .chatgpt-login-btn { padding: 6px 10px; font-size: 11px; gap: 4px; }
+  .user-email { max-width: 80px; font-size: 10px; }
+  .logout-btn { padding: 5px 9px; font-size: 11px; }
+  .breadcrumb { display: none; }
+}
+
+/* ── Cards Mobile ── */
+@media(max-width: 480px) {
+  .cards-grid, .home-cards-grid {
+    grid-template-columns: 1fr !important;
+    padding: 10px 10px 40px !important;
+    gap: 10px !important;
+  }
+  .dept-card { width: 100%; }
+  .dept-card .btn-enter { min-height: 48px; font-size: .9rem; }
+}
+
+/* ── Stats Mobile ── */
+@media(max-width: 480px) {
+  .stats-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    padding: 14px 10px;
+  }
+  .stat-card { min-width: unset; padding: 12px 10px; }
+  .stat-card .num { font-size: 1.5rem; }
+}
+
+/* ── Hero Mobile ── */
+@media(max-width: 480px) {
+  .hero { padding: 32px 14px 48px; }
+  .hero h1 { font-size: 1.45rem; }
+  .hero p { font-size: .85rem; }
+}
+
+/* ── Admin Panel Mobile ── */
+@media(max-width: 600px) {
+  #admin-panel { padding: 0 !important; }
+  .ap-modal { border-radius: 0 !important; min-height: 100vh; }
+  .ap-nav { padding: 0; }
+  .ap-nav-btn { font-size: .72rem; padding: 10px 8px; }
+  .ap-section-heading { font-size: .88rem; }
+  .ap-table { font-size: .72rem; }
+  .ap-table th, .ap-table td { padding: 6px; }
+}
+
+/* ── Resource Viewer Mobile ── */
+@media(max-width: 480px) {
+  .rv-header { padding: 12px 14px; gap: 8px; }
+  .rv-title { font-size: .82rem; }
+  .rv-footer { padding: 8px 12px; gap: 6px; }
+  .rv-btn { padding: 7px 12px; font-size: .75rem; }
+}
+
+/* ── Quiz / Test pages ── */
+@media(max-width: 480px) {
+  .quiz-container, .test-container { padding: 12px !important; }
+  .quiz-option, .test-option { font-size: .88rem; padding: 10px 12px; min-height: 48px; }
+}
+
+/* ── Content Page Mobile ── */
+@media(max-width: 480px) {
+  .content-page { padding: 10px 8px 60px; }
+  .content-area { padding: 14px 12px; border-radius: 12px; }
+  .content-header { padding: 16px 14px; gap: 10px; border-radius: 12px; }
+  .content-header .ch-icon { font-size: 1.6rem; }
+  .content-header h2 { font-size: .95rem; }
+  .resources-row { grid-template-columns: 1fr; gap: 10px; }
+  .resource-item { padding: 13px 14px; min-height: 56px; }
+  .summary-box { padding: 16px 14px; }
+  .back-btn { padding: 10px 14px; min-height: 48px; }
+}
+
+/* ── Modals & Overlays ── */
+@media(max-width: 480px) {
+  #welcome-box { border-radius: 16px; }
+  #welcome-box .w-header { padding: 24px 20px 20px; }
+  #welcome-box .w-body { padding: 18px 20px; }
+  #welcome-box .w-features li { font-size: .82rem; }
+}
+
+/* ── Notifications Mobile ── */
+@media(max-width: 480px) {
+  .notif-panel { width: calc(100vw - 20px) !important; right: 10px !important; left: 10px !important; }
+}
+
+/* ── Touch targets — minimum 48px everywhere ── */
+@media(max-width: 768px) {
+  button, [onclick], .resource-item, .dept-card .btn-enter,
+  .back-btn, .lc-btn, .rv-btn, .ai-send,
+  .ai-minimize-btn, .ai-close-btn {
+    min-height: 44px;
+  }
+  input, select, textarea {
+    font-size: 16px !important; /* منع التكبير التلقائي على iOS */
+  }
+}
+
+/* ── Dark mode: AI panel ── */
+[data-theme="dark"] .ai-panel {
+  background: var(--bg-card);
+  border-color: var(--border-color);
+}
+[data-theme="dark"] .ai-input {
+  background: var(--bg-input);
+  border-color: var(--border-color);
+  color: var(--text-main);
+}
+[data-theme="dark"] .ai-input-row { border-top-color: var(--border-color); }
+[data-theme="dark"] .msg.bot .msg-bubble {
+  background: var(--bg-input);
+  color: var(--text-main);
+}
+
+/* ── إزالة أي Scroll أفقي ── */
+.ap-modal, .rv-modal, #native-pdf-modal,
+.content-page, .links-page, .selector-page {
+  overflow-x: hidden;
+}
+table { table-layout: auto; }
+@media(max-width: 600px) {
+  table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+}
+
 
 /* ===== WELCOME POPUP ===== */
 #welcome-overlay {
@@ -1737,12 +1996,16 @@ a, button, [onclick], .dept-card, .resource-item, .link-card, .lc-btn, .btn-ente
 
 <!-- ==================== AI ASSISTANT ==================== -->
 <div class="ai-widget">
-  <div class="ai-panel" id="ai-panel">
+  <div class="ai-panel" id="ai-panel" role="dialog" aria-label="المساعد الذكي">
     <div class="ai-panel-head">
       <div class="ai-avatar">🤖</div>
-      <div>
+      <div class="ai-head-info">
         <div class="ai-name">المساعد الذكي</div>
         <div class="ai-status">🟢 متاح الآن — 24/7</div>
+      </div>
+      <div class="ai-head-actions">
+        <button class="ai-minimize-btn" onclick="minimizeAI()" title="تصغير" aria-label="تصغير">—</button>
+        <button class="ai-close-btn" onclick="closeAI()" title="إغلاق" aria-label="إغلاق">✕</button>
       </div>
     </div>
     <div class="ai-messages" id="ai-messages">
@@ -1752,7 +2015,7 @@ a, button, [onclick], .dept-card, .resource-item, .link-card, .lc-btn, .btn-ente
     </div>
     <div class="ai-input-row">
       <input class="ai-input" id="ai-input" type="text" placeholder="اكتب سؤالك هنا..." onkeydown="if(event.key==='Enter')sendAI()">
-      <button class="ai-send" onclick="sendAI()">➤</button>
+      <button class="ai-send" onclick="sendAI()" aria-label="إرسال">➤</button>
     </div>
   </div>
   <div class="ai-toggle" onclick="toggleAI()" title="المساعد الذكي">🤖</div>
@@ -2657,6 +2920,8 @@ const AI_RESPONSES = [
 ];
 let aiIdx = 0;
 
+function closeAI() { var p=document.getElementById("ai-panel"); if(p) p.classList.remove("open"); }
+function minimizeAI() { closeAI(); }
 function toggleAI() {
   document.getElementById('ai-panel').classList.toggle('open');
 }
@@ -3225,9 +3490,9 @@ function openResource(url, title, resourceType) {
 
   var rt = (resourceType || '').toLowerCase();
 
-  // ── الروابط الخارجية: فتح فوري بدون أي loading أو fetch ──
+  // ── الروابط الخارجية: عرض داخل الموقع في iframe ──
   if (rt === 'link' || rt === 'html' || rt === 'external_link') {
-    (window._origWindowOpen || window.open).call(window, url, '_blank', 'noopener,noreferrer');
+    ResourceViewer.open(url, title, 'html');
     return;
   }
 
@@ -3247,7 +3512,7 @@ function openResource(url, title, resourceType) {
   );
 
   if (!isMedia) {
-    (window._origWindowOpen || window.open).call(window, url, '_blank', 'noopener,noreferrer');
+    ResourceViewer.open(url, title, 'html');
     return;
   }
 
@@ -3310,33 +3575,11 @@ window.logoutUser = async function() {
 // ============================================================
 
 // ── فحص الاشتراك النشط للمستخدم العادي ──────────────────────
-async function _checkAndApplySubscription(userId) {
-  if (!window.supabase || !userId) return false;
-  try {
-    var today = new Date().toISOString().split('T')[0];
-    var { data, error } = await window.supabase
-      .from('subscriptions')
-      .select('id, status, end_date')
-      .eq('user_id', userId)
-      .eq('status', 'active')
-      .gte('end_date', today)
-      .maybeSingle();
-    if (error) { console.warn('[SUB CHECK] error:', error.message); return false; }
-    if (data) {
-      // اشتراك نشط → أزل الحماية
-      document.body.classList.remove('content-protected');
-      console.log('[SUB CHECK] ✅ اشتراك نشط — تم رفع الحماية');
-      return true;
-    } else {
-      // لا اشتراك نشط → أبق الحماية
-      document.body.classList.add('content-protected');
-      console.log('[SUB CHECK] ⛔ لا يوجد اشتراك نشط');
-      return false;
-    }
-  } catch(e) {
-    console.warn('[SUB CHECK] exception:', e.message);
-    return false;
-  }
+// المحتوى مجاني للجميع — لا يوجد فحص اشتراك
+function _checkAndApplySubscription(userId) {
+  // كل المحتوى متاح بدون اشتراك
+  document.body.classList.remove('content-protected');
+  return Promise.resolve(true);
 }
 
 function _renderUserBox(user, role) {
@@ -3346,7 +3589,7 @@ function _renderUserBox(user, role) {
     window._isAdminUser = false;
     window._currentUserRole = null;
     document.body.classList.remove('is-admin');
-    document.body.classList.add('content-protected');
+    document.body.classList.remove('content-protected'); // المحتوى مجاني للجميع
     box.innerHTML = '<button class="chatgpt-login-btn" onclick="loginWithGoogle()">🔐 دخول</button>';
     return;
   }
@@ -4047,7 +4290,7 @@ window.checkBanStatus = async function(email) {
     <nav class="ap-nav" role="tablist">
       <button class="ap-nav-btn active" onclick="apSwitchTab('dashboard')" id="ap-tab-dashboard" role="tab">📊 Dashboard</button>
       <button class="ap-nav-btn" onclick="apSwitchTab('requests')"  id="ap-tab-requests"  role="tab">📝 Requests</button>
-      <button class="ap-nav-btn" onclick="apSwitchTab('subscriptions')" id="ap-tab-subscriptions" role="tab">🎓 Subscriptions</button>
+      
       <button class="ap-nav-btn" onclick="apSwitchTab('usermgmt')"  id="ap-tab-usermgmt"  role="tab">👥 إدارة المستخدمين</button>
       <button class="ap-nav-btn" onclick="apSwitchTab('users')"     id="ap-tab-users"     role="tab">🔒 الحظر</button>
       <button class="ap-nav-btn" onclick="apSwitchTab('messages')"  id="ap-tab-messages"  role="tab">💬 Messages</button>
@@ -4062,7 +4305,7 @@ window.checkBanStatus = async function(email) {
         <div class="ap-section-heading">📊 نظرة عامة على المنصة</div>
         <div class="ap-stats-grid" id="ap-dashboard-stats">
           <div class="ap-stat-card"><div class="ap-stat-icon">👥</div><div class="ap-stat-num" id="ap-stat-users">—</div><div class="ap-stat-lbl">إجمالي المستخدمين</div></div>
-          <div class="ap-stat-card"><div class="ap-stat-icon">🎓</div><div class="ap-stat-num" id="ap-stat-subs">—</div><div class="ap-stat-lbl">الاشتراكات الكلية</div></div>
+          
           <div class="ap-stat-card"><div class="ap-stat-icon">⏳</div><div class="ap-stat-num" id="ap-stat-pending">—</div><div class="ap-stat-lbl">طلبات معلقة</div></div>
           <div class="ap-stat-card"><div class="ap-stat-icon">✅</div><div class="ap-stat-num" id="ap-stat-active">—</div><div class="ap-stat-lbl">اشتراكات نشطة</div></div>
           <div class="ap-stat-card"><div class="ap-stat-icon">💬</div><div class="ap-stat-num" id="ap-stat-msgs">—</div><div class="ap-stat-lbl">الرسائل</div></div>
@@ -5328,7 +5571,15 @@ function toggleDarkMode() {
       saved = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
     } catch(e) { saved = 'light'; }
   }
-  applyTheme(saved);
+  // نطبّق data-theme على الـ html مباشرةً (لا يحتاج DOM)
+  document.documentElement.setAttribute('data-theme', saved);
+  // نحدّث الزر بعد تحميل DOM
+  document.addEventListener('DOMContentLoaded', function() {
+    var btn = document.getElementById('dark-mode-btn');
+    var meta = document.getElementById('theme-color-meta');
+    if (btn)  btn.textContent = (saved === 'dark') ? '☀️' : '🌙';
+    if (meta) meta.setAttribute('content', (saved === 'dark') ? '#0f1923' : '#0a3d62');
+  });
   try {
     window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function(e) {
       var manual = '';
@@ -5515,9 +5766,7 @@ window.debugWelcome = async function() {
     console.error('خطأ في الاستعلام:', r.error.message, '| code:', r.error.code);
     if (r.error.code === 'PGRST301' || r.error.message.includes('permission')) {
       console.warn('⚠️ مشكلة RLS — شغّل في Supabase SQL Editor:');
-      console.log('%cALTER TABLE site_messages ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "site_msg_public_read" ON site_messages;
-CREATE POLICY "site_msg_public_read" ON site_messages FOR SELECT USING (true);',
+      console.log('%cALTER TABLE site_messages ENABLE ROW LEVEL SECURITY;\nDROP POLICY IF EXISTS "site_msg_public_read" ON site_messages;\nCREATE POLICY "site_msg_public_read" ON site_messages FOR SELECT USING (true);',
         'background:#f0f4f8;padding:8px;font-family:monospace;');
     }
   } else if (!r.data || r.data.length === 0) {
@@ -5853,8 +6102,8 @@ var NativePDFViewer = (function() {
       // wrapper قابل للتمرير بالكامل
       bodyHtml =
         '<div id="native-pdf-pdfjs-wrapper" ' +
-        'style="flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;' +
-        'background:#525659;padding:12px;box-sizing:border-box;">' +
+        'style="flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;touch-action:pan-y;' +
+        'background:#525659;padding:12px;box-sizing:border-box;min-height:0;">' +
         '</div>';
     } else {
       bodyHtml =
@@ -5894,10 +6143,10 @@ var NativePDFViewer = (function() {
         var ok = await _renderPdfJs(finalUrl, wrapper);
         // Fallback: Google Docs Viewer لو PDF.js فشل
         if (!ok) {
-          wrapper.style.cssText = 'flex:1;display:flex;flex-direction:column;overflow:hidden;';
+          wrapper.style.cssText = 'flex:1;display:flex;flex-direction:column;overflow:hidden;min-height:0;';
           wrapper.innerHTML =
             '<iframe src="https://docs.google.com/viewer?url=' + encodeURIComponent(finalUrl) +
-            '&embedded=true" style="width:100%;flex:1;border:none;min-height:70vh;"></iframe>';
+            '&embedded=true" style="width:100%;flex:1;border:none;min-height:70vh;overflow:auto;-webkit-overflow-scrolling:touch;touch-action:pan-y;"></iframe>';
         }
       }
     } else if (isFirefox) {
@@ -5934,8 +6183,8 @@ var NativePDFViewer = (function() {
 
   // ── 1. الحماية الافتراضية لغير المسجّلين والطلاب ──────────────────
   function applyProtection() {
-    if (window._isAdminUser) return; // الأدمن مُعفى
-    document.body.classList.add('content-protected');
+    // المحتوى مجاني للجميع — لا حماية
+    document.body.classList.remove('content-protected');
   }
 
   document.addEventListener('DOMContentLoaded', applyProtection);
@@ -6017,909 +6266,13 @@ var NativePDFViewer = (function() {
   // لكن لا نلغي نتيجة فحص الاشتراك لو المستخدم مسجّل دخول
   document.addEventListener('DOMContentLoaded', function() {
     setTimeout(function() {
-      if (!window._isAdminUser && !window._currentUserRole) {
-        // غير مسجّل دخول على الإطلاق → حماية فورية
-        document.body.classList.add('content-protected');
-      }
-      // لو مسجّل دخول (user عادي) → _checkAndApplySubscription هي المسؤولة
+      // المحتوى مجاني للجميع — لا حماية
+      document.body.classList.remove('content-protected');
     }, 1500);
   });
 })();
 </script>
 
-<!-- ============================================================ -->
-<!-- SUPABASE SUBSCRIPTIONS SYSTEM v1                             -->
-<!-- يعمل جنباً إلى جنب مع نظام LocalStorage الموجود            -->
-<!-- لا يحذف أي كود قديم — إضافة فقط                            -->
-<!-- ============================================================ -->
-<style>
-/* ===== SUBSCRIPTION TOAST ===== */
-#sub-toast-container {
-  position: fixed;
-  top: 80px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 2147483640;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  pointer-events: none;
-  width: max-content;
-  max-width: 94vw;
-}
-.sub-toast {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  background: #fff;
-  border-radius: 14px;
-  padding: 13px 20px;
-  box-shadow: 0 8px 32px rgba(10,61,98,0.22);
-  font-family: 'Cairo','Tajawal',sans-serif;
-  font-size: .9rem;
-  font-weight: 600;
-  color: #1a2a3a;
-  pointer-events: all;
-  border-right: 5px solid #0a3d62;
-  animation: subToastIn .35s cubic-bezier(.16,1,.3,1);
-  min-width: 260px;
-  direction: rtl;
-}
-.sub-toast.success { border-color: #17a589; }
-.sub-toast.error   { border-color: #e74c3c; }
-.sub-toast.warning { border-color: #f39c12; }
-.sub-toast.info    { border-color: #2471a3; }
-.sub-toast.hiding  { animation: subToastOut .3s ease forwards; }
-.sub-toast .st-icon { font-size: 1.4rem; flex-shrink: 0; }
-.sub-toast .st-text { flex: 1; line-height: 1.5; }
-.sub-toast .st-close {
-  background: none; border: none; cursor: pointer;
-  color: #aaa; font-size: 1rem; padding: 0 2px;
-  flex-shrink: 0;
-}
-@keyframes subToastIn  { from { opacity:0; transform:translateY(-16px) scale(.95); } to { opacity:1; transform:none; } }
-@keyframes subToastOut { to   { opacity:0; transform:translateY(-12px) scale(.95); } }
-
-/* ===== SUBSCRIPTION MODAL ===== */
-#sub-modal-overlay {
-  display: none;
-  position: fixed; inset: 0; z-index: 2147483645;
-  background: rgba(10,20,40,0.85);
-  backdrop-filter: blur(6px);
-  align-items: center; justify-content: center;
-  padding: 16px;
-  animation: rvFadeIn .25s ease;
-  direction: rtl;
-  font-family: 'Cairo','Tajawal',sans-serif;
-}
-#sub-modal-overlay.open { display: flex; }
-#sub-modal-box {
-  background: #fff;
-  border-radius: 22px;
-  width: 100%; max-width: 480px;
-  box-shadow: 0 30px 80px rgba(0,0,0,.45);
-  overflow: hidden;
-  animation: rvSlideUp .35s cubic-bezier(.16,1,.3,1);
-}
-.sub-modal-head {
-  background: linear-gradient(135deg,#0a3d62,#17a589);
-  padding: 24px 28px 20px;
-  color: #fff;
-}
-.sub-modal-head h3 {
-  font-size: 1.2rem; font-weight: 900; margin-bottom: 4px;
-}
-.sub-modal-head p { font-size: .82rem; opacity: .85; }
-.sub-modal-body { padding: 24px 28px; }
-.sub-plan-cards {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-  margin-bottom: 20px;
-}
-.sub-plan-card {
-  border: 2px solid #e3eaf5;
-  border-radius: 14px;
-  padding: 16px 14px;
-  cursor: pointer;
-  transition: border-color .2s, box-shadow .2s, transform .2s;
-  text-align: center;
-  position: relative;
-}
-.sub-plan-card:hover {
-  border-color: #0a3d62;
-  box-shadow: 0 4px 18px rgba(10,61,98,.12);
-  transform: translateY(-2px);
-}
-.sub-plan-card.selected {
-  border-color: #17a589;
-  background: linear-gradient(135deg,#eaf4fb,#d5f0eb);
-  box-shadow: 0 4px 18px rgba(23,165,137,.2);
-}
-.sub-plan-card .sp-badge {
-  position: absolute; top: -10px; right: 12px;
-  background: linear-gradient(135deg,#e74c3c,#c0392b);
-  color: #fff; border-radius: 20px;
-  padding: 3px 10px; font-size: .68rem; font-weight: 700;
-}
-.sub-plan-card .sp-icon { font-size: 1.8rem; margin-bottom: 6px; }
-.sub-plan-card .sp-name { font-size: .88rem; font-weight: 800; color: #0a3d62; }
-.sub-plan-card .sp-price { font-size: 1.1rem; font-weight: 900; color: #17a589; margin-top: 4px; }
-.sub-plan-card .sp-period { font-size: .72rem; color: #888; }
-.sub-field-row { margin-bottom: 14px; }
-.sub-field-row label {
-  display: block; font-size: .8rem; font-weight: 700;
-  color: #0a3d62; margin-bottom: 5px;
-}
-.sub-field-row input, .sub-field-row select {
-  width: 100%; padding: 10px 13px;
-  border: 1.5px solid #d5e8f5; border-radius: 10px;
-  font-family: inherit; font-size: .84rem;
-  outline: none; background: #f8fbff;
-  transition: border-color .2s;
-  box-sizing: border-box;
-}
-.sub-field-row input:focus, .sub-field-row select:focus {
-  border-color: #0a3d62;
-  box-shadow: 0 0 0 3px rgba(10,61,98,.08);
-}
-.sub-modal-footer {
-  display: flex; gap: 10px;
-  padding: 0 28px 24px;
-}
-.sub-btn-submit {
-  flex: 1; padding: 13px;
-  background: linear-gradient(135deg,#0a3d62,#17a589);
-  color: #fff; border: none; border-radius: 12px;
-  font-family: inherit; font-size: .92rem; font-weight: 800;
-  cursor: pointer; transition: opacity .2s;
-}
-.sub-btn-submit:hover { opacity: .88; }
-.sub-btn-submit:disabled {
-  opacity: .5; cursor: not-allowed;
-}
-.sub-btn-cancel {
-  padding: 13px 20px;
-  background: #f0f4f8; color: #0a3d62;
-  border: 1.5px solid #d5e8f5; border-radius: 12px;
-  font-family: inherit; font-size: .88rem; font-weight: 700;
-  cursor: pointer; transition: background .2s;
-}
-.sub-btn-cancel:hover { background: #e3eaf5; }
-.sub-session-timer {
-  text-align: center;
-  font-size: .75rem;
-  color: #e74c3c;
-  margin-bottom: 14px;
-  font-weight: 700;
-  min-height: 18px;
-}
-.sub-progress {
-  height: 3px;
-  background: linear-gradient(90deg,#0a3d62,#17a589);
-  width: 0%;
-  transition: width .4s ease;
-  border-radius: 3px;
-  margin-bottom: 16px;
-}
-
-/* ===== MY SUBSCRIPTION WIDGET ===== */
-#my-sub-widget {
-  display: none;
-  background: linear-gradient(135deg,#eaf4fb,#d5f0eb);
-  border: 2px solid #b0ddd3;
-  border-radius: 14px;
-  padding: 14px 18px;
-  margin: 16px 28px;
-  font-family: 'Cairo','Tajawal',sans-serif;
-  direction: rtl;
-}
-#my-sub-widget.visible { display: flex; align-items: center; gap: 12px; }
-.msw-icon { font-size: 1.6rem; flex-shrink: 0; }
-.msw-info { flex: 1; }
-.msw-name { font-size: .9rem; font-weight: 800; color: #0a3d62; }
-.msw-expiry { font-size: .75rem; color: #555; margin-top: 2px; }
-.msw-status {
-  font-size: .72rem; font-weight: 700;
-  padding: 3px 10px; border-radius: 20px;
-}
-.msw-status.active   { background: #d5f0eb; color: #0b7a5e; }
-.msw-status.expired  { background: #fde8cc; color: #9a3e00; }
-.msw-status.pending  { background: #fff3cd; color: #856404; }
-
-@media(max-width:600px) {
-  .sub-plan-cards { grid-template-columns: 1fr; }
-  #sub-modal-box { border-radius: 16px; }
-  .sub-modal-body, .sub-modal-footer { padding-right: 18px; padding-left: 18px; }
-}
-</style>
-
-<!-- Toast Container -->
-<div id="sub-toast-container"></div>
-
-<!-- Subscription Modal -->
-<div id="sub-modal-overlay" role="dialog" aria-modal="true" aria-label="طلب الاشتراك">
-  <div id="sub-modal-box">
-    <div class="sub-modal-head">
-      <h3>🎓 اشترك في المنصة</h3>
-      <p>احصل على وصول كامل لجميع المواد والمحتوى التعليمي</p>
-    </div>
-    <div class="sub-modal-body">
-      <div class="sub-progress" id="sub-progress-bar"></div>
-      <div class="sub-session-timer" id="sub-session-timer"></div>
-
-      <!-- Plans -->
-      <div class="sub-plan-cards" id="sub-plan-cards">
-        <div class="sub-plan-card selected" data-plan="monthly" onclick="SubSystem.selectPlan('monthly',this)">
-          <div class="sp-icon">📅</div>
-          <div class="sp-name">شهري</div>
-          <div class="sp-price">مجاناً</div>
-          <div class="sp-period">30 يوماً</div>
-        </div>
-        <div class="sub-plan-card" data-plan="yearly" onclick="SubSystem.selectPlan('yearly',this)">
-          <span class="sp-badge">الأفضل ✨</span>
-          <div class="sp-icon">🏆</div>
-          <div class="sp-name">سنوي</div>
-          <div class="sp-price">مجاناً</div>
-          <div class="sp-period">365 يوماً</div>
-        </div>
-      </div>
-
-      <!-- Fields -->
-      <div class="sub-field-row">
-        <label>📛 الاسم الكامل</label>
-        <input id="sub-name" type="text" placeholder="اكتب اسمك الكامل..." maxlength="80">
-      </div>
-      <div class="sub-field-row">
-        <label>🎓 التخصص / الشعبة</label>
-        <input id="sub-specialty" type="text" placeholder="مثال: تسجيل طبي — الفرقة الأولى" maxlength="100">
-      </div>
-      <div class="sub-field-row">
-        <label>📞 رقم الهاتف (اختياري)</label>
-        <input id="sub-phone" type="tel" placeholder="01xxxxxxxxx" maxlength="15" dir="ltr">
-      </div>
-    </div>
-
-    <div class="sub-modal-footer">
-      <button class="sub-btn-submit" id="sub-submit-btn" onclick="SubSystem.submitRequest()">
-        ✅ إرسال طلب الاشتراك
-      </button>
-      <button class="sub-btn-cancel" onclick="SubSystem.closeModal()">إلغاء</button>
-    </div>
-  </div>
-</div>
-
-<!-- My Subscription Widget (injected into admin panel area or standalone) -->
-<div id="my-sub-widget">
-  <div class="msw-icon">🎓</div>
-  <div class="msw-info">
-    <div class="msw-name" id="msw-plan-name">—</div>
-    <div class="msw-expiry" id="msw-expiry">—</div>
-  </div>
-  <span class="msw-status" id="msw-status-badge">—</span>
-</div>
-
-<script>
-// ============================================================
-// SUPABASE SUBSCRIPTIONS SYSTEM v1
-// يعمل بالتوازي مع نظام LocalStorage الموجود — لا يحذفه
-// ============================================================
-
-window.SubSystem = (function() {
-
-  // ── الثوابت ────────────────────────────────────────────────
-  var PLANS = {
-    monthly: { label: 'شهري',  days: 30,  type: 'monthly' },
-    yearly:  { label: 'سنوي',  days: 365, type: 'yearly'  }
-  };
-
-  // Rate Limit: لا أكثر من طلب واحد كل 60 ثانية للمستخدم الواحد
-  var RATE_LIMIT_MS   = 60 * 1000;
-  // Session Timer: المودال يُغلق تلقائياً بعد 5 دقائق
-  var SESSION_TIMEOUT = 5 * 60 * 1000;
-
-  var _currentPlan    = 'monthly';
-  var _sessionTimerId = null;
-  var _sessionStart   = null;
-  var _timerDisplayId = null;
-  var _isSubmitting   = false;
-
-  // ── Toast System ────────────────────────────────────────────
-  function toast(msg, type, duration) {
-    type     = type     || 'info';
-    duration = duration || 4000;
-    var icons = { success:'✅', error:'❌', warning:'⚠️', info:'ℹ️' };
-    var container = document.getElementById('sub-toast-container');
-    if (!container) return;
-
-    var el = document.createElement('div');
-    el.className = 'sub-toast ' + type;
-    el.innerHTML =
-      '<span class="st-icon">' + icons[type] + '</span>' +
-      '<span class="st-text">' + msg + '</span>' +
-      '<button class="st-close" onclick="this.parentElement.remove()">✕</button>';
-
-    container.appendChild(el);
-
-    setTimeout(function() {
-      el.classList.add('hiding');
-      setTimeout(function() { if (el.parentElement) el.remove(); }, 320);
-    }, duration);
-  }
-
-  // ── Session Timer ────────────────────────────────────────────
-  function _startSessionTimer() {
-    _sessionStart = Date.now();
-    _clearSessionTimer();
-    var timerEl = document.getElementById('sub-session-timer');
-    var progressEl = document.getElementById('sub-progress-bar');
-
-    _timerDisplayId = setInterval(function() {
-      var elapsed  = Date.now() - _sessionStart;
-      var remaining = SESSION_TIMEOUT - elapsed;
-      if (remaining <= 0) {
-        _clearSessionTimer();
-        closeModal();
-        toast('انتهت مهلة طلب الاشتراك. يرجى المحاولة مجدداً.', 'warning');
-        return;
-      }
-      var secs = Math.ceil(remaining / 1000);
-      var mins = Math.floor(secs / 60);
-      var s    = secs % 60;
-      if (timerEl) {
-        timerEl.textContent = remaining < 60000
-          ? '⏳ تنتهي المهلة خلال ' + secs + ' ثانية'
-          : '⏳ المهلة: ' + mins + ':' + (s < 10 ? '0' : '') + s;
-      }
-      // Progress bar
-      var pct = Math.min(100, (elapsed / SESSION_TIMEOUT) * 100);
-      if (progressEl) progressEl.style.width = pct + '%';
-    }, 1000);
-
-    // Auto-close
-    _sessionTimerId = setTimeout(function() {
-      closeModal();
-      toast('انتهت مهلة الجلسة. يرجى المحاولة مجدداً.', 'warning');
-    }, SESSION_TIMEOUT);
-  }
-
-  function _clearSessionTimer() {
-    if (_timerDisplayId) { clearInterval(_timerDisplayId); _timerDisplayId = null; }
-    if (_sessionTimerId) { clearTimeout(_sessionTimerId);  _sessionTimerId = null; }
-    var timerEl = document.getElementById('sub-session-timer');
-    if (timerEl) timerEl.textContent = '';
-    var progressEl = document.getElementById('sub-progress-bar');
-    if (progressEl) progressEl.style.width = '0%';
-  }
-
-  // ── Rate Limit Check ─────────────────────────────────────────
-  function _checkRateLimit(userId) {
-    var key = 'sub_last_request_' + (userId || 'anon');
-    var last = 0;
-    try { last = parseInt(localStorage.getItem(key) || '0', 10); } catch(e) {}
-    var now = Date.now();
-    if (now - last < RATE_LIMIT_MS) {
-      var waitSec = Math.ceil((RATE_LIMIT_MS - (now - last)) / 1000);
-      return { allowed: false, waitSeconds: waitSec };
-    }
-    return { allowed: true };
-  }
-
-  function _setRateLimitStamp(userId) {
-    var key = 'sub_last_request_' + (userId || 'anon');
-    try { localStorage.setItem(key, String(Date.now())); } catch(e) {}
-  }
-
-  // ── Duplicate Detection ──────────────────────────────────────
-  async function _checkDuplicate(userId) {
-    if (!window.supabase || !userId) return false;
-    try {
-      var result = await window.supabase
-        .from('subscriptions')
-        .select('id, status, subscription_type, end_date')
-        .eq('user_id', userId)
-        .in('status', ['active', 'pending'])
-        .maybeSingle();
-
-      if (result.error) {
-        console.warn('[SubSystem] duplicate check error:', result.error.message);
-        return false;
-      }
-      return result.data || false;
-    } catch(err) {
-      console.warn('[SubSystem] duplicate check exception:', err.message);
-      return false;
-    }
-  }
-
-  // ── Fraud Detection ──────────────────────────────────────────
-  function _fraudCheck(name, phone) {
-    // اسم أقصر من 3 أحرف — مشبوه
-    if (!name || name.trim().length < 3) {
-      return { fraud: true, reason: 'الاسم يجب أن يكون 3 أحرف على الأقل' };
-    }
-    // اسم يحتوي أرقام فقط
-    if (/^\d+$/.test(name.trim())) {
-      return { fraud: true, reason: 'الاسم لا يمكن أن يكون أرقاماً فقط' };
-    }
-    // رقم هاتف بصيغة خاطئة (لو مُدخل)
-    if (phone && phone.trim()) {
-      var ph = phone.trim().replace(/\s/g,'');
-      if (!/^(01[0-9]{9}|00201[0-9]{9}|\+201[0-9]{9})$/.test(ph)) {
-        return { fraud: true, reason: 'رقم الهاتف يجب أن يكون مصري صحيح (11 رقم يبدأ بـ 01)' };
-      }
-    }
-    // طلبات متعددة خلال فترة قصيرة جداً (أقل من 5 ثوانٍ من فتح المودال)
-    if (_sessionStart && (Date.now() - _sessionStart) < 5000) {
-      return { fraud: true, reason: 'يرجى ملء البيانات بعناية قبل الإرسال' };
-    }
-    return { fraud: false };
-  }
-
-  // ── Select Plan ──────────────────────────────────────────────
-  function selectPlan(plan, el) {
-    _currentPlan = plan;
-    var cards = document.querySelectorAll('.sub-plan-card');
-    cards.forEach(function(c) { c.classList.remove('selected'); });
-    if (el) el.classList.add('selected');
-  }
-
-  // ── Open / Close Modal ───────────────────────────────────────
-  function openModal() {
-    // يجب أن يكون المستخدم مسجلاً
-    if (!window.supabase) {
-      toast('جاري تحميل النظام، حاول مجدداً', 'warning');
-      return;
-    }
-    window.supabase.auth.getSession().then(function(res) {
-      var session = res && res.data && res.data.session;
-      if (!session || !session.user) {
-        toast('يجب تسجيل الدخول أولاً لطلب الاشتراك', 'warning', 5000);
-        return;
-      }
-      var overlay = document.getElementById('sub-modal-overlay');
-      if (overlay) {
-        overlay.classList.add('open');
-        _startSessionTimer();
-        // تعبئة تلقائية للبريد إذا كان الاسم فارغاً
-        var nameEl = document.getElementById('sub-name');
-        if (nameEl && !nameEl.value) {
-          var meta = session.user.user_metadata;
-          nameEl.value = (meta && meta.full_name) ? meta.full_name : '';
-        }
-      }
-    });
-  }
-
-  function closeModal() {
-    var overlay = document.getElementById('sub-modal-overlay');
-    if (overlay) overlay.classList.remove('open');
-    _clearSessionTimer();
-    _isSubmitting = false;
-    var btn = document.getElementById('sub-submit-btn');
-    if (btn) { btn.disabled = false; btn.textContent = '✅ إرسال طلب الاشتراك'; }
-  }
-
-  // ── Submit Request ───────────────────────────────────────────
-  async function submitRequest() {
-    if (_isSubmitting) return;
-
-    var name      = (document.getElementById('sub-name')      || {}).value || '';
-    var specialty = (document.getElementById('sub-specialty') || {}).value || '';
-    var phone     = (document.getElementById('sub-phone')     || {}).value || '';
-    var plan      = _currentPlan;
-
-    // ① Fraud Detection
-    var fraud = _fraudCheck(name, phone);
-    if (fraud.fraud) {
-      toast(fraud.reason, 'warning', 6000);
-      return;
-    }
-
-    // ② Check Auth
-    if (!window.supabase) { toast('النظام غير جاهز، أعد المحاولة', 'error'); return; }
-    var sessionRes = await window.supabase.auth.getSession();
-    var session    = sessionRes && sessionRes.data && sessionRes.data.session;
-    if (!session || !session.user) {
-      toast('انتهت جلستك، يرجى تسجيل الدخول مجدداً', 'error');
-      closeModal();
-      return;
-    }
-    var user = session.user;
-
-    // ③ Rate Limit
-    var rl = _checkRateLimit(user.id);
-    if (!rl.allowed) {
-      toast('يرجى الانتظار ' + rl.waitSeconds + ' ثانية قبل إرسال طلب جديد', 'warning', 6000);
-      return;
-    }
-
-    // ④ Duplicate Detection
-    var existing = await _checkDuplicate(user.id);
-    if (existing) {
-      var typeLabel = existing.subscription_type === 'yearly' ? 'سنوي' : 'شهري';
-      var statusLabel = existing.status === 'active' ? 'نشط' : 'قيد المراجعة';
-      toast(
-        'لديك اشتراك ' + typeLabel + ' بالفعل — الحالة: ' + statusLabel,
-        'info', 7000
-      );
-      closeModal();
-      _loadMySubscription(user.id); // تحديث الـ widget
-      return;
-    }
-
-    // ⑤ Submit
-    _isSubmitting = true;
-    var btn = document.getElementById('sub-submit-btn');
-    if (btn) { btn.disabled = true; btn.textContent = '⏳ جاري الإرسال...'; }
-
-    try {
-      var planMeta   = PLANS[plan];
-      var now        = new Date();
-      var endDate    = new Date(now.getTime() + planMeta.days * 24 * 60 * 60 * 1000);
-
-      // ── إنشاء سجل في subscriptions ──────────────────────────
-      var subRecord = {
-        user_id:           user.id,
-        user_email:        user.email,
-        full_name:         name.trim(),
-        specialty:         specialty.trim() || null,
-        phone:             phone.trim()     || null,
-        subscription_type: planMeta.type,
-        status:            'pending',      // الأدمن يراجع ويوافق
-        start_date:        now.toISOString(),
-        end_date:          endDate.toISOString(),
-        requested_at:      now.toISOString(),
-        notes:             null
-      };
-
-      var { data: subData, error: subErr } = await window.supabase
-        .from('subscriptions')
-        .insert([subRecord])
-        .select()
-        .single();
-
-      if (subErr) {
-        console.error('[SubSystem] insert subscription error:', subErr);
-        throw new Error(subErr.message || 'فشل إنشاء سجل الاشتراك');
-      }
-
-      // ── تحديث profiles ───────────────────────────────────────
-      var profileUpdate = {
-        subscription_status: 'pending',
-        subscription_type:   planMeta.type,
-        subscription_end:    endDate.toISOString(),
-        updated_at:          now.toISOString()
-      };
-
-      var { error: profErr } = await window.supabase
-        .from('profiles')
-        .upsert([{
-          id: user.id,
-          email: user.email,
-          ...profileUpdate
-        }], { onConflict: 'id' });
-
-      if (profErr) {
-        // غير مميت — الاشتراك تم تسجيله
-        console.warn('[SubSystem] profile update warning:', profErr.message);
-      }
-
-      // ── تسجيل Stamp في Rate Limit ─────────────────────────────
-      _setRateLimitStamp(user.id);
-
-      // ── تحديث LocalStorage (التوافق مع النظام القديم) ─────────
-      try {
-        localStorage.setItem('sub_status_' + user.id, 'pending');
-        localStorage.setItem('sub_type_'   + user.id, planMeta.type);
-        localStorage.setItem('sub_end_'    + user.id, endDate.toISOString());
-        localStorage.setItem('sub_id_'     + user.id, subData.id);
-      } catch(e) {}
-
-      // ── نجح الطلب ─────────────────────────────────────────────
-      closeModal();
-      toast(
-        'تم إرسال طلب الاشتراك بنجاح! سيتم مراجعته والتفعيل قريباً 🎉',
-        'success', 7000
-      );
-
-      // تحديث الـ widget
-      _showSubscriptionWidget({
-        plan:    planMeta.label,
-        endDate: endDate,
-        status:  'pending'
-      });
-
-      console.log('[SubSystem] ✅ subscription created:', subData.id);
-
-    } catch(err) {
-      console.error('[SubSystem] submitRequest error:', err);
-      toast('حدث خطأ: ' + (err.message || 'يرجى المحاولة مجدداً'), 'error', 8000);
-      _isSubmitting = false;
-      if (btn) { btn.disabled = false; btn.textContent = '✅ إرسال طلب الاشتراك'; }
-    }
-  }
-
-  // ── Load & Display My Subscription ──────────────────────────
-  async function _loadMySubscription(userId) {
-    if (!window.supabase || !userId) return;
-    try {
-      var result = await window.supabase
-        .from('subscriptions')
-        .select('id, subscription_type, status, end_date, start_date')
-        .eq('user_id', userId)
-        .order('requested_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      if (result.error || !result.data) return;
-      var sub = result.data;
-
-      var planLabel = sub.subscription_type === 'yearly' ? '🏆 اشتراك سنوي' : '📅 اشتراك شهري';
-      _showSubscriptionWidget({
-        plan:    planLabel,
-        endDate: new Date(sub.end_date),
-        status:  sub.status
-      });
-
-      // مزامنة مع LocalStorage للنظام القديم
-      try {
-        localStorage.setItem('sub_status_' + userId, sub.status);
-        localStorage.setItem('sub_type_'   + userId, sub.subscription_type);
-        localStorage.setItem('sub_end_'    + userId, sub.end_date);
-        localStorage.setItem('sub_id_'     + userId, sub.id);
-      } catch(e) {}
-
-    } catch(err) {
-      console.warn('[SubSystem] loadMySubscription error:', err.message);
-    }
-  }
-
-  function _showSubscriptionWidget(info) {
-    var widget = document.getElementById('my-sub-widget');
-    if (!widget) return;
-
-    var nameEl   = document.getElementById('msw-plan-name');
-    var expiryEl = document.getElementById('msw-expiry');
-    var badgeEl  = document.getElementById('msw-status-badge');
-
-    if (nameEl)   nameEl.textContent   = info.plan || '—';
-    if (expiryEl) expiryEl.textContent = 'ينتهي: ' + _formatDate(info.endDate);
-
-    var statusLabels = {
-      active:  { text: '✅ نشط',           cls: 'active'  },
-      pending: { text: '⏳ قيد المراجعة',   cls: 'pending' },
-      expired: { text: '❌ منتهي',          cls: 'expired' },
-      cancelled: { text: '🚫 ملغي',         cls: 'expired' }
-    };
-    var s = statusLabels[info.status] || { text: info.status, cls: 'pending' };
-    if (badgeEl) {
-      badgeEl.textContent = s.text;
-      badgeEl.className = 'msw-status ' + s.cls;
-    }
-
-    widget.classList.add('visible');
-
-    // أضف الـ widget بعد لوحة التحكم أو في الـ navbar area
-    var adminPanel = document.getElementById('admin-panel');
-    if (adminPanel && adminPanel.parentElement && !document.getElementById('my-sub-widget-placed')) {
-      adminPanel.parentElement.insertBefore(widget, adminPanel.nextSibling);
-      widget.id = 'my-sub-widget'; // keep id
-      document.body.appendChild(widget); // move to body for fixed positioning
-    }
-  }
-
-  function _formatDate(d) {
-    if (!d) return '—';
-    try {
-      var date = (d instanceof Date) ? d : new Date(d);
-      return date.toLocaleDateString('ar-EG', { year:'numeric', month:'long', day:'numeric' });
-    } catch(e) { return String(d); }
-  }
-
-  // ── Admin: Approve Subscription ──────────────────────────────
-  window.approveSubscription = async function(subscriptionId, userId) {
-    if (!window.supabase) { console.error('[SubSystem] Supabase غير جاهز'); return; }
-    try {
-      // تحديث subscriptions
-      var { error: e1 } = await window.supabase
-        .from('subscriptions')
-        .update({ status: 'active', approved_at: new Date().toISOString() })
-        .eq('id', subscriptionId);
-      if (e1) throw e1;
-
-      // تحديث profiles
-      var { error: e2 } = await window.supabase
-        .from('profiles')
-        .update({ subscription_status: 'active', updated_at: new Date().toISOString() })
-        .eq('id', userId);
-      if (e2) console.warn('[SubSystem] profile approve warning:', e2.message);
-
-      console.log('[SubSystem] ✅ approved subscription:', subscriptionId);
-      toast('تم تفعيل الاشتراك بنجاح ✅', 'success');
-    } catch(err) {
-      console.error('[SubSystem] approveSubscription error:', err.message);
-      toast('خطأ في التفعيل: ' + err.message, 'error');
-    }
-  };
-
-  // ── Admin: Reject / Cancel ────────────────────────────────────
-  window.cancelSubscription = async function(subscriptionId, userId, reason) {
-    if (!window.supabase) return;
-    try {
-      var { error: e1 } = await window.supabase
-        .from('subscriptions')
-        .update({ status: 'cancelled', notes: reason || null })
-        .eq('id', subscriptionId);
-      if (e1) throw e1;
-
-      var { error: e2 } = await window.supabase
-        .from('profiles')
-        .update({ subscription_status: 'cancelled', updated_at: new Date().toISOString() })
-        .eq('id', userId);
-      if (e2) console.warn('[SubSystem] profile cancel warning:', e2.message);
-
-      console.log('[SubSystem] 🚫 cancelled subscription:', subscriptionId);
-      toast('تم إلغاء الاشتراك', 'warning');
-    } catch(err) {
-      console.error('[SubSystem] cancelSubscription error:', err.message);
-    }
-  };
-
-  // ── Init: تشغيل عند تسجيل الدخول ─────────────────────────────
-  function init() {
-    // انتظر Supabase
-    var _waitSupabase = setInterval(function() {
-      if (!window.supabase) return;
-      clearInterval(_waitSupabase);
-
-      window.supabase.auth.onAuthStateChange(function(event, session) {
-        if (event === 'SIGNED_IN' && session && session.user) {
-          _loadMySubscription(session.user.id);
-        }
-        if (event === 'SIGNED_OUT') {
-          var widget = document.getElementById('my-sub-widget');
-          if (widget) widget.classList.remove('visible');
-        }
-      });
-
-      // فحص session موجودة عند التحميل
-      window.supabase.auth.getSession().then(function(res) {
-        var s = res && res.data && res.data.session;
-        if (s && s.user) _loadMySubscription(s.user.id);
-      });
-    }, 300);
-  }
-
-  // ── SQL Schema Helper ─────────────────────────────────────────
-  window.printSubscriptionSQL = function() {
-    var sql = `
--- ============================================================
--- SQL: جداول نظام الاشتراكات — شغّل في Supabase SQL Editor
--- ============================================================
-
--- 1. جدول subscriptions
-CREATE TABLE IF NOT EXISTS subscriptions (
-  id                UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  user_id           UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  user_email        TEXT,
-  full_name         TEXT,
-  specialty         TEXT,
-  phone             TEXT,
-  subscription_type TEXT NOT NULL DEFAULT 'monthly' CHECK (subscription_type IN ('monthly','yearly')),
-  status            TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','active','expired','cancelled')),
-  start_date        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  end_date          TIMESTAMPTZ NOT NULL,
-  requested_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  approved_at       TIMESTAMPTZ,
-  notes             TEXT,
-  created_at        TIMESTAMPTZ DEFAULT NOW()
-);
-
--- 2. جدول profiles
-CREATE TABLE IF NOT EXISTS profiles (
-  id                  UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
-  email               TEXT,
-  full_name           TEXT,
-  subscription_status TEXT DEFAULT 'none' CHECK (subscription_status IN ('none','pending','active','expired','cancelled')),
-  subscription_type   TEXT,
-  subscription_end    TIMESTAMPTZ,
-  updated_at          TIMESTAMPTZ DEFAULT NOW()
-);
-
--- 3. RLS للـ subscriptions
-ALTER TABLE subscriptions ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "users_own_subscriptions" ON subscriptions;
-CREATE POLICY "users_own_subscriptions" ON subscriptions
-  FOR ALL USING (auth.uid() = user_id);
-
-DROP POLICY IF EXISTS "admin_all_subscriptions" ON subscriptions;
-CREATE POLICY "admin_all_subscriptions" ON subscriptions
-  FOR ALL USING (is_admin());
-
--- 4. RLS للـ profiles
-ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "users_own_profile" ON profiles;
-CREATE POLICY "users_own_profile" ON profiles
-  FOR ALL USING (auth.uid() = id);
-
-DROP POLICY IF EXISTS "admin_all_profiles" ON profiles;
-CREATE POLICY "admin_all_profiles" ON profiles
-  FOR ALL USING (is_admin());
--- ============================================================`;
-    console.group('📋 SQL لإنشاء جداول الاشتراكات:');
-    console.log(sql);
-    console.groupEnd();
-    return sql;
-  };
-
-  // تشغيل النظام
-  init();
-
-  // Public API
-  return {
-    openModal:    openModal,
-    closeModal:   closeModal,
-    selectPlan:   selectPlan,
-    submitRequest: submitRequest,
-    toast:        toast,
-    loadMySub:    function() {
-      window.supabase && window.supabase.auth.getSession().then(function(r) {
-        var s = r && r.data && r.data.session;
-        if (s && s.user) _loadMySubscription(s.user.id);
-      });
-    }
-  };
-
-})();
-
-// ============================================================
-// زر الاشتراك — يُضاف تلقائياً في user-box بعد تسجيل الدخول
-// بدون تعديل _renderUserBox القديمة — نربط بـ onAuthStateChange
-// ============================================================
-(function() {
-  var _waitSub = setInterval(function() {
-    if (!window.supabase) return;
-    clearInterval(_waitSub);
-
-    window.supabase.auth.onAuthStateChange(function(event, session) {
-      if (event === 'SIGNED_IN' && session && session.user) {
-        setTimeout(function() {
-          _injectSubscribeButton(session.user);
-        }, 700);
-      }
-    });
-
-    window.supabase.auth.getSession().then(function(res) {
-      var s = res && res.data && res.data.session;
-      if (s && s.user) {
-        setTimeout(function() { _injectSubscribeButton(s.user); }, 1200);
-      }
-    });
-  }, 400);
-
-  function _injectSubscribeButton(user) {
-    // لا تضيف الزر للأدمن — تعتمد على _isAdminUser المُحدَّث من profiles.role
-    if (window._isAdminUser) return;
-    // لا تضيف مرتين
-    if (document.getElementById('sub-quick-btn')) return;
-    var userCard = document.querySelector('.user-card');
-    if (!userCard) return;
-
-    var btn = document.createElement('button');
-    btn.id = 'sub-quick-btn';
-    btn.setAttribute('style',
-      'background:linear-gradient(135deg,#17a589,#0a3d62);color:#fff;' +
-      'border:none;border-radius:16px;padding:6px 13px;font-size:12px;' +
-      'font-family:Cairo,Tajawal,sans-serif;font-weight:700;cursor:pointer;' +
-      'white-space:nowrap;transition:opacity .2s;'
-    );
-    btn.textContent = '🎓 اشتراك';
-    btn.onclick = function() { SubSystem.openModal(); };
-    userCard.insertBefore(btn, userCard.firstChild);
-  }
-})();
-</script>
 
 <!-- ============================================================ -->
 <!-- SECURITY SYSTEM v1                                           -->
@@ -6970,8 +6323,8 @@ function _secAlert(msg) {
 // ════════════════════════════════════════════════════════════════
 
 // حفظ النسخ الأصلية
-var _origApprove = window.approveSubscription;
-var _origCancel  = window.cancelSubscription;
+var _origApprove = window.approveSubscription || function(){};
+var _origCancel  = window.cancelSubscription || function(){};
 var _origBan     = window.banUser;
 var _origUnban   = window.unbanUser;
 
