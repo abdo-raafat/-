@@ -1747,13 +1747,6 @@ html, body {
   .back-btn { padding: 10px 14px; min-height: 48px; }
 }
 
-/* ── Modals & Overlays ── */
-@media(max-width: 480px) {
-  #welcome-box { border-radius: 16px; }
-  #welcome-box .w-header { padding: 24px 20px 20px; }
-  #welcome-box .w-body { padding: 18px 20px; }
-  #welcome-box .w-features li { font-size: .82rem; }
-}
 
 /* ── Notifications Mobile ── */
 @media(max-width: 480px) {
@@ -1799,102 +1792,266 @@ table { table-layout: auto; }
 }
 
 
-/* ===== WELCOME POPUP ===== */
-#welcome-overlay {
-  position: fixed; inset: 0;
-  z-index: 999998;
-  background: rgba(10,20,40,0.75);
-  backdrop-filter: blur(8px);
-  display: none; /* مخفي افتراضياً — يظهر بـ JS فقط */
-  align-items: center; justify-content: center;
-  padding: 20px;
-  animation: wFadeIn .4s ease;
-}
-#welcome-overlay.visible {
+/* ===== SITE ALERT MODAL — Professional Notification System ===== */
+/* z-index: 9999999 — فوق كل شيء بما في ذلك الـ PDF viewer والـ nav */
+#sm-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999999;
+  background: rgba(6, 15, 30, 0.82);
+  backdrop-filter: blur(10px) saturate(1.4);
+  -webkit-backdrop-filter: blur(10px) saturate(1.4);
   display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  /* مخفي تماماً قبل الـ JS — لا يؤثر على الـ layout */
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.35s ease, visibility 0.35s ease;
 }
-@keyframes wFadeIn { from { opacity:0; } to { opacity:1; } }
-#welcome-box {
-  background: #fff;
-  border-radius: 24px;
-  max-width: 440px;
-  width: 100%;
+#sm-overlay.sm-visible {
+  visibility: visible;
+  opacity: 1;
+  pointer-events: all;
+}
+#sm-overlay.sm-hiding {
+  opacity: 0;
+  visibility: hidden;
+}
+/* منع scroll خلف الـ modal */
+body.sm-open {
   overflow: hidden;
-  box-shadow: 0 40px 100px rgba(0,0,0,0.4);
-  animation: wSlideUp .45s cubic-bezier(.16,1,.3,1);
-  position: relative;
+  touch-action: none;
 }
-@keyframes wSlideUp { from { opacity:0; transform: translateY(50px) scale(.95); } to { opacity:1; transform:none; } }
-#welcome-box .w-header {
-  background: linear-gradient(135deg, var(--primary) 0%, #17a589 100%);
-  padding: 32px 28px 26px;
+/* ── الـ Card ── */
+#sm-card {
+  background: #fff;
+  border-radius: 28px;
+  width: 100%;
+  max-width: 460px;
+  max-height: 90vh;
+  overflow-y: auto;
+  overflow-x: hidden;
+  box-shadow:
+    0 50px 120px rgba(0,0,0,0.5),
+    0 0 0 1px rgba(255,255,255,0.08),
+    inset 0 1px 0 rgba(255,255,255,0.9);
+  transform: translateY(60px) scale(0.93);
+  opacity: 0;
+  transition: transform 0.45s cubic-bezier(0.16, 1, 0.3, 1),
+              opacity 0.35s ease;
+  position: relative;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+#sm-card::-webkit-scrollbar { display: none; }
+#sm-overlay.sm-visible #sm-card {
+  transform: translateY(0) scale(1);
+  opacity: 1;
+}
+#sm-overlay.sm-hiding #sm-card {
+  transform: translateY(40px) scale(0.95);
+  opacity: 0;
+}
+/* ── الـ Header ── */
+#sm-header {
+  background: linear-gradient(135deg, #0a3d62 0%, #0e6655 55%, #17a589 100%);
+  padding: 36px 28px 28px;
   text-align: center;
   color: #fff;
   position: relative;
   overflow: hidden;
 }
-#welcome-box .w-header::before {
-  content:'';
-  position: absolute; inset: 0;
-  background: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none'%3E%3Cg fill='%23ffffff' fill-opacity='0.06'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+#sm-header::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: url("data:image/svg+xml,%3Csvg width='80' height='80' viewBox='0 0 80 80' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none'%3E%3Cg fill='%23ffffff' fill-opacity='0.05'%3E%3Cpath d='M50 50v-6h-3v6h-6v3h6v6h3v-6h6v-3h-6zm0-40V4h-3v6h-6v3h6v6h3V13h6v-3h-6zM10 50v-6H7v6H1v3h6v6h3v-6h6v-3h-6zM10 10V4H7v6H1v3h6v6h3V13h6v-3h-6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+  pointer-events: none;
 }
-#welcome-box .w-icon {
-  font-size: 3rem;
-  margin-bottom: 12px;
-  animation: wBounce 1s ease .5s both;
+/* أيقونة التنبيه */
+#sm-icon-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 72px;
+  height: 72px;
+  background: rgba(255,255,255,0.15);
+  border-radius: 50%;
+  margin-bottom: 16px;
+  border: 2px solid rgba(255,255,255,0.25);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.2);
+  animation: smIconPop 0.55s cubic-bezier(0.34,1.56,0.64,1) 0.2s both;
 }
-@keyframes wBounce { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-10px)} }
-#welcome-box .w-header h2 {
-  font-size: 1.3rem; font-weight: 900;
-  margin-bottom: 6px; position: relative;
+@keyframes smIconPop {
+  from { transform: scale(0.4) rotate(-15deg); opacity: 0; }
+  to   { transform: scale(1)   rotate(0deg);  opacity: 1; }
 }
-#welcome-box .w-header p {
-  font-size: .85rem; opacity: .88;
-  line-height: 1.7; position: relative;
+#sm-icon-wrap .sm-icon-ring {
+  position: absolute;
+  inset: -8px;
+  border-radius: 50%;
+  border: 2px solid rgba(255,255,255,0.15);
+  animation: smRingPulse 2.5s ease-in-out 0.8s infinite;
 }
-#welcome-box .w-body {
-  padding: 24px 28px;
+@keyframes smRingPulse {
+  0%,100% { transform: scale(1);    opacity: 0.6; }
+  50%      { transform: scale(1.18); opacity: 0;   }
 }
-#welcome-box .w-features {
-  list-style: none;
+#sm-icon {
+  font-size: 2.2rem;
+  line-height: 1;
+  position: relative;
+  z-index: 1;
+  filter: drop-shadow(0 2px 8px rgba(0,0,0,0.25));
+}
+#sm-header-title {
+  font-size: 1.35rem;
+  font-weight: 900;
+  line-height: 1.3;
+  margin-bottom: 6px;
+  position: relative;
+  text-shadow: 0 1px 12px rgba(0,0,0,0.25);
+  letter-spacing: -0.3px;
+}
+#sm-header-sub {
+  font-size: 0.82rem;
+  opacity: 0.85;
+  position: relative;
+  letter-spacing: 0.2px;
+}
+/* شريط نبض تحت الـ header */
+#sm-header::after {
+  content: '';
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.5), transparent);
+  animation: smShimmer 2.5s ease-in-out infinite;
+}
+@keyframes smShimmer {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(100%);  }
+}
+/* ── Body ── */
+#sm-body {
+  padding: 26px 28px 28px;
+  direction: rtl;
+}
+/* بطاقة الرسالة */
+#sm-message-card {
+  background: linear-gradient(135deg, #f0f8ff 0%, #e8f5e9 100%);
+  border: 1px solid rgba(10,61,98,0.1);
+  border-right: 4px solid #17a589;
+  border-radius: 14px;
+  padding: 18px 20px;
   margin-bottom: 22px;
-  display: flex; flex-direction: column; gap: 10px;
+  position: relative;
+  overflow: hidden;
 }
-#welcome-box .w-features li {
-  display: flex; align-items: center; gap: 10px;
-  font-size: .88rem; color: #444;
+#sm-message-card::before {
+  content: '"';
+  position: absolute;
+  top: -10px;
+  right: 16px;
+  font-size: 5rem;
+  color: rgba(10,61,98,0.07);
+  font-family: Georgia, serif;
+  line-height: 1;
+  pointer-events: none;
 }
-#welcome-box .w-features li span:first-child { font-size: 1.2rem; flex-shrink: 0; }
-#welcome-box .w-accept {
+#sm-message-text {
+  font-size: 0.95rem;
+  line-height: 1.85;
+  color: #2c3e50;
+  font-weight: 500;
+  white-space: pre-wrap;
+  word-break: break-word;
+  position: relative;
+  z-index: 1;
+}
+/* زر فهمت */
+#sm-confirm-btn {
   width: 100%;
-  padding: 13px;
-  background: linear-gradient(135deg, var(--primary), var(--teal));
+  padding: 15px 20px;
+  background: linear-gradient(135deg, #0a3d62 0%, #17a589 100%);
   color: #fff;
   border: none;
-  border-radius: 12px;
+  border-radius: 14px;
   font-family: var(--font);
-  font-size: .95rem;
+  font-size: 1rem;
   font-weight: 800;
   cursor: pointer;
-  transition: opacity .2s, transform .2s;
+  letter-spacing: 0.3px;
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 6px 24px rgba(10,61,98,0.35);
+  transition: transform 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
 }
-#welcome-box .w-accept:hover { opacity: .9; transform: translateY(-1px); }
-#welcome-box .w-close {
+#sm-confirm-btn::before {
+  content: '';
   position: absolute;
-  top: 14px; left: 14px;
-  width: 32px; height: 32px;
-  background: rgba(255,255,255,.2);
-  border: none; border-radius: 50%;
-  color: #fff; font-size: 1rem;
-  cursor: pointer;
-  display: flex; align-items: center; justify-content: center;
-  transition: background .2s;
+  top: 0; left: -100%; right: auto;
+  width: 60%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.18), transparent);
+  transform: skewX(-20deg);
+  animation: smBtnShine 3s ease-in-out 1.2s infinite;
 }
-#welcome-box .w-close:hover { background: rgba(255,255,255,.35); }
-/* Dark mode welcome */
-[data-theme="dark"] #welcome-box { background: #1a2535; }
-[data-theme="dark"] #welcome-box .w-features li { color: var(--text-muted); }
-[data-theme="dark"] #welcome-box #w-extra { color: var(--text-muted) !important; }
+@keyframes smBtnShine {
+  0%   { left: -100%; }
+  35%  { left: 150%;  }
+  100% { left: 150%;  }
+}
+#sm-confirm-btn:hover  { transform: translateY(-2px); box-shadow: 0 10px 32px rgba(10,61,98,0.45); }
+#sm-confirm-btn:active { transform: translateY(0);    box-shadow: 0 4px 16px rgba(10,61,98,0.3); opacity: 0.9; }
+/* مؤشر التحميل داخل الـ modal */
+#sm-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 32px 20px;
+  color: #666;
+  font-size: 0.88rem;
+}
+#sm-loading .sm-spinner {
+  width: 36px; height: 36px;
+  border: 3px solid #e8f0fe;
+  border-top-color: #0a3d62;
+  border-radius: 50%;
+  animation: smSpin 0.8s linear infinite;
+}
+@keyframes smSpin { to { transform: rotate(360deg); } }
+/* Dark mode */
+[data-theme="dark"] #sm-card {
+  background: #141f2e;
+  box-shadow: 0 50px 120px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.06);
+}
+[data-theme="dark"] #sm-message-card {
+  background: linear-gradient(135deg, #1a2535 0%, #182820 100%);
+  border-color: rgba(23,165,137,0.25);
+}
+[data-theme="dark"] #sm-message-text { color: #c8d8e8; }
+/* Responsive */
+@media (max-width: 480px) {
+  #sm-card { border-radius: 22px; max-height: 95vh; }
+  #sm-header { padding: 28px 20px 22px; }
+  #sm-icon-wrap { width: 62px; height: 62px; }
+  #sm-icon { font-size: 1.9rem; }
+  #sm-header-title { font-size: 1.18rem; }
+  #sm-body { padding: 20px 20px 22px; }
+  #sm-message-card { padding: 14px 16px; }
+  #sm-message-text { font-size: 0.9rem; line-height: 1.75; }
+  #sm-confirm-btn { padding: 13px 16px; font-size: 0.95rem; }
+}
+@media (max-width: 360px) {
+  #sm-header-title { font-size: 1.05rem; }
+  #sm-icon-wrap { width: 56px; height: 56px; }
+}
 </style>
 <!-- Supabase loaded dynamically above -->
 </head>
@@ -2072,11 +2229,7 @@ table { table-layout: auto; }
 var _supabaseUrl = "https://xiqeaohemuxgujrcnpzd.supabase.co";
 // ✅ ملاحظة: استبدل هذا المفتاح بـ anon public key من Supabase Dashboard → Settings → API
 // المفتاح الصحيح يبدأ بـ eyJ (صيغة JWT)
-var _supabaseKey = "sb_publishable_xzg8wn0ETQniEItj2Etfmw__klmgUWg";
-if (!_supabaseKey.startsWith('eyJ')) {
-  console.warn('[SUPABASE KEY] ⚠️ المفتاح الحالي يبدو أنه ليس anon key JWT.');
-  console.warn('إذا كانت البيانات لا تظهر، تحقق من: Supabase Dashboard → Settings → API → anon public key');
-}
+var _supabaseKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhpcWVhb2hlbXV4Z3VqcmNucHpkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkxMjEwNjUsImV4cCI6MjA5NDY5NzA2NX0.vnpHTfn9KhRUjJDxKGPlzhPHyrrEaBWlACxxv2QEFWY";
 
 window._supabaseReady.then(function(lib) {
   if (!lib || typeof lib.createClient !== 'function') {
@@ -2483,12 +2636,13 @@ const SECTION_DISPLAY_MAP = {
 
 // ==================== BUILD SECTION CARD ====================
 function buildSectionCard(sec) {
-  const display = SECTION_DISPLAY_MAP[sec.title] || {
-    icon: sec.icon || '📁',
-    color: sec.gradient_color || 'linear-gradient(135deg,#1a3a5c,#17a589)',
-    tags: (sec.tags || '').split(',').map(t => t.trim()).filter(Boolean),
-    btnLabel: 'ادخل القسم ←',
-    action: (s) => openDynamicSection(s),
+  const _displayMap = SECTION_DISPLAY_MAP[sec.title] || {};
+  const display = {
+    icon:     _displayMap.icon     || sec.icon           || '📁',
+    color:    _displayMap.color    || sec.gradient_color || 'linear-gradient(135deg,#1a3a5c,#17a589)',
+    tags:     _displayMap.tags     || (sec.tags || '').split(',').map(t => t.trim()).filter(Boolean),
+    btnLabel: _displayMap.btnLabel || 'ادخل القسم ←',
+    action:   _displayMap.action   || ((s) => openDynamicSection(s)),
   };
   const tagsHtml = (display.tags || []).map(t => `<span class="tag">${t}</span>`).join('');
   return `
@@ -2542,15 +2696,31 @@ async function renderHomeSections() {
       return;
     }
     _registerSectionHandlers(sections);
+    // تجميع بـ type أو category — الجدول الحقيقي بيستخدم type: main/year/course/resource/books/department
+    const TYPE_GROUP_MAP = {
+      'main':       'المراحل الدراسية',
+      'year':       'المراحل الدراسية',
+      'course':     'خدمات وموارد إضافية',
+      'resource':   'خدمات وموارد إضافية',
+      'books':      'خدمات وموارد إضافية',
+      'department': 'خدمات وموارد إضافية',
+    };
     const grouped = {};
     sections.forEach(sec => {
-      const cat = sec.category || 'أخرى';
+      const cat = sec.category || TYPE_GROUP_MAP[sec.type] || 'أخرى';
       if (!grouped[cat]) grouped[cat] = [];
       grouped[cat].push(sec);
     });
     const rowIcons = { 'المراحل الدراسية':'📚', 'خدمات وموارد إضافية':'🌐', 'أخرى':'📌' };
+    // ترتيب المجموعات: المراحل الدراسية أولاً
+    const groupOrder = ['المراحل الدراسية', 'خدمات وموارد إضافية', 'أخرى'];
+    const sortedGroups = Object.keys(grouped).sort((a, b) => {
+      const ai = groupOrder.indexOf(a), bi = groupOrder.indexOf(b);
+      return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+    });
     let html = '';
-    for (const [cat, items] of Object.entries(grouped)) {
+    for (const cat of sortedGroups) {
+      const items = grouped[cat];
       html += `
       <div class="home-section-label">
         <span class="home-section-icon">${rowIcons[cat] || '📌'}</span>
@@ -3564,8 +3734,20 @@ function openResource(url, title, resourceType) {
 
   var rt = (resourceType || '').toLowerCase();
 
-  // ── الروابط الخارجية: عرض داخل الموقع في iframe ──
-  if (rt === 'link' || rt === 'html' || rt === 'external_link') {
+  // ── الروابط الخارجية (link): افتح في تبويب جديد مباشرةً ──
+  if (rt === 'link' || rt === 'external_link') {
+    var extA = document.createElement('a');
+    extA.href = url;
+    extA.target = '_blank';
+    extA.rel = 'noopener noreferrer';
+    document.body.appendChild(extA);
+    extA.click();
+    document.body.removeChild(extA);
+    return;
+  }
+
+  // ── HTML embed: عرض داخل iframe ──
+  if (rt === 'html') {
     ResourceViewer.open(url, title, 'html');
     return;
   }
@@ -5597,26 +5779,43 @@ function _apDate(d) {
 </script>
 
 <!-- ============================================================ -->
-<!-- ADDITION: Welcome Popup HTML                                 -->
+<!-- SITE ALERT MODAL — نظام التنبيهات الاحترافي v3             -->
+<!-- يظهر فوق كل العناصر — مرتبط بجدول site_messages            -->
 <!-- ============================================================ -->
-<div id="welcome-overlay" style="display:none;" role="dialog" aria-modal="true" aria-label="مرحباً بك">
-  <div id="welcome-box">
-    <button class="w-close" onclick="closeWelcome()" aria-label="إغلاق">✕</button>
-    <div class="w-header">
-      <div class="w-icon" id="w-icon">🎓</div>
-      <h2 id="w-title">مرحباً بك في المنصة التعليمية</h2>
-      <p id="w-message">منصة معهد فني صحي بني سويف — تجربة تعليمية متكاملة</p>
+<div id="sm-overlay" role="dialog" aria-modal="true" aria-labelledby="sm-header-title" aria-describedby="sm-message-text">
+  <div id="sm-card">
+    <!-- Header -->
+    <div id="sm-header">
+      <div id="sm-icon-wrap">
+        <div class="sm-icon-ring"></div>
+        <span id="sm-icon" aria-hidden="true">🔔</span>
+      </div>
+      <h2 id="sm-header-title">تنبيه هام</h2>
+      <p id="sm-header-sub">رسالة من إدارة المنصة</p>
     </div>
-    <div class="w-body">
-      <div id="w-extra" style="display:none;margin-bottom:18px;font-size:.9rem;line-height:1.8;color:#444;white-space:pre-wrap;direction:rtl;"></div>
-      <button class="w-accept" onclick="closeWelcome()">✅ حسناً</button>
+    <!-- Body -->
+    <div id="sm-body">
+      <!-- Loading State -->
+      <div id="sm-loading">
+        <div class="sm-spinner"></div>
+        <span>جاري تحميل الرسالة...</span>
+      </div>
+      <!-- Message Card — مخفي حتى يُملأ -->
+      <div id="sm-message-card" style="display:none;">
+        <p id="sm-message-text"></p>
+      </div>
+      <!-- زر فهمت -->
+      <button id="sm-confirm-btn" style="display:none;" onclick="smClose()">
+        ✅ &nbsp;فهمت، شكراً
+      </button>
     </div>
   </div>
 </div>
 
 <!-- ============================================================ -->
-<!-- ADDITION: Dark Mode + Welcome Popup JavaScript               -->
-<!-- لا يُعدَّل أي كود موجود — هذه إضافة فقط                    -->
+<!-- SITE ALERT MODAL — JavaScript Engine v3                     -->
+<!-- لا يتعارض مع: تسجيل الدخول / تحميل الأقسام / PDF viewer   -->
+<!-- لا يوقف الموقع عند الفشل — يتجاهل الـ modal تلقائياً      -->
 <!-- ============================================================ -->
 <script>
 // ==================== DARK MODE ====================
@@ -5645,9 +5844,7 @@ function toggleDarkMode() {
       saved = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
     } catch(e) { saved = 'light'; }
   }
-  // نطبّق data-theme على الـ html مباشرةً (لا يحتاج DOM)
   document.documentElement.setAttribute('data-theme', saved);
-  // نحدّث الزر بعد تحميل DOM
   document.addEventListener('DOMContentLoaded', function() {
     var btn = document.getElementById('dark-mode-btn');
     var meta = document.getElementById('theme-color-meta');
@@ -5663,226 +5860,341 @@ function toggleDarkMode() {
   } catch(e) {}
 })();
 
-// ==================== WELCOME POPUP ====================
-
-function closeWelcome() {
-  var overlay = document.getElementById('welcome-overlay');
-  if (overlay) {
-    overlay.style.opacity = '0';
-    overlay.style.transition = 'opacity .3s ease';
-    setTimeout(function() {
-      overlay.classList.remove('visible');
-      overlay.style.opacity = '';
-      overlay.style.transition = '';
-    }, 300);
-  }
-  // احفظ ID الرسالة المحددة — مش flag ثابت
-  // بالتالي لو الأدمن غيّر الرسالة في Supabase، تظهر من جديد تلقائياً
-  try {
-    if (window._welcomeSeenKey) {
-      localStorage.setItem(window._welcomeSeenKey, '1');
-      console.log('[WELCOME] تم حفظ الإغلاق:', window._welcomeSeenKey);
-    }
-  } catch(e) {}
-}
-
-/**
- * يجلب رسالة الترحيب من جدول site_messages ويملأ الـ popup
- * الفكرة: نحفظ ID آخر رسالة شُوفت — لو تغيّر ID في قاعدة البيانات تظهر من جديد
- */
-async function loadAndShowWelcome() {
-  // انتظر Supabase CLIENT جاهز فعلاً
-  var db = window.supabase;
-  if (!db || typeof db.from !== 'function') {
-    // انتظر عبر Promise الرسمي
-    if (window._supabaseClientReady) {
-      try {
-        db = await window._supabaseClientReady;
-      } catch(e) {}
-    }
-    if (!db || typeof db.from !== 'function') {
-      // آخر fallback: انتظر 800ms وحاول مرة واحدة
-      setTimeout(loadAndShowWelcome, 800);
-      return;
-    }
-    window.supabase = db;
-  }
-
-  try {
-    // ① اجلب الرسالة النشطة — تظهر لجميع الزوار (مسجلين أو غير مسجلين)
-    var result = await window.supabase
-      .from('site_messages')
-      .select('id, title, message, location, is_active, created_at, display_order')
-      .eq('is_active', true)
-      .order('display_order', { ascending: true })
-      .limit(1)
-      .maybeSingle();
-
-    if (result.error) {
-      console.warn('[WELCOME] خطأ في تحميل الرسالة:', result.error.message, '| code:', result.error.code);
-      return;
-    }
-
-    if (!result.data) {
-      console.log('[WELCOME] لا توجد رسائل نشطة في site_messages');
-      return;
-    }
-
-    var row = result.data;
-    console.log('[WELCOME] ✅ تم جلب الرسالة:', row.title);
-
-    // ② مفتاح الحفظ — تظهر كل مرة ما لم يضغط المستخدم "حسناً" على نفس الـ id
-    var seenKey = 'welcome_seen_' + row.id;
-    var alreadySeen = '';
-    try { alreadySeen = localStorage.getItem(seenKey); } catch(e) {}
-    if (alreadySeen) {
-      console.log('[WELCOME] الرسالة سبق مشاهدتها (id=' + row.id + ')');
-      return;
-    }
-
-    // ③ ملأ الـ popup بالبيانات من قاعدة البيانات
-    var titleEl = document.getElementById('w-title');
-    var msgEl   = document.getElementById('w-message');
-    var extraEl = document.getElementById('w-extra');
-
-    if (titleEl && row.title)   titleEl.textContent = row.title;
-    if (msgEl   && row.message) msgEl.textContent   = row.message;
-
-    // لو الرسالة طويلة — اعرضها في w-extra بشكل كامل
-    if (extraEl) {
-      if (row.message && row.message.length > 80) {
-        extraEl.textContent   = row.message;
-        extraEl.style.display = 'block';
-        if (msgEl) msgEl.textContent = row.title || 'مرحباً بك';
-      } else {
-        extraEl.style.display = 'none';
-      }
-    }
-
-    // ④ اعرض الـ popup مع fade-in ناعم
-    var overlay = document.getElementById('welcome-overlay');
-    if (overlay) {
-      overlay.classList.add('visible');
-    }
-
-    // ⑤ احفظ الـ key — لما المستخدم يضغط "حسناً" في closeWelcome()
-    window._welcomeSeenKey = seenKey;
-
-  } catch(err) {
-    console.warn('[WELCOME] خطأ:', err.message || err);
-  }
-}
-
-function _showWelcomeDefault() {
-  // يبقى النص الافتراضي كما هو في HTML — لا تعديل
-}
-
-// إغلاق بالضغط خارج الـ popup
-document.addEventListener('click', function(e) {
-  var overlay = document.getElementById('welcome-overlay');
-  if (overlay && e.target === overlay) closeWelcome();
-});
-
-// إغلاق بـ ESC
-document.addEventListener('keydown', function(e) {
-  if (e.key === 'Escape') {
-    var overlay = document.getElementById('welcome-overlay');
-    if (overlay && overlay.style.display !== 'none') closeWelcome();
-  }
-});
-
-// تشغيل رسالة الترحيب — ينتظر Supabase CLIENT جاهز فعلاً
+// ══════════════════════════════════════════════════════════════
+//  SITE ALERT MODAL — نظام التنبيهات الاحترافي v3
+//  ✅ فوق كل العناصر (z-index: 9999999)
+//  ✅ يمنع التفاعل حتى الضغط على "فهمت"
+//  ✅ LocalStorage ذكي — يعيد الظهور عند تغيير الرسالة
+//  ✅ لا يوقف الموقع عند الفشل
+//  ✅ لا يتعارض مع أي نظام آخر
+// ══════════════════════════════════════════════════════════════
 (function() {
-  // تنظيف صامت للمفاتيح القديمة (بها created_at) من localStorage
-  try {
-    var oldKeys = [];
-    for (var _i = 0; _i < localStorage.length; _i++) {
-      var _k = localStorage.key(_i);
-      if (_k && _k.startsWith('welcome_seen_') && _k.split('_').length > 3) {
-        oldKeys.push(_k);
-      }
+  'use strict';
+
+  // ── ثوابت ────────────────────────────────────────────────
+  var LS_PREFIX     = 'sm_seen_v3_';   // prefix مفتاح LocalStorage
+  var FETCH_TIMEOUT = 10000;           // 10 ثانية timeout للجلب
+  var MAX_RETRIES   = 2;               // عدد المحاولات عند الفشل
+  var RETRY_DELAY   = 1500;            // تأخير بين المحاولات (ms)
+  var _retryCount   = 0;
+  var _initialized  = false;
+
+  // ── انتظر Supabase client جاهز ───────────────────────────
+  function _waitClient(timeoutMs, cb) {
+    timeoutMs = timeoutMs || FETCH_TIMEOUT;
+    // ① client جاهز فوراً
+    if (window.supabase && typeof window.supabase.from === 'function') {
+      return cb(window.supabase);
     }
-    oldKeys.forEach(function(k) { localStorage.removeItem(k); });
-    if (oldKeys.length) console.log('[WELCOME] تم مسح ' + oldKeys.length + ' مفتاح قديم');
-  } catch(e) {}
-  // الطريقة الصحيحة: ننتظر _supabaseClientReady وليس DOMContentLoaded فقط
-  function _runWelcome() {
-    if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', function() {
-        setTimeout(loadAndShowWelcome, 300);
+    // ② انتظر Promise الرسمي
+    var done = false;
+    var timer = setTimeout(function() {
+      if (!done) { done = true; cb(null); }
+    }, timeoutMs);
+
+    var p = window._supabaseClientReady || window._supabaseReady;
+    if (p && typeof p.then === 'function') {
+      p.then(function(client) {
+        clearTimeout(timer);
+        if (!done) { done = true; cb(client || null); }
+      }).catch(function() {
+        clearTimeout(timer);
+        if (!done) { done = true; cb(null); }
       });
     } else {
-      setTimeout(loadAndShowWelcome, 300);
+      // ③ Polling fallback
+      var waited = 0;
+      var iv = setInterval(function() {
+        waited += 200;
+        if (window.supabase && typeof window.supabase.from === 'function') {
+          clearInterval(iv); clearTimeout(timer);
+          if (!done) { done = true; cb(window.supabase); }
+        } else if (waited >= timeoutMs) {
+          clearInterval(iv); clearTimeout(timer);
+          if (!done) { done = true; cb(null); }
+        }
+      }, 200);
     }
   }
 
-  if (window._supabaseClientReady && typeof window._supabaseClientReady.then === 'function') {
-    window._supabaseClientReady.then(function(client) {
-      if (client) _runWelcome();
-    });
-  } else {
-    // fallback: انتظر حتى يكون supabase جاهز
-    document.addEventListener('DOMContentLoaded', function() {
-      setTimeout(loadAndShowWelcome, 1200);
-    });
-  }
-})();
-
-// ── أداة تشخيص رسالة الترحيب ──────────────────────────────────
-window.debugWelcome = async function() {
-  console.group('%c[WELCOME DEBUG] تشخيص رسالة الترحيب', 'color:#0a3d62;font-weight:bold');
-  var db = window.supabase;
-  if (!db) { console.error('Supabase غير جاهز'); console.groupEnd(); return; }
-
-  // فحص جلب الرسالة
-  var r = await db.from('site_messages').select('*').eq('is_active', true).limit(5);
-  if (r.error) {
-    console.error('خطأ في الاستعلام:', r.error.message, '| code:', r.error.code);
-    if (r.error.code === 'PGRST301' || r.error.message.includes('permission')) {
-      console.warn('⚠️ مشكلة RLS — شغّل في Supabase SQL Editor:');
-      console.log('%cALTER TABLE site_messages ENABLE ROW LEVEL SECURITY;\nDROP POLICY IF EXISTS "site_msg_public_read" ON site_messages;\nCREATE POLICY "site_msg_public_read" ON site_messages FOR SELECT USING (true);',
-        'background:#f0f4f8;padding:8px;font-family:monospace;');
+  // ── جلب الرسالة من Supabase ──────────────────────────────
+  function _fetchMessage(db, cb) {
+    try {
+      db.from('site_messages')
+        .select('id, title, message, is_active, display_order')
+        .eq('is_active', true)
+        .order('display_order', { ascending: true })
+        .limit(1)
+        .maybeSingle()
+        .then(function(result) {
+          if (result.error) {
+            console.warn('[SiteAlert] خطأ Supabase:', result.error.message, '| code:', result.error.code);
+            cb(null, result.error);
+          } else {
+            cb(result.data || null, null);
+          }
+        })
+        .catch(function(err) {
+          console.warn('[SiteAlert] fetch exception:', err && err.message);
+          cb(null, err);
+        });
+    } catch(e) {
+      console.warn('[SiteAlert] _fetchMessage exception:', e && e.message);
+      cb(null, e);
     }
-  } else if (!r.data || r.data.length === 0) {
-    console.warn('الجدول site_messages فارغ أو لا توجد رسائل is_active=true');
-    console.log('تحقق من Supabase → Table Editor → site_messages → عمود is_active يجب أن يكون TRUE');
-  } else {
-    console.log('✅ الرسائل النشطة:', r.data);
-    // فحص localStorage — وتنظيف المفاتيح القديمة
-    var cleanedOld = 0;
-    for (var i = localStorage.length - 1; i >= 0; i--) {
-      var k = localStorage.key(i);
-      if (k && k.startsWith('welcome_seen_') && k.split('_').length > 3) {
-        localStorage.removeItem(k); // مفتاح قديم فيه created_at
-        cleanedOld++;
+  }
+
+  // ── فحص LocalStorage ─────────────────────────────────────
+  function _getSeenKey(row) {
+    // المفتاح: prefix + id الرسالة + hash خفيف من title+message
+    // بالتالي لو تغيّر المحتوى أو العنوان → مفتاح جديد → تظهر من جديد
+    var hash = 0;
+    var str  = String(row.id || '') + String(row.title || '') + String(row.message || '');
+    for (var i = 0; i < Math.min(str.length, 200); i++) {
+      hash = ((hash << 5) - hash) + str.charCodeAt(i);
+      hash = hash & hash; // convert to 32-bit int
+    }
+    return LS_PREFIX + Math.abs(hash);
+  }
+
+  function _wasSeen(row) {
+    try {
+      var key = _getSeenKey(row);
+      return localStorage.getItem(key) === '1';
+    } catch(e) { return false; }
+  }
+
+  function _markSeen(row) {
+    try {
+      // تنظيف المفاتيح القديمة أولاً (sm_seen_v1_, sm_seen_v2_, welcome_seen_)
+      var toDelete = [];
+      for (var i = 0; i < localStorage.length; i++) {
+        var k = localStorage.key(i);
+        if (k && (k.startsWith('sm_seen_v1_') || k.startsWith('sm_seen_v2_') || k.startsWith('welcome_seen_'))) {
+          toDelete.push(k);
+        }
       }
-    }
-    if (cleanedOld > 0) console.log('🧹 تم مسح ' + cleanedOld + ' مفتاح قديم من localStorage');
+      toDelete.forEach(function(k) { localStorage.removeItem(k); });
+      // احفظ المفتاح الجديد
+      localStorage.setItem(_getSeenKey(row), '1');
+    } catch(e) {}
+  }
 
-    r.data.forEach(function(row) {
-      var key = 'welcome_seen_' + row.id;
-      var seen = '';
-      try { seen = localStorage.getItem(key); } catch(e){}
-      console.log('الرسالة id=' + row.id + ' | is_active=' + row.is_active + ' | localStorage=' + (seen ? '✅ مرت (سيُعاد ضبطها بـ resetWelcome)' : '⭕ لم تُغلق → ستظهر'));
+  // ── عرض الـ Modal ─────────────────────────────────────────
+  function _showModal(row) {
+    var overlay   = document.getElementById('sm-overlay');
+    var card      = document.getElementById('sm-card');
+    var titleEl   = document.getElementById('sm-header-title');
+    var subEl     = document.getElementById('sm-header-sub');
+    var msgCard   = document.getElementById('sm-message-card');
+    var msgEl     = document.getElementById('sm-message-text');
+    var btn       = document.getElementById('sm-confirm-btn');
+    var loadingEl = document.getElementById('sm-loading');
+    var iconEl    = document.getElementById('sm-icon');
+
+    if (!overlay || !card) {
+      console.warn('[SiteAlert] العناصر غير موجودة في DOM');
+      return;
+    }
+
+    // ملأ البيانات
+    if (titleEl) titleEl.textContent = (row.title || 'تنبيه هام').trim();
+    if (subEl)   subEl.textContent   = 'رسالة من إدارة المنصة';
+    if (msgEl)   msgEl.textContent   = (row.message || '').trim();
+    if (iconEl)  iconEl.textContent  = _pickIcon(row.title);
+
+    // إخفاء loading وإظهار المحتوى
+    if (loadingEl) loadingEl.style.display = 'none';
+    if (msgCard)   msgCard.style.display   = '';
+    if (btn)       btn.style.display       = '';
+
+    // منع scroll الجسم — لا يتعارض مع rv-open أو أي class آخر
+    document.body.classList.add('sm-open');
+
+    // إظهار الـ overlay
+    overlay.classList.remove('sm-hiding');
+    overlay.classList.add('sm-visible');
+
+    // تخزين الـ row للـ close
+    overlay._smRow = row;
+
+    // أتاح إغلاق بالـ Enter فقط (ليس ESC — الـ ESC قد يكون مستخدماً لـ PDF viewer)
+    overlay._smKeyHandler = function(e) {
+      if (e.key === 'Enter') { e.preventDefault(); smClose(); }
+    };
+    document.addEventListener('keydown', overlay._smKeyHandler);
+
+    console.log('[SiteAlert] ✅ عرض الرسالة id=' + row.id + ' | العنوان: ' + row.title);
+  }
+
+  // ── اختيار أيقونة مناسبة ──────────────────────────────────
+  function _pickIcon(title) {
+    if (!title) return '🔔';
+    var t = title.toLowerCase();
+    if (t.includes('تنبيه') || t.includes('هام') || t.includes('مهم')) return '⚠️';
+    if (t.includes('تحديث') || t.includes('جديد'))                      return '🆕';
+    if (t.includes('امتحان') || t.includes('اختبار'))                   return '📝';
+    if (t.includes('إجازة') || t.includes('عطلة'))                      return '🎉';
+    if (t.includes('خطأ') || t.includes('مشكلة'))                       return '🔧';
+    if (t.includes('مرحب') || t.includes('أهلاً') || t.includes('ترحيب')) return '👋';
+    return '🔔';
+  }
+
+  // ── إغلاق الـ Modal (global — accessible from HTML) ───────
+  window.smClose = function() {
+    var overlay = document.getElementById('sm-overlay');
+    if (!overlay || !overlay.classList.contains('sm-visible')) return;
+
+    // تشغيل animation الإغلاق
+    overlay.classList.remove('sm-visible');
+    overlay.classList.add('sm-hiding');
+
+    // إزالة منع الـ scroll
+    document.body.classList.remove('sm-open');
+
+    // حفظ أن الرسالة شُوفت
+    if (overlay._smRow) _markSeen(overlay._smRow);
+
+    // تنظيف الـ event listener
+    if (overlay._smKeyHandler) {
+      document.removeEventListener('keydown', overlay._smKeyHandler);
+      overlay._smKeyHandler = null;
+    }
+
+    // إخفاء تماماً بعد الـ animation
+    setTimeout(function() {
+      overlay.classList.remove('sm-hiding');
+      // إعادة الـ loading state لو أحد احتاج يعيد التشغيل (debugSiteAlert)
+      var loadingEl = document.getElementById('sm-loading');
+      var msgCard   = document.getElementById('sm-message-card');
+      var btn       = document.getElementById('sm-confirm-btn');
+      if (loadingEl) loadingEl.style.display = '';
+      if (msgCard)   msgCard.style.display   = 'none';
+      if (btn)       btn.style.display       = 'none';
+    }, 400);
+  };
+
+  // backward-compat: القديم كان closeWelcome()
+  window.closeWelcome = window.smClose;
+
+  // ── المنطق الرئيسي ────────────────────────────────────────
+  function _run(attempt) {
+    attempt = attempt || 1;
+    _waitClient(FETCH_TIMEOUT, function(db) {
+      if (!db || typeof db.from !== 'function') {
+        console.log('[SiteAlert] Supabase غير جاهز — تم تجاهل الـ modal');
+        _safeHideOverlay();
+        return;
+      }
+
+      _fetchMessage(db, function(row, err) {
+        if (err) {
+          if (attempt <= MAX_RETRIES) {
+            console.log('[SiteAlert] إعادة المحاولة ' + attempt + '/' + MAX_RETRIES);
+            setTimeout(function() { _run(attempt + 1); }, RETRY_DELAY);
+          } else {
+            console.log('[SiteAlert] فشل جلب الرسالة بعد ' + MAX_RETRIES + ' محاولات — تم تجاهل الـ modal');
+            _safeHideOverlay();
+          }
+          return;
+        }
+
+        if (!row) {
+          console.log('[SiteAlert] لا توجد رسائل نشطة (is_active=true) — تم تجاهل الـ modal');
+          _safeHideOverlay();
+          return;
+        }
+
+        if (_wasSeen(row)) {
+          console.log('[SiteAlert] الرسالة سبق مشاهدتها (id=' + row.id + ')');
+          _safeHideOverlay();
+          return;
+        }
+
+        // ✅ رسالة جديدة — اعرضها
+        _showModal(row);
+      });
     });
   }
-  console.groupEnd();
-};
 
-// ── دالة مسح ذاكرة رسائل الترحيب (لإعادة إظهارها) ────────────
-window.resetWelcome = function() {
-  var keys = [];
-  try {
-    for (var i = 0; i < localStorage.length; i++) {
-      var k = localStorage.key(i);
-      if (k && k.startsWith('welcome_seen_')) keys.push(k);
+  // إخفاء الـ overlay بأمان (لو DOM جاهز)
+  function _safeHideOverlay() {
+    var overlay = document.getElementById('sm-overlay');
+    if (overlay) {
+      overlay.classList.remove('sm-visible', 'sm-hiding');
+      document.body.classList.remove('sm-open');
     }
-    keys.forEach(function(k) { localStorage.removeItem(k); });
-  } catch(e) {}
-  console.log('[WELCOME] تم مسح ' + keys.length + ' مفاتيح — ستظهر الرسالة في المرة القادمة');
-  loadAndShowWelcome();
-};
+  }
 
+  // ── تشغيل عند جاهزية DOM ─────────────────────────────────
+  function _boot() {
+    if (_initialized) return;
+    _initialized = true;
+    // تأخير خفيف لضمان جاهزية DOM الكاملة وعدم التعارض مع أي init آخر
+    setTimeout(_run, 400);
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', _boot);
+  } else {
+    _boot();
+  }
+
+  // ── أدوات تشخيص (console) ────────────────────────────────
+  window.debugSiteAlert = async function() {
+    console.group('%c[SiteAlert DEBUG] تشخيص نظام التنبيهات', 'color:#0a3d62;font-weight:bold;font-size:13px');
+    var db = window.supabase;
+    if (!db) { console.error('Supabase client غير جاهز'); console.groupEnd(); return; }
+
+    var r = await db.from('site_messages').select('id,title,message,is_active,display_order').eq('is_active', true).limit(10);
+    if (r.error) {
+      console.error('خطأ:', r.error.message, '| code:', r.error.code);
+      if (r.error.code === 'PGRST301' || r.error.code === '42501' || (r.error.message || '').includes('permission')) {
+        console.warn('⚠️ مشكلة RLS — شغّل في Supabase SQL Editor:');
+        console.log('%cALTER TABLE site_messages ENABLE ROW LEVEL SECURITY;\nDROP POLICY IF EXISTS "site_msg_public_read" ON site_messages;\nCREATE POLICY "site_msg_public_read" ON site_messages\n  FOR SELECT USING (true);',
+          'background:#f0f4f8;padding:10px;font-family:monospace;color:#0a3d62;');
+      }
+    } else if (!r.data || r.data.length === 0) {
+      console.warn('⚠️ لا توجد رسائل نشطة. تأكد من: site_messages → is_active = TRUE');
+    } else {
+      console.log('✅ الرسائل النشطة:', r.data);
+      r.data.forEach(function(row) {
+        var seen = _wasSeen(row);
+        console.log(
+          'id=' + row.id + ' | display_order=' + row.display_order +
+          ' | localStorage=' + (seen ? '✅ مرت → resetSiteAlert() لإعادتها' : '⭕ جديدة → ستظهر')
+        );
+      });
+    }
+    console.groupEnd();
+  };
+
+  // backward-compat
+  window.debugWelcome = window.debugSiteAlert;
+
+  window.resetSiteAlert = function() {
+    var removed = 0;
+    try {
+      var keys = [];
+      for (var i = 0; i < localStorage.length; i++) {
+        var k = localStorage.key(i);
+        if (k && (k.startsWith('sm_seen_') || k.startsWith('welcome_seen_'))) keys.push(k);
+      }
+      keys.forEach(function(k) { localStorage.removeItem(k); removed++; });
+    } catch(e) {}
+    console.log('[SiteAlert] تم مسح ' + removed + ' مفاتيح — ستظهر الرسالة الآن');
+    _initialized = false;
+    _retryCount  = 0;
+    _boot();
+  };
+
+  // backward-compat
+  window.resetWelcome = window.resetSiteAlert;
+
+})();
+</script>
+
+<script>
 // ==================== PERFORMANCE: GPU HINTS ====================
 // تفعيل GPU acceleration للعناصر المتحركة
 document.addEventListener('DOMContentLoaded', function() {
@@ -7022,8 +7334,157 @@ console.log(
   'color:#17a589;font-weight:bold'
 );
 console.log('اكتب printGoogleAuthSetup() للحصول على خطوات إعداد Google Login');
+console.log('%c🔧 تشخيص المنصة: اكتب diagnose() في الـ Console', 'color:#17a589;font-weight:700;font-size:13px');
 
 })();
+</script>
+
+<script>
+// ══════════════════════════════════════════════════════════
+//  أداة التشخيص الشاملة — diagnose()
+//  تكتبها في الـ Console وهي بتقولك المشكلة بالظبط
+// ══════════════════════════════════════════════════════════
+window.diagnose = async function() {
+  var log = [];
+  var ok  = true;
+
+  function pass(msg) { log.push('✅ ' + msg); }
+  function fail(msg) { log.push('❌ ' + msg); ok = false; }
+  function warn(msg) { log.push('⚠️  ' + msg); }
+  function info(msg) { log.push('ℹ️  ' + msg); }
+
+  console.group('%c🔧 تشخيص المنصة الشامل', 'color:#0a3d62;font-weight:bold;font-size:14px');
+
+  // ── 1. مكتبة Supabase ───────────────────────────────────
+  if (window._db || (window.supabase && typeof window.supabase.from === 'function')) {
+    pass('مكتبة Supabase محمّلة');
+  } else {
+    fail('مكتبة Supabase غير محمّلة — تحقق من الاتصال بالإنترنت أو CDN');
+  }
+
+  // ── 2. Supabase Client ──────────────────────────────────
+  var db = window.supabase && typeof window.supabase.from === 'function' ? window.supabase : null;
+  if (!db) db = window._db && typeof window._db.from === 'function' ? window._db : null;
+
+  if (db) {
+    pass('Supabase Client جاهز (window.supabase.from موجود)');
+  } else {
+    fail('Supabase Client غير جاهز — window.supabase = ' + typeof window.supabase);
+    // حاول ننتظره
+    try {
+      var rp = window._supabaseClientReady || window._supabaseReady;
+      if (rp) {
+        warn('جاري الانتظار على _supabaseClientReady...');
+        db = await Promise.race([rp, new Promise(function(_,rej){setTimeout(function(){rej(new Error('timeout'))},5000)})]).catch(function(){return null;});
+        if (db && typeof db.from === 'function') {
+          pass('Client جاهز بعد الانتظار');
+        } else {
+          fail('Client لم يصبح جاهزاً خلال 5 ثوانٍ');
+        }
+      }
+    } catch(e) {}
+  }
+
+  if (!db) {
+    log.forEach(function(l){ console.log(l); });
+    console.groupEnd();
+    return;
+  }
+
+  // ── 3. اتصال Supabase (ping) ────────────────────────────
+  try {
+    var pingStart = Date.now();
+    var pingRes = await db.from('site_sections').select('id').limit(1);
+    var pingMs  = Date.now() - pingStart;
+    if (pingRes.error) {
+      if (pingRes.error.code === 'PGRST301' || pingRes.error.code === '42501' || (pingRes.error.message||'').includes('permission')) {
+        fail('RLS مشكلة في site_sections — الـ policy غير صحيحة');
+        warn('شغّل في Supabase SQL Editor:\n    ALTER TABLE site_sections ENABLE ROW LEVEL SECURITY;\n    DROP POLICY IF EXISTS "public_read" ON site_sections;\n    CREATE POLICY "public_read" ON site_sections FOR SELECT USING (true);');
+      } else if (pingRes.error.code === 'PGRST116') {
+        warn('الجدول site_sections فارغ تماماً');
+      } else {
+        fail('خطأ في site_sections: ' + pingRes.error.message + ' (code: ' + pingRes.error.code + ')');
+      }
+    } else {
+      pass('الاتصال بـ Supabase يعمل (' + pingMs + 'ms)');
+    }
+  } catch(e) {
+    fail('استثناء عند الاتصال: ' + (e.message || String(e)));
+  }
+
+  // ── 4. جدول site_sections ───────────────────────────────
+  try {
+    var secRes = await db.from('site_sections').select('id,title,parent_id,display_order').is('parent_id', null).order('display_order');
+    if (secRes.error) {
+      fail('خطأ في جلب الأقسام الرئيسية: ' + secRes.error.message);
+    } else if (!secRes.data || secRes.data.length === 0) {
+      fail('جدول site_sections فارغ أو لا توجد أقسام رئيسية (parent_id = NULL)');
+      warn('تحقق من Supabase → Table Editor → site_sections → parent_id يجب أن تكون بعض الصفوف NULL');
+    } else {
+      pass('الأقسام الرئيسية: ' + secRes.data.length + ' قسم');
+      secRes.data.forEach(function(s){ info('  • [' + s.id + '] ' + s.title + ' (order=' + s.display_order + ')'); });
+    }
+  } catch(e) {
+    fail('استثناء في جلب site_sections: ' + (e.message || String(e)));
+  }
+
+  // ── 5. جدول site_messages ───────────────────────────────
+  try {
+    var msgRes = await db.from('site_messages').select('id,title,is_active,display_order').eq('is_active', true).limit(3);
+    if (msgRes.error) {
+      warn('تعذّر قراءة site_messages: ' + msgRes.error.message + ' (code: ' + msgRes.error.code + ')');
+    } else if (!msgRes.data || msgRes.data.length === 0) {
+      info('site_messages: لا توجد رسائل نشطة (is_active=true) — هذا طبيعي لو ما تريدش تنبيه');
+    } else {
+      pass('site_messages: ' + msgRes.data.length + ' رسالة نشطة');
+    }
+  } catch(e) {
+    warn('استثناء في site_messages: ' + (e.message || String(e)));
+  }
+
+  // ── 6. الـ Cache الحالي ──────────────────────────────────
+  if (window._dataCache) {
+    var sKeys = Object.keys(window._dataCache.sections || {});
+    var cKeys = Object.keys(window._dataCache.content  || {});
+    info('Cache: sections=' + sKeys.length + ' keys | content=' + cKeys.length + ' keys');
+    if (sKeys.length > 0) {
+      sKeys.forEach(function(k){
+        var v = window._dataCache.sections[k];
+        info('  cache[' + k + '] = ' + (Array.isArray(v) ? v.length + ' rows' : typeof v));
+      });
+    } else {
+      warn('الـ Cache فارغ — البيانات لم تُحمَّل بعد');
+    }
+  } else {
+    fail('window._dataCache غير موجود');
+  }
+
+  // ── 7. DOM ───────────────────────────────────────────────
+  var homeSections = document.getElementById('dynamic-home-sections');
+  if (homeSections) {
+    var hasSpinner = !!homeSections.querySelector('.spinner');
+    var hasCards   = !!homeSections.querySelector('.dept-card');
+    var hasFallback= homeSections.innerHTML.includes('f1') || homeSections.innerHTML.includes('f2');
+    if (hasCards && !hasFallback)  pass('الكروت محمّلة من قاعدة البيانات');
+    else if (hasCards && hasFallback) warn('الكروت ظاهرة لكنها من الـ Fallback (بيانات وهمية) — يعني Supabase ما رد');
+    else if (hasSpinner)              warn('الصفحة لا تزال تحمّل (spinner موجود)');
+    else                              fail('الـ dynamic-home-sections فارغ أو يعرض خطأ');
+  } else {
+    fail('العنصر dynamic-home-sections غير موجود في الـ DOM');
+  }
+
+  // ── النتيجة ──────────────────────────────────────────────
+  console.log('');
+  log.forEach(function(l){ console.log(l); });
+  console.log('');
+  if (ok) {
+    console.log('%c✅ كل شيء يبدو سليماً', 'color:#27ae60;font-weight:bold;font-size:13px');
+  } else {
+    console.log('%c❌ توجد مشاكل — راجع الـ ❌ أعلاه', 'color:#e74c3c;font-weight:bold;font-size:13px');
+    console.log('%cلإعادة تحميل البيانات يدوياً: _clearDataCache(); renderHomeSections();', 'color:#0a3d62;font-size:12px');
+  }
+  console.groupEnd();
+};
 </script>
 <!-- ✅ مؤشر حالة الشبكة للموبايل -->
 <style>
@@ -7266,5 +7727,67 @@ self.addEventListener('fetch', function(e) {
   console.log('[PREFETCH] ✅ Intersection Observer مفعَّل للـ prefetching');
 })();
 </script>
+<!-- ==================== WHATSAPP FLOATING BUTTON ==================== -->
+<a id="whatsapp-float"
+   href="https://wa.me/201147908978"
+   target="_blank"
+   rel="noopener noreferrer"
+   aria-label="تواصل معنا عبر واتساب"
+   title="تواصل معنا عبر واتساب">
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="white" width="30" height="30" aria-hidden="true">
+    <path d="M16 .5C7.44.5.5 7.44.5 16c0 2.72.7 5.37 2.03 7.72L.5 31.5l8.05-2.01A15.44 15.44 0 0016 31.5C24.56 31.5 31.5 24.56 31.5 16S24.56.5 16 .5zm0 28.2a13.6 13.6 0 01-6.93-1.9l-.5-.3-5.13 1.28 1.3-4.98-.32-.51A13.6 13.6 0 012.3 16C2.3 8.43 8.43 2.3 16 2.3S29.7 8.43 29.7 16 23.57 28.7 16 28.7zm7.47-10.2c-.41-.2-2.42-1.2-2.8-1.33-.37-.14-.64-.2-.91.2-.27.41-1.05 1.33-1.29 1.6-.24.28-.47.3-.88.1-.41-.2-1.73-.64-3.3-2.04-1.22-1.09-2.04-2.44-2.28-2.85-.24-.41-.02-.63.18-.83.18-.18.41-.47.61-.7.2-.23.27-.4.4-.67.14-.27.07-.5-.03-.7-.1-.2-.91-2.2-1.25-3.01-.33-.8-.67-.69-.91-.7l-.78-.01c-.27 0-.7.1-1.07.5-.37.4-1.4 1.37-1.4 3.34 0 1.97 1.43 3.88 1.63 4.15.2.27 2.82 4.3 6.83 6.03.95.41 1.7.66 2.28.84.96.3 1.83.26 2.52.16.77-.12 2.42-.99 2.76-1.94.34-.95.34-1.76.24-1.94-.1-.17-.37-.27-.78-.47z"/>
+  </svg>
+</a>
+<style>
+#whatsapp-float {
+  position: fixed;
+  bottom: 24px;
+  left: 24px;
+  z-index: 99999;
+  background: linear-gradient(135deg, #25d366, #128c7e);
+  border-radius: 50%;
+  width: 58px;
+  height: 58px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 16px rgba(37,211,102,0.45), 0 2px 6px rgba(0,0,0,0.18);
+  text-decoration: none;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  animation: wa-pulse 2.5s infinite;
+}
+#whatsapp-float:hover {
+  transform: scale(1.1);
+  box-shadow: 0 6px 24px rgba(37,211,102,0.6), 0 3px 10px rgba(0,0,0,0.22);
+  animation: none;
+}
+#whatsapp-float::after {
+  content: 'تواصل معنا';
+  position: absolute;
+  right: 66px;
+  background: #128c7e;
+  color: #fff;
+  font-size: 13px;
+  font-family: 'Cairo', 'Tajawal', sans-serif;
+  padding: 5px 12px;
+  border-radius: 20px;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+}
+#whatsapp-float:hover::after {
+  opacity: 1;
+}
+@keyframes wa-pulse {
+  0%, 100% { box-shadow: 0 4px 16px rgba(37,211,102,0.45), 0 2px 6px rgba(0,0,0,0.18); }
+  50%       { box-shadow: 0 4px 28px rgba(37,211,102,0.75), 0 2px 6px rgba(0,0,0,0.18); }
+}
+@media (max-width: 600px) {
+  #whatsapp-float { bottom: 18px; left: 18px; width: 52px; height: 52px; }
+  #whatsapp-float::after { display: none; }
+}
+</style>
 </body>
 </html>
