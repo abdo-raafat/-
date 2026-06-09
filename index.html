@@ -1227,6 +1227,7 @@ body.content-protected * {
 body.content-protected img {
   -webkit-user-drag: none !important;
   -moz-user-drag: none !important;
+  user-drag: none !important;
   pointer-events: none;
   -webkit-touch-callout: none !important;
 }
@@ -1632,6 +1633,7 @@ a, button, [onclick], .dept-card, .resource-item, .link-card, .lc-btn, .btn-ente
 /* ✅ FIXED: الـ resource items تعمل على الموبايل */
 .resource-item, .buildResourcesInsideArea-item {
   -webkit-tap-highlight-color: transparent;
+  tap-highlight-color: transparent;
 }
 .resource-item:active { 
   transform: scale(0.97);
@@ -2070,7 +2072,11 @@ table { table-layout: auto; }
 var _supabaseUrl = "https://xiqeaohemuxgujrcnpzd.supabase.co";
 // ✅ ملاحظة: استبدل هذا المفتاح بـ anon public key من Supabase Dashboard → Settings → API
 // المفتاح الصحيح يبدأ بـ eyJ (صيغة JWT)
-var _supabaseKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhpcWVhb2hlbXV4Z3VqcmNucHpkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkxMjEwNjUsImV4cCI6MjA5NDY5NzA2NX0.vnpHTfn9KhRUjJDxKGPlzhPHyrrEaBWlACxxv2QEFWY";
+var _supabaseKey = "sb_publishable_xzg8wn0ETQniEItj2Etfmw__klmgUWg";
+if (!_supabaseKey.startsWith('eyJ')) {
+  console.warn('[SUPABASE KEY] ⚠️ المفتاح الحالي يبدو أنه ليس anon key JWT.');
+  console.warn('إذا كانت البيانات لا تظهر، تحقق من: Supabase Dashboard → Settings → API → anon public key');
+}
 
 window._supabaseReady.then(function(lib) {
   if (!lib || typeof lib.createClient !== 'function') {
@@ -3941,6 +3947,9 @@ window.checkBanStatus = async function(email) {
 
 <style>
 
+#user-box {
+  /* مش fixed — هيتحط جوه الـ navbar */
+}
 
 .chatgpt-login-btn {
   display: flex;
