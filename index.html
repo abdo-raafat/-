@@ -1247,25 +1247,52 @@ body.content-protected .rv-image-wrap {
 body.content-protected .rv-image-wrap img {
   pointer-events: auto !important;
 }
-/* ===== FIX: MOBILE PDF SCROLL ===== */
-/* منع تجميد التمرير في PDF على الموبايل */
-#native-pdf-pdfjs-wrapper,
-#native-pdf-frame,
+/* ===== FIX: MOBILE PDF SCROLL — COMPREHENSIVE ===== */
+/* wrapper الرئيسي — يأخذ باقي الارتفاع ويسمح بالتمرير */
+#native-pdf-pdfjs-wrapper {
+  flex: 1 !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  -webkit-overflow-scrolling: touch !important;
+  touch-action: pan-y pinch-zoom !important;
+  overscroll-behavior: contain !important;
+  min-height: 0 !important;
+  position: relative !important;
+}
+/* iframe الـ PDF على ديسكتوب */
+#native-pdf-frame {
+  flex: 1 !important;
+  width: 100% !important;
+  border: none !important;
+  min-height: 0 !important;
+  overflow: auto !important;
+  -webkit-overflow-scrolling: touch !important;
+  touch-action: pan-y !important;
+}
+/* الـ modal نفسه — يمنع overflow الخارجي لكن يسمح للداخل */
+#native-pdf-modal {
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+  touch-action: pan-y !important;
+}
+/* الـ overlay لا يمنع touch events الداخلية */
+#native-pdf-overlay {
+  touch-action: auto !important;
+}
+/* canvas داخل PDF.js — يجب ألا يمنع الـ scroll */
+#native-pdf-pdfjs-wrapper canvas {
+  display: block !important;
+  touch-action: pan-y pinch-zoom !important;
+  pointer-events: none !important;
+}
+/* rv-pdf-frame */
 .rv-pdf-frame,
 .rv-embed-frame {
   -webkit-overflow-scrolling: touch !important;
   touch-action: pan-y !important;
+  overflow: auto !important;
   overscroll-behavior: contain;
-}
-/* الـ modal الخارجي لا يمنع الـ scroll الداخلي */
-#native-pdf-modal,
-.rv-modal {
-  touch-action: pan-y;
-}
-/* الـ overlay يسمح بتمرير المحتوى الداخلي */
-#native-pdf-overlay,
-.rv-overlay {
-  touch-action: none;
 }
 /* منع pointer-events: none على الـ content protection من كسر الـ scroll */
 body.content-protected #native-pdf-pdfjs-wrapper,
@@ -1273,30 +1300,45 @@ body.content-protected #native-pdf-frame,
 body.content-protected .rv-pdf-frame,
 body.content-protected .rv-embed-frame {
   pointer-events: auto !important;
-  touch-action: pan-y !important;
+  touch-action: pan-y pinch-zoom !important;
   -webkit-overflow-scrolling: touch !important;
+}
+body.content-protected #native-pdf-pdfjs-wrapper canvas {
+  pointer-events: none !important;
 }
 
 /* ===== FIX: BREADCRUMB MOBILE ===== */
+.breadcrumb {
+  -webkit-overflow-scrolling: touch;
+  overflow-x: auto;
+  overflow-y: hidden;
+  white-space: nowrap;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  display: flex;
+  flex-wrap: nowrap;
+}
+.breadcrumb::-webkit-scrollbar { display: none; }
+.breadcrumb span,
+.breadcrumb .sep { flex-shrink: 0; white-space: nowrap; }
+
 @media (max-width: 768px) {
   .breadcrumb {
-    max-width: calc(100vw - 180px);
+    max-width: calc(100vw - 175px);
     font-size: .76rem;
   }
-  .topnav {
-    gap: 8px;
-  }
+  .topnav { gap: 8px; }
 }
 @media (max-width: 480px) {
   .breadcrumb {
-    max-width: calc(100vw - 150px);
-    font-size: .72rem;
+    max-width: calc(100vw - 140px);
+    font-size: .70rem;
   }
-  .breadcrumb .sep {
-    flex-shrink: 0;
-  }
-  .breadcrumb span {
-    flex-shrink: 0;
+}
+@media (max-width: 360px) {
+  .breadcrumb {
+    max-width: calc(100vw - 120px);
+    font-size: .66rem;
   }
 }
 
@@ -1536,7 +1578,6 @@ a, button, [onclick], .dept-card, .resource-item, .link-card, .lc-btn, .btn-ente
 
 /* ===== MOBILE BREADCRUMB FIX ===== */
 @media(max-width: 480px) {
-  .breadcrumb { display: none; }
   .topnav .logo div:first-child { display: none; }
   .topnav .logo { font-size: 1rem; }
 }
@@ -1676,7 +1717,6 @@ html, body {
   .chatgpt-login-btn { padding: 6px 10px; font-size: 11px; gap: 4px; }
   .user-email { max-width: 80px; font-size: 10px; }
   .logout-btn { padding: 5px 9px; font-size: 11px; }
-  .breadcrumb { display: none; }
 }
 
 /* ── Cards Mobile ── */
@@ -1952,6 +1992,7 @@ table { table-layout: auto; }
     <strong>منصة معهد فني صحي بني سويف</strong><br>
     تم إنشاء هذه المنصة بواسطة <strong>عبدالرحمن رأفت محمد</strong><br>
     شعبة تسجيل طبي وإحصاء — دفعة 2025<br>
+    📞 للتواصل: <a href="tel:01147908978" style="color:var(--accent2);font-weight:700;text-decoration:none;">01147908978</a><br>
     جميع الحقوق محفوظة © 2025
   </footer>
 </div>
@@ -1963,6 +2004,36 @@ table { table-layout: auto; }
     <div class="page-header">
       <h2>🔗 روابط وجروبات مهمة</h2>
       <p>أهم الروابط والجروبات الرسمية والمهمة لطلاب المعاهد الفنية الصحية</p>
+    </div>
+
+    <div style="margin-bottom: 30px;">
+      <h3 class="links-section-title">📞 تواصل مع المنصة</h3>
+      <div class="link-card lc-blue">
+        <div class="lc-top">
+          <div class="lc-icon">📱</div>
+          <div class="lc-info">
+            <h3>عبدالرحمن رأفت محمد</h3>
+            <p>منشئ المنصة — للإبلاغ عن مشاكل أو اقتراحات أو إضافة محتوى</p>
+          </div>
+        </div>
+        <div class="lc-footer">
+          <span class="lc-url">01147908978</span>
+          <a href="tel:01147908978" class="lc-btn" style="background:linear-gradient(135deg,#1a3a5c,#2471a3);color:#fff;border:none;cursor:pointer;font-family:inherit;text-decoration:none;display:inline-flex;align-items:center;padding:8px 16px;border-radius:8px;font-size:.85rem;font-weight:700;">📞 اتصل الآن</a>
+        </div>
+      </div>
+      <div class="link-card lc-green">
+        <div class="lc-top">
+          <div class="lc-icon">💬</div>
+          <div class="lc-info">
+            <h3>واتساب</h3>
+            <p>تواصل عبر واتساب للرد السريع</p>
+          </div>
+        </div>
+        <div class="lc-footer">
+          <span class="lc-url">wa.me/201147908978</span>
+          <a href="https://wa.me/201147908978" target="_blank" rel="noopener" class="lc-btn" style="background:linear-gradient(135deg,#1a5c2a,#25a346);color:#fff;border:none;cursor:pointer;font-family:inherit;text-decoration:none;display:inline-flex;align-items:center;padding:8px 16px;border-radius:8px;font-size:.85rem;font-weight:700;">💬 واتساب</a>
+        </div>
+      </div>
     </div>
 
     <div style="margin-bottom: 30px;">
@@ -3564,20 +3635,8 @@ function openResource(url, title, resourceType) {
 
   var rt = (resourceType || '').toLowerCase();
 
-  // ── الروابط الخارجية (link): افتح في تبويب جديد مباشرةً ──
-  if (rt === 'link' || rt === 'external_link') {
-    var extA = document.createElement('a');
-    extA.href = url;
-    extA.target = '_blank';
-    extA.rel = 'noopener noreferrer';
-    document.body.appendChild(extA);
-    extA.click();
-    document.body.removeChild(extA);
-    return;
-  }
-
-  // ── HTML embed: عرض داخل iframe ──
-  if (rt === 'html') {
+  // ── الروابط الخارجية: عرض داخل الموقع في iframe ──
+  if (rt === 'link' || rt === 'html' || rt === 'external_link') {
     ResourceViewer.open(url, title, 'html');
     return;
   }
@@ -6188,8 +6247,8 @@ var NativePDFViewer = (function() {
       // wrapper قابل للتمرير بالكامل
       bodyHtml =
         '<div id="native-pdf-pdfjs-wrapper" ' +
-        'style="flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;touch-action:pan-y;' +
-        'background:#525659;padding:12px;box-sizing:border-box;min-height:0;">' +
+        'style="flex:1;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;touch-action:pan-y pinch-zoom;' +
+        'overscroll-behavior:contain;background:#525659;padding:12px;box-sizing:border-box;min-height:0;position:relative;">' +
         '</div>';
     } else {
       bodyHtml =
@@ -7278,67 +7337,5 @@ self.addEventListener('fetch', function(e) {
   console.log('[PREFETCH] ✅ Intersection Observer مفعَّل للـ prefetching');
 })();
 </script>
-<!-- ==================== WHATSAPP FLOATING BUTTON ==================== -->
-<a id="whatsapp-float"
-   href="https://wa.me/201147908978"
-   target="_blank"
-   rel="noopener noreferrer"
-   aria-label="تواصل معنا عبر واتساب"
-   title="تواصل معنا عبر واتساب">
-  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="white" width="30" height="30" aria-hidden="true">
-    <path d="M16 .5C7.44.5.5 7.44.5 16c0 2.72.7 5.37 2.03 7.72L.5 31.5l8.05-2.01A15.44 15.44 0 0016 31.5C24.56 31.5 31.5 24.56 31.5 16S24.56.5 16 .5zm0 28.2a13.6 13.6 0 01-6.93-1.9l-.5-.3-5.13 1.28 1.3-4.98-.32-.51A13.6 13.6 0 012.3 16C2.3 8.43 8.43 2.3 16 2.3S29.7 8.43 29.7 16 23.57 28.7 16 28.7zm7.47-10.2c-.41-.2-2.42-1.2-2.8-1.33-.37-.14-.64-.2-.91.2-.27.41-1.05 1.33-1.29 1.6-.24.28-.47.3-.88.1-.41-.2-1.73-.64-3.3-2.04-1.22-1.09-2.04-2.44-2.28-2.85-.24-.41-.02-.63.18-.83.18-.18.41-.47.61-.7.2-.23.27-.4.4-.67.14-.27.07-.5-.03-.7-.1-.2-.91-2.2-1.25-3.01-.33-.8-.67-.69-.91-.7l-.78-.01c-.27 0-.7.1-1.07.5-.37.4-1.4 1.37-1.4 3.34 0 1.97 1.43 3.88 1.63 4.15.2.27 2.82 4.3 6.83 6.03.95.41 1.7.66 2.28.84.96.3 1.83.26 2.52.16.77-.12 2.42-.99 2.76-1.94.34-.95.34-1.76.24-1.94-.1-.17-.37-.27-.78-.47z"/>
-  </svg>
-</a>
-<style>
-#whatsapp-float {
-  position: fixed;
-  bottom: 24px;
-  left: 24px;
-  z-index: 99999;
-  background: linear-gradient(135deg, #25d366, #128c7e);
-  border-radius: 50%;
-  width: 58px;
-  height: 58px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 4px 16px rgba(37,211,102,0.45), 0 2px 6px rgba(0,0,0,0.18);
-  text-decoration: none;
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
-  animation: wa-pulse 2.5s infinite;
-}
-#whatsapp-float:hover {
-  transform: scale(1.1);
-  box-shadow: 0 6px 24px rgba(37,211,102,0.6), 0 3px 10px rgba(0,0,0,0.22);
-  animation: none;
-}
-#whatsapp-float::after {
-  content: 'تواصل معنا';
-  position: absolute;
-  right: 66px;
-  background: #128c7e;
-  color: #fff;
-  font-size: 13px;
-  font-family: 'Cairo', 'Tajawal', sans-serif;
-  padding: 5px 12px;
-  border-radius: 20px;
-  white-space: nowrap;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.2s ease;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
-}
-#whatsapp-float:hover::after {
-  opacity: 1;
-}
-@keyframes wa-pulse {
-  0%, 100% { box-shadow: 0 4px 16px rgba(37,211,102,0.45), 0 2px 6px rgba(0,0,0,0.18); }
-  50%       { box-shadow: 0 4px 28px rgba(37,211,102,0.75), 0 2px 6px rgba(0,0,0,0.18); }
-}
-@media (max-width: 600px) {
-  #whatsapp-float { bottom: 18px; left: 18px; width: 52px; height: 52px; }
-  #whatsapp-float::after { display: none; }
-}
-</style>
 </body>
 </html>
