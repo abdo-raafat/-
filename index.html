@@ -6,7 +6,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <!-- ✅ PERF: Cache hints for GitHub Pages -->
 <meta http-equiv="Cache-Control" content="public, max-age=3600">
-<title>منصة معهد فني صحي بني سويف | التعليم الصحي الفني</title>
+<title>منصة المعهد الفني الصحي بني سويف | التعليم الصحي الفني</title>
 
 <!-- ✅ SEO Meta Tags -->
 <meta name="description" content="منصة تعليمية متكاملة لطلاب معهد فني صحي بني سويف — شرح تفاعلي، مواد دراسية، ملفات PDF، وذكاء اصطناعي للمساعدة في الدراسة. الفرقة الأولى والثانية وكل الشعب.">
@@ -2278,9 +2278,16 @@ let state = {
 // ==================== HELPERS ====================
 function toValidId(value) {
   if (value === null || value === undefined) return null;
-  const raw = typeof value === 'object' ? null : String(value).replace(/[^0-9]/g, '');
-  if (!raw || raw === '') return null;
-  const num = Number(raw);
+  if (typeof value === 'object') return null;
+  var s = String(value).trim();
+  if (!s) return null;
+  // ✅ FIX: دعم UUID (مثل 'a1b2c3d4-...') والأرقام الصحيحة معاً
+  var uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (uuidPattern.test(s)) return s; // UUID صحيح — نُرجعه كما هو
+  // محاولة تحليله كرقم صحيح
+  var raw = s.replace(/[^0-9]/g, '');
+  if (!raw) return null;
+  var num = Number(raw);
   return (Number.isFinite(num) && num > 0) ? num : null;
 }
 
@@ -2422,6 +2429,10 @@ async function _waitForSupabase(timeoutMs) {
 // ✅ PERF: حفظ Cache في sessionStorage بعد كل fetch ناجح
 function _saveCacheToSession() {
   try {
+    // ✅ FIX: لا نحفظ إذا كان الـ cache فارغاً تماماً (قد يكون ناتج عن RLS خاطئة)
+    var totalRows = 0;
+    Object.values(window._dataCache.sections || {}).forEach(function(v){ totalRows += (Array.isArray(v) ? v.length : 0); });
+    if (totalRows === 0) return; // لا نحفظ cache فارغ
     var toSave = {
       sections:  window._dataCache.sections,
       content:   window._dataCache.content,
@@ -2517,10 +2528,17 @@ async function loadSections(parentId) {
         }
         return query;
       });
-      if (error) { console.error('[loadSections] error:', error.message); window._dataCache.sections[key] = []; return []; }
+      if (error) {
+        console.error('[loadSections] ❌ error:', error.message, '| code:', error.code);
+        // ✅ FIX: لا نُخزِّن الخطأ في الـ cache حتى تتم إعادة المحاولة عند الفتح التالي
+        window._dataCache.sections[key] = [];
+        return [];
+      }
       const result = data || [];
+      // ✅ FIX: لا نُخزِّن [] في الـ cache إذا كان الخطأ محتملاً (RLS أو شبكة)
+      // نُخزِّن فقط إذا كانت النتيجة تبدو صحيحة أو أُعيدت المحاولة بنجاح
       window._dataCache.sections[key] = result;
-      console.log('[loadSections] cached → parentId=' + (parentId ?? 'null') + ', rows=' + result.length);
+      console.log('[loadSections] ✅ cached → parentId=' + (parentId ?? 'null') + ', rows=' + result.length);
       _saveCacheToSession && _saveCacheToSession();
       return result;
     } catch (err) {
@@ -2540,6 +2558,7 @@ async function loadSectionContent(sectionId) {
   var key = _cacheKey('content', sectionId);
 
   if (window._dataCache.content[key] !== undefined) {
+    console.log('[DEBUG loadSectionContent] Cache hit → sectionId=' + sectionId + ', rows=' + (window._dataCache.content[key] || []).length);
     return window._dataCache.content[key];
   }
   if (window._dataCache._pending[key]) {
@@ -2549,19 +2568,40 @@ async function loadSectionContent(sectionId) {
   var fetchPromise = (async function() {
     try {
       var db = await _waitForSupabase();
-      if (!db) { window._dataCache.content[key] = []; return []; }
+      if (!db) {
+        console.error('[DEBUG loadSectionContent] ❌ Supabase client غير جاهز');
+        window._dataCache.content[key] = []; return [];
+      }
       const safeId = toValidId(sectionId);
-      if (safeId === null) { window._dataCache.content[key] = []; return []; }
+      console.log('[DEBUG loadSectionContent] sectionId=' + sectionId + ' → safeId=' + safeId);
+      if (safeId === null) {
+        console.error('[DEBUG loadSectionContent] ❌ safeId=null — تحقق من نوع الـ ID (UUID أم رقم؟)');
+        window._dataCache.content[key] = []; return [];
+      }
       // ✅ استخدام Retry تلقائي
       const { data, error } = await _fetchWithRetry(function() {
         return db.from('section_content').select('*').eq('section_id', safeId).order('display_order', { ascending: true });
       });
-      if (error) { console.error('[loadSectionContent] error:', error.message); window._dataCache.content[key] = []; return []; }
+      if (error) {
+        console.error('[DEBUG loadSectionContent] ❌ خطأ Supabase:', error.message, '| code:', error.code, '| hint:', error.hint);
+        if (error.code === '42501' || (error.message||'').includes('permission') || (error.message||'').includes('policy')) {
+          console.error('[DEBUG loadSectionContent] 🔐 مشكلة RLS — شغّل في Supabase SQL Editor:\n' +
+            'ALTER TABLE section_content ENABLE ROW LEVEL SECURITY;\n' +
+            'DROP POLICY IF EXISTS "content_read_authenticated" ON section_content;\n' +
+            'DROP POLICY IF EXISTS "content_read_all" ON section_content;\n' +
+            'CREATE POLICY "content_read_all" ON section_content FOR SELECT USING (true);');
+        }
+        window._dataCache.content[key] = []; return [];
+      }
       const result = data || [];
+      console.log('[DEBUG loadSectionContent] ✅ sectionId=' + sectionId + ' → ' + result.length + ' صف');
+      if (result.length === 0) {
+        console.warn('[DEBUG loadSectionContent] ⚠️ لا يوجد محتوى لهذا القسم — تحقق من أن section_id=' + safeId + ' موجود في section_content');
+      }
       window._dataCache.content[key] = result;
       return result;
     } catch (err) {
-      console.error('[loadSectionContent] error after retries:', err?.message || String(err));
+      console.error('[DEBUG loadSectionContent] ❌ استثناء:', err?.message || String(err));
       window._dataCache.content[key] = [];
       return [];
     } finally {
@@ -2577,6 +2617,7 @@ async function loadSectionResources(sectionId) {
   var key = _cacheKey('res', sectionId);
 
   if (window._dataCache.resources[key] !== undefined) {
+    console.log('[DEBUG loadSectionResources] Cache hit → sectionId=' + sectionId + ', rows=' + (window._dataCache.resources[key] || []).length);
     return window._dataCache.resources[key];
   }
   if (window._dataCache._pending[key]) {
@@ -2586,19 +2627,37 @@ async function loadSectionResources(sectionId) {
   var fetchPromise = (async function() {
     try {
       var db = await _waitForSupabase();
-      if (!db) { window._dataCache.resources[key] = []; return []; }
+      if (!db) {
+        console.error('[DEBUG loadSectionResources] ❌ Supabase client غير جاهز');
+        window._dataCache.resources[key] = []; return [];
+      }
       const safeId = toValidId(sectionId);
-      if (safeId === null) { window._dataCache.resources[key] = []; return []; }
+      console.log('[DEBUG loadSectionResources] sectionId=' + sectionId + ' → safeId=' + safeId);
+      if (safeId === null) {
+        console.error('[DEBUG loadSectionResources] ❌ safeId=null — تحقق من نوع الـ ID');
+        window._dataCache.resources[key] = []; return [];
+      }
       // ✅ استخدام Retry تلقائي
       const { data, error } = await _fetchWithRetry(function() {
         return db.from('section_resources').select('*').eq('section_id', safeId).order('id');
       });
-      if (error) { console.error('[loadSectionResources] error:', error.message); window._dataCache.resources[key] = []; return []; }
+      if (error) {
+        console.error('[DEBUG loadSectionResources] ❌ خطأ Supabase:', error.message, '| code:', error.code);
+        if (error.code === '42501' || (error.message||'').includes('permission') || (error.message||'').includes('policy')) {
+          console.error('[DEBUG loadSectionResources] 🔐 مشكلة RLS — شغّل في Supabase SQL Editor:\n' +
+            'ALTER TABLE section_resources ENABLE ROW LEVEL SECURITY;\n' +
+            'DROP POLICY IF EXISTS "resources_read_auth" ON section_resources;\n' +
+            'DROP POLICY IF EXISTS "resources_read_all" ON section_resources;\n' +
+            'CREATE POLICY "resources_read_all" ON section_resources FOR SELECT USING (true);');
+        }
+        window._dataCache.resources[key] = []; return [];
+      }
       const result = data || [];
+      console.log('[DEBUG loadSectionResources] ✅ sectionId=' + sectionId + ' → ' + result.length + ' مورد');
       window._dataCache.resources[key] = result;
       return result;
     } catch (err) {
-      console.error('[loadSectionResources] error after retries:', err?.message || String(err));
+      console.error('[DEBUG loadSectionResources] ❌ استثناء:', err?.message || String(err));
       window._dataCache.resources[key] = [];
       return [];
     } finally {
@@ -2821,15 +2880,36 @@ async function _renderDynamicSectionPage(sec) {
     }
 
     if (children.length === 0) {
-      // قسم نهائي — حمّل المحتوى (من الـ cache لو موجود)
-      const content = await loadSectionContent(sec.id);
-      if (content.length > 0) {
-        renderResourceCards('dynamic-section-grid', content);
+      // قسم نهائي أو فشل fetch — حمّل المحتوى والموارد معاً
+      const [content, leafResources] = await Promise.all([
+        loadSectionContent(sec.id),
+        loadSectionResources(sec.id)
+      ]);
+      const gridEl = document.getElementById('dynamic-section-grid');
+
+      if (content.length > 0 || leafResources.length > 0) {
+        // عرض الموارد في الـ grid
+        if (leafResources.length > 0 && resourcesEl) {
+          resourcesEl.innerHTML = buildResourcesHTML(leafResources);
+        }
+        if (content.length > 0) {
+          renderResourceCards('dynamic-section-grid', content);
+        } else {
+          gridEl.innerHTML = '';
+        }
       } else {
-        document.getElementById('dynamic-section-grid').innerHTML = `
+        // لا محتوى ولا موارد — عرض رسالة مناسبة مع زر إعادة المحاولة
+        console.warn('[DEBUG] ⚠️ لا يوجد محتوى للقسم id=' + sec.id + ' — تحقق من RLS وصلة section_id');
+        var secRef = sec;
+        gridEl.innerHTML = `
           <div style="text-align:center;padding:40px;color:#999;grid-column:1/-1">
             <div style="font-size:2.5rem;margin-bottom:12px">🚧</div>
-            <p>هذا القسم قيد الإعداد — سيتم إضافة المحتوى قريباً</p>
+            <p style="margin-bottom:8px;font-size:1rem">هذا القسم قيد الإعداد — سيتم إضافة المحتوى قريباً</p>
+            <p style="font-size:.78rem;color:#bbb;margin-bottom:16px">إذا كنت تتوقع ظهور محتوى، تحقق من Console للتشخيص</p>
+            <button onclick="sessionStorage.removeItem('_sbDataCache_v2');window._dataCache.sections={};window._dataCache.content={};window._dataCache.resources={};window._dataCache._pending={};_renderDynamicSectionPage(window.__sectionData_${sec.id});"
+              style="background:linear-gradient(135deg,var(--primary),var(--teal));color:#fff;border:none;border-radius:10px;padding:10px 20px;font-family:var(--font);font-size:.85rem;font-weight:700;cursor:pointer;box-shadow:0 3px 10px rgba(10,61,98,0.25)">
+              🔄 إعادة المحاولة
+            </button>
           </div>`;
       }
       return;
@@ -6991,14 +7071,12 @@ CREATE POLICY "subs_admin_all" ON subscriptions FOR ALL   USING (is_admin());
 ALTER TABLE section_content ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "content_read_authenticated" ON section_content;
+DROP POLICY IF EXISTS "content_read_all"           ON section_content;
 DROP POLICY IF EXISTS "content_admin_write"        ON section_content;
 
--- ⚠️ هذه السياسة تمنع المستخدمين غير المسجَّلين من رؤية المحتوى!
--- إذا أردت السماح للجميع بالقراءة، استخدم:
--- CREATE POLICY "content_read_all" ON section_content FOR SELECT USING (true);
--- القراءة: كل مستخدم مسجَّل (غيّر إلى USING (true) للسماح للجميع)
-CREATE POLICY "content_read_authenticated" ON section_content
-  FOR SELECT USING (auth.uid() IS NOT NULL);
+-- ✅ FIXED: قراءة عامة للجميع (بدون تسجيل دخول) — هذا يحل مشكلة "قيد الإعداد"
+-- إذا أردت تقييد القراءة للمسجَّلين فقط، استبدل (true) بـ (auth.uid() IS NOT NULL)
+CREATE POLICY "content_read_all" ON section_content FOR SELECT USING (true);
 
 -- الكتابة: الأدمن فقط
 CREATE POLICY "content_admin_write" ON section_content
@@ -7119,10 +7197,46 @@ console.log('%c[SECURITY v1] اكتب printSecuritySQL() في الـ Console ل�
 
 // ── Startup Diagnostic: يتنفذ بعد 10 ثوانٍ لفحص حالة الأقسام ──
 // (بعد الـ 8 ثوانٍ timeout للـ renderHomeSections + هامش أمان)
+
+// ══════════════════════════════════════════════
+// تشخيص صامت: يتحقق من كل الجداول بعد تحميل الأقسام
+// ══════════════════════════════════════════════
+async function _runSilentDiagnostic() {
+  if (window._diagRan) return;
+  window._diagRan = true;
+  if (!window.supabase || typeof window.supabase.from !== 'function') return;
+  var tables = ['site_sections','section_content','section_resources','profiles',
+                'subscriptions','banned_users','quizzes','quiz_questions',
+                'quiz_results','user_progress','notifications','chat_rooms','chat_messages'];
+  var results = {};
+  await Promise.all(tables.map(async function(t) {
+    try {
+      var r = await window.supabase.from(t).select('id', {count:'exact', head:true});
+      results[t] = r.error ? ('❌ ' + r.error.message) : ('✅ ' + (r.count ?? '?') + ' rows');
+    } catch(e) {
+      results[t] = '⚠️ ' + e.message;
+    }
+  }));
+  console.group('%c[DIAG] حالة الجداول في Supabase', 'color:#17a589;font-weight:bold');
+  Object.entries(results).forEach(function(e) {
+    var color = e[1].startsWith('✅') ? '#17a589' : e[1].startsWith('❌') ? '#e74c3c' : '#f39c12';
+    console.log('%c' + e[0] + ': ' + e[1], 'color:' + color);
+  });
+  var hasErrors = Object.values(results).some(function(v){ return !v.startsWith('✅'); });
+  if (hasErrors) {
+    console.log('%c▶ اكتب printFullRLS() لإصلاح RLS جميع الجداول', 'color:#e74c3c;font-weight:bold');
+  }
+  console.groupEnd();
+}
+
 setTimeout(async function() {
   var el = document.getElementById('dynamic-home-sections');
   var stillLoading = el && el.querySelector('.spinner');
-  if (!stillLoading) return; // الأقسام ظهرت ✅
+  if (!stillLoading) {
+    // الأقسام ظهرت — نعمل تشخيص صامت في الخلفية
+    _runSilentDiagnostic && _runSilentDiagnostic();
+    return;
+  }
 
   console.group('%c[BOOT DIAGNOSTIC] 🔍 الأقسام لم تظهر بعد 10 ثوانٍ', 'color:#e74c3c;font-weight:bold');
   console.log('URL:', window.location.href);
@@ -7288,6 +7402,145 @@ window._showToast = _showToast;
 // FIX F — تشخيص Supabase RLS تلقائياً
 // ════════════════════════════════════════════════════════
 
+// ════════════════════════════════════════════════════════
+// printFullRLS — SQL شامل لكل الجداول (شغّله في Supabase SQL Editor)
+// ════════════════════════════════════════════════════════
+window.printFullRLS = function() {
+  var sql = `
+-- ================================================================
+-- FIX ALL RLS POLICIES — شغّل هذا كله مرة واحدة في SQL Editor
+-- Supabase Dashboard → SQL Editor → New Query → Paste → Run
+-- ================================================================
+
+-- 1. site_sections — قراءة عامة للجميع (بدون تسجيل)
+ALTER TABLE site_sections ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "public_read"         ON site_sections;
+DROP POLICY IF EXISTS "allow_public_read"   ON site_sections;
+DROP POLICY IF EXISTS "sections_read_all"   ON site_sections;
+DROP POLICY IF EXISTS "sections_admin_write" ON site_sections;
+CREATE POLICY "sections_read_all"    ON site_sections FOR SELECT USING (true);
+CREATE POLICY "sections_admin_write" ON site_sections FOR ALL    USING (is_admin());
+
+-- 2. section_content — ✅ قراءة عامة للجميع (بدون تسجيل دخول)
+ALTER TABLE section_content ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "auth_read"                   ON section_content;
+DROP POLICY IF EXISTS "content_read_authenticated"  ON section_content;
+DROP POLICY IF EXISTS "content_read_all"            ON section_content;
+DROP POLICY IF EXISTS "content_admin_write"         ON section_content;
+-- ✅ FIXED: تغيير من auth.uid() IS NOT NULL إلى true للسماح للزوار
+CREATE POLICY "content_read_all" ON section_content
+  FOR SELECT USING (true);
+CREATE POLICY "content_admin_write" ON section_content
+  FOR ALL USING (is_admin());
+
+-- 3. section_resources — ✅ قراءة عامة للجميع (بدون تسجيل دخول)
+ALTER TABLE section_resources ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "resources_read_auth"   ON section_resources;
+DROP POLICY IF EXISTS "resources_read_all"    ON section_resources;
+DROP POLICY IF EXISTS "resources_admin_write" ON section_resources;
+-- ✅ FIXED: تغيير من auth.uid() IS NOT NULL إلى true للسماح للزوار
+CREATE POLICY "resources_read_all"   ON section_resources
+  FOR SELECT USING (true);
+CREATE POLICY "resources_admin_write" ON section_resources
+  FOR ALL USING (is_admin());
+
+-- 4. profiles — المستخدم يرى ملفه فقط، الأدمن يرى الكل
+ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "profiles_own_read"   ON profiles;
+DROP POLICY IF EXISTS "profiles_own_update" ON profiles;
+DROP POLICY IF EXISTS "profiles_insert_own" ON profiles;
+DROP POLICY IF EXISTS "profiles_admin_all"  ON profiles;
+DROP POLICY IF EXISTS "own_read"            ON profiles;
+CREATE POLICY "profiles_own_read"   ON profiles FOR SELECT USING (auth.uid() = id OR is_admin());
+CREATE POLICY "profiles_own_update" ON profiles FOR UPDATE USING (auth.uid() = id)
+  WITH CHECK (auth.uid() = id AND role = (SELECT role FROM profiles WHERE id = auth.uid()));
+CREATE POLICY "profiles_insert_own" ON profiles FOR INSERT WITH CHECK (auth.uid() = id);
+CREATE POLICY "profiles_admin_all"  ON profiles FOR ALL    USING (is_admin());
+
+-- 5. subscriptions
+ALTER TABLE subscriptions ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "subs_own"       ON subscriptions;
+DROP POLICY IF EXISTS "subs_admin_all" ON subscriptions;
+CREATE POLICY "subs_own"       ON subscriptions FOR ALL USING (auth.uid() = user_id);
+CREATE POLICY "subs_admin_all" ON subscriptions FOR ALL USING (is_admin());
+
+-- 6. banned_users
+ALTER TABLE banned_users ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "banned_admin_all" ON banned_users;
+DROP POLICY IF EXISTS "banned_check_own" ON banned_users;
+CREATE POLICY "banned_admin_all" ON banned_users FOR ALL USING (is_admin());
+CREATE POLICY "banned_check_own" ON banned_users FOR SELECT
+  USING (email = (SELECT email FROM auth.users WHERE id = auth.uid()));
+
+-- 7. quizzes + quiz_questions + quiz_results
+ALTER TABLE quizzes ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "quizzes_read_auth"  ON quizzes;
+DROP POLICY IF EXISTS "quizzes_admin_all"  ON quizzes;
+CREATE POLICY "quizzes_read_auth" ON quizzes FOR SELECT USING (auth.uid() IS NOT NULL);
+CREATE POLICY "quizzes_admin_all" ON quizzes FOR ALL    USING (is_admin());
+
+ALTER TABLE quiz_questions ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "qquestions_read_auth" ON quiz_questions;
+DROP POLICY IF EXISTS "qquestions_admin_all" ON quiz_questions;
+CREATE POLICY "qquestions_read_auth" ON quiz_questions FOR SELECT USING (auth.uid() IS NOT NULL);
+CREATE POLICY "qquestions_admin_all" ON quiz_questions FOR ALL    USING (is_admin());
+
+ALTER TABLE quiz_results ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "qresults_own"       ON quiz_results;
+DROP POLICY IF EXISTS "qresults_admin_all" ON quiz_results;
+CREATE POLICY "qresults_own"       ON quiz_results FOR ALL USING (auth.uid() = user_id);
+CREATE POLICY "qresults_admin_all" ON quiz_results FOR ALL USING (is_admin());
+
+-- 8. user_progress
+ALTER TABLE user_progress ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "progress_own"       ON user_progress;
+DROP POLICY IF EXISTS "progress_admin_all" ON user_progress;
+CREATE POLICY "progress_own"       ON user_progress FOR ALL USING (auth.uid() = user_id);
+CREATE POLICY "progress_admin_all" ON user_progress FOR ALL USING (is_admin());
+
+-- 9. notifications
+ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "notif_own"       ON notifications;
+DROP POLICY IF EXISTS "notif_admin_all" ON notifications;
+CREATE POLICY "notif_own"       ON notifications FOR SELECT USING (auth.uid() = user_id OR is_admin());
+CREATE POLICY "notif_admin_all" ON notifications FOR ALL    USING (is_admin());
+
+-- 10. chat_rooms + chat_messages
+ALTER TABLE chat_rooms ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "chatrooms_read_auth" ON chat_rooms;
+DROP POLICY IF EXISTS "chatrooms_admin_all" ON chat_rooms;
+CREATE POLICY "chatrooms_read_auth" ON chat_rooms FOR SELECT USING (auth.uid() IS NOT NULL);
+CREATE POLICY "chatrooms_admin_all" ON chat_rooms FOR ALL    USING (is_admin());
+
+ALTER TABLE chat_messages ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "chatmsg_read_auth"  ON chat_messages;
+DROP POLICY IF EXISTS "chatmsg_insert_auth" ON chat_messages;
+DROP POLICY IF EXISTS "chatmsg_admin_all"  ON chat_messages;
+CREATE POLICY "chatmsg_read_auth"   ON chat_messages FOR SELECT USING (auth.uid() IS NOT NULL);
+CREATE POLICY "chatmsg_insert_auth" ON chat_messages FOR INSERT WITH CHECK (auth.uid() IS NOT NULL);
+CREATE POLICY "chatmsg_admin_all"   ON chat_messages FOR ALL    USING (is_admin());
+
+-- ================================================================
+-- تحقق من التطبيق: شغّل هذا الاستعلام للتأكد
+-- ================================================================
+-- SELECT schemaname, tablename, policyname, cmd, qual
+-- FROM pg_policies WHERE schemaname = 'public'
+-- ORDER BY tablename, cmd;
+`;
+  console.group('%c🔐 FULL RLS SQL — شغّله في Supabase SQL Editor', 'color:#e74c3c;font-size:1.1em;font-weight:bold');
+  console.log('%cافتح: Supabase Dashboard → SQL Editor → New Query → الصق الكود → Run', 'color:#17a589;font-weight:bold');
+  console.log(sql);
+  console.groupEnd();
+  // نسخ للـ clipboard لو ممكن
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(sql).then(function() {
+      console.log('%c✅ تم نسخ الـ SQL للـ clipboard!', 'color:#17a589;font-weight:bold');
+    }).catch(function(){});
+  }
+  return sql;
+};
+console.log('%c[RLS] اكتب printFullRLS() في الـ Console لعرض + نسخ كامل SQL الإصلاح', 'color:#e74c3c;font-weight:bold;font-size:13px');
+
 window.printGoogleAuthSetup = function() {
   var url = window.location.origin + window.location.pathname;
   console.group('%c🔐 إعداد Google Auth — اتبع الخطوات', 'color:#17a589;font-size:1.1em;font-weight:bold');
@@ -7335,6 +7588,29 @@ console.log(
 );
 console.log('اكتب printGoogleAuthSetup() للحصول على خطوات إعداد Google Login');
 console.log('%c🔧 تشخيص المنصة: اكتب diagnose() في الـ Console', 'color:#17a589;font-weight:700;font-size:13px');
+
+// ✅ FIX: رسالة تشخيصية فورية عند تحميل الصفحة
+console.group('%c⚡ إصلاح مشكلة "قيد الإعداد" — اتبع الخطوات', 'color:#e74c3c;font-weight:bold;font-size:14px');
+console.log('%c📋 السبب الأكثر شيوعاً: سياسة RLS تمنع الزوار من قراءة section_content و section_resources', 'color:#e67e22;font-weight:bold');
+console.log('%c🛠️  الإصلاح: افتح Supabase → SQL Editor → New Query → انسخ الـ SQL التالي وشغّله:', 'color:#0a3d62;font-weight:bold');
+console.log(`
+-- ✅ الإصلاح الكامل لمشكلة "قيد الإعداد"
+ALTER TABLE section_content ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "content_read_authenticated" ON section_content;
+DROP POLICY IF EXISTS "content_read_all" ON section_content;
+CREATE POLICY "content_read_all" ON section_content FOR SELECT USING (true);
+
+ALTER TABLE section_resources ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "resources_read_auth" ON section_resources;
+DROP POLICY IF EXISTS "resources_read_all" ON section_resources;
+CREATE POLICY "resources_read_all" ON section_resources FOR SELECT USING (true);
+
+ALTER TABLE site_sections ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "sections_read_all" ON site_sections;
+CREATE POLICY "sections_read_all" ON site_sections FOR SELECT USING (true);
+`);
+console.log('%c💡 أو اكتب: printFullRLS() لنسخ SQL كامل لكل الجداول', 'color:#17a589;font-weight:bold');
+console.groupEnd();
 
 })();
 </script>
