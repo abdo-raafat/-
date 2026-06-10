@@ -6,7 +6,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <!-- ✅ PERF: Cache hints for GitHub Pages -->
 <meta http-equiv="Cache-Control" content="public, max-age=3600">
-<title>منصة المعهد الفني الصحي بني سويف | التعليم الصحي الفني</title>
+<title>منصة معهد فني صحي بني سويف | التعليم الصحي الفني</title>
 
 <!-- ✅ SEO Meta Tags -->
 <meta name="description" content="منصة تعليمية متكاملة لطلاب معهد فني صحي بني سويف — شرح تفاعلي، مواد دراسية، ملفات PDF، وذكاء اصطناعي للمساعدة في الدراسة. الفرقة الأولى والثانية وكل الشعب.">
@@ -651,6 +651,82 @@ body {
 }
 .ai-send:hover { opacity: .88; }
 .ai-send:active { opacity: .7; }
+
+/* Quick Replies */
+.ai-quick-replies {
+  display: flex; flex-wrap: wrap; gap: 6px;
+  padding: 8px 14px 4px;
+  flex-shrink: 0;
+  border-top: 1px solid #eef3f9;
+}
+.ai-qr-chip {
+  background: #eef6ff; color: var(--primary);
+  border: 1.5px solid #c8dff5; border-radius: 20px;
+  padding: 5px 11px; font-size: .76rem; font-family: var(--font);
+  cursor: pointer; transition: background .18s, transform .12s;
+  touch-action: manipulation; white-space: nowrap;
+}
+.ai-qr-chip:hover { background: #d6eaff; transform: translateY(-1px); }
+.ai-qr-chip:active { transform: scale(.95); }
+
+/* Suggestions dropdown */
+.ai-suggestions {
+  position: absolute; bottom: 100%; right: 0; left: 0;
+  background: #fff; border: 1.5px solid #d5e8f5;
+  border-radius: 12px 12px 0 0; max-height: 160px;
+  overflow-y: auto; z-index: 10; display: none;
+  box-shadow: 0 -4px 16px rgba(10,61,98,.1);
+}
+.ai-suggestions.visible { display: block; }
+.ai-sug-item {
+  padding: 9px 14px; font-size: .82rem; cursor: pointer;
+  direction: rtl; border-bottom: 1px solid #f0f5fb;
+  transition: background .15s; display: flex; align-items: center; gap: 8px;
+}
+.ai-sug-item:last-child { border-bottom: none; }
+.ai-sug-item:hover { background: #eef6ff; }
+.ai-sug-icon { font-size: .95rem; flex-shrink: 0; }
+
+/* Context badge */
+.ai-context-bar {
+  background: linear-gradient(90deg,#eef6ff,#f0fdf4);
+  border-bottom: 1px solid #d5e8f5;
+  padding: 5px 12px; font-size: .72rem; color: #2471a3;
+  display: none; align-items: center; gap: 6px; flex-shrink: 0;
+  direction: rtl;
+}
+.ai-context-bar.visible { display: flex; }
+.ai-context-bar button {
+  margin-right: auto; background: none; border: none;
+  color: #e74c3c; cursor: pointer; font-size: .72rem; padding: 0 2px;
+}
+
+/* Typing dots */
+.typing-dots { display: inline-flex; gap: 4px; align-items: center; padding: 2px 0; }
+.typing-dots span {
+  width: 7px; height: 7px; background: var(--primary);
+  border-radius: 50%; opacity: .4;
+  animation: tdot .9s infinite ease-in-out;
+}
+.typing-dots span:nth-child(2) { animation-delay: .2s; }
+.typing-dots span:nth-child(3) { animation-delay: .4s; }
+@keyframes tdot { 0%,80%,100%{opacity:.4;transform:scale(.8)} 40%{opacity:1;transform:scale(1.1)} }
+
+/* Result path badge */
+.ai-path {
+  font-size: .72rem; color: #2471a3; background: #eef6ff;
+  border-radius: 8px; padding: 3px 8px; margin-top: 4px;
+  display: inline-block; direction: rtl;
+}
+/* Open button in chat */
+.ai-open-btn {
+  display: inline-block; margin-top: 6px;
+  background: linear-gradient(135deg,var(--primary),var(--teal));
+  color: #fff; border: none; border-radius: 8px;
+  padding: 6px 14px; font-size: .78rem; font-family: var(--font);
+  cursor: pointer; text-decoration: none; touch-action: manipulation;
+}
+.ai-open-btn:hover { opacity: .88; }
 
 /* Mobile: Full-screen sheet */
 @media(max-width: 600px) {
@@ -2242,18 +2318,29 @@ body.sm-open {
       <div class="ai-avatar">🎓</div>
       <div class="ai-head-info">
         <div class="ai-name">مساعد منصة بني سويف</div>
-        <div class="ai-status">🟢 يبحث في قاعدة البيانات</div>
+        <div class="ai-status" id="ai-status-txt">🟢 يبحث في قاعدة البيانات</div>
       </div>
       <div class="ai-head-actions">
         <button class="ai-minimize-btn" onclick="minimizeAI()" title="تصغير" aria-label="تصغير">—</button>
         <button class="ai-close-btn" onclick="closeAI()" title="إغلاق" aria-label="إغلاق">✕</button>
       </div>
     </div>
+    <div class="ai-context-bar" id="ai-context-bar">
+      <span>📌</span><span id="ai-context-txt"></span>
+      <button onclick="BSM_AI.clearContext()" title="مسح السياق">✕ مسح</button>
+    </div>
     <div class="ai-messages" id="ai-messages">
       <!-- رسائل المساعد تُضاف هنا ديناميكياً -->
     </div>
-    <div class="ai-input-row">
-      <input class="ai-input" id="ai-input" type="text" placeholder="اسأل عن مادة، محاضرة، أو مشكلة..." onkeydown="if(event.key==='Enter')sendAI()">
+    <div class="ai-quick-replies" id="ai-quick-replies">
+      <span class="ai-qr-chip" onclick="BSM_AI.send('كيف أدخل الموقع؟')">🔐 تسجيل الدخول</span>
+      <span class="ai-qr-chip" onclick="BSM_AI.send('كم عدد المواد في الفرقة الأولى؟')">📊 إحصائيات</span>
+      <span class="ai-qr-chip" onclick="BSM_AI.send('أقسام المنصة')">🏠 الأقسام</span>
+      <span class="ai-qr-chip" onclick="BSM_AI.send('كيف أفتح ملف PDF؟')">📄 ملفات PDF</span>
+    </div>
+    <div class="ai-input-row" style="position:relative;">
+      <div class="ai-suggestions" id="ai-suggestions"></div>
+      <input class="ai-input" id="ai-input" type="text" placeholder="اسأل عن مادة، محاضرة، أو مشكلة..." onkeydown="if(event.key==='Enter')sendAI()" oninput="BSM_AI.onInputChange(this.value)">
       <button class="ai-send" onclick="sendAI()" aria-label="إرسال">➤</button>
     </div>
   </div>
@@ -3274,6 +3361,11 @@ function buildResourcesHTML(resources) {
 
 var BSM_AI = (function() {
 
+  // ══════════════════════════════════════════════════════════════
+  //  SMART AI ASSISTANT v3 — منصة معهد فني صحي بني سويف
+  //  الأولوية: chat_training → DB search → KNOWLEDGE_BASE → fallback
+  // ══════════════════════════════════════════════════════════════
+
   // ── معرفة ثابتة بالموقع ──────────────────────────────────────
   var SITE_INFO = {
     name: 'منصة معهد فني صحي بني سويف',
@@ -3372,237 +3464,757 @@ var BSM_AI = (function() {
     }
   ];
 
-  // ── تاريخ المحادثة ────────────────────────────────────────────
-  var _history = [];
+  // ══════════════════════════════════════════════════════════════
+  //  STATE
+  // ══════════════════════════════════════════════════════════════
+  var _history = [];        // آخر 20 رسالة
   var _isSearching = false;
+  var _suggestTimer = null;
+  var _allSectionTitles = []; // لكاش الاقتراحات
+
+  // ── سياق المحادثة ─────────────────────────────────────────────
+  var _ctx = {
+    lastSectionId: null,
+    lastSectionTitle: null,
+    lastKeyword: null,
+    userDept: null,
+    _pendingSuggestions: null
+  };
+
+  // ── تطبيع النص (إزالة حركات + توحيد أشكال الحروف) ───────────
+  // ══════════════════════════════════════════════════════════════
+  //  TEXT ENGINE — تنظيف وتطبيع النص
+  // ══════════════════════════════════════════════════════════════
+  function _normalize(str) {
+    if (!str) return '';
+    return str
+      .replace(/[\u064B-\u065F\u0670\u0640]/g, '') // حركات + تطويل
+      .replace(/[أإآٱ]/g, 'ا')
+      .replace(/[ىئ]/g, 'ي')
+      .replace(/[ةت]/g, 'ت')                        // تاء/ة للبحث فقط
+      .replace(/[ؤو]/g, 'و')
+      .replace(/[ئي]/g, 'ي')
+      .replace(/[^\u0600-\u06FFa-z0-9\s]/g, ' ')   // إزالة رموز خاصة
+      .replace(/\s+/g, ' ')
+      .toLowerCase()
+      .trim();
+  }
+
+  // تنظيف أخف — يحفظ الأحرف الأصلية لكن ينظف الرموز والمسافات
+  function _clean(str) {
+    if (!str) return '';
+    return str
+      .replace(/[\u064B-\u065F\u0670\u0640]/g, '')
+      .replace(/[^\u0600-\u06FFa-z0-9\s]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .toLowerCase()
+      .trim();
+  }
+
+  // ── Levenshtein Distance ──────────────────────────────────────
+  function _levenshtein(a, b) {
+    if (!a) return b.length;
+    if (!b) return a.length;
+    var m = a.length, n = b.length;
+    // تحسين: لو الفرق كبير جداً إرجع infinity
+    if (Math.abs(m - n) > Math.max(m, n) * 0.6) return 9999;
+    var dp = [];
+    for (var i = 0; i <= m; i++) {
+      dp[i] = [i];
+      for (var j = 1; j <= n; j++) {
+        dp[i][j] = i === 0 ? j :
+          a[i-1] === b[j-1] ? dp[i-1][j-1] :
+          1 + Math.min(dp[i-1][j], dp[i][j-1], dp[i-1][j-1]);
+      }
+    }
+    return dp[m][n];
+  }
+
+  // ── نسبة التشابه بين نصين (0 → 1) ───────────────────────────
+  function _similarity(a, b) {
+    if (!a || !b) return 0;
+    a = _normalize(a); b = _normalize(b);
+    if (a === b) return 1;
+    if (a.indexOf(b) !== -1 || b.indexOf(a) !== -1) return 0.9;
+    var maxLen = Math.max(a.length, b.length);
+    if (maxLen === 0) return 1;
+    var dist = _levenshtein(a, b);
+    return Math.max(0, 1 - dist / maxLen);
+  }
+
+  // ── تشابه كلمة مع قائمة كلمات (أعلى نسبة) ───────────────────
+  function _wordSim(word, targets) {
+    var best = 0;
+    for (var i = 0; i < targets.length; i++) {
+      var s = _similarity(word, targets[i]);
+      if (s > best) best = s;
+    }
+    return best;
+  }
+
+  // ── حساب نقاط تطابق رسالة المستخدم مع صف chat_training ───────
+  function _scoreRow(normMsg, msgWords, row) {
+    var score = 0;
+    var matched = [];
+
+    // 1. مطابقة keywords
+    var kws = (row.keywords || '').split(',')
+      .map(function(k){ return _normalize(k.trim()); })
+      .filter(Boolean);
+
+    kws.forEach(function(kw) {
+      // مطابقة مباشرة
+      if (normMsg.indexOf(kw) !== -1) {
+        score += kw.length > 4 ? 60 : 40;
+        matched.push(kw);
+        return;
+      }
+      // مطابقة كل كلمة في السؤال مع keyword
+      var kwWords = kw.split(' ').filter(Boolean);
+      msgWords.forEach(function(mw) {
+        var s = _wordSim(mw, kwWords);
+        if (s >= 0.80) { score += s * 35; matched.push(kw + '~' + mw); }
+      });
+    });
+
+    // 2. مطابقة question
+    var qNorm = _normalize(row.question || '');
+    if (qNorm) {
+      var directSim = _similarity(normMsg, qNorm);
+      if (directSim >= 0.75) { score += directSim * 50; matched.push('Q:' + directSim.toFixed(2)); }
+      // كلمات السؤال المخزّن
+      var qWords = qNorm.split(' ').filter(Boolean);
+      msgWords.forEach(function(mw) {
+        var s = _wordSim(mw, qWords);
+        if (s >= 0.82) { score += s * 20; }
+      });
+    }
+
+    // 3. مطابقة category
+    var cat = _normalize(row.category || '');
+    if (cat && normMsg.indexOf(cat) !== -1) { score += 15; }
+
+    return { score: Math.round(score), matched: matched };
+  }
+
+  // ── بناء variants للبحث في DB ────────────────────────────────
+  function _buildVariants(q) {
+    var norm = _normalize(q);
+    var words = norm.split(/\s+/).filter(function(w){ return w.length > 1; });
+    var variants = [q.trim(), norm];
+    words.forEach(function(w){ if (variants.indexOf(w) === -1) variants.push(w); });
+    return variants;
+  }
+
+  // ── تحديث شريط السياق ────────────────────────────────────────
+  function _updateContextBar() {
+    var bar = document.getElementById('ai-context-bar');
+    var txt = document.getElementById('ai-context-txt');
+    if (!bar || !txt) return;
+    var parts = [];
+    if (_ctx.userDept) parts.push('شعبة ' + _ctx.userDept);
+    if (_ctx.lastSectionTitle) parts.push(_ctx.lastSectionTitle);
+    if (parts.length > 0) {
+      txt.textContent = 'السياق الحالي: ' + parts.join(' ← ');
+      bar.classList.add('visible');
+    } else {
+      bar.classList.remove('visible');
+    }
+  }
 
   // ── إضافة رسالة للواجهة ──────────────────────────────────────
-  function _addMessage(text, role) {
+  function _addMessage(text, role, htmlExtra) {
     var msgs = document.getElementById('ai-messages');
     if (!msgs) return;
     var div = document.createElement('div');
     div.className = 'msg ' + role;
-    // تحويل markdown بسيط
     var formatted = text
       .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
       .replace(/\n/g, '<br>');
-    div.innerHTML = '<div class="msg-bubble">' + formatted + '</div>';
+    div.innerHTML = '<div class="msg-bubble">' + formatted + (htmlExtra || '') + '</div>';
     msgs.appendChild(div);
     msgs.scrollTop = msgs.scrollHeight;
     _history.push({ role: role, text: text });
-    // حفظ آخر 20 رسالة فقط
     if (_history.length > 20) _history = _history.slice(-20);
   }
 
-  // ── مؤشر التحميل ─────────────────────────────────────────────
+  // ── مؤشر الكتابة المتحرك ─────────────────────────────────────
   function _showTyping() {
     var msgs = document.getElementById('ai-messages');
     if (!msgs) return null;
     var div = document.createElement('div');
     div.className = 'msg bot';
     div.id = '_ai-typing';
-    div.innerHTML = '<div class="msg-bubble" style="opacity:.7">⏳ جاري البحث...</div>';
+    div.innerHTML = '<div class="msg-bubble"><div class="typing-dots"><span></span><span></span><span></span></div></div>';
     msgs.appendChild(div);
     msgs.scrollTop = msgs.scrollHeight;
+    // تحديث status
+    var st = document.getElementById('ai-status-txt');
+    if (st) st.textContent = '⏳ جاري البحث...';
     return div;
   }
 
   function _removeTyping() {
     var el = document.getElementById('_ai-typing');
     if (el) el.remove();
+    var st = document.getElementById('ai-status-txt');
+    if (st) st.textContent = '🟢 يبحث في قاعدة البيانات';
   }
 
-  // ── البحث في قاعدة البيانات ───────────────────────────────────
+  // ══════════════════════════════════════════════════════════════
+  //  SEARCH: chat_training  (أولوية 1)
+  // ══════════════════════════════════════════════════════════════
+  // ══════════════════════════════════════════════════════════════
+  //  TRAINING CACHE
+  // ══════════════════════════════════════════════════════════════
+  var _trainingCache = null;      // null = لم يُحمَّل بعد
+  var _trainingLoadedAt = 0;
+  var TRAINING_TTL = 5 * 60 * 1000; // 5 دقائق
+
+  async function _loadTraining() {
+    var now = Date.now();
+    if (_trainingCache && (now - _trainingLoadedAt) < TRAINING_TTL) return _trainingCache;
+    var db = window.supabase;
+    if (!db || typeof db.from !== 'function') return [];
+    try {
+      var { data } = await db
+        .from('chat_training')
+        .select('question, answer, keywords, category')
+        .eq('is_active', true)
+        .limit(200);
+      _trainingCache = data || [];
+      _trainingLoadedAt = now;
+      console.log('[BSM_AI] Training cache loaded:', _trainingCache.length, 'rows');
+    } catch(e) {
+      _trainingCache = [];
+    }
+    return _trainingCache;
+  }
+
+  // ══════════════════════════════════════════════════════════════
+  //  findBestAnswer — الدالة الموحدة
+  //  تنظّف → تبحث → تسجّل → ترتّب → ترجع أفضل إجابة
+  // ══════════════════════════════════════════════════════════════
+  async function findBestAnswer(userMessage) {
+    // 1. تنظيف
+    var original = (userMessage || '').trim();
+    var cleaned  = _clean(original);
+    var normMsg  = _normalize(original);
+    var msgWords = normMsg.split(/\s+/).filter(function(w){ return w.length > 1; });
+
+    console.group('[BSM_AI] findBestAnswer');
+    console.log('Original :', original);
+    console.log('Cleaned  :', cleaned);
+    console.log('Normalized:', normMsg);
+    console.log('Words    :', msgWords);
+
+    // 2. تحميل التدريب من الكاش
+    var rows = await _loadTraining();
+
+    if (rows.length === 0) {
+      console.log('Training: empty/unavailable');
+      console.groupEnd();
+      return null;
+    }
+
+    // 3. حساب النقاط لكل صف
+    var scored = rows.map(function(row) {
+      var result = _scoreRow(normMsg, msgWords, row);
+      return { row: row, score: result.score, matched: result.matched };
+    });
+
+    // 4. ترتيب تنازلي
+    scored.sort(function(a, b){ return b.score - a.score; });
+
+    // 5. Debug: أعلى 3
+    console.log('Top matches:');
+    scored.slice(0, 3).forEach(function(s, i){
+      console.log('  #' + (i+1), '| score:', s.score,
+        '| kw:', (s.row.keywords || '').slice(0, 40),
+        '| matched:', s.matched.slice(0,3).join(','));
+    });
+
+    // 6. عتبة القبول
+    var THRESHOLD = 30;
+    var best = scored[0];
+
+    if (!best || best.score < THRESHOLD) {
+      console.log('No match above threshold (' + THRESHOLD + '). Best score:', best ? best.score : 0);
+      console.groupEnd();
+      return null;
+    }
+
+    // 7. لو في نتائج متعددة قريبة → اقتراحات
+    var close = scored.filter(function(s){ return s.score >= THRESHOLD && s.score >= best.score * 0.75; });
+    if (close.length > 1 && best.score < 80) {
+      console.log('Multiple close matches — returning suggestions');
+      console.groupEnd();
+      return { type: 'suggestions', items: close.slice(0, 3).map(function(s){ return s.row; }) };
+    }
+
+    console.log('Selected answer (score=' + best.score + '):', best.row.answer.slice(0, 60));
+    console.groupEnd();
+    return { type: 'answer', answer: best.row.answer, score: best.score };
+  }
+
+  async function _searchTraining(q) {
+    var result = await findBestAnswer(q);
+    if (!result) return null;
+    if (result.type === 'answer') return result.answer;
+    if (result.type === 'suggestions') {
+      // عرض اقتراحات للمستخدم
+      var reply = '🔎 وجدت عدة نتائج مشابهة لسؤالك، أيها تقصد؟\n\n';
+      result.items.forEach(function(item, i){
+        var label = item.question || (item.keywords || '').split(',')[0] || 'نتيجة ' + (i+1);
+        reply += (i+1) + '. **' + label.trim() + '**\n';
+      });
+      reply += '\nاكتب الرقم أو أعد صياغة سؤالك للحصول على إجابة أدق.';
+      // تخزين الاقتراحات للاختيار اللاحق
+      _ctx._pendingSuggestions = result.items;
+      return reply;
+    }
+    return null;
+  }
+
+  // ══════════════════════════════════════════════════════════════
+  //  SEARCH: Supabase DB  (أولوية 2)
+  // ══════════════════════════════════════════════════════════════
   async function _searchDatabase(query) {
     var db = window.supabase;
     if (!db || typeof db.from !== 'function') return null;
 
-    var results = {
-      sections: [],
-      content: [],
-      resources: []
-    };
+    var results = { sections: [], content: [], resources: [] };
+    var variants = _buildVariants(query);
 
     try {
-      // البحث في الأقسام
-      var { data: sections } = await db
-        .from('site_sections')
-        .select('id, title, subtitle, category, parent_id')
-        .or('title.ilike.%' + query + '%,subtitle.ilike.%' + query + '%')
-        .limit(5);
-      if (sections) results.sections = sections;
+      // نبحث بكل variant ونجمع النتائج
+      for (var vi = 0; vi < Math.min(variants.length, 3); vi++) {
+        var v = variants[vi];
+        if (!v || v.length < 2) continue;
 
-      // البحث في المحتوى
-      var { data: content } = await db
-        .from('section_content')
-        .select('id, title, content_type, section_id')
-        .ilike('title', '%' + query + '%')
-        .limit(5);
-      if (content) results.content = content;
+        var { data: secs } = await db
+          .from('site_sections')
+          .select('id, title, subtitle, category, parent_id')
+          .or('title.ilike.%' + v + '%,subtitle.ilike.%' + v + '%')
+          .limit(4);
+        if (secs) {
+          secs.forEach(function(s){
+            if (!results.sections.find(function(x){ return x.id === s.id; })) results.sections.push(s);
+          });
+        }
 
-      // البحث في الموارد
-      var { data: resources } = await db
-        .from('section_resources')
-        .select('id, title, resource_type, section_id')
-        .ilike('title', '%' + query + '%')
-        .limit(5);
-      if (resources) results.resources = resources;
+        var { data: cont } = await db
+          .from('section_content')
+          .select('id, title, content_type, section_id, url')
+          .ilike('title', '%' + v + '%')
+          .limit(4);
+        if (cont) {
+          cont.forEach(function(c){
+            if (!results.content.find(function(x){ return x.id === c.id; })) results.content.push(c);
+          });
+        }
 
+        var { data: res } = await db
+          .from('section_resources')
+          .select('id, title, resource_type, section_id, file_url')
+          .ilike('title', '%' + v + '%')
+          .limit(4);
+        if (res) {
+          res.forEach(function(r){
+            if (!results.resources.find(function(x){ return x.id === r.id; })) results.resources.push(r);
+          });
+        }
+      }
     } catch(e) {
-      console.warn('[BSM_AI] خطأ في البحث:', e.message);
+      console.warn('[BSM_AI] DB search error:', e.message);
+    }
+
+    // تصفية بالشعبة إن وُجدت في السياق
+    if (_ctx.userDept) {
+      var deptNorm = _normalize(_ctx.userDept);
+      function _deptFilter(arr) {
+        var filtered = arr.filter(function(x){ return _normalize(x.title).indexOf(deptNorm) !== -1; });
+        return filtered.length > 0 ? filtered : arr; // لو ما لقاش يرجع الكل
+      }
+      results.sections = _deptFilter(results.sections);
     }
 
     return results;
   }
 
-  // ── جلب اسم القسم من id ───────────────────────────────────────
-  async function _getSectionName(sectionId) {
-    if (!sectionId || !window.supabase) return null;
+  // ══════════════════════════════════════════════════════════════
+  //  STATS: إحصائيات من DB  (أولوية 2.5)
+  // ══════════════════════════════════════════════════════════════
+  async function _getStats(q) {
+    var db = window.supabase;
+    if (!db) return null;
+    var norm = _normalize(q);
+    var isStats = norm.indexOf('كم') !== -1 || norm.indexOf('عدد') !== -1 || norm.indexOf('كمية') !== -1;
+    if (!isStats) return null;
+
+    try {
+      var reply = '📊 **إحصائيات المنصة:**\n\n';
+      var { count: secCount } = await db.from('site_sections').select('id', { count: 'exact', head: true });
+      var { count: contCount } = await db.from('section_content').select('id', { count: 'exact', head: true });
+      var { count: resCount } = await db.from('section_resources').select('id', { count: 'exact', head: true });
+
+      reply += '📂 إجمالي الأقسام: **' + (secCount || '—') + '**\n';
+      reply += '📄 إجمالي المحتوى (محاضرات/ملفات): **' + (contCount || '—') + '**\n';
+      reply += '📎 إجمالي الموارد: **' + (resCount || '—') + '**\n';
+
+      // إحصاء خاص بالفرقة الأولى
+      if (norm.indexOf('اول') !== -1 || norm.indexOf('أول') !== -1 || norm.indexOf('1') !== -1) {
+        var { data: first } = await db
+          .from('site_sections')
+          .select('id, title')
+          .ilike('title', '%الأولى%')
+          .limit(3);
+        if (first && first.length > 0) {
+          for (var fi = 0; fi < first.length; fi++) {
+            var { count: subCount } = await db
+              .from('site_sections')
+              .select('id', { count: 'exact', head: true })
+              .eq('parent_id', first[fi].id);
+            reply += '\n🎓 **' + first[fi].title + '**: ' + (subCount || 0) + ' قسم فرعي';
+          }
+        }
+      }
+
+      return reply;
+    } catch(e) { return null; }
+  }
+
+  // ══════════════════════════════════════════════════════════════
+  //  PATH BUILDER
+  // ══════════════════════════════════════════════════════════════
+  var _sectionCache = {};
+  async function _getSectionNode(id) {
+    if (_sectionCache[id]) return _sectionCache[id];
+    if (!window.supabase) return null;
     try {
       var { data } = await window.supabase
         .from('site_sections')
         .select('id, title, parent_id')
-        .eq('id', sectionId)
+        .eq('id', id)
         .maybeSingle();
+      if (data) _sectionCache[id] = data;
       return data;
     } catch(e) { return null; }
   }
 
-  // ── بناء مسار الوصول من نتائج البحث ─────────────────────────
   async function _buildAccessPath(sectionId) {
     if (!sectionId) return '';
     var path = [];
     var current = sectionId;
-    var maxDepth = 5;
-    while (current && maxDepth-- > 0) {
-      var sec = await _getSectionName(current);
+    var depth = 0;
+    while (current && depth++ < 6) {
+      var sec = await _getSectionNode(current);
       if (!sec) break;
       path.unshift(sec.title);
       current = sec.parent_id;
     }
-    return path.length > 0 ? ('الرئيسية ← ' + path.join(' ← ')) : '';
+    return path.length > 0 ? 'الرئيسية ← ' + path.join(' ← ') : '';
   }
 
-  // ── تحليل سؤال المستخدم والرد ────────────────────────────────
+  // ══════════════════════════════════════════════════════════════
+  //  BUILD REPLY with paths + open buttons
+  // ══════════════════════════════════════════════════════════════
+  async function _buildDbReply(dbResults, originalQuery) {
+    var hasResults = (
+      dbResults.sections.length > 0 ||
+      dbResults.content.length > 0 ||
+      dbResults.resources.length > 0
+    );
+    if (!hasResults) return null;
+
+    // حفظ أول نتيجة في السياق
+    if (dbResults.sections.length > 0) {
+      _ctx.lastSectionId = dbResults.sections[0].id;
+      _ctx.lastSectionTitle = dbResults.sections[0].title;
+      _updateContextBar();
+    } else if (dbResults.content.length > 0) {
+      _ctx.lastSectionId = dbResults.content[0].section_id;
+    }
+
+    var reply = '🔍 **نتائج البحث عن "' + originalQuery + '":**\n\n';
+    var extraHtml = '';
+
+    if (dbResults.sections.length > 0) {
+      reply += '📂 **الأقسام:**\n';
+      for (var s of dbResults.sections) {
+        var p = await _buildAccessPath(s.id);
+        reply += '• **' + s.title + '**' + (s.subtitle ? ' — ' + s.subtitle : '') + '\n';
+        if (p) reply += '  📍 ' + p + '\n';
+      }
+      reply += '\n';
+    }
+
+    if (dbResults.content.length > 0) {
+      reply += '📄 **المحتوى:**\n';
+      for (var c of dbResults.content) {
+        var p = await _buildAccessPath(c.section_id);
+        var icon = c.content_type === 'video' ? '🎬' : c.content_type === 'pdf' ? '📄' : '📝';
+        reply += icon + ' **' + c.title + '**\n';
+        if (p) reply += '  📍 ' + p + '\n';
+        if (c.url) extraHtml += '<br><a class="ai-open-btn" href="' + c.url + '" target="_blank">▶ فتح: ' + c.title + '</a>';
+      }
+      reply += '\n';
+    }
+
+    if (dbResults.resources.length > 0) {
+      reply += '📎 **الموارد:**\n';
+      for (var r of dbResults.resources) {
+        var p = await _buildAccessPath(r.section_id);
+        var icon = r.resource_type === 'video' ? '🎬' : r.resource_type === 'pdf' ? '📄' : '📎';
+        reply += icon + ' **' + r.title + '**\n';
+        if (p) reply += '  📍 ' + p + '\n';
+        if (r.file_url) extraHtml += '<br><a class="ai-open-btn" href="' + r.file_url + '" target="_blank">▶ فتح: ' + r.title + '</a>';
+      }
+    }
+
+    return { text: reply, html: extraHtml };
+  }
+
+  // ══════════════════════════════════════════════════════════════
+  //  CONTEXT RESOLVER — "هات المحاضرة الثانية" بدون ذكر المادة
+  // ══════════════════════════════════════════════════════════════
+  function _resolveWithContext(q) {
+    var norm = _normalize(q);
+    // هل هو سؤال تكميلي؟
+    var isFollowUp = (
+      norm.indexOf('الثان') !== -1 || norm.indexOf('الاول') !== -1 ||
+      norm.indexOf('التالي') !== -1 || norm.indexOf('هات') !== -1 ||
+      norm.indexOf('اعطن') !== -1 || norm.indexOf('فين') !== -1
+    ) && (
+      norm.indexOf('محاضر') !== -1 || norm.indexOf('ملف') !== -1 ||
+      norm.indexOf('كتاب') !== -1 || norm.indexOf('فيديو') !== -1
+    );
+
+    if (isFollowUp && _ctx.lastKeyword) {
+      return _ctx.lastKeyword + ' ' + q;
+    }
+    return q;
+  }
+
+  // ══════════════════════════════════════════════════════════════
+  //  DEPT / USER CONTEXT DETECTOR
+  // ══════════════════════════════════════════════════════════════
+  function _detectUserContext(q) {
+    var norm = _normalize(q);
+    var depts = [
+      { kw: 'تمريض', label: 'تمريض' },
+      { kw: 'معامل', label: 'معامل' },
+      { kw: 'تحاليل', label: 'معامل' },
+      { kw: 'تسجيل طبي', label: 'تسجيل طبي' },
+      { kw: 'احصاء', label: 'تسجيل طبي وإحصاء' },
+      { kw: 'اجهزه طبيه', label: 'أجهزة طبية' },
+      { kw: 'فيزيوثيرابيا', label: 'فيزيوثيرابيا' },
+      { kw: 'تخدير', label: 'تخدير' },
+      { kw: 'اشعه', label: 'أشعة' }
+    ];
+    for (var i = 0; i < depts.length; i++) {
+      if (norm.indexOf(depts[i].kw) !== -1 && (
+        norm.indexOf('شعبه') !== -1 || norm.indexOf('انا في') !== -1 ||
+        norm.indexOf('طالب') !== -1 || norm.indexOf('قسم') !== -1
+      )) {
+        _ctx.userDept = depts[i].label;
+        _updateContextBar();
+        return '✅ تم حفظ شعبتك: **' + depts[i].label + '**\nسأعطيك نتائج مرتبطة بشعبتك أولاً في كل بحث!\n\nهل تريد البحث عن شيء في ' + depts[i].label + '؟';
+      }
+    }
+    return null;
+  }
+
+  // ══════════════════════════════════════════════════════════════
+  //  SUGGESTIONS (autocomplete)
+  // ══════════════════════════════════════════════════════════════
+  async function _loadSectionTitles() {
+    if (_allSectionTitles.length > 0) return;
+    var db = window.supabase;
+    if (!db) return;
+    try {
+      var { data } = await db.from('site_sections').select('title').limit(200);
+      if (data) _allSectionTitles = data.map(function(d){ return d.title; });
+      // إضافة عناوين محتوى
+      var { data: c } = await db.from('section_content').select('title').limit(200);
+      if (c) c.forEach(function(x){ if (_allSectionTitles.indexOf(x.title) === -1) _allSectionTitles.push(x.title); });
+      // موارد
+      var { data: r } = await db.from('section_resources').select('title').limit(200);
+      if (r) r.forEach(function(x){ if (_allSectionTitles.indexOf(x.title) === -1) _allSectionTitles.push(x.title); });
+    } catch(e) {}
+  }
+
+  function _getSuggestions(input) {
+    if (!input || input.length < 2) return [];
+    var norm = _normalize(input);
+    var matches = [];
+    for (var i = 0; i < _allSectionTitles.length && matches.length < 5; i++) {
+      var t = _allSectionTitles[i];
+      if (_normalize(t).indexOf(norm) !== -1) matches.push(t);
+    }
+    return matches;
+  }
+
+  function _showSuggestions(matches) {
+    var box = document.getElementById('ai-suggestions');
+    if (!box) return;
+    if (matches.length === 0) { box.classList.remove('visible'); box.innerHTML = ''; return; }
+    box.innerHTML = matches.map(function(m){
+      var icon = m.indexOf('كتاب') !== -1 ? '📚' : m.indexOf('محاضر') !== -1 ? '🎓' : m.indexOf('فيديو') !== -1 ? '🎬' : '📂';
+      return '<div class="ai-sug-item" onclick="BSM_AI.pickSuggestion(\'' + m.replace(/'/g,"\\'") + '\')">'
+           + '<span class="ai-sug-icon">' + icon + '</span>' + m + '</div>';
+    }).join('');
+    box.classList.add('visible');
+  }
+
+  function pickSuggestion(title) {
+    var input = document.getElementById('ai-input');
+    if (input) { input.value = title; input.focus(); }
+    var box = document.getElementById('ai-suggestions');
+    if (box) { box.classList.remove('visible'); box.innerHTML = ''; }
+  }
+
+  function onInputChange(val) {
+    clearTimeout(_suggestTimer);
+    if (!val || val.length < 2) {
+      var box = document.getElementById('ai-suggestions');
+      if (box) { box.classList.remove('visible'); box.innerHTML = ''; }
+      return;
+    }
+    _suggestTimer = setTimeout(function(){
+      _loadSectionTitles().then(function(){
+        _showSuggestions(_getSuggestions(val));
+      });
+    }, 250);
+  }
+
+  function clearContext() {
+    _ctx.lastSectionId = null;
+    _ctx.lastSectionTitle = null;
+    _ctx.lastKeyword = null;
+    _ctx.userDept = null;
+    _updateContextBar();
+  }
+
+  // ══════════════════════════════════════════════════════════════
+  //  MAIN QUERY PROCESSOR
+  // ══════════════════════════════════════════════════════════════
   async function _processQuery(userMessage) {
-    var q = (userMessage || '').trim().toLowerCase();
+    var q = (userMessage || '').trim();
+    var qLow = _normalize(q);
     if (!q) return;
 
-    // تطابق المعرفة الثابتة أولاً
+    // إخفاء اقتراحات
+    var box = document.getElementById('ai-suggestions');
+    if (box) { box.classList.remove('visible'); box.innerHTML = ''; }
+
+    // ── اختيار من اقتراحات معلّقة (المستخدم كتب 1, 2, 3) ────────
+    if (_ctx._pendingSuggestions && /^[١-٣1-3]$/.test(q.trim())) {
+      var idx = parseInt(q.replace(/[١]/g,'1').replace(/[٢]/g,'2').replace(/[٣]/g,'3')) - 1;
+      var chosen = _ctx._pendingSuggestions[idx];
+      _ctx._pendingSuggestions = null;
+      if (chosen) return chosen.answer;
+    }
+    _ctx._pendingSuggestions = null;
+
+    // ── تحقق من تعريف الشعبة ────────────────────────────────────
+    var deptReply = _detectUserContext(q);
+    if (deptReply) return deptReply;
+
+    // ── تحيات ───────────────────────────────────────────────────
+    if (/^(اهلا|مرحبا|هلا|السلام|هاي|hi|hello|سلام|اهلن|ازيك)/.test(qLow)) {
+      return '👋 **أهلاً وسهلاً!**\n\nأنا المساعد الذكي لمنصة **' + SITE_INFO.name + '**\n\nأستطيع:\n• 🔍 البحث عن مواد ومحاضرات\n• 📊 عرض إحصائيات المنصة\n• 📍 إظهار مسار وصول أي محتوى\n• 🔐 المساعدة في تسجيل الدخول\n\nبماذا يمكنني مساعدتك؟';
+    }
+
+    // ── شكر ─────────────────────────────────────────────────────
+    if (qLow.indexOf('شكر') !== -1 || qLow.indexOf('thanks') !== -1 || qLow.indexOf('مشكور') !== -1) {
+      return '😊 العفو! في خدمتك دايماً.';
+    }
+
+    // ── أولوية 1: chat_training (fuzzy + scored) ─────────────────
+    var trainReply = await _searchTraining(q);
+    if (trainReply) return trainReply;
+
+    // ── أولوية 2: KNOWLEDGE_BASE الثابتة ─────────────────────────
     for (var i = 0; i < KNOWLEDGE_BASE.length; i++) {
       var kb = KNOWLEDGE_BASE[i];
-      var matched = kb.keywords.some(function(kw) {
-        return q.indexOf(kw) !== -1;
-      });
-      if (matched) {
+      var kbNorms = kb.keywords.map(function(kw){ return _normalize(kw); });
+      if (kbNorms.some(function(kw){ return qLow.indexOf(kw) !== -1; })) {
         return kb.answer;
       }
+      // fuzzy على keywords الـ KB
+      var msgW = qLow.split(' ').filter(Boolean);
+      var fuzzyHit = msgW.some(function(mw){
+        return kbNorms.some(function(kw){ return _similarity(mw, kw) >= 0.82; });
+      });
+      if (fuzzyHit) return kb.answer;
     }
 
-    // البحث في قاعدة البيانات
-    var searchTerms = userMessage.trim();
-    // استخراج كلمات مفتاحية بسيطة
-    var keywords = searchTerms.split(/\s+/).filter(function(w) { return w.length > 2; });
+    // ── أولوية 2.5: إحصائيات ─────────────────────────────────────
+    var statsReply = await _getStats(q);
+    if (statsReply) return { text: statsReply, html: '' };
 
-    var dbResults = null;
-    if (keywords.length > 0) {
-      // بحث بالكلمة الأطول (الأكثر تحديداً)
-      var mainKeyword = keywords.sort(function(a,b){ return b.length - a.length; })[0];
-      dbResults = await _searchDatabase(mainKeyword);
-    }
+    // ── أولوية 3: DB Search ───────────────────────────────────────
+    var resolvedQ = _resolveWithContext(q);
+    _ctx.lastKeyword = resolvedQ;
 
-    // بناء الرد من نتائج قاعدة البيانات
+    var words = resolvedQ.split(/\s+/).filter(function(w){ return _normalize(w).length > 1; });
+    var searchWord = words.sort(function(a,b){ return b.length - a.length; })[0] || resolvedQ;
+
+    var dbResults = await _searchDatabase(searchWord);
+
     if (dbResults) {
-      var hasResults = (
-        (dbResults.sections && dbResults.sections.length > 0) ||
-        (dbResults.content && dbResults.content.length > 0) ||
-        (dbResults.resources && dbResults.resources.length > 0)
-      );
-
-      if (hasResults) {
-        var reply = '🔍 **نتائج البحث عن "' + userMessage.trim() + '":**\n\n';
-
-        if (dbResults.sections && dbResults.sections.length > 0) {
-          reply += '📂 **الأقسام:**\n';
-          for (var s of dbResults.sections) {
-            var path = await _buildAccessPath(s.id);
-            reply += '• **' + s.title + '**' + (s.subtitle ? ' — ' + s.subtitle : '') + '\n';
-            if (path) reply += '  📍 ' + path + '\n';
-          }
-          reply += '\n';
-        }
-
-        if (dbResults.content && dbResults.content.length > 0) {
-          reply += '📄 **المحتوى:**\n';
-          for (var c of dbResults.content) {
-            var path = await _buildAccessPath(c.section_id);
-            var icon = c.content_type === 'video' ? '🎬' : c.content_type === 'pdf' ? '📄' : '📝';
-            reply += icon + ' **' + c.title + '**\n';
-            if (path) reply += '  📍 ' + path + '\n';
-          }
-          reply += '\n';
-        }
-
-        if (dbResults.resources && dbResults.resources.length > 0) {
-          reply += '📎 **الموارد:**\n';
-          for (var r of dbResults.resources) {
-            var path = await _buildAccessPath(r.section_id);
-            var icon = r.resource_type === 'video' ? '🎬' : r.resource_type === 'pdf' ? '📄' : '📎';
-            reply += icon + ' **' + r.title + '**\n';
-            if (path) reply += '  📍 ' + path + '\n';
-          }
-        }
-
-        reply += '\n💡 اضغط على القسم من الصفحة الرئيسية للوصول للمحتوى!';
-        return reply;
-      }
+      var result = await _buildDbReply(dbResults, q);
+      if (result) return result;
     }
 
-    // ردود افتراضية ذكية حسب سياق السؤال
-    if (q.indexOf('شكر') !== -1 || q.indexOf('مشكور') !== -1 || q.indexOf('thanks') !== -1) {
-      return '😊 العفو! أنا هنا لمساعدتك دايماً. هل تحتاج مساعدة في شيء آخر؟';
-    }
-
-    if (q.indexOf('أهلاً') !== -1 || q.indexOf('مرحبا') !== -1 || q.indexOf('هلا') !== -1 || q.indexOf('hello') !== -1 || q === 'hi') {
-      return '👋 **أهلاً وسهلاً!** أنا المساعد الذكي لمنصة **' + SITE_INFO.name + '**\n\nأستطيع مساعدتك في:\n• 🔍 البحث عن مواد ومحاضرات\n• 📱 طريقة استخدام المنصة\n• 🔐 تسجيل الدخول والحساب\n• 📄 مشاكل ملفات PDF\n• 📚 معرفة محتوى الأقسام\n\nبماذا يمكنني مساعدتك؟';
-    }
-
-    // لا توجد نتائج
-    return '🤔 لم أجد نتائج لـ **"' + userMessage.trim() + '"** في قاعدة البيانات حالياً.\n\n💡 **يمكنك:**\n• تجربة مصطلح بحث آخر\n• تصفح الأقسام مباشرةً من الصفحة الرئيسية\n• التواصل معنا عبر واتساب 📱\n\nأو أخبرني بـ: **الفرقة + الشعبة + المادة** وسأساعدك!';
+    // ── لا نتائج — رد صريح بدون هلوسة ───────────────────────────
+    return 'لم أجد هذه المعلومة داخل المنصة حالياً.\n\n💡 جرّب:\n• كتابة اسم المادة بشكل مختلف\n• ذكر الفرقة (أولى/ثانية) والشعبة\n• تصفح الأقسام من الصفحة الرئيسية\n\nأو أخبرني بشعبتك مثال: "أنا في شعبة تمريض"';
   }
 
-  // ── الدالة الرئيسية ──────────────────────────────────────────
+  // ══════════════════════════════════════════════════════════════
+  //  PUBLIC API
+  // ══════════════════════════════════════════════════════════════
   async function send(userMessage) {
     if (_isSearching) return;
     if (!userMessage || !userMessage.trim()) return;
 
+    // إخفاء quick replies بعد أول رسالة
+    var qr = document.getElementById('ai-quick-replies');
+    if (qr) qr.style.display = 'none';
+
     _addMessage(userMessage, 'user');
     _isSearching = true;
+    _showTyping();
 
-    var typing = _showTyping();
     try {
       var response = await _processQuery(userMessage);
       _removeTyping();
       if (response) {
-        _addMessage(response, 'bot');
+        if (typeof response === 'object') {
+          _addMessage(response.text, 'bot', response.html);
+        } else {
+          _addMessage(response, 'bot');
+        }
       }
     } catch(e) {
       _removeTyping();
-      _addMessage('⚠️ حدث خطأ غير متوقع. تأكد من اتصالك بالإنترنت وحاول مجدداً.', 'bot');
-      console.error('[BSM_AI] Error:', e);
+      _addMessage('⚠️ حدث خطأ. تأكد من اتصالك وحاول مجدداً.', 'bot');
+      console.error('[BSM_AI]', e);
     } finally {
       _isSearching = false;
     }
   }
 
-  // ── رسالة الترحيب ───────────────────────────────────────────
   function showWelcome() {
     var msgs = document.getElementById('ai-messages');
     if (!msgs || msgs.children.length > 0) return;
-    _addMessage('👋 مرحباً! أنا **المساعد الذكي** لمنصة معهد فني صحي بني سويف.\n\nاسألني عن أي شيء:\n• مواد ومحاضرات 📚\n• طريقة الاستخدام 📱\n• مشاكل تقنية 🔧\n\nكيف يمكنني مساعدتك؟', 'bot');
+    _addMessage('👋 مرحباً! أنا **المساعد الذكي** لمنصة **معهد فني صحي بني سويف**.\n\nأبحث في قاعدة البيانات مباشرةً وأعرض لك المسار الكامل لأي محتوى.\n\nاسألني مثلاً:\n• "فين مادة الكيمياء؟"\n• "كم عدد المواد؟"\n• "أنا في شعبة تمريض"', 'bot');
+    // تحميل العناوين للاقتراحات في الخلفية
+    _loadSectionTitles();
   }
 
-  return { send, showWelcome };
+  return { send, showWelcome, onInputChange, pickSuggestion, clearContext, findBestAnswer };
 })();
 
 // ── الدوال الموصّلة بالواجهة ──────────────────────────────────
