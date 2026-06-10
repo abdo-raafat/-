@@ -515,10 +515,10 @@ body {
 /* ===== AI ASSISTANT — Mobile First ===== */
 .ai-widget {
   position: fixed;
-  bottom: 24px;
+  bottom: 96px;
   left: 24px;
-  z-index: 9999;
-  bottom: calc(24px + var(--safe-bottom, 0px));
+  z-index: 99997;
+  bottom: calc(96px + var(--safe-bottom, 0px));
   left: max(24px, calc(24px + var(--safe-left, 0px)));
 }
 .ai-toggle {
@@ -539,7 +539,7 @@ body {
 /* Panel — Desktop */
 .ai-panel {
   position: fixed;
-  bottom: 96px;
+  bottom: 168px;
   left: 24px;
   width: min(360px, calc(100vw - 32px));
   max-height: 70vh;
@@ -1247,33 +1247,71 @@ body.content-protected .rv-image-wrap {
 body.content-protected .rv-image-wrap img {
   pointer-events: auto !important;
 }
-/* ===== FIX: MOBILE PDF SCROLL ===== */
-/* منع تجميد التمرير في PDF على الموبايل */
-#native-pdf-pdfjs-wrapper,
+/* ===== FIX v2: MOBILE PDF SCROLL + PINCH ZOOM ===== */
+/* إصلاح شامل للتمرير واللمس في PDF على الموبايل */
+
+/* wrapper الرئيسي — يجب أن يتمرر بحرية */
+#native-pdf-pdfjs-wrapper {
+  -webkit-overflow-scrolling: touch !important;
+  touch-action: pan-x pan-y pinch-zoom !important;
+  overscroll-behavior: contain !important;
+  overflow-y: auto !important;
+  overflow-x: auto !important;
+  will-change: scroll-position;
+  /* يمنع iOS من تجميد الـ scroll */
+  -webkit-transform: translateZ(0);
+  transform: translateZ(0);
+}
+
+/* الـ iframe الخاص بـ PDF — يدعم التمرير الداخلي */
 #native-pdf-frame,
-.rv-pdf-frame,
+.rv-pdf-frame {
+  -webkit-overflow-scrolling: touch !important;
+  touch-action: pan-x pan-y pinch-zoom !important;
+  overscroll-behavior: contain !important;
+  overflow: auto !important;
+}
+
+/* الـ embed frame */
 .rv-embed-frame {
   -webkit-overflow-scrolling: touch !important;
-  touch-action: pan-y !important;
-  overscroll-behavior: contain;
+  touch-action: pan-x pan-y pinch-zoom !important;
 }
-/* الـ modal الخارجي لا يمنع الـ scroll الداخلي */
+
+/* الـ modal الخارجي — يسمح بالتمرير الداخلي */
 #native-pdf-modal,
 .rv-modal {
-  touch-action: pan-y;
+  touch-action: pan-x pan-y pinch-zoom !important;
+  overflow: hidden;
 }
-/* الـ overlay يسمح بتمرير المحتوى الداخلي */
+
+/* الـ overlay — لا يعترض أحداث اللمس الداخلية */
 #native-pdf-overlay,
 .rv-overlay {
   touch-action: none;
 }
-/* منع pointer-events: none على الـ content protection من كسر الـ scroll */
+
+/* الـ canvas الخاص بـ PDF.js — يسمح بالتمرير والـ pinch zoom */
+#native-pdf-pdfjs-wrapper canvas {
+  touch-action: pan-x pan-y pinch-zoom !important;
+  display: block;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* منع content-protected من كسر الـ scroll في PDF */
 body.content-protected #native-pdf-pdfjs-wrapper,
 body.content-protected #native-pdf-frame,
 body.content-protected .rv-pdf-frame,
 body.content-protected .rv-embed-frame {
   pointer-events: auto !important;
-  touch-action: pan-y !important;
+  touch-action: pan-x pan-y pinch-zoom !important;
+  -webkit-overflow-scrolling: touch !important;
+}
+
+/* الـ rv-body يسمح بالتمرير */
+.rv-body {
+  touch-action: pan-x pan-y pinch-zoom !important;
   -webkit-overflow-scrolling: touch !important;
 }
 
@@ -1530,7 +1568,7 @@ a, button, [onclick], .dept-card, .resource-item, .link-card, .lc-btn, .btn-ente
 
 /* ===== AI WIDGET SAFE AREA ===== */
 .ai-widget {
-  bottom: calc(24px + var(--safe-bottom));
+  bottom: calc(96px + var(--safe-bottom));
   left: max(24px, calc(24px + var(--safe-left)));
 }
 
@@ -2199,12 +2237,12 @@ body.sm-open {
 
 <!-- ==================== AI ASSISTANT ==================== -->
 <div class="ai-widget">
-  <div class="ai-panel" id="ai-panel" role="dialog" aria-label="المساعد الذكي">
+  <div class="ai-panel" id="ai-panel" role="dialog" aria-label="المساعد الذكي لمنصة بني سويف">
     <div class="ai-panel-head">
-      <div class="ai-avatar">🤖</div>
+      <div class="ai-avatar">🎓</div>
       <div class="ai-head-info">
-        <div class="ai-name">المساعد الذكي</div>
-        <div class="ai-status">🟢 متاح الآن — 24/7</div>
+        <div class="ai-name">مساعد منصة بني سويف</div>
+        <div class="ai-status">🟢 يبحث في قاعدة البيانات</div>
       </div>
       <div class="ai-head-actions">
         <button class="ai-minimize-btn" onclick="minimizeAI()" title="تصغير" aria-label="تصغير">—</button>
@@ -2212,16 +2250,14 @@ body.sm-open {
       </div>
     </div>
     <div class="ai-messages" id="ai-messages">
-      <div class="msg bot">
-        <div class="msg-bubble">مرحباً! أنا مساعدك الذكي. اسألني عن أي مادة أو فصل وسأساعدك فوراً 🎓</div>
-      </div>
+      <!-- رسائل المساعد تُضاف هنا ديناميكياً -->
     </div>
     <div class="ai-input-row">
-      <input class="ai-input" id="ai-input" type="text" placeholder="اكتب سؤالك هنا..." onkeydown="if(event.key==='Enter')sendAI()">
+      <input class="ai-input" id="ai-input" type="text" placeholder="اسأل عن مادة، محاضرة، أو مشكلة..." onkeydown="if(event.key==='Enter')sendAI()">
       <button class="ai-send" onclick="sendAI()" aria-label="إرسال">➤</button>
     </div>
   </div>
-  <div class="ai-toggle" onclick="toggleAI()" title="المساعد الذكي">🤖</div>
+  <div class="ai-toggle" onclick="toggleAI()" title="المساعد الذكي — اسألني أي شيء!">🎓</div>
 </div>
 
 <script>
@@ -3232,39 +3268,369 @@ function buildResourcesHTML(resources) {
 }
 
 // ==================== AI ASSISTANT ====================
-const AI_RESPONSES = [
-  "بالطبع! هذا الموضوع مهم جداً في تخصصك. دعني أشرح لك بطريقة مبسطة...",
-  "سؤال ممتاز! المفهوم الذي تسأل عنه يرتبط ارتباطاً وثيقاً بما درسته في هذا الفصل...",
-  "يمكنني مساعدتك في فهم هذا المحتوى. النقطة الأساسية التي يجب فهمها هي...",
-  "من منظور تخصصك المهني، هذه المعلومة تُطبق في السياق التالي...",
-  "بناءً على أدائك في الاختبارات، أنصحك بالتركيز على هذه النقاط الأساسية...",
-  "سأساعدك في تبسيط هذا المفهوم. تخيل أن الأمر يشبه...",
-  "هذا سؤال يتكرر كثيراً في الامتحانات! الإجابة المختصرة هي...",
-  "لديك فهم جيد للموضوع! دعنا نعمق الفهم أكثر بإضافة تفاصيل مهمة..."
-];
-let aiIdx = 0;
+// ==================== SMART AI ASSISTANT v2 ====================
+// مساعد ذكي متخصص بمنصة معهد فني صحي بني سويف
+// يبحث في Supabase ويعرف هيكل الموقع بالكامل
 
+var BSM_AI = (function() {
+
+  // ── معرفة ثابتة بالموقع ──────────────────────────────────────
+  var SITE_INFO = {
+    name: 'منصة معهد فني صحي بني سويف',
+    description: 'منصة تعليمية متكاملة لطلاب معهد فني صحي بني سويف',
+    year: 'الدفعة 2025',
+    creator: 'عبدالرحمن رأفت محمد',
+    structure: {
+      grades: ['الفرقة الأولى', 'الفرقة الثانية'],
+      specializations: [
+        'شعبة تمريض',
+        'شعبة تسجيل طبي وإحصاء',
+        'شعبة معامل (تحاليل)',
+        'شعبة أجهزة طبية',
+        'شعبة فيزيوثيرابيا',
+        'شعبة تخدير',
+        'شعبة أشعة',
+      ],
+      contentTypes: ['كتب', 'محاضرات', 'مراجعات', 'فيديوهات تعليمية', 'ملفات PDF'],
+      sections: ['ما بعد الثانوية', 'الفرقة الأولى', 'الفرقة الثانية', 'ما بعد الفرقة الثانية', 'روابط وجروبات', 'كورس إنجليزي', 'كورس ICDL']
+    }
+  };
+
+  // ── قاعدة معرفة ثابتة بالأسئلة الشائعة ──────────────────────
+  var KNOWLEDGE_BASE = [
+    {
+      keywords: ['تسجيل دخول', 'دخول', 'لوجين', 'login', 'دخل', 'sign in', 'حساب'],
+      answer: '🔐 **تسجيل الدخول:**\n\n1️⃣ اضغط على زر **"🔐 دخول"** في أعلى الصفحة\n2️⃣ اضغط **"تسجيل الدخول بـ Google"**\n3️⃣ اختر حساب Google الخاص بك\n4️⃣ ستُعاد للمنصة تلقائياً\n\n💡 **ملاحظة:** تأكد من أن متصفحك يسمح بـ pop-ups من هذا الموقع'
+    },
+    {
+      keywords: ['إنشاء حساب', 'تسجيل', 'حساب جديد', 'أشترك', 'register', 'sign up'],
+      answer: '📝 **إنشاء حساب:**\n\nالتسجيل يتم تلقائياً عبر حساب Google الخاص بك.\n\n1️⃣ اضغط **"🔐 دخول"** في الأعلى\n2️⃣ اختر حساب Google\n3️⃣ سيُنشأ حسابك تلقائياً في المنصة\n\n✅ لا توجد خطوات إضافية!'
+    },
+    {
+      keywords: ['كلمة مرور', 'نسيت', 'استرجاع', 'password', 'reset'],
+      answer: '🔑 **استرجاع كلمة المرور:**\n\nالمنصة تستخدم تسجيل الدخول بـ Google فقط، لذلك لا توجد كلمة مرور مستقلة.\n\nلو نسيت كلمة مرور Google:\n1️⃣ اذهب لـ [accounts.google.com](https://accounts.google.com)\n2️⃣ اضغط "نسيت كلمة المرور"\n3️⃣ اتبع الخطوات'
+    },
+    {
+      keywords: ['pdf', 'ملف', 'بي دي إف', 'مش بيفتح', 'التمرير', 'scroll', 'فتح ملف'],
+      answer: '📄 **مشاكل عرض PDF:**\n\n**للهاتف:**\n• تأكد أن المتصفح محدَّث لآخر إصدار\n• جرب Chrome أو Firefox Mobile\n• اضغط على الملف واسمح بتحميله\n\n**مشكلة التمرير:**\n• استخدم إصبعين لتمرير صفحات PDF\n• للتكبير: Pinch-Zoom بإصبعين\n• Double-tap للتكبير السريع\n\n**لو ما فتحش:**\n• تأكد من الاتصال بالإنترنت\n• حاول إعادة فتح الصفحة\n• جرب متصفح مختلف'
+    },
+    {
+      keywords: ['الفرقة الأولى', 'اولى', 'first year', 'سنة أولى'],
+      answer: '📘 **الفرقة الأولى:**\n\nتحتوي على مواد الأساس الطبي لجميع الشعب.\n\n📍 **الوصول:** الرئيسية ← الفرقة الأولى ← اختر شعبتك ← المواد\n\n📚 المحتوى المتاح:\n• محاضرات ومذكرات PDF\n• كتب مرجعية\n• مراجعات للامتحانات\n• فيديوهات شرح\n\n💡 تبحث عن مادة معينة؟ أخبرني باسمها وسأساعدك!'
+    },
+    {
+      keywords: ['الفرقة الثانية', 'تانية', 'second year', 'سنة ثانية'],
+      answer: '📗 **الفرقة الثانية:**\n\nتحتوي على مواد التخصص المتقدمة لكل شعبة.\n\n📍 **الوصول:** الرئيسية ← الفرقة الثانية ← اختر شعبتك ← المواد\n\n🎓 الشعب المتاحة:\n• تمريض | تسجيل طبي | معامل | أجهزة طبية | وأكثر\n\n💡 أخبرني بشعبتك والمادة التي تبحث عنها!'
+    },
+    {
+      keywords: ['تمريض', 'nursing', 'شعبة تمريض'],
+      answer: '🏥 **شعبة تمريض:**\n\nمتاحة في الفرقة الأولى والثانية.\n\n📍 **كيف تصل:**\n• الرئيسية ← الفرقة الأولى/الثانية ← تمريض\n\n📚 المحتوى:\n• محاضرات التمريض الأساسي والسريري\n• ملفات PDF للمذكرات\n• كتب مرجعية\n• مراجعات الامتحانات\n\n🔍 هل تبحث عن مادة محددة في التمريض؟'
+    },
+    {
+      keywords: ['تسجيل طبي', 'إحصاء', 'medical records'],
+      answer: '📋 **شعبة تسجيل طبي وإحصاء:**\n\n📍 **الوصول:** الرئيسية ← الفرقة الأولى/الثانية ← تسجيل طبي\n\n📚 المحتوى:\n• مواد التسجيل الطبي\n• الإحصاء الحيوي\n• المعلوماتية الطبية\n• محاضرات وملفات PDF\n\n💡 هذه الشعبة أسسها مطوّر المنصة عبدالرحمن رأفت!'
+    },
+    {
+      keywords: ['معامل', 'تحاليل', 'مختبر', 'lab'],
+      answer: '🔬 **شعبة المعامل (التحاليل الطبية):**\n\n📍 **الوصول:** الرئيسية ← الفرقة الأولى/الثانية ← معامل\n\n📚 المحتوى:\n• محاضرات الكيمياء الحيوية\n• الأحياء الدقيقة\n• الهيستولوجيا\n• ملفات PDF والفيديوهات'
+    },
+    {
+      keywords: ['كتب', 'كتاب', 'مرجع', 'books'],
+      answer: '📚 **الكتب والمراجع:**\n\n📍 **الوصول:** الرئيسية ← اختر الفرقة ← اختر الشعبة ← المادة ← الكتب\n\nأو ابحث في قسم المادة مباشرةً عن تبويب "الكتب"\n\n💡 هل تبحث عن كتاب محدد؟ أخبرني باسم المادة والفرقة!'
+    },
+    {
+      keywords: ['محاضرة', 'محاضرات', 'lecture', 'شرح'],
+      answer: '🎓 **المحاضرات:**\n\n📍 **الوصول:** الرئيسية ← الفرقة ← الشعبة ← المادة ← المحاضرات\n\n✅ المحاضرات متوفرة بصيغ:\n• ملفات PDF\n• فيديوهات شرح\n• ملاحظات مكتوبة\n\n🔍 أخبرني بالمادة والفرقة للبحث في قاعدة البيانات!'
+    },
+    {
+      keywords: ['فيديو', 'فيديوهات', 'يوتيوب', 'video', 'شرح مرئي'],
+      answer: '🎬 **الفيديوهات التعليمية:**\n\n📍 **الوصول:** الرئيسية ← الفرقة ← الشعبة ← المادة ← الفيديوهات\n\n✅ الفيديوهات تشمل:\n• شرح المحاضرات\n• حل الأمثلة والمسائل\n• مراجعات الامتحانات\n\nجميع الفيديوهات تفتح داخل المنصة بدون مغادرة الموقع!'
+    },
+    {
+      keywords: ['مراجعة', 'امتحان', 'اختبار', 'revision', 'exam'],
+      answer: '📝 **المراجعات والامتحانات:**\n\n📍 **الوصول:** الرئيسية ← الفرقة ← الشعبة ← المادة ← المراجعات\n\n✅ يتضمن:\n• ملخصات المواد\n• أسئلة متوقعة\n• حلول الامتحانات السابقة\n• ملفات PDF للمراجعة\n\n💪 بالتوفيق في امتحاناتك!'
+    },
+    {
+      keywords: ['روابط', 'جروب', 'واتساب', 'تيليجرام', 'links', 'group'],
+      answer: '🔗 **الروابط والجروبات:**\n\n📍 **الوصول:** الرئيسية ← "روابط وجروبات مهمة"\n\n✅ يتضمن:\n• جروبات واتساب وتيليجرام الرسمية\n• روابط وزارة الصحة\n• روابط المعهد\n• روابط مهمة أخرى\n\n📱 اضغط على الرابط وسيفتح مباشرةً!'
+    },
+    {
+      keywords: ['أقسام', 'الموقع', 'محتوى', 'sections', 'ماذا يحتوي', 'إيه اللي في'],
+      answer: '🏠 **أقسام المنصة:**\n\n📚 **الأقسام الرئيسية:**\n• 📘 الفرقة الأولى — مواد السنة الأولى\n• 📗 الفرقة الثانية — مواد التخصص\n• 🎓 ما بعد الثانوية — إعداد للمعهد\n• 🏆 ما بعد الثانية — التوظيف والتطوير\n• 🔗 روابط وجروبات\n• 🇬🇧 كورس إنجليزي\n• 💻 كورس ICDL\n\n💡 اضغط على أي قسم من الصفحة الرئيسية للدخول إليه!'
+    },
+    {
+      keywords: ['إنجليزي', 'english', 'لغة إنجليزية', 'انجليش'],
+      answer: '🇬🇧 **كورس الإنجليزي:**\n\n📍 **الوصول:** الرئيسية ← "كورس الإنجليزي"\n\n✅ يشمل:\n• إنجليزي طبي (Medical English)\n• مصطلحات طبية\n• محادثة ومحاضرات\n• ملفات PDF وفيديوهات'
+    },
+    {
+      keywords: ['icdl', 'كمبيوتر', 'computer', 'أوفيس', 'ويندوز'],
+      answer: '💻 **كورس ICDL:**\n\n📍 **الوصول:** الرئيسية ← "كورس ICDL"\n\n✅ يشمل:\n• أساسيات الكمبيوتر والويندوز\n• Microsoft Office\n• الإنترنت والبريد الإلكتروني\n• مواد امتحان ICDL'
+    },
+    {
+      keywords: ['استخدام', 'طريقة', 'كيف', 'how to', 'شرح الموقع'],
+      answer: '📱 **كيفية استخدام المنصة:**\n\n**1. التنقل:**\n• الرئيسية ← اختر قسمك ← اختر شعبتك ← اختر المادة\n\n**2. فتح الملفات:**\n• الملفات تفتح داخل الموقع مباشرةً\n• PDF: تمرير بإصبع + Pinch-Zoom للتكبير\n• فيديو: يعمل مع التحكم الكامل\n\n**3. البحث:**\n• اسألني عن أي محتوى وسأبحث لك!\n\n**4. الوضع الليلي:**\n• اضغط 🌙 في الأعلى لتفعيل الوضع الليلي'
+    }
+  ];
+
+  // ── تاريخ المحادثة ────────────────────────────────────────────
+  var _history = [];
+  var _isSearching = false;
+
+  // ── إضافة رسالة للواجهة ──────────────────────────────────────
+  function _addMessage(text, role) {
+    var msgs = document.getElementById('ai-messages');
+    if (!msgs) return;
+    var div = document.createElement('div');
+    div.className = 'msg ' + role;
+    // تحويل markdown بسيط
+    var formatted = text
+      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+      .replace(/\n/g, '<br>');
+    div.innerHTML = '<div class="msg-bubble">' + formatted + '</div>';
+    msgs.appendChild(div);
+    msgs.scrollTop = msgs.scrollHeight;
+    _history.push({ role: role, text: text });
+    // حفظ آخر 20 رسالة فقط
+    if (_history.length > 20) _history = _history.slice(-20);
+  }
+
+  // ── مؤشر التحميل ─────────────────────────────────────────────
+  function _showTyping() {
+    var msgs = document.getElementById('ai-messages');
+    if (!msgs) return null;
+    var div = document.createElement('div');
+    div.className = 'msg bot';
+    div.id = '_ai-typing';
+    div.innerHTML = '<div class="msg-bubble" style="opacity:.7">⏳ جاري البحث...</div>';
+    msgs.appendChild(div);
+    msgs.scrollTop = msgs.scrollHeight;
+    return div;
+  }
+
+  function _removeTyping() {
+    var el = document.getElementById('_ai-typing');
+    if (el) el.remove();
+  }
+
+  // ── البحث في قاعدة البيانات ───────────────────────────────────
+  async function _searchDatabase(query) {
+    var db = window.supabase;
+    if (!db || typeof db.from !== 'function') return null;
+
+    var results = {
+      sections: [],
+      content: [],
+      resources: []
+    };
+
+    try {
+      // البحث في الأقسام
+      var { data: sections } = await db
+        .from('site_sections')
+        .select('id, title, subtitle, category, parent_id')
+        .or('title.ilike.%' + query + '%,subtitle.ilike.%' + query + '%')
+        .limit(5);
+      if (sections) results.sections = sections;
+
+      // البحث في المحتوى
+      var { data: content } = await db
+        .from('section_content')
+        .select('id, title, content_type, section_id')
+        .ilike('title', '%' + query + '%')
+        .limit(5);
+      if (content) results.content = content;
+
+      // البحث في الموارد
+      var { data: resources } = await db
+        .from('section_resources')
+        .select('id, title, resource_type, section_id')
+        .ilike('title', '%' + query + '%')
+        .limit(5);
+      if (resources) results.resources = resources;
+
+    } catch(e) {
+      console.warn('[BSM_AI] خطأ في البحث:', e.message);
+    }
+
+    return results;
+  }
+
+  // ── جلب اسم القسم من id ───────────────────────────────────────
+  async function _getSectionName(sectionId) {
+    if (!sectionId || !window.supabase) return null;
+    try {
+      var { data } = await window.supabase
+        .from('site_sections')
+        .select('id, title, parent_id')
+        .eq('id', sectionId)
+        .maybeSingle();
+      return data;
+    } catch(e) { return null; }
+  }
+
+  // ── بناء مسار الوصول من نتائج البحث ─────────────────────────
+  async function _buildAccessPath(sectionId) {
+    if (!sectionId) return '';
+    var path = [];
+    var current = sectionId;
+    var maxDepth = 5;
+    while (current && maxDepth-- > 0) {
+      var sec = await _getSectionName(current);
+      if (!sec) break;
+      path.unshift(sec.title);
+      current = sec.parent_id;
+    }
+    return path.length > 0 ? ('الرئيسية ← ' + path.join(' ← ')) : '';
+  }
+
+  // ── تحليل سؤال المستخدم والرد ────────────────────────────────
+  async function _processQuery(userMessage) {
+    var q = (userMessage || '').trim().toLowerCase();
+    if (!q) return;
+
+    // تطابق المعرفة الثابتة أولاً
+    for (var i = 0; i < KNOWLEDGE_BASE.length; i++) {
+      var kb = KNOWLEDGE_BASE[i];
+      var matched = kb.keywords.some(function(kw) {
+        return q.indexOf(kw) !== -1;
+      });
+      if (matched) {
+        return kb.answer;
+      }
+    }
+
+    // البحث في قاعدة البيانات
+    var searchTerms = userMessage.trim();
+    // استخراج كلمات مفتاحية بسيطة
+    var keywords = searchTerms.split(/\s+/).filter(function(w) { return w.length > 2; });
+
+    var dbResults = null;
+    if (keywords.length > 0) {
+      // بحث بالكلمة الأطول (الأكثر تحديداً)
+      var mainKeyword = keywords.sort(function(a,b){ return b.length - a.length; })[0];
+      dbResults = await _searchDatabase(mainKeyword);
+    }
+
+    // بناء الرد من نتائج قاعدة البيانات
+    if (dbResults) {
+      var hasResults = (
+        (dbResults.sections && dbResults.sections.length > 0) ||
+        (dbResults.content && dbResults.content.length > 0) ||
+        (dbResults.resources && dbResults.resources.length > 0)
+      );
+
+      if (hasResults) {
+        var reply = '🔍 **نتائج البحث عن "' + userMessage.trim() + '":**\n\n';
+
+        if (dbResults.sections && dbResults.sections.length > 0) {
+          reply += '📂 **الأقسام:**\n';
+          for (var s of dbResults.sections) {
+            var path = await _buildAccessPath(s.id);
+            reply += '• **' + s.title + '**' + (s.subtitle ? ' — ' + s.subtitle : '') + '\n';
+            if (path) reply += '  📍 ' + path + '\n';
+          }
+          reply += '\n';
+        }
+
+        if (dbResults.content && dbResults.content.length > 0) {
+          reply += '📄 **المحتوى:**\n';
+          for (var c of dbResults.content) {
+            var path = await _buildAccessPath(c.section_id);
+            var icon = c.content_type === 'video' ? '🎬' : c.content_type === 'pdf' ? '📄' : '📝';
+            reply += icon + ' **' + c.title + '**\n';
+            if (path) reply += '  📍 ' + path + '\n';
+          }
+          reply += '\n';
+        }
+
+        if (dbResults.resources && dbResults.resources.length > 0) {
+          reply += '📎 **الموارد:**\n';
+          for (var r of dbResults.resources) {
+            var path = await _buildAccessPath(r.section_id);
+            var icon = r.resource_type === 'video' ? '🎬' : r.resource_type === 'pdf' ? '📄' : '📎';
+            reply += icon + ' **' + r.title + '**\n';
+            if (path) reply += '  📍 ' + path + '\n';
+          }
+        }
+
+        reply += '\n💡 اضغط على القسم من الصفحة الرئيسية للوصول للمحتوى!';
+        return reply;
+      }
+    }
+
+    // ردود افتراضية ذكية حسب سياق السؤال
+    if (q.indexOf('شكر') !== -1 || q.indexOf('مشكور') !== -1 || q.indexOf('thanks') !== -1) {
+      return '😊 العفو! أنا هنا لمساعدتك دايماً. هل تحتاج مساعدة في شيء آخر؟';
+    }
+
+    if (q.indexOf('أهلاً') !== -1 || q.indexOf('مرحبا') !== -1 || q.indexOf('هلا') !== -1 || q.indexOf('hello') !== -1 || q === 'hi') {
+      return '👋 **أهلاً وسهلاً!** أنا المساعد الذكي لمنصة **' + SITE_INFO.name + '**\n\nأستطيع مساعدتك في:\n• 🔍 البحث عن مواد ومحاضرات\n• 📱 طريقة استخدام المنصة\n• 🔐 تسجيل الدخول والحساب\n• 📄 مشاكل ملفات PDF\n• 📚 معرفة محتوى الأقسام\n\nبماذا يمكنني مساعدتك؟';
+    }
+
+    // لا توجد نتائج
+    return '🤔 لم أجد نتائج لـ **"' + userMessage.trim() + '"** في قاعدة البيانات حالياً.\n\n💡 **يمكنك:**\n• تجربة مصطلح بحث آخر\n• تصفح الأقسام مباشرةً من الصفحة الرئيسية\n• التواصل معنا عبر واتساب 📱\n\nأو أخبرني بـ: **الفرقة + الشعبة + المادة** وسأساعدك!';
+  }
+
+  // ── الدالة الرئيسية ──────────────────────────────────────────
+  async function send(userMessage) {
+    if (_isSearching) return;
+    if (!userMessage || !userMessage.trim()) return;
+
+    _addMessage(userMessage, 'user');
+    _isSearching = true;
+
+    var typing = _showTyping();
+    try {
+      var response = await _processQuery(userMessage);
+      _removeTyping();
+      if (response) {
+        _addMessage(response, 'bot');
+      }
+    } catch(e) {
+      _removeTyping();
+      _addMessage('⚠️ حدث خطأ غير متوقع. تأكد من اتصالك بالإنترنت وحاول مجدداً.', 'bot');
+      console.error('[BSM_AI] Error:', e);
+    } finally {
+      _isSearching = false;
+    }
+  }
+
+  // ── رسالة الترحيب ───────────────────────────────────────────
+  function showWelcome() {
+    var msgs = document.getElementById('ai-messages');
+    if (!msgs || msgs.children.length > 0) return;
+    _addMessage('👋 مرحباً! أنا **المساعد الذكي** لمنصة معهد فني صحي بني سويف.\n\nاسألني عن أي شيء:\n• مواد ومحاضرات 📚\n• طريقة الاستخدام 📱\n• مشاكل تقنية 🔧\n\nكيف يمكنني مساعدتك؟', 'bot');
+  }
+
+  return { send, showWelcome };
+})();
+
+// ── الدوال الموصّلة بالواجهة ──────────────────────────────────
 function closeAI() { var p=document.getElementById("ai-panel"); if(p) p.classList.remove("open"); }
 function minimizeAI() { closeAI(); }
 function toggleAI() {
-  document.getElementById('ai-panel').classList.toggle('open');
+  var panel = document.getElementById('ai-panel');
+  if (!panel) return;
+  panel.classList.toggle('open');
+  if (panel.classList.contains('open')) {
+    BSM_AI.showWelcome();
+    setTimeout(function() {
+      var input = document.getElementById('ai-input');
+      if (input) input.focus();
+    }, 300);
+  }
 }
 
 function sendAI() {
-  const input = document.getElementById('ai-input');
-  const msg = input.value.trim();
+  var input = document.getElementById('ai-input');
+  if (!input) return;
+  var msg = input.value.trim();
   if (!msg) return;
-  const messages = document.getElementById('ai-messages');
-  messages.innerHTML += `<div class="msg user"><div class="msg-bubble">${msg}</div></div>`;
   input.value = '';
-  messages.scrollTop = messages.scrollHeight;
-  setTimeout(() => {
-    const resp = AI_RESPONSES[aiIdx % AI_RESPONSES.length];
-    aiIdx++;
-    messages.innerHTML += `<div class="msg bot"><div class="msg-bubble">${resp}</div></div>`;
-    messages.scrollTop = messages.scrollHeight;
-  }, 800);
+  input.style.height = '';
+  BSM_AI.send(msg);
 }
+
 
 // ==================== SUPABASE DIAGNOSTICS ====================
 async function runSupabaseDiagnostics() {
@@ -6568,8 +6934,9 @@ var NativePDFViewer = (function() {
       // wrapper قابل للتمرير بالكامل
       bodyHtml =
         '<div id="native-pdf-pdfjs-wrapper" ' +
-        'style="flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;touch-action:pan-y;' +
-        'background:#525659;padding:12px;box-sizing:border-box;min-height:0;">' +
+        'style="flex:1;overflow-y:auto;overflow-x:auto;-webkit-overflow-scrolling:touch;touch-action:pan-x pan-y pinch-zoom;' +
+        'background:#525659;padding:12px;box-sizing:border-box;min-height:0;overscroll-behavior:contain;' +
+        'will-change:scroll-position;">' +
         '</div>';
     } else {
       bodyHtml =
@@ -6607,12 +6974,17 @@ var NativePDFViewer = (function() {
       var wrapper = document.getElementById('native-pdf-pdfjs-wrapper');
       if (wrapper) {
         var ok = await _renderPdfJs(finalUrl, wrapper);
+        // تفعيل Pinch-Zoom بعد اكتمال الرسم
+        if (ok) {
+          wrapper._scaleTarget = wrapper;
+          NativePDFViewer._enablePinchZoom(wrapper);
+        }
         // Fallback: Google Docs Viewer لو PDF.js فشل
         if (!ok) {
           wrapper.style.cssText = 'flex:1;display:flex;flex-direction:column;overflow:hidden;min-height:0;';
           wrapper.innerHTML =
             '<iframe src="https://docs.google.com/viewer?url=' + encodeURIComponent(finalUrl) +
-            '&embedded=true" style="width:100%;flex:1;border:none;min-height:70vh;overflow:auto;-webkit-overflow-scrolling:touch;touch-action:pan-y;"></iframe>';
+            '&embedded=true" style="width:100%;flex:1;border:none;min-height:70vh;overflow:auto;-webkit-overflow-scrolling:touch;touch-action:pan-x pan-y pinch-zoom;"></iframe>';
         }
       }
     } else if (isFirefox) {
@@ -6629,6 +7001,113 @@ var NativePDFViewer = (function() {
     }
   }
 
+  // ── Pinch-Zoom على الموبايل للـ canvas wrapper ──────────────────────
+  function _enablePinchZoom(wrapper) {
+    if (!wrapper) return;
+    var scale = 1, minScale = 0.5, maxScale = 5;
+    var startDist = 0, startScale = 1;
+    var translateX = 0, translateY = 0;
+    var startTX = 0, startTY = 0;
+    var startMidX = 0, startMidY = 0;
+    var isPinching = false;
+    var isDragging = false;
+    var dragStartX = 0, dragStartY = 0;
+
+    function _dist(t) {
+      var dx = t[0].clientX - t[1].clientX;
+      var dy = t[0].clientY - t[1].clientY;
+      return Math.sqrt(dx*dx + dy*dy);
+    }
+
+    function _applyTransform(el) {
+      el.style.transformOrigin = '0 0';
+      el.style.transform = 'translate(' + translateX + 'px,' + translateY + 'px) scale(' + scale + ')';
+      el.style.willChange = 'transform';
+    }
+
+    // إنشاء div داخلي قابل للـ transform بدون كسر الـ scroll
+    wrapper.addEventListener('touchstart', function(e) {
+      if (e.touches.length === 2) {
+        isPinching = true;
+        isDragging = false;
+        startDist = _dist(e.touches);
+        startScale = scale;
+        startMidX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+        startMidY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+        startTX = translateX;
+        startTY = translateY;
+        e.preventDefault();
+      } else if (e.touches.length === 1 && scale > 1) {
+        isDragging = true;
+        dragStartX = e.touches[0].clientX - translateX;
+        dragStartY = e.touches[0].clientY - translateY;
+      }
+    }, { passive: false });
+
+    wrapper.addEventListener('touchmove', function(e) {
+      if (isPinching && e.touches.length === 2) {
+        var newDist = _dist(e.touches);
+        var newScale = Math.min(maxScale, Math.max(minScale, startScale * (newDist / startDist)));
+        var midX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+        var midY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+        // تعديل الـ translate بناءً على مركز الـ pinch
+        var wRect = wrapper.getBoundingClientRect();
+        var originX = midX - wRect.left;
+        var originY = midY - wRect.top + wrapper.scrollTop;
+        translateX = originX - (originX - startTX) * (newScale / startScale) + (midX - startMidX);
+        translateY = originY - (originY - startTY) * (newScale / startScale) + (midY - startMidY);
+        scale = newScale;
+        // أعِد الـ translate بحدود معقولة
+        var maxTX = 0;
+        var maxTY = 0;
+        translateX = Math.min(maxTX, Math.max(-(wrapper.scrollWidth * scale - wrapper.clientWidth), translateX));
+        _applyTransform(wrapper._scaleTarget || wrapper);
+        e.preventDefault();
+      } else if (isDragging && e.touches.length === 1 && scale > 1) {
+        translateX = e.touches[0].clientX - dragStartX;
+        translateY = e.touches[0].clientY - dragStartY;
+        var maxTX = 0;
+        translateX = Math.min(maxTX, Math.max(-(wrapper.scrollWidth * scale - wrapper.clientWidth), translateX));
+        _applyTransform(wrapper._scaleTarget || wrapper);
+        e.preventDefault();
+      }
+    }, { passive: false });
+
+    wrapper.addEventListener('touchend', function(e) {
+      if (e.touches.length < 2) isPinching = false;
+      if (e.touches.length === 0) isDragging = false;
+      // لو الـ scale رجع للأقل — اعيد reset
+      if (scale <= 1.05) {
+        scale = 1; translateX = 0; translateY = 0;
+        if (wrapper._scaleTarget) wrapper._scaleTarget.style.transform = '';
+      }
+    }, { passive: true });
+
+    // Double-tap للـ zoom
+    var _lastTap = 0;
+    wrapper.addEventListener('touchend', function(e) {
+      if (e.changedTouches.length !== 1) return;
+      var now = Date.now();
+      if (now - _lastTap < 300) {
+        // double tap
+        if (scale > 1) {
+          scale = 1; translateX = 0; translateY = 0;
+          if (wrapper._scaleTarget) wrapper._scaleTarget.style.transform = '';
+        } else {
+          scale = 2.5;
+          var tap = e.changedTouches[0];
+          var wRect = wrapper.getBoundingClientRect();
+          translateX = -((tap.clientX - wRect.left) * (scale - 1));
+          translateY = -((tap.clientY - wRect.top + wrapper.scrollTop) * (scale - 1));
+          var maxTX = 0;
+          translateX = Math.min(maxTX, Math.max(-(wrapper.scrollWidth * scale - wrapper.clientWidth), translateX));
+          _applyTransform(wrapper._scaleTarget || wrapper);
+        }
+      }
+      _lastTap = now;
+    }, { passive: true });
+  }
+
   function close() {
     if (_overlayEl) {
       document.removeEventListener('keydown', _overlayEl._keyHandler);
@@ -6641,7 +7120,7 @@ var NativePDFViewer = (function() {
     document.body.classList.remove('rv-open');
   }
 
-  return { open, close };
+  return { open, close, _enablePinchZoom };
 })();
 
 // ==================== CONTENT PROTECTION SYSTEM ====================
