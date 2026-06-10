@@ -6928,28 +6928,38 @@ function toggleDarkMode() {
 // ══════════════════════════════════════════════════════════════
 (function() {
   'use strict';
+// ── ثوابت ────────────────────────────────────────────────
+var LS_PREFIX     = 'sm_seen_v3_';
+var FETCH_TIMEOUT = 20000;   // ⬅️ زودناه لتفادي GitHub Pages timeout
+var MAX_RETRIES   = 1;       // ⬅️ قللنا retries عشان ما يعلقش
+var RETRY_DELAY   = 1000;
+var _initialized  = false;
 
-  // ── ثوابت ────────────────────────────────────────────────
-  var LS_PREFIX     = 'sm_seen_v3_';   // prefix مفتاح LocalStorage
-  var FETCH_TIMEOUT = 10000;           // 10 ثانية timeout للجلب
-  var MAX_RETRIES   = 2;               // عدد المحاولات عند الفشل
-  var RETRY_DELAY   = 1500;            // تأخير بين المحاولات (ms)
-  var _retryCount   = 0;
-  var _initialized  = false;
+// ── تشغيل فوري بدون تعليق ───────────────────────────────
+function _waitClient(cb) {
 
-  // ── انتظر Supabase client جاهز ───────────────────────────
-  function _waitClient(timeoutMs, cb) {
-    timeoutMs = timeoutMs || FETCH_TIMEOUT;
-    // ① client جاهز فوراً
+  // 1- لو Supabase جاهز فورًا
+  if (window.supabase && typeof window.supabase.from === 'function') {
+    return cb(window.supabase);
+  }
+
+  // 2- fallback سريع جداً بدون تعليق الموقع
+  var start = Date.now();
+
+  (function check() {
     if (window.supabase && typeof window.supabase.from === 'function') {
       return cb(window.supabase);
     }
-    // ② انتظر Promise الرسمي
-    var done = false;
-    var timer = setTimeout(function() {
-      if (!done) { done = true; cb(null); }
-    }, timeoutMs);
 
+    // لو اتأخر أكتر من 2 ثانية، نكمل anyway
+    if (Date.now() - start > 2000) {
+      console.warn("Supabase not ready but continuing anyway");
+      return cb(window.supabase || null);
+    }
+
+    setTimeout(check, 100);
+  })();
+}
     var p = window._supabaseClientReady || window._supabaseReady;
     if (p && typeof p.then === 'function') {
       p.then(function(client) {
