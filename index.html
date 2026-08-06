@@ -4,6 +4,19 @@
 <meta name="google-site-verification" content="my6dMoAsuc_97Jks_OQF75GK_f1PGWqz2Kng2obkIgE" />
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<!-- ✅ FIX: تطبيق الثيم (فاتح/داكن) فوراً قبل أي رسم للصفحة — يمنع وميض الشاشة (FOUC) -->
+<script>
+(function() {
+  var saved = '';
+  try { saved = localStorage.getItem('theme_pref') || ''; } catch(e) {}
+  if (!saved) {
+    try { saved = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'; }
+    catch(e) { saved = 'light'; }
+  }
+  document.documentElement.setAttribute('data-theme', saved);
+  window._initialTheme = saved;
+})();
+</script>
 <!-- ✅ PERF: Cache hints for GitHub Pages -->
 <meta http-equiv="Cache-Control" content="public, max-age=3600">
 <title>منصة معهد فني صحي بني سويف | التعليم الصحي الفني</title>
@@ -1553,6 +1566,21 @@ body.content-protected .rv-embed-frame {
   background: var(--bg-input);
   color: var(--text-main);
 }
+/* ✅ FIX: عناصر لوحة الشات لم تكن مغطاة بالدارك مود */
+[data-theme="dark"] .ai-suggestions {
+  background: var(--bg-card);
+  border-color: var(--border-color);
+  box-shadow: 0 -4px 16px rgba(0,0,0,.35);
+}
+[data-theme="dark"] .ai-sug-item { border-bottom-color: var(--border-color); color: var(--text-main); }
+[data-theme="dark"] .ai-sug-item:hover { background: var(--bg-input); }
+[data-theme="dark"] .ai-context-bar {
+  background: linear-gradient(90deg,#16222f,#122a20);
+  border-bottom-color: var(--border-color);
+  color: #7dd0f0;
+}
+[data-theme="dark"] .ai-qr-chip { background: #1e3050; color: #7dd0f0; border-color: #2a4060; }
+[data-theme="dark"] .ai-qr-chip:hover { background: #24406a; }
 
 /* ===== DARK: RESOURCE VIEWER ===== */
 [data-theme="dark"] .rv-modal { background: #141e2b; }
@@ -1877,22 +1905,6 @@ html, body {
   input, select, textarea {
     font-size: 16px !important; /* منع التكبير التلقائي على iOS */
   }
-}
-
-/* ── Dark mode: AI panel ── */
-[data-theme="dark"] .ai-panel {
-  background: var(--bg-card);
-  border-color: var(--border-color);
-}
-[data-theme="dark"] .ai-input {
-  background: var(--bg-input);
-  border-color: var(--border-color);
-  color: var(--text-main);
-}
-[data-theme="dark"] .ai-input-row { border-top-color: var(--border-color); }
-[data-theme="dark"] .msg.bot .msg-bubble {
-  background: var(--bg-input);
-  color: var(--text-main);
 }
 
 /* ── إزالة أي Scroll أفقي ── */
@@ -3073,6 +3085,30 @@ async function openDynamicSection(sec) {
   const numId = toValidId(sec.id);
   if (numId === null) { alert('قريباً'); return; }
 
+  // ── فحص اشتراك الشعبة قبل الدخول ──
+  if (window.checkSectionAccess) {
+    const gate = await window.checkSectionAccess(numId);
+    if (gate) {
+      window._lastGateSec = sec;
+      const secCopy = { ...sec };
+      state.navigationStack.push({
+        label: sec.title,
+        restore: () => { window._lastGateSec = secCopy; window._paintSubscriptionGate('dynamic-section-grid', gate); },
+      });
+      window._lastOpenSectionId = sec.id;
+      document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+      document.getElementById('page-dynamic-section').classList.add('active');
+      document.getElementById('dynamic-section-title').textContent = sec.title;
+      document.getElementById('dynamic-section-sub').textContent = sec.subtitle || '';
+      const resEl = document.getElementById('dynamic-section-resources-container');
+      if (resEl) resEl.innerHTML = '';
+      window.scrollTo(0, 0);
+      updateBreadcrumb();
+      window._paintSubscriptionGate('dynamic-section-grid', gate);
+      return;
+    }
+  }
+
   // أضف الخطوة الحالية للـ stack مع snapshot لإعادة رسمها عند الرجوع
   const secCopy = { ...sec }; // نسخة ثابتة
   state.navigationStack.push({
@@ -3124,6 +3160,26 @@ async function openDynamicSubSection(sec) {
  * يقبل البيانات المحمّلة مسبقاً لتجنب double-fetch
  */
 async function _openContentPage(sec, _preloadedContent, _preloadedResources) {
+  // ── فحص اشتراك الشعبة قبل عرض المحتوى ──
+  if (window.checkSectionAccess && sec && sec.id) {
+    const gate = await window.checkSectionAccess(sec.id);
+    if (gate) {
+      window._lastGateSec = sec;
+      window._currentContentSec = sec;
+      document.getElementById('content-icon').textContent = sec.icon || '🔒';
+      document.getElementById('content-title').textContent = sec.title;
+      document.getElementById('content-subtitle').textContent = '';
+      document.getElementById('content-area').innerHTML = window._renderSubscriptionGateHTML(gate);
+      const chResEl = document.getElementById('chapter-resources-container');
+      if (chResEl) chResEl.innerHTML = '';
+      document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+      document.getElementById('page-content').classList.add('active');
+      window.scrollTo(0, 0);
+      updateBreadcrumb();
+      return;
+    }
+  }
+
   // حفظ القسم الحالي لإعادة التحميل التلقائي
   window._currentContentSec = sec;
 
@@ -5604,6 +5660,7 @@ window.checkBanStatus = async function(email) {
     <nav class="ap-nav" role="tablist">
       <button class="ap-nav-btn active" onclick="apSwitchTab('dashboard')" id="ap-tab-dashboard" role="tab">📊 Dashboard</button>
       <button class="ap-nav-btn" onclick="apSwitchTab('requests')"  id="ap-tab-requests"  role="tab">📝 Requests</button>
+      <button class="ap-nav-btn" onclick="apSwitchTab('divsubs')"   id="ap-tab-divsubs"   role="tab">🎓 اشتراكات الشعب</button>
       
       <button class="ap-nav-btn" onclick="apSwitchTab('usermgmt')"  id="ap-tab-usermgmt"  role="tab">👥 إدارة المستخدمين</button>
       <button class="ap-nav-btn" onclick="apSwitchTab('users')"     id="ap-tab-users"     role="tab">🔒 الحظر</button>
@@ -5642,7 +5699,27 @@ window.checkBanStatus = async function(email) {
         </div>
       </div>
 
-      <!-- ═══════════════════ TAB: SUBSCRIPTIONS ═══════════════════ -->
+      <!-- ═══════════════════ TAB: DIVISION SUBSCRIPTIONS (شعبة) ═══════════════════ -->
+      <div class="ap-tab-panel" id="ap-panel-divsubs" role="tabpanel">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:16px;">
+          <div class="ap-section-heading" style="margin:0;border:none;padding:0;">🎓 اشتراكات الطلاب في الشعب</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <select class="ap-select" id="ap-divsub-filter" style="width:auto;padding:7px 10px;" onchange="apLoadDivisionSubs()">
+              <option value="">الكل</option>
+              <option value="pending">⏳ معلق</option>
+              <option value="active">✅ نشط</option>
+              <option value="expired">❌ منتهي</option>
+              <option value="cancelled">🚫 ملغي</option>
+            </select>
+            <button class="ap-btn ap-btn-ghost" onclick="apLoadDivisionSubs()">🔄 تحديث</button>
+          </div>
+        </div>
+        <div id="ap-divsubs-body">
+          <div class="ap-loading"><div class="spinner"></div> جاري التحميل...</div>
+        </div>
+      </div>
+
+      <!-- ═══════════════════ TAB: SUBSCRIPTIONS (legacy — غير مستخدم) ═══════════════════ -->
       <div class="ap-tab-panel" id="ap-panel-subscriptions" role="tabpanel">
         <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:16px;">
           <div class="ap-section-heading" style="margin:0;border:none;padding:0;">🎓 جميع الاشتراكات</div>
@@ -5743,7 +5820,7 @@ window.checkBanStatus = async function(email) {
 
         <!-- Modal تعديل المستخدم -->
         <div id="um-edit-modal" style="display:none;position:fixed;inset:0;z-index:9999999;background:rgba(10,20,40,0.82);backdrop-filter:blur(6px);align-items:center;justify-content:center;padding:16px;direction:rtl;font-family:'Cairo','Tajawal',sans-serif;">
-          <div style="background:#fff;border-radius:20px;width:100%;max-width:480px;box-shadow:0 30px 80px rgba(0,0,0,0.4);overflow:hidden;animation:apSlideUp .3s cubic-bezier(.16,1,.3,1);">
+          <div style="background:var(--white);border-radius:20px;width:100%;max-width:480px;box-shadow:0 30px 80px rgba(0,0,0,0.4);overflow:hidden;animation:apSlideUp .3s cubic-bezier(.16,1,.3,1);">
             <div style="background:linear-gradient(135deg,#0a3d62,#17a589);padding:18px 22px;display:flex;align-items:center;justify-content:space-between;color:#fff;">
               <span style="font-size:1rem;font-weight:900;">✏️ تعديل بيانات المستخدم</span>
               <button onclick="umCloseEdit()" style="background:rgba(255,255,255,.2);border:none;border-radius:50%;width:32px;height:32px;color:#fff;cursor:pointer;font-size:1rem;">✕</button>
@@ -5751,7 +5828,7 @@ window.checkBanStatus = async function(email) {
             <div style="padding:22px;">
               <div style="text-align:center;margin-bottom:18px;">
                 <div style="width:56px;height:56px;border-radius:50%;background:linear-gradient(135deg,#0a3d62,#17a589);display:flex;align-items:center;justify-content:center;font-size:1.6rem;margin:0 auto 8px;">👤</div>
-                <div style="font-size:.8rem;color:#666;" id="um-edit-email-display">—</div>
+                <div style="font-size:.8rem;color:var(--text-muted);" id="um-edit-email-display">—</div>
               </div>
               <div class="ap-field">
                 <label class="ap-label">الاسم الكامل</label>
@@ -5842,6 +5919,10 @@ window.checkBanStatus = async function(email) {
               <option value="">— جاري تحميل الأقسام —</option>
             </select>
             <div id="admin-section-path" style="font-size:.72rem;color:#888;margin-top:4px;"></div>
+            <div id="admin-section-sub-toggle" style="display:none;margin-top:8px;padding:10px 14px;background:#f5f9fd;border-radius:10px;font-size:.78rem;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
+              <span id="admin-section-sub-status">—</span>
+              <button type="button" class="ap-btn ap-btn-ghost" onclick="adminToggleSectionSubscription()">🔒 تبديل حالة الاشتراك</button>
+            </div>
           </div>
           <div class="ap-field">
             <label class="ap-label">🏷️ نوع المحتوى</label>
@@ -5902,7 +5983,7 @@ window.checkBanStatus = async function(email) {
 async function adminLoadSections() {
   if (!window.supabase) return;
   try {
-    const { data } = await window.supabase.from('site_sections').select('id, title, parent_id, subtitle').order('display_order');
+    const { data } = await window.supabase.from('site_sections').select('id, title, parent_id, subtitle, requires_subscription').order('display_order');
     if (!data) return;
     window._adminSections = data;
     const selAdd  = document.getElementById('admin-section-select');
@@ -5915,7 +5996,12 @@ async function adminLoadSections() {
 
 function adminLoadSectionPath() {
   const id = document.getElementById('admin-section-select').value;
-  if (!id || !window._adminSections) { document.getElementById('admin-section-path').textContent = ''; return; }
+  const toggleWrap = document.getElementById('admin-section-sub-toggle');
+  if (!id || !window._adminSections) {
+    document.getElementById('admin-section-path').textContent = '';
+    if (toggleWrap) toggleWrap.style.display = 'none';
+    return;
+  }
   const sec = window._adminSections.find(s => String(s.id) === String(id));
   if (!sec) return;
   let path = sec.title;
@@ -5924,6 +6010,39 @@ function adminLoadSectionPath() {
     if (parent) path = parent.title + ' › ' + path;
   }
   document.getElementById('admin-section-path').textContent = '📍 ' + path;
+
+  // عرض حالة الاشتراك لهذا القسم + إتاحة التبديل
+  if (toggleWrap) {
+    toggleWrap.style.display = 'flex';
+    const statusEl = document.getElementById('admin-section-sub-status');
+    if (statusEl) {
+      statusEl.textContent = sec.requires_subscription
+        ? '🔒 هذا القسم يتطلب اشتراكاً شهرياً (100 جنيه)'
+        : '🔓 هذا القسم مجاني (بدون اشتراك)';
+    }
+  }
+}
+
+// ── تفعيل/إلغاء اشتراك الشعبة على القسم المختار — بدون أي تعديل بالكود ──
+async function adminToggleSectionSubscription() {
+  const id = document.getElementById('admin-section-select').value;
+  if (!id || !window._adminSections || !window.supabase) return;
+  const sec = window._adminSections.find(s => String(s.id) === String(id));
+  if (!sec) return;
+  const newVal = !sec.requires_subscription;
+  try {
+    const { error } = await window.supabase.from('site_sections')
+      .update({ requires_subscription: newVal }).eq('id', sec.id);
+    if (error) throw error;
+    sec.requires_subscription = newVal;
+    if (window._sectionRowCache && window._sectionRowCache[sec.id]) {
+      window._sectionRowCache[sec.id].requires_subscription = newVal;
+    }
+    adminLoadSectionPath();
+    _showToast ? _showToast(newVal ? '🔒 أصبح القسم يتطلب اشتراكاً الآن' : '🔓 أصبح القسم مجانياً الآن', 'success') : null;
+  } catch(e) {
+    _showToast ? _showToast('❌ خطأ: ' + e.message, 'error') : alert('خطأ: ' + e.message);
+  }
 }
 
 function adminToggleFields() {
@@ -6105,6 +6224,7 @@ function apSwitchTab(tab) {
   if (tab === 'dashboard')     apLoadDashboard();
   else if (tab === 'requests') apLoadRequests();
   else if (tab === 'subscriptions') apLoadSubscriptions();
+  else if (tab === 'divsubs')  apLoadDivisionSubs();
   else if (tab === 'usermgmt') umLoadUsers();
   else if (tab === 'users')    apLoadUsers();
   else if (tab === 'messages') apLoadMessages();
@@ -6276,6 +6396,105 @@ async function apCancelSub(subId, userId) {
   var reason = prompt('سبب الإلغاء (اختياري):') || '';
   await cancelSubscription(subId, userId, reason);
   setTimeout(apLoadSubscriptions, 800);
+}
+
+// ────────────────────────────────────────────────────────────────
+// DIVISION SUBSCRIPTIONS TAB (section_subscriptions — اشتراك مستقل لكل شعبة)
+// ────────────────────────────────────────────────────────────────
+function _divSubStatusLabel(row) {
+  if (row.status === 'active') {
+    var active = row.end_date && new Date(row.end_date).getTime() >= Date.now();
+    return active
+      ? '<span class="ap-badge active">✅ نشط</span>'
+      : '<span class="ap-badge expired">❌ منتهي</span>';
+  }
+  if (row.status === 'pending')   return '<span class="ap-badge pending">⏳ معلق</span>';
+  if (row.status === 'cancelled') return '<span class="ap-badge cancelled">🚫 ملغي</span>';
+  return _apEsc(row.status);
+}
+
+async function apLoadDivisionSubs() {
+  var el = document.getElementById('ap-divsubs-body');
+  if (!el || !window.supabase) return;
+  el.innerHTML = '<div class="ap-loading"><div class="spinner"></div> جاري التحميل...</div>';
+  var filterVal = (document.getElementById('ap-divsub-filter') || {}).value || '';
+  try {
+    var query = window.supabase
+      .from('section_subscriptions')
+      .select('*, site_sections(title)')
+      .order('requested_at', { ascending: false });
+    if (filterVal === 'expired') {
+      query = query.eq('status', 'active').lt('end_date', new Date().toISOString());
+    } else if (filterVal) {
+      query = query.eq('status', filterVal);
+    }
+    var { data, error } = await query;
+    if (error) throw error;
+    if (!data || data.length === 0) {
+      el.innerHTML = '<div class="ap-empty"><div class="ap-empty-icon">📭</div>لا توجد اشتراكات</div>';
+      return;
+    }
+    el.innerHTML = '<div class="ap-table-wrap"><table class="ap-table"><thead><tr>'
+      + '<th>البريد</th><th>الشعبة</th><th>الحالة</th><th>البداية</th><th>الانتهاء</th><th>إجراء</th>'
+      + '</tr></thead><tbody>'
+      + data.map(function(r) {
+        var secTitle = (r.site_sections && r.site_sections.title) || ('#' + r.section_id);
+        var actions = '';
+        if (r.status === 'pending') {
+          actions += '<button class="ap-btn ap-btn-success" style="margin-left:4px;" onclick="apApproveDivisionSub(' + r.id + ')">✅ تفعيل</button>';
+          actions += '<button class="ap-btn ap-btn-danger" onclick="apCancelDivisionSub(' + r.id + ')">❌ رفض</button>';
+        } else {
+          actions += '<button class="ap-btn ap-btn-primary" style="margin-left:4px;" onclick="apApproveDivisionSub(' + r.id + ')">🔄 تجديد 30 يوم</button>';
+          if (r.status !== 'cancelled') {
+            actions += '<button class="ap-btn ap-btn-danger" onclick="apCancelDivisionSub(' + r.id + ')">🚫 إلغاء</button>';
+          }
+        }
+        return '<tr>'
+          + '<td style="direction:ltr;font-size:.72rem;">' + _apEsc(r.user_email || r.user_id) + '</td>'
+          + '<td>' + _apEsc(secTitle) + '</td>'
+          + '<td>' + _divSubStatusLabel(r) + '</td>'
+          + '<td>' + _apDate(r.start_date) + '</td>'
+          + '<td>' + _apDate(r.end_date) + '</td>'
+          + '<td style="white-space:nowrap;">' + actions + '</td></tr>';
+      }).join('')
+      + '</tbody></table></div>';
+  } catch(err) {
+    el.innerHTML = '<div class="ap-empty" style="color:#e74c3c;">❌ ' + _apEsc(err.message) + '</div>';
+  }
+}
+
+// تفعيل الاشتراك أو تجديده لـ 30 يوماً من الآن
+async function apApproveDivisionSub(id) {
+  if (!window.supabase) return;
+  try {
+    var { error } = await window.supabase
+      .from('section_subscriptions')
+      .update({ status: 'active', start_date: new Date().toISOString() })
+      .eq('id', id);
+    if (error) throw error;
+    _showToast ? _showToast('✅ تم تفعيل/تجديد الاشتراك لمدة 30 يوم', 'success') : null;
+    window._subStatusCache = {}; // مسح الكاش المحلي حتى تنعكس الحالة فوراً للطالب
+    apLoadDivisionSubs();
+    apLoadDashboard();
+  } catch(err) {
+    _showToast ? _showToast('❌ خطأ: ' + err.message, 'error') : alert('خطأ: ' + err.message);
+  }
+}
+
+async function apCancelDivisionSub(id) {
+  if (!window.supabase) return;
+  if (!confirm('هل تريد إلغاء/رفض هذا الاشتراك؟')) return;
+  try {
+    var { error } = await window.supabase
+      .from('section_subscriptions')
+      .update({ status: 'cancelled' })
+      .eq('id', id);
+    if (error) throw error;
+    window._subStatusCache = {};
+    apLoadDivisionSubs();
+  } catch(err) {
+    _showToast ? _showToast('❌ خطأ: ' + err.message, 'error') : alert('خطأ: ' + err.message);
+  }
 }
 
 // ────────────────────────────────────────────────────────────────
@@ -6760,7 +6979,7 @@ function _umShowToast(msg, type) {
   var t = document.createElement('div');
   t.setAttribute('style',
     'position:fixed;top:80px;left:50%;transform:translateX(-50%);z-index:2147483640;'
-    + 'background:#fff;border-radius:12px;padding:12px 22px;box-shadow:0 8px 32px rgba(10,61,98,.22);'
+    + 'background:var(--white);color:var(--text);border-radius:12px;padding:12px 22px;box-shadow:0 8px 32px rgba(10,61,98,.22);'
     + 'font-family:Cairo,sans-serif;font-size:.88rem;font-weight:700;direction:rtl;'
     + 'border-right:4px solid ' + (type==='success'?'#17a589':type==='error'?'#e74c3c':'#f39c12') + ';'
   );
@@ -6893,16 +7112,10 @@ function toggleDarkMode() {
   try { localStorage.setItem('theme_pref', next); } catch(e) {}
 }
 
-// تطبيق الثيم المحفوظ عند التحميل
+// ✅ الثيم نفسه يُطبَّق الآن مبكراً جداً في <head> (قبل الرسم) لمنع الوميض.
+// هنا فقط نزامن شكل الزر وأيقونة المتصفح بعد جاهزية DOM.
 (function() {
-  var saved = '';
-  try { saved = localStorage.getItem('theme_pref') || ''; } catch(e) {}
-  if (!saved) {
-    try {
-      saved = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-    } catch(e) { saved = 'light'; }
-  }
-  document.documentElement.setAttribute('data-theme', saved);
+  var saved = document.documentElement.getAttribute('data-theme') || window._initialTheme || 'light';
   document.addEventListener('DOMContentLoaded', function() {
     var btn = document.getElementById('dark-mode-btn');
     var meta = document.getElementById('theme-color-meta');
@@ -6936,7 +7149,14 @@ var RETRY_DELAY   = 1000;
 var _initialized  = false;
 
 // ── تشغيل فوري بدون تعليق ───────────────────────────────
-function _waitClient(cb) {
+// ✅ FIX: كانت الدالة تحتوي على كود ميت (dead code) بعد نهايتها
+//    (يستخدم متغيرات غير معرّفة مثل timer/timeoutMs/done) وبه قوس زائد
+//    كان يكسر صياغة كامل الـ <script> فيمنع تنفيذ كل ما بعده (بما فيه _fetchMessage).
+//    كما أن الاستدعاء بالأسفل _waitClient(FETCH_TIMEOUT, function(db){...})
+//    يمرّر باراميترين، بينما الدالة كانت تستقبل واحداً فقط (cb) —
+//    ما يعني أن FETCH_TIMEOUT كان يُمرَّر مكان cb ويُستدعى كدالة فيحدث خطأ فوري.
+function _waitClient(timeoutMs, cb) {
+  timeoutMs = timeoutMs || FETCH_TIMEOUT;
 
   // 1- لو Supabase جاهز فورًا
   if (window.supabase && typeof window.supabase.from === 'function') {
@@ -6951,8 +7171,8 @@ function _waitClient(cb) {
       return cb(window.supabase);
     }
 
-    // لو اتأخر أكتر من 2 ثانية، نكمل anyway
-    if (Date.now() - start > 2000) {
+    // لو اتأخر أكتر من المهلة المحددة، نكمل anyway
+    if (Date.now() - start > timeoutMs) {
       console.warn("Supabase not ready but continuing anyway");
       return cb(window.supabase || null);
     }
@@ -6960,30 +7180,6 @@ function _waitClient(cb) {
     setTimeout(check, 100);
   })();
 }
-    var p = window._supabaseClientReady || window._supabaseReady;
-    if (p && typeof p.then === 'function') {
-      p.then(function(client) {
-        clearTimeout(timer);
-        if (!done) { done = true; cb(client || null); }
-      }).catch(function() {
-        clearTimeout(timer);
-        if (!done) { done = true; cb(null); }
-      });
-    } else {
-      // ③ Polling fallback
-      var waited = 0;
-      var iv = setInterval(function() {
-        waited += 200;
-        if (window.supabase && typeof window.supabase.from === 'function') {
-          clearInterval(iv); clearTimeout(timer);
-          if (!done) { done = true; cb(window.supabase); }
-        } else if (waited >= timeoutMs) {
-          clearInterval(iv); clearTimeout(timer);
-          if (!done) { done = true; cb(null); }
-        }
-      }, 200);
-    }
-  }
 
   // ── جلب الرسالة من Supabase ──────────────────────────────
   function _fetchMessage(db, cb) {
@@ -9104,6 +9300,201 @@ self.addEventListener('fetch', function(e) {
   console.log('[PREFETCH] ✅ Intersection Observer مفعَّل للـ prefetching');
 })();
 </script>
+<!-- ============================================================ -->
+<!-- نظام الاشتراكات لكل شعبة على حدة (Per-Division Subscriptions) -->
+<!-- كل شعبة (site_sections.requires_subscription = true) لها     -->
+<!-- اشتراك مستقل شهري (100 جنيه / 30 يوماً) — أي شعبة جديدة تُضاف -->
+<!-- لاحقاً وتُفعَّل عليها هذا العلم تدخل النظام تلقائياً بدون أي   -->
+<!-- تعديل في الكود.                                                -->
+<!-- ============================================================ -->
+<script>
+(function() {
+
+  var WHATSAPP_NUMBER = '201147908978';
+  var MONTHLY_PRICE    = 100;
+
+  window._sectionRowCache = window._sectionRowCache || {};
+  window._subStatusCache  = window._subStatusCache  || {};
+
+  // ── يجلب صف site_sections (id, parent_id, requires_subscription...) مع كاش ──
+  async function _getSectionRow(id) {
+    if (id === null || id === undefined) return null;
+    if (window._sectionRowCache[id]) return window._sectionRowCache[id];
+    var cached = window['__sectionData_' + id];
+    if (cached && cached.id !== undefined && cached.requires_subscription !== undefined) {
+      window._sectionRowCache[id] = cached;
+      return cached;
+    }
+    var db = window.supabase;
+    if (!db) return null;
+    try {
+      var res = await db.from('site_sections')
+        .select('id, title, icon, parent_id, requires_subscription')
+        .eq('id', id).maybeSingle();
+      if (res.error || !res.data) return null;
+      window._sectionRowCache[id] = res.data;
+      return res.data;
+    } catch(e) { return null; }
+  }
+
+  // ── يصعد في شجرة الأقسام حتى يجد أقرب "شعبة" تتطلب اشتراكاً ──
+  async function _findSubscriptionAnchor(sectionId) {
+    var current = await _getSectionRow(sectionId);
+    var depth = 0;
+    while (current && depth < 15) {
+      if (current.requires_subscription) return current;
+      if (current.parent_id === null || current.parent_id === undefined) return null;
+      current = await _getSectionRow(current.parent_id);
+      depth++;
+    }
+    return null;
+  }
+
+  // ── حالة اشتراك المستخدم في شعبة مُعيّنة (مع كاش) ──
+  async function _getSectionSubStatus(userId, sectionId, forceRefresh) {
+    var key = userId + ':' + sectionId;
+    if (!forceRefresh && window._subStatusCache[key]) return window._subStatusCache[key];
+    var db = window.supabase;
+    var result = { state: 'none' };
+    try {
+      var res = await db.from('section_subscriptions').select('*')
+        .eq('user_id', userId).eq('section_id', sectionId).maybeSingle();
+      if (!res.error && res.data) {
+        var row = res.data;
+        if (row.status === 'active' && row.end_date && new Date(row.end_date).getTime() >= Date.now()) {
+          result = { state: 'active', row: row };
+        } else if (row.status === 'pending') {
+          result = { state: 'pending', row: row };
+        } else {
+          result = { state: 'expired', row: row }; // منتهي أو مُلغى
+        }
+      }
+    } catch(e) { /* fail-open أدناه */ }
+    window._subStatusCache[key] = result;
+    return result;
+  }
+
+  function _clearSectionSubCache(userId, sectionId) {
+    delete window._subStatusCache[userId + ':' + sectionId];
+  }
+
+  // ── نقطة الفحص الرئيسية: تُستدعى قبل عرض أي قسم ──
+  // ترجع null = مسموح بالدخول، أو object = يجب حجب المحتوى وعرض رسالة الاشتراك
+  window.checkSectionAccess = async function(sectionId) {
+    try {
+      if (window._isAdminUser) return null; // الأدمن يرى كل شيء دائماً
+
+      var anchor = await _findSubscriptionAnchor(sectionId);
+      if (!anchor) return null; // هذا القسم/الشعبة لا يتطلب اشتراكاً
+
+      var db = window.supabase;
+      if (!db) return null; // fail-open حتى لا يتعطل الموقع
+
+      var sessionRes = await db.auth.getSession();
+      var user = sessionRes && sessionRes.data && sessionRes.data.session && sessionRes.data.session.user;
+      if (!user) return { anchor: anchor, state: 'guest' };
+
+      var status = await _getSectionSubStatus(user.id, anchor.id);
+      if (status.state === 'active') return null; // اشتراك نشط → مسموح
+
+      return { anchor: anchor, state: status.state, row: status.row, user: user };
+    } catch(e) {
+      console.warn('[SUBS] تعذر فحص الاشتراك:', e.message);
+      return null; // fail-open
+    }
+  };
+
+  // ── بطاقة "رسالة جميلة" لطلب الاشتراك/التجديد ──
+  window._renderSubscriptionGateHTML = function(gate) {
+    window._currentGateAnchor = gate.anchor;
+    var anchor = gate.anchor;
+    var title  = _apEsc(anchor.title || 'هذه الشعبة');
+    var icon   = anchor.icon || '🎓';
+    var state  = gate.state;
+
+    var headline, sub, btnHtml, showPrice = false;
+
+    if (state === 'guest') {
+      headline = '🔐 سجّل الدخول أولاً';
+      sub = 'يجب تسجيل الدخول حتى تتمكن من الاشتراك في «' + title + '» ومتابعة كل محتواها.';
+      btnHtml = '<button class="chatgpt-login-btn" style="padding:12px 26px;font-size:.95rem;" onclick="loginWithGoogle()">🔐 تسجيل الدخول</button>';
+    } else if (state === 'pending') {
+      headline = '⏳ طلبك قيد المراجعة';
+      sub = 'تم استلام طلب اشتراكك في «' + title + '»، وسيتم تفعيله بمجرد تأكيد الدفع. لو أرسلت إثبات الدفع بالفعل برجاء الانتظار قليلاً.';
+      btnHtml = '<a href="https://wa.me/' + WHATSAPP_NUMBER + '?text=' + encodeURIComponent('مرحباً، أريد الاستفسار عن حالة اشتراكي في ' + anchor.title) + '" target="_blank" rel="noopener" class="chatgpt-login-btn" style="padding:12px 26px;font-size:.9rem;text-decoration:none;display:inline-block;">💬 تواصل عبر واتساب</a>';
+    } else if (state === 'expired') {
+      headline = '⌛ انتهى اشتراكك في «' + title + '»';
+      sub = 'صلاحية اشتراكك انتهت. جدّده الآن لمدة 30 يوماً إضافية لتستمر في متابعة كل المحاضرات والملفات والمراجعات الخاصة بالشعبة.';
+      btnHtml = '<button class="chatgpt-login-btn" style="padding:12px 26px;font-size:.95rem;" onclick="requestOrRenewSubscription()">🔄 تجديد الاشتراك الآن</button>';
+      showPrice = true;
+    } else { // none
+      headline = '🔒 «' + title + '» تتطلب اشتراكاً شهرياً';
+      sub = 'اشترك الآن لتفتح كل محاضرات وملفات ومراجعات هذه الشعبة، ويتجدد اشتراكك تلقائياً كل 30 يوماً.';
+      btnHtml = '<button class="chatgpt-login-btn" style="padding:12px 26px;font-size:.95rem;" onclick="requestOrRenewSubscription()">🚀 اشترك الآن</button>';
+      showPrice = true;
+    }
+
+    return '' +
+    '<div class="sub-gate-card" style="grid-column:1/-1;max-width:480px;margin:30px auto;background:linear-gradient(180deg,#ffffff,#f7fbff);border-radius:22px;padding:34px 28px;text-align:center;box-shadow:0 14px 40px rgba(10,61,98,0.18);border:1px solid #e3edf7;">' +
+      '<div style="font-size:3rem;margin-bottom:6px;">' + icon + '</div>' +
+      '<div style="font-size:1.12rem;font-weight:900;color:var(--primary);margin-bottom:10px;line-height:1.6;">' + headline + '</div>' +
+      '<p style="font-size:.88rem;color:#5a6b7d;line-height:1.9;margin-bottom:18px;">' + sub + '</p>' +
+      (showPrice ?
+        '<div style="display:inline-flex;align-items:center;gap:8px;background:#eaf4fb;color:var(--primary);font-weight:800;padding:8px 18px;border-radius:30px;font-size:.85rem;margin-bottom:20px;">💳 ' + MONTHLY_PRICE + ' جنيه / شهرياً</div><br>'
+        : '') +
+      btnHtml +
+      (state !== 'guest' ?
+        '<div style="margin-top:16px;font-size:.72rem;color:#98a6b3;">تواصل معنا عبر واتساب لإتمام الدفع وتفعيل الاشتراك</div>'
+        : '') +
+    '</div>';
+  };
+
+  // ── يعرض بوابة الاشتراك داخل حاوية معيّنة (id) ──
+  window._paintSubscriptionGate = function(containerId, gate) {
+    var el = document.getElementById(containerId);
+    if (el) el.innerHTML = window._renderSubscriptionGateHTML(gate);
+  };
+
+  // ── طلب اشتراك جديد أو تجديد اشتراك منتهٍ ──
+  window.requestOrRenewSubscription = async function() {
+    var anchor = window._currentGateAnchor;
+    if (!anchor) return;
+    var db = window.supabase;
+    if (!db) { if (window._showToast) _showToast('جاري التحميل، حاول مجدداً', 'warning'); return; }
+
+    var sessionRes = await db.auth.getSession();
+    var user = sessionRes && sessionRes.data && sessionRes.data.session && sessionRes.data.session.user;
+    if (!user) { loginWithGoogle(); return; }
+
+    try {
+      var res = await db.rpc('request_section_subscription', { p_section_id: anchor.id });
+      if (res.error) throw res.error;
+
+      _clearSectionSubCache(user.id, anchor.id);
+      if (window._showToast) _showToast('✅ تم إرسال طلبك — أكمل الدفع عبر واتساب لتفعيل الاشتراك', 'success');
+
+      var msg = 'مرحباً، أريد الاشتراك في «' + anchor.title + '»\nالبريد: ' + user.email + '\nالسعر: ' + MONTHLY_PRICE + ' جنيه شهرياً';
+      window.open('https://wa.me/' + WHATSAPP_NUMBER + '?text=' + encodeURIComponent(msg), '_blank');
+
+      // إعادة رسم الشاشة الحالية لتعكس حالة "قيد المراجعة"
+      setTimeout(function() {
+        var lastSec = window._lastGateSec;
+        if (!lastSec) return;
+        if (document.getElementById('page-content') && document.getElementById('page-content').classList.contains('active')) {
+          _openContentPage(lastSec);
+        } else if (document.getElementById('page-dynamic-section') && document.getElementById('page-dynamic-section').classList.contains('active')) {
+          _renderDynamicSectionPage(lastSec);
+        }
+      }, 500);
+    } catch(err) {
+      console.error('[SUBS] request error:', err);
+      if (window._showToast) _showToast('❌ حدث خطأ، حاول مجدداً', 'error'); else alert('حدث خطأ، حاول مجدداً');
+    }
+  };
+
+})();
+</script>
+
 <!-- ==================== WHATSAPP FLOATING BUTTON ==================== -->
 <a id="whatsapp-float"
    href="https://wa.me/201147908978"
