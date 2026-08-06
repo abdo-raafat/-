@@ -1066,14 +1066,6 @@ footer strong { color: var(--accent2); }
 .rv-error .rv-err-icon { font-size: 3rem; }
 .rv-error p { font-size: .9rem; opacity: .8; max-width: 320px; }
 
-/* PDF iframe */
-.rv-pdf-frame {
-  width: 100%; height: 75vh; border: none; display: block;
-  background: #fff;
-  overflow: auto;
-  -webkit-overflow-scrolling: touch;
-  touch-action: pan-y;
-}
 /* Video player */
 .rv-video {
   width: 100%; max-height: 75vh; display: block;
@@ -1117,7 +1109,7 @@ footer strong { color: var(--accent2); }
 
 @media(max-width: 600px) {
   .rv-modal { border-radius: 14px; max-height: 96vh; }
-  .rv-pdf-frame, .rv-embed-frame { height: 60vh; }
+  .rv-embed-frame { height: 60vh; }
   .rv-video { max-height: 55vw; }
   .rv-footer { flex-direction: column; align-items: stretch; }
   .rv-footer-btns { justify-content: center; }
@@ -1132,9 +1124,7 @@ footer strong { color: var(--accent2); }
   width: 100vw !important;
   height: 100vh !important;
 }
-.rv-modal:fullscreen .rv-pdf-frame,
 .rv-modal:fullscreen .rv-embed-frame,
-.rv-modal:-webkit-full-screen .rv-pdf-frame,
 .rv-modal:-webkit-full-screen .rv-embed-frame {
   height: calc(100vh - 120px) !important;
 }
@@ -1186,7 +1176,6 @@ footer strong { color: var(--accent2); }
     max-width: 100vw !important;
     width: 100vw !important;
   }
-  .rv-pdf-frame,
   .rv-embed-frame {
     height: calc(98vh - 120px) !important;
   }
@@ -1200,8 +1189,7 @@ body.rv-open {
   overflow: hidden !important;
 }
 
-/* تحسين الـ iframe للموبايل */
-.rv-pdf-frame,
+/* تحسين iframe الفيديو (يوتيوب/فيميو) للموبايل */
 .rv-embed-frame {
   -webkit-overflow-scrolling: touch;
   touch-action: pan-y;
@@ -1227,7 +1215,7 @@ body.rv-open {
   }
 }
 
-/* ===== NATIVE PDF VIEWER MODAL ===== */
+/* ===== PDF.JS NATIVE VIEWER (canvas-based — no iframe/embed/object) ===== */
 #native-pdf-overlay {
   position: fixed; inset: 0; z-index: 999999;
   background: rgba(10,20,40,0.88);
@@ -1237,25 +1225,58 @@ body.rv-open {
   animation: rvFadeIn .25s ease;
 }
 #native-pdf-modal {
-  background: #fff;
+  background: var(--pdfv-bg, #525659);
   border-radius: 16px;
-  width: 100%; max-width: 960px;
+  width: 100%; max-width: 1100px;
   height: 92vh;
   display: flex; flex-direction: column;
   overflow: hidden;
   box-shadow: 0 30px 80px rgba(0,0,0,0.5);
   animation: rvSlideUp .3s cubic-bezier(.16,1,.3,1);
 }
+/* ---- Toolbar (row 1: title/close, row 2: zoom/nav/search/theme) ---- */
 #native-pdf-header {
-  display: flex; align-items: center; gap: 12px;
-  padding: 14px 18px;
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 14px;
   background: linear-gradient(135deg, var(--primary), var(--teal));
   color: #fff; flex-shrink: 0;
 }
 #native-pdf-title {
-  flex: 1; font-size: .93rem; font-weight: 800;
+  flex: 1; font-size: .9rem; font-weight: 800;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
+.pdfv-toolbar {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  padding: 7px 10px;
+  background: #3a3d3f;
+  color: #eee; flex-shrink: 0;
+  border-bottom: 1px solid rgba(255,255,255,.08);
+}
+.pdfv-toolbar-group {
+  display: flex; align-items: center; gap: 2px;
+  background: rgba(255,255,255,.07);
+  border-radius: 8px; padding: 2px;
+}
+.pdfv-btn {
+  width: 32px; height: 32px;
+  display: flex; align-items: center; justify-content: center;
+  background: transparent; border: none; border-radius: 6px;
+  color: #eee; font-size: .95rem; cursor: pointer;
+  transition: background .15s;
+}
+.pdfv-btn:hover { background: rgba(255,255,255,.15); }
+.pdfv-btn:active { background: rgba(255,255,255,.25); }
+.pdfv-btn:disabled { opacity: .35; cursor: default; }
+.pdfv-btn:disabled:hover { background: transparent; }
+.pdfv-page-input {
+  width: 40px; text-align: center;
+  background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.15);
+  border-radius: 5px; color: #fff; font-size: .82rem; padding: 4px 2px;
+  font-family: inherit;
+}
+.pdfv-page-total { font-size: .78rem; color: #ccc; white-space: nowrap; padding: 0 4px; }
+.pdfv-zoom-pct { font-size: .76rem; color: #ccc; min-width: 40px; text-align: center; }
+.pdfv-spacer { flex: 1; }
 #native-pdf-close {
   width: 34px; height: 34px;
   background: rgba(255,255,255,.18);
@@ -1265,20 +1286,104 @@ body.rv-open {
   transition: background .2s; flex-shrink: 0;
 }
 #native-pdf-close:hover { background: rgba(255,255,255,.35); }
-#native-pdf-frame {
-  flex: 1; width: 100%; border: none; display: block;
-  background: #fff;
-  overflow: auto;
-  -webkit-overflow-scrolling: touch;
-  touch-action: pan-y;
-  min-height: 0;
+
+/* ---- Search bar ---- */
+.pdfv-search-bar {
+  display: none; align-items: center; gap: 6px;
+  padding: 7px 10px; background: #2f3234;
+  border-bottom: 1px solid rgba(255,255,255,.08);
 }
+.pdfv-search-bar.active { display: flex; }
+.pdfv-search-input {
+  flex: 1; min-width: 0;
+  background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.18);
+  border-radius: 7px; color: #fff; padding: 7px 10px; font-size: .85rem;
+  font-family: inherit;
+}
+.pdfv-search-input::placeholder { color: #999; }
+.pdfv-search-count { font-size: .74rem; color: #bbb; white-space: nowrap; min-width: 56px; text-align: center; }
+
+/* ---- Scrollable page area (lazy-rendered) ---- */
+#native-pdf-pdfjs-wrapper {
+  flex: 1; overflow-y: auto; overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-x pan-y pinch-zoom;
+  background: var(--pdfv-bg, #525659);
+  padding: 14px 12px 30px;
+  box-sizing: border-box; min-height: 0;
+  overscroll-behavior: contain;
+}
+.pdfv-page {
+  position: relative;
+  margin: 0 auto 14px;
+  background: #fff;
+  box-shadow: 0 2px 10px rgba(0,0,0,.5);
+  border-radius: 3px;
+  display: block;
+}
+.pdfv-page canvas {
+  display: block; width: 100%; height: 100%;
+  border-radius: 3px;
+}
+.pdfv-page .pdfv-text-layer {
+  position: absolute; inset: 0;
+  overflow: hidden; line-height: 1;
+  opacity: .0001; /* invisible but selectable, sits over the canvas */
+}
+.pdfv-page .pdfv-text-layer span {
+  position: absolute; white-space: pre; transform-origin: 0 0;
+  color: transparent;
+}
+.pdfv-page .pdfv-text-layer span.pdfv-hit {
+  background: rgba(255, 213, 0, .55);
+  color: transparent;
+  border-radius: 2px;
+}
+.pdfv-page .pdfv-text-layer span.pdfv-hit-current {
+  background: rgba(255, 120, 0, .75);
+}
+.pdfv-page-loading {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 10px; color: rgba(255,255,255,.65); font-family: var(--font, sans-serif);
+  font-size: .78rem; width: 100%; height: 100%; min-height: 160px;
+}
+.pdfv-spin {
+  width: 30px; height: 30px;
+  border: 3px solid rgba(255,255,255,.25); border-top-color: #fff;
+  border-radius: 50%; animation: spin .8s linear infinite;
+}
+/* دقة نص ممتازة: نمنع أي blur ناتج عن تحجيم canvas بمتصفحات الموبايل */
+.pdfv-page canvas { image-rendering: -webkit-optimize-contrast; }
+
+/* ---- Dark page-background mode (inverts rendered pages, keeps UI theme separate) ---- */
+#native-pdf-modal.pdfv-pages-dark .pdfv-page canvas {
+  filter: invert(0.92) hue-rotate(180deg) brightness(1.02) contrast(1.02);
+}
+#native-pdf-modal.pdfv-pages-dark #native-pdf-pdfjs-wrapper { background: #1b1d1e; }
+#native-pdf-modal.pdfv-pages-dark .pdfv-page { box-shadow: 0 2px 14px rgba(0,0,0,.7); }
+
+/* ---- Follow site light theme for the chrome around the pages ---- */
+html[data-theme="light"] .pdfv-toolbar,
+html[data-theme="light"] .pdfv-search-bar { background: #eef2f6; color: #24313f; }
+html[data-theme="light"] .pdfv-btn { color: #24313f; }
+html[data-theme="light"] .pdfv-btn:hover { background: rgba(10,61,98,.1); }
+html[data-theme="light"] .pdfv-page-total,
+html[data-theme="light"] .pdfv-zoom-pct,
+html[data-theme="light"] .pdfv-search-count { color: #5a6b7a; }
+html[data-theme="light"] .pdfv-page-input,
+html[data-theme="light"] .pdfv-search-input { background: #fff; border-color: #d5e2ee; color: #24313f; }
+html[data-theme="light"] .pdfv-toolbar-group { background: rgba(10,61,98,.08); }
+
 @media (max-width: 768px) {
   #native-pdf-overlay { padding: 0; align-items: flex-end; }
   #native-pdf-modal {
     border-radius: 16px 16px 0 0;
     height: 98vh; max-width: 100vw; width: 100vw;
   }
+  .pdfv-toolbar { padding: 6px 8px; gap: 4px; }
+  .pdfv-btn { width: 30px; height: 30px; font-size: .88rem; }
+  #native-pdf-title { font-size: .82rem; }
+  .pdfv-zoom-pct { display: none; }
 }
 
 /* ===== منع طباعة المحتوى للطلاب ===== */
@@ -1352,16 +1457,7 @@ body.content-protected .rv-image-wrap img {
   transform: translateZ(0);
 }
 
-/* الـ iframe الخاص بـ PDF — يدعم التمرير الداخلي */
-#native-pdf-frame,
-.rv-pdf-frame {
-  -webkit-overflow-scrolling: touch !important;
-  touch-action: pan-x pan-y pinch-zoom !important;
-  overscroll-behavior: contain !important;
-  overflow: auto !important;
-}
-
-/* الـ embed frame */
+/* الـ embed frame (فيديوهات يوتيوب/فيميو فقط — PDF لم يعد يستخدم iframe) */
 .rv-embed-frame {
   -webkit-overflow-scrolling: touch !important;
   touch-action: pan-x pan-y pinch-zoom !important;
@@ -1390,8 +1486,6 @@ body.content-protected .rv-image-wrap img {
 
 /* منع content-protected من كسر الـ scroll في PDF */
 body.content-protected #native-pdf-pdfjs-wrapper,
-body.content-protected #native-pdf-frame,
-body.content-protected .rv-pdf-frame,
 body.content-protected .rv-embed-frame {
   pointer-events: auto !important;
   touch-action: pan-x pan-y pinch-zoom !important;
@@ -4729,8 +4823,8 @@ const ResourceViewer = (function() {
   }
 
   function _reload() {
-    const iframe = document.getElementById('rv-pdf-iframe')
-                || document.getElementById('rv-embed-iframe');
+    // PDF لم يعد يستخدم iframe إطلاقاً — إعادة تحميله تتم عبر NativePDFViewer.open() نفسه
+    const iframe = document.getElementById('rv-embed-iframe');
     if (iframe) {
       const src = iframe.src;
       iframe.src = '';
@@ -4740,56 +4834,6 @@ const ResourceViewer = (function() {
     if (video) { video.load(); }
     const audio = document.getElementById('rv-audio-el');
     if (audio) { audio.load(); }
-  }
-
-  function _showPdfFallback(url) {
-    // جرّب Google Docs Viewer كـ fallback للـ PDF
-    const body = document.getElementById('rv-body');
-    if (!body) return;
-    const gdocsUrl = 'https://docs.google.com/viewer?url=' + encodeURIComponent(url) + '&embedded=true';
-    body.innerHTML = `
-      <div class="rv-loading" id="rv-loading-indicator">
-        <div class="spinner-lg"></div>
-        <p>جاري المحاولة عبر Google Docs Viewer...</p>
-      </div>
-      <iframe
-        class="rv-pdf-frame"
-        src="${gdocsUrl}"
-        style="display:none"
-        id="rv-pdf-iframe"
-        onload="
-          document.getElementById('rv-loading-indicator').style.display='none';
-          this.style.display='block';
-        "
-      ></iframe>`;
-  }
-
-  function _showGdriveFallback(url) {
-    // fallback: Google Docs Viewer
-    const body = document.getElementById('rv-body');
-    if (!body) return;
-    const m = url.match(/\/d\/([a-zA-Z0-9_-]+)/);
-    const gdocsUrl = m
-      ? `https://docs.google.com/viewer?srcid=${m[1]}&pid=explorer&efh=false&a=v&chrome=false&embedded=true`
-      : `https://docs.google.com/viewer?url=${encodeURIComponent(url)}&embedded=true`;
-    body.innerHTML = `
-      <div class="rv-loading" id="rv-loading-indicator">
-        <div class="spinner-lg"></div>
-        <p>جاري المحاولة عبر Google Docs...</p>
-      </div>
-      <iframe
-        class="rv-pdf-frame"
-        src="${gdocsUrl}"
-        style="display:none"
-        id="rv-pdf-iframe"
-        onload="
-          document.getElementById('rv-loading-indicator').style.display='none';
-          this.style.display='block';
-        "
-      ></iframe>
-      <div style="text-align:center;padding:12px;background:#f8fbff;border-top:1px solid #e3eaf5">
-        <p style="font-size:.8rem;color:#666;margin-bottom:8px">لو الملف مش بيظهر، اضغط زر التحميل بالأسفل</p>
-      </div>`;
   }
 
   function _toggleFullscreen() {
@@ -4832,7 +4876,7 @@ const ResourceViewer = (function() {
       </div>`;
   }
 
-  return { open, close, detectType, _reload, _showPdfFallback, _showGdriveFallback, _showExternalFallback, _toggleFullscreen };
+  return { open, close, detectType, _reload, _showExternalFallback, _toggleFullscreen };
 })();
 
 // ==================== تحديث دوال الـ resources لتستخدم ResourceViewer ====================
@@ -5923,6 +5967,29 @@ window.checkBanStatus = async function(email) {
               <span id="admin-section-sub-status">—</span>
               <button type="button" class="ap-btn ap-btn-ghost" onclick="adminToggleSectionSubscription()">🔒 تبديل حالة الاشتراك</button>
             </div>
+            <div id="admin-section-payment-box" style="display:none;margin-top:8px;padding:12px 14px;background:#fbf7ee;border:1px solid #f0e3c5;border-radius:10px;">
+              <div style="font-size:.76rem;font-weight:800;color:#8a6d1f;margin-bottom:8px;">💳 بيانات الدفع الخاصة بهذه الشعبة</div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
+                <div>
+                  <label class="ap-label" style="font-size:.7rem;">وسيلة الدفع</label>
+                  <select id="admin-pay-method" class="ap-select" style="padding:7px 8px;font-size:.78rem;">
+                    <option value="Vodafone Cash">Vodafone Cash</option>
+                    <option value="Etisalat Cash">Etisalat Cash</option>
+                    <option value="Orange Cash">Orange Cash</option>
+                    <option value="InstaPay">InstaPay</option>
+                    <option value="تحويل بنكي">تحويل بنكي</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="ap-label" style="font-size:.7rem;">السعر (جنيه)</label>
+                  <input id="admin-pay-price" type="number" min="0" class="ap-input" style="padding:7px 8px;font-size:.78rem;" placeholder="100">
+                </div>
+              </div>
+              <label class="ap-label" style="font-size:.7rem;">رقم التحويل</label>
+              <input id="admin-pay-number" type="text" class="ap-input" style="padding:7px 8px;font-size:.78rem;direction:ltr;text-align:right;" placeholder="01xxxxxxxxx">
+              <button type="button" class="ap-btn ap-btn-primary" style="margin-top:8px;width:100%;justify-content:center;padding:8px;font-size:.78rem;" onclick="adminSavePaymentInfo()">💾 حفظ بيانات الدفع</button>
+              <div id="admin-pay-msg" style="margin-top:6px;font-size:.72rem;min-height:14px;"></div>
+            </div>
           </div>
           <div class="ap-field">
             <label class="ap-label">🏷️ نوع المحتوى</label>
@@ -5983,7 +6050,7 @@ window.checkBanStatus = async function(email) {
 async function adminLoadSections() {
   if (!window.supabase) return;
   try {
-    const { data } = await window.supabase.from('site_sections').select('id, title, parent_id, subtitle, requires_subscription').order('display_order');
+    const { data } = await window.supabase.from('site_sections').select('id, title, parent_id, subtitle, requires_subscription, payment_method, payment_number, price').order('display_order');
     if (!data) return;
     window._adminSections = data;
     const selAdd  = document.getElementById('admin-section-select');
@@ -6017,9 +6084,60 @@ function adminLoadSectionPath() {
     const statusEl = document.getElementById('admin-section-sub-status');
     if (statusEl) {
       statusEl.textContent = sec.requires_subscription
-        ? '🔒 هذا القسم يتطلب اشتراكاً شهرياً (100 جنيه)'
+        ? '🔒 هذا القسم يتطلب اشتراكاً شهرياً (' + (sec.price || 100) + ' جنيه)'
         : '🔓 هذا القسم مجاني (بدون اشتراك)';
     }
+  }
+
+  // عرض/تعبئة صندوق بيانات الدفع فقط عند تفعيل الاشتراك على هذا القسم
+  const payBox = document.getElementById('admin-section-payment-box');
+  if (payBox) {
+    if (sec.requires_subscription) {
+      payBox.style.display = 'block';
+      document.getElementById('admin-pay-method').value = sec.payment_method || 'Vodafone Cash';
+      document.getElementById('admin-pay-price').value  = sec.price != null ? sec.price : 100;
+      document.getElementById('admin-pay-number').value = sec.payment_number || '';
+    } else {
+      payBox.style.display = 'none';
+    }
+  }
+}
+
+// ── حفظ بيانات الدفع (وسيلة الدفع + الرقم + السعر) الخاصة بشعبة معيّنة ──
+async function adminSavePaymentInfo() {
+  const id = document.getElementById('admin-section-select').value;
+  const msgEl = document.getElementById('admin-pay-msg');
+  if (!id || !window._adminSections || !window.supabase) return;
+  const sec = window._adminSections.find(s => String(s.id) === String(id));
+  if (!sec) return;
+  const method = document.getElementById('admin-pay-method').value;
+  const number = (document.getElementById('admin-pay-number').value || '').trim();
+  const priceVal = parseFloat(document.getElementById('admin-pay-price').value);
+  if (!number) {
+    if (msgEl) { msgEl.style.color = '#e74c3c'; msgEl.textContent = '❌ أدخل رقم التحويل'; }
+    return;
+  }
+  if (msgEl) { msgEl.style.color = '#0a3d62'; msgEl.textContent = '⏳ جاري الحفظ...'; }
+  try {
+    const { error } = await window.supabase.from('site_sections').update({
+      payment_method: method,
+      payment_number: number,
+      price: isNaN(priceVal) ? 100 : priceVal
+    }).eq('id', sec.id);
+    if (error) throw error;
+    sec.payment_method = method;
+    sec.payment_number = number;
+    sec.price = isNaN(priceVal) ? 100 : priceVal;
+    if (window._sectionRowCache && window._sectionRowCache[sec.id]) {
+      window._sectionRowCache[sec.id].payment_method = method;
+      window._sectionRowCache[sec.id].payment_number = number;
+      window._sectionRowCache[sec.id].price = sec.price;
+    }
+    adminLoadSectionPath();
+    if (msgEl) { msgEl.style.color = '#17a589'; msgEl.textContent = '✅ تم حفظ بيانات الدفع'; setTimeout(()=>{ msgEl.textContent=''; }, 2500); }
+    _showToast ? _showToast('✅ تم حفظ بيانات الدفع لهذه الشعبة', 'success') : null;
+  } catch(e) {
+    if (msgEl) { msgEl.style.color = '#e74c3c'; msgEl.textContent = '❌ خطأ: ' + e.message; }
   }
 }
 
@@ -6421,7 +6539,7 @@ async function apLoadDivisionSubs() {
   try {
     var query = window.supabase
       .from('section_subscriptions')
-      .select('*, site_sections(title)')
+      .select('*, site_sections(title, payment_method, payment_number)')
       .order('requested_at', { ascending: false });
     if (filterVal === 'expired') {
       query = query.eq('status', 'active').lt('end_date', new Date().toISOString());
@@ -6435,13 +6553,13 @@ async function apLoadDivisionSubs() {
       return;
     }
     el.innerHTML = '<div class="ap-table-wrap"><table class="ap-table"><thead><tr>'
-      + '<th>البريد</th><th>الشعبة</th><th>الحالة</th><th>البداية</th><th>الانتهاء</th><th>إجراء</th>'
+      + '<th>البريد</th><th>الشعبة</th><th>الحالة</th><th>الإيصال</th><th>البداية</th><th>الانتهاء</th><th>إجراء</th>'
       + '</tr></thead><tbody>'
       + data.map(function(r) {
         var secTitle = (r.site_sections && r.site_sections.title) || ('#' + r.section_id);
         var actions = '';
         if (r.status === 'pending') {
-          actions += '<button class="ap-btn ap-btn-success" style="margin-left:4px;" onclick="apApproveDivisionSub(' + r.id + ')">✅ تفعيل</button>';
+          actions += '<button class="ap-btn ap-btn-success" style="margin-left:4px;" onclick="apApproveDivisionSub(' + r.id + ')">✅ قبول</button>';
           actions += '<button class="ap-btn ap-btn-danger" onclick="apCancelDivisionSub(' + r.id + ')">❌ رفض</button>';
         } else {
           actions += '<button class="ap-btn ap-btn-primary" style="margin-left:4px;" onclick="apApproveDivisionSub(' + r.id + ')">🔄 تجديد 30 يوم</button>';
@@ -6449,10 +6567,16 @@ async function apLoadDivisionSubs() {
             actions += '<button class="ap-btn ap-btn-danger" onclick="apCancelDivisionSub(' + r.id + ')">🚫 إلغاء</button>';
           }
         }
+        var receiptCell = r.receipt_url
+          ? '<button class="ap-btn ap-btn-ghost" style="padding:5px 9px;font-size:.72rem;" onclick="apViewReceipt(\'' + _apEsc(r.receipt_url).replace(/'/g,"\\'") + '\')">🧾 عرض</button>'
+          : '<span style="color:#b0b8c1;font-size:.72rem;">— لا يوجد</span>';
+        var reasonRow = (r.status === 'cancelled' && r.reject_reason)
+          ? '<div style="font-size:.68rem;color:#e74c3c;margin-top:4px;">سبب الرفض: ' + _apEsc(r.reject_reason) + '</div>' : '';
         return '<tr>'
           + '<td style="direction:ltr;font-size:.72rem;">' + _apEsc(r.user_email || r.user_id) + '</td>'
           + '<td>' + _apEsc(secTitle) + '</td>'
-          + '<td>' + _divSubStatusLabel(r) + '</td>'
+          + '<td>' + _divSubStatusLabel(r) + reasonRow + '</td>'
+          + '<td>' + receiptCell + '</td>'
           + '<td>' + _apDate(r.start_date) + '</td>'
           + '<td>' + _apDate(r.end_date) + '</td>'
           + '<td style="white-space:nowrap;">' + actions + '</td></tr>';
@@ -6467,9 +6591,10 @@ async function apLoadDivisionSubs() {
 async function apApproveDivisionSub(id) {
   if (!window.supabase) return;
   try {
+    var end = new Date(); end.setDate(end.getDate() + 30);
     var { error } = await window.supabase
       .from('section_subscriptions')
-      .update({ status: 'active', start_date: new Date().toISOString() })
+      .update({ status: 'active', start_date: new Date().toISOString(), end_date: end.toISOString(), reject_reason: null, reviewed_at: new Date().toISOString() })
       .eq('id', id);
     if (error) throw error;
     _showToast ? _showToast('✅ تم تفعيل/تجديد الاشتراك لمدة 30 يوم', 'success') : null;
@@ -6483,18 +6608,41 @@ async function apApproveDivisionSub(id) {
 
 async function apCancelDivisionSub(id) {
   if (!window.supabase) return;
-  if (!confirm('هل تريد إلغاء/رفض هذا الاشتراك؟')) return;
+  var reason = prompt('سبب الرفض/الإلغاء (سيظهر للطالب، اختياري):') || '';
+  if (reason === null) return;
   try {
     var { error } = await window.supabase
       .from('section_subscriptions')
-      .update({ status: 'cancelled' })
+      .update({ status: 'cancelled', reject_reason: reason || null, reviewed_at: new Date().toISOString() })
       .eq('id', id);
     if (error) throw error;
     window._subStatusCache = {};
+    _showToast ? _showToast('🚫 تم رفض/إلغاء الطلب', 'success') : null;
     apLoadDivisionSubs();
   } catch(err) {
     _showToast ? _showToast('❌ خطأ: ' + err.message, 'error') : alert('خطأ: ' + err.message);
   }
+}
+
+// ── عرض صورة إيصال الدفع في نافذة منبثقة (يدعم مسارات Supabase Storage الخاصة) ──
+async function apViewReceipt(rawUrl) {
+  var url = rawUrl;
+  try {
+    if (typeof _getSignedPdfUrl === 'function') url = await _getSignedPdfUrl(rawUrl);
+  } catch(e) {}
+  var overlay = document.getElementById('ap-receipt-overlay');
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.id = 'ap-receipt-overlay';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(10,20,30,.82);z-index:999999;display:flex;align-items:center;justify-content:center;padding:20px;';
+    overlay.onclick = function(e){ if (e.target === overlay) overlay.remove(); };
+    overlay.innerHTML = '<div style="max-width:92vw;max-height:90vh;position:relative;">'
+      + '<button onclick="document.getElementById(\'ap-receipt-overlay\').remove()" style="position:absolute;top:-14px;right:-14px;width:34px;height:34px;border-radius:50%;background:#fff;border:none;font-weight:900;cursor:pointer;box-shadow:0 2px 10px rgba(0,0,0,.3);">✕</button>'
+      + '<img id="ap-receipt-img" style="max-width:92vw;max-height:90vh;border-radius:10px;box-shadow:0 10px 40px rgba(0,0,0,.5);" />'
+      + '</div>';
+    document.body.appendChild(overlay);
+  }
+  document.getElementById('ap-receipt-img').src = url;
 }
 
 // ────────────────────────────────────────────────────────────────
@@ -7615,159 +7763,64 @@ async function _getSignedPdfUrl(storagePath) {
   return storagePath;
 }
 
-// ==================== NativePDFViewer ====================
-// يدعم Chrome / Firefox / Safari / موبايل
-// يستخدم PDF.js للـ canvas rendering — لا يعتمد على iframe لعرض PDF
+// ==================== NativePDFViewer (PDF.js — canvas only, no iframe/embed/object) ====================
+// يدعم Chrome / Firefox / Safari / موبايل وسطح المكتب بنفس المحرك
+// أحدث إصدار مستقر من Mozilla PDF.js عبر jsDelivr (ESM)
 var NativePDFViewer = (function() {
-  var _overlayEl = null;
-  var _pdfjsLoaded = false;
-  var _pdfjsLoading = false;
-  var _pdfjsCallbacks = [];
+  var PDFJS_VERSION = '6.2.108';
+  var PDFJS_BASE     = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@' + PDFJS_VERSION + '/build/';
+
+  var _overlayEl   = null;
+  var _pdfjsLib     = null;
+  var _pdfjsLoading = null;
+
+  var S = null; // current session state
 
   function _esc(s) {
     return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   }
 
-  // تحميل PDF.js مرة واحدة فقط
-  function _loadPdfJs(cb) {
-    if (_pdfjsLoaded && window.pdfjsLib) { cb(window.pdfjsLib); return; }
-    _pdfjsCallbacks.push(cb);
-    if (_pdfjsLoading) return;
-    _pdfjsLoading = true;
-    var s = document.createElement('script');
-    s.src = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js';
-    s.onload = function() {
-      window.pdfjsLib.GlobalWorkerOptions.workerSrc =
-        'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
-      _pdfjsLoaded = true;
-      _pdfjsLoading = false;
-      var cbs = _pdfjsCallbacks.splice(0);
-      cbs.forEach(function(fn) { fn(window.pdfjsLib); });
-    };
-    s.onerror = function() {
-      _pdfjsLoading = false;
-      var cbs = _pdfjsCallbacks.splice(0);
-      cbs.forEach(function(fn) { fn(null); });
-    };
-    document.head.appendChild(s);
-  }
-
-  // رسم الـ PDF باستخدام PDF.js على canvas
-  async function _renderPdfJs(url, wrapper) {
-    return new Promise(function(resolve) {
-      _loadPdfJs(async function(lib) {
-        if (!lib) { resolve(false); return; }
-        try {
-          // رسالة التحميل
-          wrapper.innerHTML =
-            '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;' +
-            'height:200px;color:#fff;font-family:Cairo,sans-serif;font-size:1rem;gap:12px;">' +
-            '<div style="width:40px;height:40px;border:4px solid rgba(255,255,255,.3);border-top-color:#fff;' +
-            'border-radius:50%;animation:spin 1s linear infinite;"></div>' +
-            'جاري تحميل الملف...</div>';
-
-          // إضافة CSS للـ spinner لو مش موجود
-          if (!document.getElementById('pdfjs-spin-style')) {
-            var st = document.createElement('style');
-            st.id = 'pdfjs-spin-style';
-            st.textContent = '@keyframes spin{to{transform:rotate(360deg)}}';
-            document.head.appendChild(st);
-          }
-
-          var loadingTask = lib.getDocument({
-            url: url,
-            cMapUrl: 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/cmaps/',
-            cMapPacked: true
-          });
-
-          var pdf = await loadingTask.promise;
-          wrapper.innerHTML = '';
-
-          // حساب الـ width الفعلي — نستنى الـ DOM يتحدّث
-          await new Promise(function(r) { requestAnimationFrame(function() { requestAnimationFrame(r); }); });
-          var containerW = wrapper.clientWidth || window.innerWidth || 375;
-          var pixelRatio = window.devicePixelRatio || 1;
-          // scale مناسب للموبايل: استخدم كل العرض مع هامش 12px من كل جانب
-          var availableW = containerW - 24;
-
-          for (var pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
-            var page = await pdf.getPage(pageNum);
-            var baseVP  = page.getViewport({ scale: 1 });
-            var scale   = availableW / baseVP.width;
-            // للتوضيح على شاشات Retina: نضاعف بـ pixelRatio لكن نعرض بحجم CSS أصغر
-            var renderScale = scale * Math.min(pixelRatio, 2);
-            var viewport = page.getViewport({ scale: renderScale });
-
-            var canvas = document.createElement('canvas');
-            canvas.width  = Math.floor(viewport.width);
-            canvas.height = Math.floor(viewport.height);
-            // نعرض الـ canvas بحجم CSS = حجم الصفحة الفعلي بدون pixel ratio
-            canvas.style.cssText =
-              'display:block;margin:0 auto 10px;' +
-              'width:' + Math.floor(availableW) + 'px;' +
-              'height:' + Math.floor(availableW * baseVP.height / baseVP.width) + 'px;' +
-              'border-radius:4px;box-shadow:0 2px 10px rgba(0,0,0,.5);' +
-              'background:#fff;';
-
-            wrapper.appendChild(canvas);
-
-            await page.render({
-              canvasContext: canvas.getContext('2d'),
-              viewport: viewport
-            }).promise;
-          }
-
-          resolve(true);
-        } catch(e) {
-          console.warn('[PDFjs] خطأ:', e.message);
-          resolve(false);
-        }
+  // ---- تحميل PDF.js (ESM) مرة واحدة فقط ----
+  function _loadPdfJs() {
+    if (_pdfjsLib) return Promise.resolve(_pdfjsLib);
+    if (_pdfjsLoading) return _pdfjsLoading;
+    _pdfjsLoading = import(/* webpackIgnore: true */ PDFJS_BASE + 'pdf.min.mjs')
+      .then(function(lib) {
+        lib.GlobalWorkerOptions.workerSrc = PDFJS_BASE + 'pdf.worker.min.mjs';
+        _pdfjsLib = lib;
+        return lib;
+      })
+      .catch(function(e) {
+        console.warn('[PDFjs] فشل تحميل المكتبة:', e && e.message);
+        _pdfjsLoading = null;
+        throw e;
       });
-    });
+    return _pdfjsLoading;
   }
 
+  // ==================== فتح الملف ====================
   async function open(url, title) {
     if (!url) return;
     close();
+
     var finalUrl = url;
     try { finalUrl = await _getSignedPdfUrl(url); } catch(e) {}
+
     document.body.style.overflow = 'hidden';
     document.body.classList.add('rv-open');
 
-    var isAdmin  = window._isAdminUser === true;
-    var ua       = navigator.userAgent;
-    var isMobile = /Mobi|Android|iPhone|iPad|iPod/i.test(ua);
-    var isFirefox= /Firefox/.test(ua);
-    var isIOS    = /iPhone|iPad|iPod/.test(ua);
+    var isAdmin = window._isAdminUser === true;
+
+    var savedPageTheme = '';
+    try { savedPageTheme = localStorage.getItem('pdfv_page_theme') || ''; } catch(e) {}
+    var pagesDark = savedPageTheme === 'dark';
 
     var ol = document.createElement('div');
     ol.id = 'native-pdf-overlay';
-
-    // موبايل (أي متصفح) + iOS → PDF.js canvas
-    // ديسكتوب → iframe (أسرع)
-    var usePdfJs = isMobile || isIOS;
-
-    var bodyHtml;
-    if (usePdfJs) {
-      // wrapper قابل للتمرير بالكامل
-      bodyHtml =
-        '<div id="native-pdf-pdfjs-wrapper" ' +
-        'style="flex:1;overflow-y:auto;overflow-x:auto;-webkit-overflow-scrolling:touch;touch-action:pan-x pan-y pinch-zoom;' +
-        'background:#525659;padding:12px;box-sizing:border-box;min-height:0;overscroll-behavior:contain;' +
-        'will-change:scroll-position;">' +
-        '</div>';
-    } else {
-      bodyHtml =
-        '<div style="position:relative;flex:1;display:flex;flex-direction:column;">' +
-          '<iframe id="native-pdf-frame" src="' + finalUrl + '" title="' + _esc(title || 'PDF') + '"></iframe>' +
-          (!isAdmin ? '<div style="position:absolute;inset:0;z-index:10;background:transparent;pointer-events:none;" oncontextmenu="return false"></div>' : '') +
-        '</div>';
-    }
-
     ol.innerHTML =
-      '<div id="native-pdf-modal">' +
+      '<div id="native-pdf-modal"' + (pagesDark ? ' class="pdfv-pages-dark"' : '') + '>' +
         '<div id="native-pdf-header">' +
-          '<span style="font-size:1.3rem;flex-shrink:0">📄</span>' +
+          '<span style="font-size:1.2rem;flex-shrink:0">📄</span>' +
           '<span id="native-pdf-title">' + _esc(title || 'PDF') + '</span>' +
           (isAdmin
             ? '<button id="native-pdf-dl" title="تحميل" ' +
@@ -7777,156 +7830,490 @@ var NativePDFViewer = (function() {
               'a.setAttribute(\'download\',\'\');document.body.appendChild(a);a.click();document.body.removeChild(a);})()">' +
               '⬇️ تحميل</button>'
             : '') +
-          '<button id="native-pdf-close" onclick="NativePDFViewer.close()" title="إغلاق">✕</button>' +
+          '<button id="native-pdf-close" title="إغلاق">✕</button>' +
         '</div>' +
-        bodyHtml +
+        '<div class="pdfv-toolbar">' +
+          '<div class="pdfv-toolbar-group">' +
+            '<button class="pdfv-btn" id="pdfv-prev" title="الصفحة السابقة">‹</button>' +
+            '<input class="pdfv-page-input" id="pdfv-page-num" type="text" inputmode="numeric" value="1">' +
+            '<span class="pdfv-page-total" id="pdfv-page-total">/ –</span>' +
+            '<button class="pdfv-btn" id="pdfv-next" title="الصفحة التالية">›</button>' +
+          '</div>' +
+          '<div class="pdfv-toolbar-group">' +
+            '<button class="pdfv-btn" id="pdfv-zoom-out" title="تصغير">−</button>' +
+            '<span class="pdfv-zoom-pct" id="pdfv-zoom-pct">100%</span>' +
+            '<button class="pdfv-btn" id="pdfv-zoom-in" title="تكبير">+</button>' +
+          '</div>' +
+          '<button class="pdfv-btn" id="pdfv-search-toggle" title="بحث">🔍</button>' +
+          '<button class="pdfv-btn" id="pdfv-theme-toggle" title="وضع الصفحات الداكن">' + (pagesDark ? '☀️' : '🌗') + '</button>' +
+          '<div class="pdfv-spacer"></div>' +
+          '<button class="pdfv-btn" id="pdfv-fullscreen" title="ملء الشاشة">⛶</button>' +
+        '</div>' +
+        '<div class="pdfv-search-bar" id="pdfv-search-bar">' +
+          '<input class="pdfv-search-input" id="pdfv-search-input" type="text" placeholder="ابحث داخل الملف...">' +
+          '<span class="pdfv-search-count" id="pdfv-search-count"></span>' +
+          '<button class="pdfv-btn" id="pdfv-search-prev" title="السابق">↑</button>' +
+          '<button class="pdfv-btn" id="pdfv-search-next" title="التالي">↓</button>' +
+          '<button class="pdfv-btn" id="pdfv-search-close" title="إغلاق البحث">✕</button>' +
+        '</div>' +
+        '<div id="native-pdf-pdfjs-wrapper"></div>' +
       '</div>';
 
-    ol._keyHandler = function(e) { if (e.key === 'Escape') NativePDFViewer.close(); };
+    ol._keyHandler = function(e) {
+      if (e.key === 'Escape') {
+        var bar = document.getElementById('pdfv-search-bar');
+        if (bar && bar.classList.contains('active')) { _closeSearch(); return; }
+        NativePDFViewer.close();
+      }
+    };
     document.addEventListener('keydown', ol._keyHandler);
     ol.addEventListener('click', function(e) { if (e.target === ol) NativePDFViewer.close(); });
     document.body.appendChild(ol);
     _overlayEl = ol;
 
-    if (usePdfJs) {
-      var wrapper = document.getElementById('native-pdf-pdfjs-wrapper');
-      if (wrapper) {
-        var ok = await _renderPdfJs(finalUrl, wrapper);
-        // تفعيل Pinch-Zoom بعد اكتمال الرسم
-        if (ok) {
-          wrapper._scaleTarget = wrapper;
-          NativePDFViewer._enablePinchZoom(wrapper);
+    document.getElementById('native-pdf-close').onclick = close;
+    document.getElementById('pdfv-prev').onclick = function() { _goToPage((S ? S.currentPage : 1) - 1); };
+    document.getElementById('pdfv-next').onclick = function() { _goToPage((S ? S.currentPage : 1) + 1); };
+    document.getElementById('pdfv-page-num').addEventListener('change', function() { _goToPage(parseInt(this.value, 10)); });
+    document.getElementById('pdfv-page-num').addEventListener('keydown', function(e) { if (e.key === 'Enter') { _goToPage(parseInt(this.value, 10)); this.blur(); } });
+    document.getElementById('pdfv-zoom-in').onclick = function() { _setZoom((S ? S.zoom : 1) + 0.25); };
+    document.getElementById('pdfv-zoom-out').onclick = function() { _setZoom((S ? S.zoom : 1) - 0.25); };
+    document.getElementById('pdfv-fullscreen').onclick = _toggleFullscreen;
+    document.getElementById('pdfv-theme-toggle').onclick = _togglePageTheme;
+    document.getElementById('pdfv-search-toggle').onclick = _openSearch;
+    document.getElementById('pdfv-search-close').onclick = _closeSearch;
+    document.getElementById('pdfv-search-prev').onclick = function() { _searchStep(-1); };
+    document.getElementById('pdfv-search-next').onclick = function() { _searchStep(1); };
+    var searchInput = document.getElementById('pdfv-search-input');
+    var _searchDebounce = null;
+    searchInput.addEventListener('input', function() {
+      clearTimeout(_searchDebounce);
+      var q = this.value;
+      _searchDebounce = setTimeout(function() { _runSearch(q); }, 350);
+    });
+    searchInput.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') { e.preventDefault(); _searchStep(e.shiftKey ? -1 : 1); }
+    });
+
+    var wrapper = document.getElementById('native-pdf-pdfjs-wrapper');
+    wrapper.innerHTML =
+      '<div class="pdfv-page-loading" style="min-height:60vh"><div class="pdfv-spin"></div>جاري فتح الملف...</div>';
+
+    try {
+      var lib = await _loadPdfJs();
+      if (!lib) throw new Error('pdfjs-not-loaded');
+
+      // ملاحظة الأداء: disableAutoFetch يمنع تحميل الملف كاملاً مقدماً —
+      // الصفحات تُطلب (Range requests) فقط عند الحاجة الفعلية إليها.
+      var loadingTask = lib.getDocument({
+        url: finalUrl,
+        cMapUrl: PDFJS_BASE + 'cmaps/',
+        cMapPacked: true,
+        standardFontDataUrl: PDFJS_BASE + 'standard_fonts/',
+        disableAutoFetch: true,
+        disableStream: false,
+        rangeChunkSize: 1 << 16
+      });
+
+      var pdf = await loadingTask.promise;
+
+      S = {
+        pdf: pdf,
+        lib: lib,
+        wrapper: wrapper,
+        numPages: pdf.numPages,
+        currentPage: 1,
+        zoom: 1,
+        baseAspect: null,          // height/width لصفحة 1 (لتقدير ارتفاع الحاويات قبل الرسم)
+        pageEls: {},               // pageNum -> { container, canvas, textLayer, rendered, renderTask, textContent }
+        observer: null,
+        renderedSet: new Set(),
+        pagesDark: pagesDark,
+        search: { query: '', matches: [], index: -1, building: false }
+      };
+
+      document.getElementById('pdfv-page-total').textContent = '/ ' + pdf.numPages;
+      _updateZoomLabel();
+
+      var firstPage = await pdf.getPage(1);
+      var vp1 = firstPage.getViewport({ scale: 1 });
+      S.baseAspect = vp1.height / vp1.width;
+
+      wrapper.innerHTML = '';
+      _buildPlaceholders();
+      _setupObserver();
+      _setupScrollPageTracking();
+
+      // فعّل التمرير باللمس بسلاسة على الموبايل
+      wrapper.style.webkitOverflowScrolling = 'touch';
+
+    } catch(e) {
+      console.warn('[PDFjs] تعذّر فتح الملف:', e && e.message);
+      wrapper.innerHTML =
+        '<div class="pdfv-page-loading" style="min-height:60vh;color:#f5b5b5">' +
+        '⚠️ تعذّر فتح الملف حالياً.<br>تأكد من اتصالك بالإنترنت وحاول مرة أخرى.</div>';
+    }
+  }
+
+  // ==================== بناء عناصر الصفحات (Placeholders) ====================
+  function _buildPlaceholders() {
+    var frag = document.createDocumentFragment();
+    var containerW = Math.max(280, S.wrapper.clientWidth - 24);
+
+    for (var n = 1; n <= S.numPages; n++) {
+      var div = document.createElement('div');
+      div.className = 'pdfv-page';
+      div.dataset.pageNum = n;
+      var w = containerW * S.zoom;
+      var h = w * S.baseAspect;
+      div.style.width = Math.floor(w) + 'px';
+      div.style.height = Math.floor(h) + 'px';
+      div.innerHTML = '<div class="pdfv-page-loading"><div class="pdfv-spin"></div>صفحة ' + n + '</div>';
+      frag.appendChild(div);
+      S.pageEls[n] = { container: div, rendered: false, renderTask: null, textContent: null };
+    }
+    S.wrapper.appendChild(frag);
+  }
+
+  // ==================== Lazy loading عبر IntersectionObserver ====================
+  function _setupObserver() {
+    if (S.observer) S.observer.disconnect();
+    S.observer = new IntersectionObserver(function(entries) {
+      entries.forEach(function(entry) {
+        var n = parseInt(entry.target.dataset.pageNum, 10);
+        if (entry.isIntersecting) {
+          _renderPage(n);
         }
-        // Fallback: Google Docs Viewer لو PDF.js فشل
-        if (!ok) {
-          wrapper.style.cssText = 'flex:1;display:flex;flex-direction:column;overflow:hidden;min-height:0;';
-          wrapper.innerHTML =
-            '<iframe src="https://docs.google.com/viewer?url=' + encodeURIComponent(finalUrl) +
-            '&embedded=true" style="width:100%;flex:1;border:none;min-height:70vh;overflow:auto;-webkit-overflow-scrolling:touch;touch-action:pan-x pan-y pinch-zoom;"></iframe>';
-        }
-      }
-    } else if (isFirefox) {
-      setTimeout(function() {
-        var frame = document.getElementById('native-pdf-frame');
-        if (!frame) return;
+      });
+      _pruneFarPages();
+    }, {
+      root: S.wrapper,
+      rootMargin: '1000px 0px', // نجهّز الصفحات القريبة قبل وصولها للشاشة
+      threshold: 0.01
+    });
+    Object.keys(S.pageEls).forEach(function(n) { S.observer.observe(S.pageEls[n].container); });
+  }
+
+  // تتبّع الصفحة الحالية أثناء التمرير لتحديث رقم الصفحة في الشريط
+  function _setupScrollPageTracking() {
+    var ticking = false;
+    S.wrapper.addEventListener('scroll', function() {
+      if (ticking) return;
+      ticking = true;
+      requestAnimationFrame(function() {
+        _updateCurrentPageFromScroll();
+        ticking = false;
+      });
+    }, { passive: true });
+  }
+
+  function _updateCurrentPageFromScroll() {
+    if (!S) return;
+    var wRect = S.wrapper.getBoundingClientRect();
+    var mid = wRect.top + wRect.height * 0.35;
+    var best = S.currentPage, bestDist = Infinity;
+    Object.keys(S.pageEls).forEach(function(key) {
+      var n = parseInt(key, 10);
+      var r = S.pageEls[n].container.getBoundingClientRect();
+      var d = Math.abs(r.top - mid);
+      if (d < bestDist) { bestDist = d; best = n; }
+    });
+    if (best !== S.currentPage) {
+      S.currentPage = best;
+      var input = document.getElementById('pdfv-page-num');
+      if (input && document.activeElement !== input) input.value = best;
+    }
+  }
+
+  // ==================== رسم صفحة عند الحاجة فقط ====================
+  async function _renderPage(n) {
+    if (!S || !S.pageEls[n]) return;
+    var entry = S.pageEls[n];
+    if (entry.rendered || entry.renderTask) return;
+
+    entry.renderTask = (async function() {
+      try {
+        var page = await S.pdf.getPage(n); // ⏳ يُطلب فقط الآن (lazy)
+        var containerW = Math.max(280, S.wrapper.clientWidth - 24);
+        var baseVp = page.getViewport({ scale: 1 });
+        var targetW = containerW * S.zoom;
+        var scale = targetW / baseVp.width;
+
+        // جودة نص ممتازة: نضاعف الدقة حسب كثافة بكسل الشاشة (حتى 3x لضبط الذاكرة)
+        var pixelRatio = Math.min(window.devicePixelRatio || 1, 3);
+        var renderScale = scale * pixelRatio;
+        var viewport = page.getViewport({ scale: renderScale });
+        var cssViewport = page.getViewport({ scale: scale });
+
+        var container = entry.container;
+        container.style.width = Math.floor(cssViewport.width) + 'px';
+        container.style.height = Math.floor(cssViewport.height) + 'px';
+        container.innerHTML = '';
+
+        var canvas = document.createElement('canvas');
+        canvas.width = Math.floor(viewport.width);
+        canvas.height = Math.floor(viewport.height);
+        container.appendChild(canvas);
+
+        var textLayerDiv = document.createElement('div');
+        textLayerDiv.className = 'pdfv-text-layer';
+        textLayerDiv.style.width = Math.floor(cssViewport.width) + 'px';
+        textLayerDiv.style.height = Math.floor(cssViewport.height) + 'px';
+        container.appendChild(textLayerDiv);
+
+        await page.render({ canvasContext: canvas.getContext('2d'), viewport: viewport }).promise;
+
+        // نص قابل للتحديد + أساس التمييز عند البحث
+        var textContent = entry.textContent || await page.getTextContent();
+        entry.textContent = textContent;
         try {
-          var fd = frame.contentDocument;
-          if (!fd || !fd.body || fd.body.innerHTML.trim() === '') {
-            frame.src = 'https://docs.google.com/viewer?url=' + encodeURIComponent(finalUrl) + '&embedded=true';
-          }
-        } catch(e) { /* cross-origin — OK */ }
-      }, 8000);
+          var textLayer = new S.lib.TextLayer({
+            textContentSource: textContent,
+            container: textLayerDiv,
+            viewport: cssViewport
+          });
+          await textLayer.render();
+        } catch(te) { /* التحديد النصي غير حرج — نتابع بدونه لو فشل */ }
+
+        entry.canvas = canvas;
+        entry.textLayerDiv = textLayerDiv;
+        entry.rendered = true;
+        S.renderedSet.add(n);
+
+        // لو فيه بحث نشط وهذه الصفحة من ضمن النتائج — طبّق التظليل
+        if (S.search.query) _applyHighlightsForPage(n);
+      } catch(e) {
+        console.warn('[PDFjs] فشل رسم الصفحة', n, e && e.message);
+        entry.container.innerHTML =
+          '<div class="pdfv-page-loading" style="color:#f5b5b5">⚠️ تعذّر عرض الصفحة ' + n + '</div>';
+      } finally {
+        entry.renderTask = null;
+      }
+    })();
+
+    return entry.renderTask;
+  }
+
+  // إلغاء رسم الصفحات البعيدة عن نطاق العرض لتفريغ الذاكرة (Lazy unload)
+  function _pruneFarPages() {
+    if (!S) return;
+    var KEEP_RADIUS = 6; // احتفظ بالصفحات القريبة من الحالية فقط
+    S.renderedSet.forEach(function(n) {
+      if (Math.abs(n - S.currentPage) > KEEP_RADIUS) {
+        var entry = S.pageEls[n];
+        if (!entry || !entry.rendered) return;
+        var h = entry.container.style.height;
+        entry.container.style.height = h; // يحافظ على الارتفاع لمنع قفزة التمرير
+        entry.container.innerHTML = '<div class="pdfv-page-loading"><div class="pdfv-spin"></div>صفحة ' + n + '</div>';
+        entry.rendered = false;
+        entry.canvas = null;
+        entry.textLayerDiv = null;
+        S.renderedSet.delete(n);
+      }
+    });
+  }
+
+  // ==================== التنقل بين الصفحات ====================
+  function _goToPage(n) {
+    if (!S) return;
+    n = Math.max(1, Math.min(S.numPages, n || 1));
+    S.currentPage = n;
+    var input = document.getElementById('pdfv-page-num');
+    if (input) input.value = n;
+    var entry = S.pageEls[n];
+    if (entry) {
+      _renderPage(n);
+      entry.container.scrollIntoView({ block: 'start', behavior: 'smooth' });
     }
   }
 
-  // ── Pinch-Zoom على الموبايل للـ canvas wrapper ──────────────────────
-  function _enablePinchZoom(wrapper) {
-    if (!wrapper) return;
-    var scale = 1, minScale = 0.5, maxScale = 5;
-    var startDist = 0, startScale = 1;
-    var translateX = 0, translateY = 0;
-    var startTX = 0, startTY = 0;
-    var startMidX = 0, startMidY = 0;
-    var isPinching = false;
-    var isDragging = false;
-    var dragStartX = 0, dragStartY = 0;
+  // ==================== التكبير/التصغير ====================
+  function _setZoom(z) {
+    if (!S) return;
+    z = Math.max(0.5, Math.min(3, Math.round(z * 100) / 100));
+    if (z === S.zoom) return;
+    S.zoom = z;
+    _updateZoomLabel();
 
-    function _dist(t) {
-      var dx = t[0].clientX - t[1].clientX;
-      var dy = t[0].clientY - t[1].clientY;
-      return Math.sqrt(dx*dx + dy*dy);
+    var containerW = Math.max(280, S.wrapper.clientWidth - 24);
+    Object.keys(S.pageEls).forEach(function(key) {
+      var n = parseInt(key, 10);
+      var entry = S.pageEls[n];
+      var w = containerW * z;
+      var h = w * S.baseAspect;
+      entry.container.style.width = Math.floor(w) + 'px';
+      entry.container.style.height = Math.floor(h) + 'px';
+      if (entry.rendered) {
+        entry.rendered = false;
+        entry.canvas = null;
+        entry.textLayerDiv = null;
+        S.renderedSet.delete(n);
+        entry.container.innerHTML = '<div class="pdfv-page-loading"><div class="pdfv-spin"></div>صفحة ' + n + '</div>';
+      }
+    });
+    // أعد رسم الصفحة الحالية والقريبة منها فوراً
+    for (var i = Math.max(1, S.currentPage - 1); i <= Math.min(S.numPages, S.currentPage + 1); i++) {
+      _renderPage(i);
+    }
+  }
+
+  function _updateZoomLabel() {
+    var el = document.getElementById('pdfv-zoom-pct');
+    if (el && S) el.textContent = Math.round(S.zoom * 100) + '%';
+  }
+
+  // ==================== وضع الصفحات الداكن/الفاتح ====================
+  function _togglePageTheme() {
+    if (!S) return;
+    S.pagesDark = !S.pagesDark;
+    var modal = document.getElementById('native-pdf-modal');
+    if (modal) modal.classList.toggle('pdfv-pages-dark', S.pagesDark);
+    var btn = document.getElementById('pdfv-theme-toggle');
+    if (btn) btn.textContent = S.pagesDark ? '☀️' : '🌗';
+    try { localStorage.setItem('pdfv_page_theme', S.pagesDark ? 'dark' : 'light'); } catch(e) {}
+  }
+
+  // ==================== ملء الشاشة ====================
+  function _toggleFullscreen() {
+    var modal = document.getElementById('native-pdf-modal');
+    if (!modal) return;
+    if (!document.fullscreenElement) {
+      modal.requestFullscreen && modal.requestFullscreen();
+      modal.webkitRequestFullscreen && modal.webkitRequestFullscreen();
+    } else {
+      document.exitFullscreen && document.exitFullscreen();
+      document.webkitExitFullscreen && document.webkitExitFullscreen();
+    }
+  }
+
+  // ==================== البحث داخل الملف ====================
+  function _openSearch() {
+    var bar = document.getElementById('pdfv-search-bar');
+    if (!bar) return;
+    bar.classList.add('active');
+    var input = document.getElementById('pdfv-search-input');
+    input.focus();
+  }
+
+  function _closeSearch() {
+    var bar = document.getElementById('pdfv-search-bar');
+    if (bar) bar.classList.remove('active');
+    _clearHighlights();
+    if (S) { S.search.query = ''; S.search.matches = []; S.search.index = -1; }
+    var countEl = document.getElementById('pdfv-search-count');
+    if (countEl) countEl.textContent = '';
+  }
+
+  function _clearHighlights() {
+    if (!S) return;
+    Object.keys(S.pageEls).forEach(function(key) {
+      var entry = S.pageEls[key];
+      if (entry.textLayerDiv) {
+        entry.textLayerDiv.querySelectorAll('span.pdfv-hit,span.pdfv-hit-current').forEach(function(sp) {
+          sp.classList.remove('pdfv-hit', 'pdfv-hit-current');
+        });
+      }
+    });
+  }
+
+  // يبني فهرس نصي تدريجي عبر كل الصفحات (يُطلب نص الصفحة فقط dict — خفيف مقارنة بالرسم)
+  async function _runSearch(query) {
+    var countEl = document.getElementById('pdfv-search-count');
+    if (!S) return;
+    _clearHighlights();
+    query = (query || '').trim();
+    S.search.query = query;
+    S.search.matches = [];
+    S.search.index = -1;
+
+    if (!query || query.length < 2) {
+      if (countEl) countEl.textContent = '';
+      return;
     }
 
-    function _applyTransform(el) {
-      el.style.transformOrigin = '0 0';
-      el.style.transform = 'translate(' + translateX + 'px,' + translateY + 'px) scale(' + scale + ')';
-      el.style.willChange = 'transform';
-    }
+    var mySearchToken = {};
+    S._searchToken = mySearchToken;
+    if (countEl) countEl.textContent = 'جاري البحث...';
 
-    // إنشاء div داخلي قابل للـ transform بدون كسر الـ scroll
-    wrapper.addEventListener('touchstart', function(e) {
-      if (e.touches.length === 2) {
-        isPinching = true;
-        isDragging = false;
-        startDist = _dist(e.touches);
-        startScale = scale;
-        startMidX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
-        startMidY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
-        startTX = translateX;
-        startTY = translateY;
-        e.preventDefault();
-      } else if (e.touches.length === 1 && scale > 1) {
-        isDragging = true;
-        dragStartX = e.touches[0].clientX - translateX;
-        dragStartY = e.touches[0].clientY - translateY;
+    var q = query.toLowerCase();
+    var matches = [];
+
+    for (var n = 1; n <= S.numPages; n++) {
+      if (S._searchToken !== mySearchToken) return; // بحث جديد بدأ — ألغِ هذا
+      var entry = S.pageEls[n];
+      var tc = entry.textContent;
+      if (!tc) {
+        try {
+          var page = await S.pdf.getPage(n);
+          tc = await page.getTextContent();
+          entry.textContent = tc;
+        } catch(e) { continue; }
       }
-    }, { passive: false });
-
-    wrapper.addEventListener('touchmove', function(e) {
-      if (isPinching && e.touches.length === 2) {
-        var newDist = _dist(e.touches);
-        var newScale = Math.min(maxScale, Math.max(minScale, startScale * (newDist / startDist)));
-        var midX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
-        var midY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
-        // تعديل الـ translate بناءً على مركز الـ pinch
-        var wRect = wrapper.getBoundingClientRect();
-        var originX = midX - wRect.left;
-        var originY = midY - wRect.top + wrapper.scrollTop;
-        translateX = originX - (originX - startTX) * (newScale / startScale) + (midX - startMidX);
-        translateY = originY - (originY - startTY) * (newScale / startScale) + (midY - startMidY);
-        scale = newScale;
-        // أعِد الـ translate بحدود معقولة
-        var maxTX = 0;
-        var maxTY = 0;
-        translateX = Math.min(maxTX, Math.max(-(wrapper.scrollWidth * scale - wrapper.clientWidth), translateX));
-        _applyTransform(wrapper._scaleTarget || wrapper);
-        e.preventDefault();
-      } else if (isDragging && e.touches.length === 1 && scale > 1) {
-        translateX = e.touches[0].clientX - dragStartX;
-        translateY = e.touches[0].clientY - dragStartY;
-        var maxTX = 0;
-        translateX = Math.min(maxTX, Math.max(-(wrapper.scrollWidth * scale - wrapper.clientWidth), translateX));
-        _applyTransform(wrapper._scaleTarget || wrapper);
-        e.preventDefault();
-      }
-    }, { passive: false });
-
-    wrapper.addEventListener('touchend', function(e) {
-      if (e.touches.length < 2) isPinching = false;
-      if (e.touches.length === 0) isDragging = false;
-      // لو الـ scale رجع للأقل — اعيد reset
-      if (scale <= 1.05) {
-        scale = 1; translateX = 0; translateY = 0;
-        if (wrapper._scaleTarget) wrapper._scaleTarget.style.transform = '';
-      }
-    }, { passive: true });
-
-    // Double-tap للـ zoom
-    var _lastTap = 0;
-    wrapper.addEventListener('touchend', function(e) {
-      if (e.changedTouches.length !== 1) return;
-      var now = Date.now();
-      if (now - _lastTap < 300) {
-        // double tap
-        if (scale > 1) {
-          scale = 1; translateX = 0; translateY = 0;
-          if (wrapper._scaleTarget) wrapper._scaleTarget.style.transform = '';
-        } else {
-          scale = 2.5;
-          var tap = e.changedTouches[0];
-          var wRect = wrapper.getBoundingClientRect();
-          translateX = -((tap.clientX - wRect.left) * (scale - 1));
-          translateY = -((tap.clientY - wRect.top + wrapper.scrollTop) * (scale - 1));
-          var maxTX = 0;
-          translateX = Math.min(maxTX, Math.max(-(wrapper.scrollWidth * scale - wrapper.clientWidth), translateX));
-          _applyTransform(wrapper._scaleTarget || wrapper);
+      tc.items.forEach(function(item, idx) {
+        if (item.str && item.str.toLowerCase().indexOf(q) !== -1) {
+          matches.push({ page: n, itemIndex: idx });
         }
-      }
-      _lastTap = now;
-    }, { passive: true });
+      });
+      // حدّث العدّاد تدريجياً حتى لا يبدو البحث متجمداً في الملفات الكبيرة
+      if (countEl && n % 10 === 0) countEl.textContent = matches.length + ' نتيجة (جاري البحث...)';
+    }
+
+    if (S._searchToken !== mySearchToken) return;
+    S.search.matches = matches;
+    if (matches.length) {
+      S.search.index = 0;
+      _showCurrentMatch();
+    } else if (countEl) {
+      countEl.textContent = 'لا توجد نتائج';
+    }
   }
 
+  function _searchStep(dir) {
+    if (!S || !S.search.matches.length) return;
+    S.search.index = (S.search.index + dir + S.search.matches.length) % S.search.matches.length;
+    _showCurrentMatch();
+  }
+
+  async function _showCurrentMatch() {
+    if (!S || !S.search.matches.length) return;
+    var m = S.search.matches[S.search.index];
+    var countEl = document.getElementById('pdfv-search-count');
+    if (countEl) countEl.textContent = (S.search.index + 1) + ' / ' + S.search.matches.length;
+
+    await _renderPage(m.page);
+    _applyHighlightsForPage(m.page);
+
+    var entry = S.pageEls[m.page];
+    if (entry && entry.textLayerDiv) {
+      // حدّد span النص المطابق داخل هذه الصفحة كنتيجة "حالية"
+      var targetSpan = entry.textLayerDiv.children[m.itemIndex];
+      if (targetSpan) {
+        targetSpan.classList.add('pdfv-hit-current');
+        targetSpan.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      } else {
+        entry.container.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      }
+    }
+    S.currentPage = m.page;
+    var input = document.getElementById('pdfv-page-num');
+    if (input) input.value = m.page;
+  }
+
+  function _applyHighlightsForPage(n) {
+    if (!S || !S.search.query) return;
+    var entry = S.pageEls[n];
+    if (!entry || !entry.rendered || !entry.textLayerDiv) return;
+    S.search.matches.forEach(function(m, i) {
+      if (m.page !== n) return;
+      var span = entry.textLayerDiv.children[m.itemIndex];
+      if (span) span.classList.add(i === S.search.index ? 'pdfv-hit-current' : 'pdfv-hit');
+    });
+  }
+
+  // ==================== إغلاق العارض ====================
   function close() {
+    if (S && S.observer) { try { S.observer.disconnect(); } catch(e) {} }
+    S = null;
     if (_overlayEl) {
       document.removeEventListener('keydown', _overlayEl._keyHandler);
       _overlayEl.remove();
@@ -7938,7 +8325,7 @@ var NativePDFViewer = (function() {
     document.body.classList.remove('rv-open');
   }
 
-  return { open, close, _enablePinchZoom };
+  return { open: open, close: close };
 })();
 
 // ==================== CONTENT PROTECTION SYSTEM ====================
@@ -9329,7 +9716,7 @@ self.addEventListener('fetch', function(e) {
     if (!db) return null;
     try {
       var res = await db.from('site_sections')
-        .select('id, title, icon, parent_id, requires_subscription')
+        .select('id, title, icon, parent_id, requires_subscription, payment_method, payment_number, price')
         .eq('id', id).maybeSingle();
       if (res.error || !res.data) return null;
       window._sectionRowCache[id] = res.data;
@@ -9455,7 +9842,7 @@ self.addEventListener('fetch', function(e) {
     if (el) el.innerHTML = window._renderSubscriptionGateHTML(gate);
   };
 
-  // ── طلب اشتراك جديد أو تجديد اشتراك منتهٍ ──
+  // ── طلب اشتراك جديد أو تجديد اشتراك منتهٍ — يفتح مودال الدفع اليدوي داخل الموقع ──
   window.requestOrRenewSubscription = async function() {
     var anchor = window._currentGateAnchor;
     if (!anchor) return;
@@ -9466,32 +9853,302 @@ self.addEventListener('fetch', function(e) {
     var user = sessionRes && sessionRes.data && sessionRes.data.session && sessionRes.data.session.user;
     if (!user) { loginWithGoogle(); return; }
 
-    try {
-      var res = await db.rpc('request_section_subscription', { p_section_id: anchor.id });
-      if (res.error) throw res.error;
-
-      _clearSectionSubCache(user.id, anchor.id);
-      if (window._showToast) _showToast('✅ تم إرسال طلبك — أكمل الدفع عبر واتساب لتفعيل الاشتراك', 'success');
-
-      var msg = 'مرحباً، أريد الاشتراك في «' + anchor.title + '»\nالبريد: ' + user.email + '\nالسعر: ' + MONTHLY_PRICE + ' جنيه شهرياً';
-      window.open('https://wa.me/' + WHATSAPP_NUMBER + '?text=' + encodeURIComponent(msg), '_blank');
-
-      // إعادة رسم الشاشة الحالية لتعكس حالة "قيد المراجعة"
-      setTimeout(function() {
-        var lastSec = window._lastGateSec;
-        if (!lastSec) return;
-        if (document.getElementById('page-content') && document.getElementById('page-content').classList.contains('active')) {
-          _openContentPage(lastSec);
-        } else if (document.getElementById('page-dynamic-section') && document.getElementById('page-dynamic-section').classList.contains('active')) {
-          _renderDynamicSectionPage(lastSec);
-        }
-      }, 500);
-    } catch(err) {
-      console.error('[SUBS] request error:', err);
-      if (window._showToast) _showToast('❌ حدث خطأ، حاول مجدداً', 'error'); else alert('حدث خطأ، حاول مجدداً');
+    if (typeof window._openPaymentModal === 'function') {
+      window._openPaymentModal(anchor, user);
     }
   };
 
+  // ── يُستدعى من مودال الدفع بعد نجاح رفع الإيصال وتسجيل الطلب ──
+  window._afterPaymentRequestSubmitted = function(userId, sectionId) {
+    _clearSectionSubCache(userId, sectionId);
+    setTimeout(function() {
+      var lastSec = window._lastGateSec;
+      if (!lastSec) return;
+      if (document.getElementById('page-content') && document.getElementById('page-content').classList.contains('active')) {
+        _openContentPage(lastSec);
+      } else if (document.getElementById('page-dynamic-section') && document.getElementById('page-dynamic-section').classList.contains('active')) {
+        _renderDynamicSectionPage(lastSec);
+      }
+    }, 400);
+  };
+
+  window._SUBS_WHATSAPP_NUMBER = WHATSAPP_NUMBER;
+  window._SUBS_DEFAULT_PRICE   = MONTHLY_PRICE;
+
+})();
+</script>
+
+<!-- ============================================================ -->
+<!-- مودال الدفع اليدوي الاحترافي — رفع إيصال + رقم تحويل خاص بكل شعبة -->
+<!-- ============================================================ -->
+<style>
+.pm-overlay {
+  position: fixed; inset: 0; z-index: 999998;
+  background: rgba(8,20,32,.72);
+  backdrop-filter: blur(3px);
+  display: none; align-items: center; justify-content: center;
+  padding: 16px; animation: pm-fade .18s ease;
+}
+.pm-overlay.pm-open { display: flex; }
+@keyframes pm-fade { from{opacity:0;} to{opacity:1;} }
+.pm-modal {
+  width: 100%; max-width: 440px; max-height: 92vh; overflow-y: auto;
+  background: linear-gradient(180deg,#ffffff,#f7fbff);
+  border-radius: 22px; padding: 30px 26px 26px;
+  box-shadow: 0 20px 60px rgba(0,0,0,.35);
+  position: relative; text-align: center;
+  font-family: 'Cairo','Tajawal',sans-serif;
+  animation: pm-pop .22s cubic-bezier(.2,.9,.3,1.2);
+}
+@keyframes pm-pop { from{transform:scale(.92);opacity:0;} to{transform:scale(1);opacity:1;} }
+.pm-close {
+  position: absolute; top: 14px; left: 14px;
+  width: 32px; height: 32px; border-radius: 50%; border: none;
+  background: #eef3f8; color: #5a6b7d; font-weight: 900; cursor: pointer; font-size: .9rem;
+}
+.pm-close:hover { background:#e2ebf3; }
+.pm-icon { font-size: 2.6rem; margin-bottom: 4px; }
+.pm-title { font-size: 1.08rem; font-weight: 900; color: var(--primary); margin-bottom: 12px; line-height: 1.5; }
+.pm-price-badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: #eaf4fb; color: var(--primary); font-weight: 800;
+  padding: 7px 18px; border-radius: 30px; font-size: .88rem; margin-bottom: 16px;
+}
+.pm-pay-box {
+  background: #fff; border: 1px solid #e3edf7; border-radius: 16px;
+  padding: 18px 16px; margin-bottom: 16px;
+}
+.pm-pay-method { font-size: .8rem; color: #5a6b7d; font-weight: 700; margin-bottom: 8px; }
+.pm-pay-number-row {
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  background: #f5f9fd; border-radius: 12px; padding: 10px 14px; margin-bottom: 14px;
+}
+.pm-pay-number { font-size: 1.15rem; font-weight: 900; color: #17324a; letter-spacing: .5px; direction: ltr; }
+.pm-copy-btn {
+  border: none; background: var(--primary); color: #fff; font-weight: 800;
+  font-size: .74rem; padding: 7px 12px; border-radius: 8px; cursor: pointer; white-space: nowrap;
+}
+.pm-copy-btn:hover { opacity: .88; }
+.pm-copy-btn.pm-copied { background: #17a589; }
+.pm-qr-wrap { display: flex; justify-content: center; }
+.pm-qr-img { width: 150px; height: 150px; border-radius: 10px; border: 1px solid #e3edf7; padding: 6px; background:#fff; }
+.pm-steps {
+  text-align: right; font-size: .78rem; color: #5a6b7d; line-height: 2;
+  padding-right: 20px; margin: 0 0 16px;
+}
+.pm-upload-field { margin-bottom: 14px; }
+.pm-upload-label {
+  display: block; border: 2px dashed #b7d3ea; border-radius: 14px;
+  padding: 16px; font-size: .85rem; font-weight: 700; color: var(--primary);
+  cursor: pointer; background: #f5f9fd; transition: background .15s;
+}
+.pm-upload-label:hover { background: #eaf4fb; }
+.pm-preview-wrap { margin-top: 10px; position: relative; display: inline-block; }
+.pm-preview-img { max-width: 100%; max-height: 220px; border-radius: 12px; border: 1px solid #e3edf7; }
+.pm-remove-file {
+  display: block; margin: 8px auto 0; border: none; background: #fdecea; color: #c0392b;
+  font-size: .74rem; font-weight: 800; padding: 6px 14px; border-radius: 8px; cursor: pointer;
+}
+.pm-msg { font-size: .78rem; min-height: 18px; margin-bottom: 8px; font-weight: 700; }
+.pm-submit-btn {
+  width: 100%; border: none; background: linear-gradient(135deg,#0a3d62,#1a5276);
+  color: #fff; font-weight: 900; font-size: .92rem; padding: 13px; border-radius: 12px;
+  cursor: pointer; box-shadow: 0 8px 20px rgba(10,61,98,.3);
+}
+.pm-submit-btn:hover { filter: brightness(1.06); }
+.pm-submit-btn:disabled { opacity: .6; cursor: not-allowed; }
+@media (max-width: 480px) {
+  .pm-modal { padding: 24px 18px 20px; border-radius: 18px; }
+  .pm-pay-number { font-size: 1rem; }
+}
+</style>
+
+<div id="payment-modal-overlay" class="pm-overlay" onclick="if(event.target===this) closePaymentModal()">
+  <div class="pm-modal" role="dialog" aria-modal="true" aria-labelledby="pm-title">
+    <button class="pm-close" onclick="closePaymentModal()" aria-label="إغلاق">✕</button>
+    <div class="pm-icon" id="pm-icon">🎓</div>
+    <div class="pm-title" id="pm-title">الاشتراك في الشعبة</div>
+    <div class="pm-price-badge" id="pm-price">💳 — جنيه / شهرياً</div>
+
+    <div class="pm-pay-box">
+      <div class="pm-pay-method">الدفع عبر <span id="pm-method">—</span></div>
+      <div class="pm-pay-number-row">
+        <span class="pm-pay-number" id="pm-number">—</span>
+        <button class="pm-copy-btn" id="pm-copy-btn" onclick="_pmCopyNumber()">📋 نسخ الرقم</button>
+      </div>
+      <div class="pm-qr-wrap" id="pm-qr-wrap">
+        <img id="pm-qr-img" class="pm-qr-img" alt="QR Code لرقم التحويل" loading="lazy">
+      </div>
+    </div>
+
+    <ol class="pm-steps">
+      <li>حوّل المبلغ إلى الرقم أعلاه</li>
+      <li>ارفع صورة إيصال التحويل بالأسفل</li>
+      <li>اضغط «إرسال الطلب» وانتظر مراجعة الأدمن</li>
+    </ol>
+
+    <div class="pm-upload-field">
+      <label class="pm-upload-label" for="pm-receipt-input" id="pm-upload-label-text">📎 اضغط لاختيار صورة الإيصال</label>
+      <input type="file" id="pm-receipt-input" accept="image/*" onchange="_pmHandleFileSelect(event)" hidden>
+      <div class="pm-preview-wrap" id="pm-preview-wrap" style="display:none;">
+        <img id="pm-preview-img" class="pm-preview-img" alt="معاينة الإيصال">
+        <button type="button" class="pm-remove-file" onclick="_pmRemoveFile()">✕ إزالة الصورة</button>
+      </div>
+    </div>
+
+    <div class="pm-msg" id="pm-msg"></div>
+    <button class="pm-submit-btn" id="pm-submit-btn" onclick="_pmSubmit()">🚀 إرسال الطلب</button>
+  </div>
+</div>
+
+<script>
+(function() {
+  var _pmAnchor = null;
+  var _pmUser   = null;
+  var _pmFile   = null;
+
+  window._openPaymentModal = function(anchor, user) {
+    _pmAnchor = anchor;
+    _pmUser   = user;
+    _pmFile   = null;
+
+    var price   = (anchor.price != null && anchor.price !== '') ? anchor.price : (window._SUBS_DEFAULT_PRICE || 100);
+    var method  = anchor.payment_method || 'Vodafone Cash';
+    var number  = anchor.payment_number || '';
+
+    document.getElementById('pm-icon').textContent  = anchor.icon || '🎓';
+    document.getElementById('pm-title').textContent = 'الاشتراك في «' + (anchor.title || 'الشعبة') + '»';
+    document.getElementById('pm-price').innerHTML    = '💳 ' + price + ' جنيه / شهرياً';
+    document.getElementById('pm-method').textContent = method;
+    document.getElementById('pm-number').textContent = number || 'لم يتم تحديد رقم بعد';
+
+    var qrImg = document.getElementById('pm-qr-img');
+    if (number) {
+      qrImg.style.display = 'block';
+      qrImg.src = 'https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=' + encodeURIComponent(number);
+    } else {
+      qrImg.style.display = 'none';
+    }
+
+    _pmRemoveFile();
+    document.getElementById('pm-msg').textContent = '';
+    document.getElementById('pm-submit-btn').disabled = false;
+    document.getElementById('pm-submit-btn').textContent = '🚀 إرسال الطلب';
+
+    document.getElementById('payment-modal-overlay').classList.add('pm-open');
+    document.body.style.overflow = 'hidden';
+  };
+
+  window.closePaymentModal = function() {
+    document.getElementById('payment-modal-overlay').classList.remove('pm-open');
+    document.body.style.overflow = '';
+  };
+
+  window._pmCopyNumber = function() {
+    var number = document.getElementById('pm-number').textContent;
+    if (!number || number === 'لم يتم تحديد رقم بعد') return;
+    var btn = document.getElementById('pm-copy-btn');
+    var done = function() {
+      var old = btn.textContent;
+      btn.textContent = '✅ تم النسخ';
+      btn.classList.add('pm-copied');
+      setTimeout(function() { btn.textContent = old; btn.classList.remove('pm-copied'); }, 1600);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(number).then(done).catch(function() { _pmFallbackCopy(number, done); });
+    } else {
+      _pmFallbackCopy(number, done);
+    }
+  };
+
+  function _pmFallbackCopy(text, cb) {
+    var ta = document.createElement('textarea');
+    ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select();
+    try { document.execCommand('copy'); cb(); } catch(e) {}
+    document.body.removeChild(ta);
+  }
+
+  window._pmHandleFileSelect = function(ev) {
+    var file = ev.target.files && ev.target.files[0];
+    var msgEl = document.getElementById('pm-msg');
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      msgEl.style.color = '#e74c3c'; msgEl.textContent = '❌ الرجاء اختيار ملف صورة فقط';
+      ev.target.value = ''; return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      msgEl.style.color = '#e74c3c'; msgEl.textContent = '❌ حجم الصورة كبير جداً (الحد الأقصى 5MB)';
+      ev.target.value = ''; return;
+    }
+    msgEl.textContent = '';
+    _pmFile = file;
+    var reader = new FileReader();
+    reader.onload = function(e) {
+      document.getElementById('pm-preview-img').src = e.target.result;
+      document.getElementById('pm-preview-wrap').style.display = 'inline-block';
+      document.getElementById('pm-upload-label-text').style.display = 'none';
+    };
+    reader.readAsDataURL(file);
+  };
+
+  window._pmRemoveFile = function() {
+    _pmFile = null;
+    var input = document.getElementById('pm-receipt-input');
+    if (input) input.value = '';
+    var wrap = document.getElementById('pm-preview-wrap');
+    if (wrap) wrap.style.display = 'none';
+    var lbl = document.getElementById('pm-upload-label-text');
+    if (lbl) lbl.style.display = 'block';
+  };
+
+  window._pmSubmit = async function() {
+    var msgEl = document.getElementById('pm-msg');
+    var btn   = document.getElementById('pm-submit-btn');
+    if (!_pmAnchor || !_pmUser) return;
+    if (!_pmFile) {
+      msgEl.style.color = '#e74c3c'; msgEl.textContent = '❌ الرجاء رفع صورة إيصال التحويل أولاً';
+      return;
+    }
+    var db = window.supabase;
+    if (!db) { msgEl.style.color = '#e74c3c'; msgEl.textContent = '❌ تعذّر الاتصال، حاول مجدداً'; return; }
+
+    btn.disabled = true; btn.textContent = '⏳ جاري الإرسال...';
+    msgEl.style.color = '#0a3d62'; msgEl.textContent = 'جاري رفع الإيصال وإرسال الطلب...';
+
+    try {
+      // 1) إنشاء/إعادة تعيين طلب الاشتراك كـ pending عبر الدالة الحالية
+      var reqRes = await db.rpc('request_section_subscription', { p_section_id: _pmAnchor.id });
+      if (reqRes.error) throw reqRes.error;
+
+      // 2) رفع صورة الإيصال في bucket خاص
+      var ext = (_pmFile.name.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';
+      var path = _pmUser.id + '/' + _pmAnchor.id + '-' + Date.now() + '.' + ext;
+      var upRes = await db.storage.from('receipts').upload(path, _pmFile, { upsert: true, contentType: _pmFile.type });
+      if (upRes.error) throw upRes.error;
+
+      // 3) ربط الإيصال بالطلب المُعلَّق لهذا المستخدم/الشعبة
+      var updRes = await db.from('section_subscriptions')
+        .update({ receipt_url: 'receipts/' + path, reject_reason: null })
+        .eq('user_id', _pmUser.id).eq('section_id', _pmAnchor.id);
+      if (updRes.error) throw updRes.error;
+
+      msgEl.style.color = '#17a589';
+      msgEl.textContent = '✅ تم إرسال طلبك بنجاح — سيتم تفعيل اشتراكك بعد مراجعة الأدمن';
+      btn.textContent = '✅ تم الإرسال';
+      _showToast ? _showToast('✅ تم إرسال طلب الاشتراك، بانتظار المراجعة', 'success') : null;
+
+      if (typeof window._afterPaymentRequestSubmitted === 'function') {
+        window._afterPaymentRequestSubmitted(_pmUser.id, _pmAnchor.id);
+      }
+      setTimeout(closePaymentModal, 1400);
+    } catch(err) {
+      console.error('[PAYMENT] submit error:', err);
+      btn.disabled = false; btn.textContent = '🚀 إرسال الطلب';
+      msgEl.style.color = '#e74c3c';
+      msgEl.textContent = '❌ حدث خطأ: ' + (err.message || 'حاول مجدداً');
+    }
+  };
 })();
 </script>
 
