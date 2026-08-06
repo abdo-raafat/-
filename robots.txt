@@ -1,1 +1,4 @@
+User-agent: *
+Allow: /
 
+Sitemap: https://abdo-raafat.github.io/-/sitemap.xml
