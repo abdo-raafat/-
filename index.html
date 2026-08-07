@@ -2289,6 +2289,7 @@ body.sm-open {
   <div class="breadcrumb" id="breadcrumb"></div>
   <div style="display:flex;align-items:center;gap:8px;">
     <button id="dark-mode-btn" onclick="toggleDarkMode()" title="الوضع الليلي" aria-label="تبديل الوضع الليلي">🌙</button>
+    <button id="admin-pw-login-btn" onclick="openPasswordLogin()" title="دخول أدمن الشعبة" aria-label="دخول أدمن الشعبة" style="background:transparent;border:none;color:inherit;cursor:pointer;font-size:1.05rem;opacity:.75;padding:4px 6px;">🔑</button>
     <div id="user-box">
       <button class="chatgpt-login-btn" onclick="loginWithGoogle()">🔐 دخول</button>
     </div>
@@ -2945,12 +2946,24 @@ function buildSectionCard(sec) {
     </div>`;
 }
 
-function buildSubSectionCard(sec) {
+function buildSubSectionCard(sec, locked) {
   const display = SECTION_DISPLAY_MAP[sec.title] || {};
   const icon  = display.icon  || sec.icon           || '📁';
   const color = display.color || sec.gradient_color || 'linear-gradient(135deg,#1a3a5c,#17a589)';
   const tags  = (sec.tags || '').split(',').map(t => t.trim()).filter(Boolean)
                   .map(t => `<span class="tag">${t}</span>`).join('');
+  if (locked) {
+    return `
+    <div class="dept-card dept-card-locked" onclick="window._openLockNoticeModal(window.__currentChapterGate)" data-section-id="${sec.id}" style="cursor:pointer">
+      <div class="card-top" style="background:${color};filter:grayscale(.6);opacity:.72">
+        <span class="card-icon">🔒</span>
+        <div class="card-title">${sec.title}</div>
+        <div class="card-sub">${sec.subtitle || ''}</div>
+      </div>
+      <div class="card-body"><div class="tag-row">${tags}</div></div>
+      <button class="btn-enter" style="background:#8a97a3">🔒 يتطلب اشتراكاً</button>
+    </div>`;
+  }
   return `
     <div class="dept-card" onclick="window.__sectionAction_${sec.id}(window.__sectionData_${sec.id})" data-section-id="${sec.id}">
       <div class="card-top" style="background:${color}">
@@ -3096,6 +3109,13 @@ async function _renderDynamicSectionPage(sec) {
   window.scrollTo(0, 0);
   updateBreadcrumb();
 
+  // ── فحص اشتراك الشعبة: لو محجوبة، الفصل الأول يظل مفتوحاً وباقي الفصول تُعرض مقفولة ──
+  var gate = null;
+  if (window.checkSectionAccess && sec && sec.id) {
+    gate = await window.checkSectionAccess(sec.id);
+    if (gate) { window._lastGateSec = sec; window.__currentChapterGate = gate; }
+  }
+
   try {
     // تحميل الأبناء والموارد بالتوازي — مرة واحدة فقط (الـ cache يمنع التكرار)
     const [children, sectionResources] = await Promise.all([
@@ -3103,9 +3123,9 @@ async function _renderDynamicSectionPage(sec) {
       loadSectionResources(sec.id)
     ]);
 
-    // عرض الموارد
+    // عرض الموارد (مقفولة إذا كانت الشعبة محجوبة)
     if (resourcesEl) {
-      resourcesEl.innerHTML = buildResourcesHTML(sectionResources);
+      resourcesEl.innerHTML = buildResourcesHTML(sectionResources, gate);
     }
 
     if (children.length === 0) {
@@ -3119,10 +3139,11 @@ async function _renderDynamicSectionPage(sec) {
       if (content.length > 0 || leafResources.length > 0) {
         // عرض الموارد في الـ grid
         if (leafResources.length > 0 && resourcesEl) {
-          resourcesEl.innerHTML = buildResourcesHTML(leafResources);
+          resourcesEl.innerHTML = buildResourcesHTML(leafResources, gate);
         }
         if (content.length > 0) {
-          renderResourceCards('dynamic-section-grid', content);
+          renderResourceCards('dynamic-section-grid', content, gate);
+          if (gate) gridEl.insertAdjacentHTML('beforeend', window._renderSubscriptionGateHTML(gate));
         } else {
           gridEl.innerHTML = '';
         }
@@ -3148,8 +3169,9 @@ async function _renderDynamicSectionPage(sec) {
       window[`__sectionData_${child.id}`] = child;
       window[`__sectionAction_${child.id}`] = (s) => openDynamicSubSection(s);
     });
-    document.getElementById('dynamic-section-grid').innerHTML =
-      children.map(child => buildSubSectionCard(child)).join('');
+    var gridHtml = children.map((child, idx) => buildSubSectionCard(child, !!gate && idx > 0)).join('');
+    if (gate) gridHtml += window._renderSubscriptionGateHTML(gate);
+    document.getElementById('dynamic-section-grid').innerHTML = gridHtml;
   } catch(err) {
     console.error('[_renderDynamicSectionPage] خطأ:', err.message);
     // ✅ زر إعادة المحاولة عند الفشل
@@ -3179,31 +3201,8 @@ async function openDynamicSection(sec) {
   const numId = toValidId(sec.id);
   if (numId === null) { alert('قريباً'); return; }
 
-  // ── فحص اشتراك الشعبة قبل الدخول ──
-  if (window.checkSectionAccess) {
-    const gate = await window.checkSectionAccess(numId);
-    if (gate) {
-      window._lastGateSec = sec;
-      const secCopy = { ...sec };
-      state.navigationStack.push({
-        label: sec.title,
-        restore: () => { window._lastGateSec = secCopy; window._paintSubscriptionGate('dynamic-section-grid', gate); },
-      });
-      window._lastOpenSectionId = sec.id;
-      document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-      document.getElementById('page-dynamic-section').classList.add('active');
-      document.getElementById('dynamic-section-title').textContent = sec.title;
-      document.getElementById('dynamic-section-sub').textContent = sec.subtitle || '';
-      const resEl = document.getElementById('dynamic-section-resources-container');
-      if (resEl) resEl.innerHTML = '';
-      window.scrollTo(0, 0);
-      updateBreadcrumb();
-      window._paintSubscriptionGate('dynamic-section-grid', gate);
-      return;
-    }
-  }
-
-  // أضف الخطوة الحالية للـ stack مع snapshot لإعادة رسمها عند الرجوع
+  // ── فحص الاشتراك (إن وُجد) يتم داخل _renderDynamicSectionPage نفسها،
+  // بحيث يظل «الفصل الأول» مفتوحاً دائماً وباقي الفصول تظهر مقفولة ──
   const secCopy = { ...sec }; // نسخة ثابتة
   state.navigationStack.push({
     label: sec.title,
@@ -3254,24 +3253,11 @@ async function openDynamicSubSection(sec) {
  * يقبل البيانات المحمّلة مسبقاً لتجنب double-fetch
  */
 async function _openContentPage(sec, _preloadedContent, _preloadedResources) {
-  // ── فحص اشتراك الشعبة قبل عرض المحتوى ──
+  // ── فحص اشتراك الشعبة: لو محجوبة، الفصل الأول (أول عنصر) يظل مفتوحاً وباقي الفصول تُعرض مقفولة ──
+  var gate = null;
   if (window.checkSectionAccess && sec && sec.id) {
-    const gate = await window.checkSectionAccess(sec.id);
-    if (gate) {
-      window._lastGateSec = sec;
-      window._currentContentSec = sec;
-      document.getElementById('content-icon').textContent = sec.icon || '🔒';
-      document.getElementById('content-title').textContent = sec.title;
-      document.getElementById('content-subtitle').textContent = '';
-      document.getElementById('content-area').innerHTML = window._renderSubscriptionGateHTML(gate);
-      const chResEl = document.getElementById('chapter-resources-container');
-      if (chResEl) chResEl.innerHTML = '';
-      document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-      document.getElementById('page-content').classList.add('active');
-      window.scrollTo(0, 0);
-      updateBreadcrumb();
-      return;
-    }
+    gate = await window.checkSectionAccess(sec.id);
+    if (gate) { window._lastGateSec = sec; window.__currentChapterGate = gate; }
   }
 
   // حفظ القسم الحالي لإعادة التحميل التلقائي
@@ -3281,7 +3267,7 @@ async function _openContentPage(sec, _preloadedContent, _preloadedResources) {
   const content   = _preloadedContent  !== undefined ? _preloadedContent  : await loadSectionContent(sec.id);
   const resources = _preloadedResources !== undefined ? _preloadedResources : await loadSectionResources(sec.id);
 
-  document.getElementById('content-icon').textContent = sec.icon || '📁';
+  document.getElementById('content-icon').textContent = sec.icon || (gate ? '🔒' : '📁');
   document.getElementById('content-title').textContent = sec.title;
   const parentLabel = state.navigationStack.length >= 2
     ? state.navigationStack[state.navigationStack.length - 2].label : '';
@@ -3292,12 +3278,17 @@ async function _openContentPage(sec, _preloadedContent, _preloadedResources) {
   const area = document.getElementById('content-area');
   let html = '';
 
+  // بطاقة الاشتراك تظهر أعلى المحتوى (وليس بديلاً عنه) حتى يظل الفصل الأول مفتوحاً
+  if (gate) {
+    html += window._renderSubscriptionGateHTML(gate);
+  }
+
   if (content.length > 0) {
-    html += buildContentHTML(content);
+    html += buildContentHTML(content, gate);
   }
 
   if (resources.length > 0) {
-    html += buildResourcesInsideArea(resources);
+    html += buildResourcesInsideArea(resources, gate);
   }
 
   if (html === '') {
@@ -3338,9 +3329,20 @@ function renderPreformatted(text) {
 /**
  * buildContentHTML — يبني HTML لعناصر section_content
  */
-function buildContentHTML(contentItems) {
+function buildContentHTML(contentItems, gate) {
   let html = '';
-  contentItems.forEach(item => {
+  contentItems.forEach((item, idx) => {
+    if (gate && idx > 0) {
+      html += `
+        <div class="resource-item" onclick="window._openLockNoticeModal(window.__currentChapterGate)" style="cursor:pointer;margin-bottom:10px;padding:18px 22px;opacity:.65">
+          <div class="ri-icon" style="font-size:2rem">🔒</div>
+          <div class="ri-info">
+            <h5 style="font-size:1rem;font-weight:800;color:var(--primary)">${item.title || ''}</h5>
+            <p style="font-size:.82rem;margin-top:3px;color:#c0392b">🔒 يتطلب اشتراكاً لعرض هذا الفصل</p>
+          </div>
+        </div>`;
+      return;
+    }
     if (item.content_type === 'video') {
       const safeUrl = (item.url || '').replace(/'/g,"\\'");
       const safeTitle = (item.title || 'فيديو شرح').replace(/'/g,"\\'");
@@ -3384,8 +3386,21 @@ function renderDynamicContent(contentItems) {
 /**
  * buildResourcesInsideArea — يبني الموارد داخل content-area بشكل كبير وواضح
  */
-function buildResourcesInsideArea(resources) {
+function buildResourcesInsideArea(resources, gate) {
   const cards = resources.map(r => {
+    if (gate) {
+      return `
+      <div onclick="window._openLockNoticeModal(window.__currentChapterGate)" style="
+        display:flex;align-items:center;gap:18px;background:#f8fbff;border:2px solid #e3eaf5;
+        border-radius:16px;padding:20px 24px;cursor:pointer;margin-bottom:12px;opacity:.65;">
+        <div style="font-size:2.2rem;width:60px;height:60px;background:#8a97a3;border-radius:16px;
+          display:flex;align-items:center;justify-content:center;flex-shrink:0;">🔒</div>
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:1.05rem;font-weight:800;color:var(--primary);margin-bottom:4px;line-height:1.4">${r.title || 'مورد'}</div>
+          <p style="font-size:.85rem;color:#c0392b;margin-top:6px">🔒 يتطلب اشتراكاً لعرضه</p>
+        </div>
+      </div>`;
+    }
     const icon = getResourceIcon(r);
     const safeUrl = (r.file_url || '').replace(/'/g,"\\'").replace(/"/g,'&quot;');
     const safeTitle = (r.title || 'مورد').replace(/'/g,"\\'");
@@ -3440,10 +3455,22 @@ function buildResourcesInsideArea(resources) {
 /**
  * renderResourceCards — يعرض عناصر محتوى على هيئة link-cards في grid
  */
-function renderResourceCards(containerId, items) {
+function renderResourceCards(containerId, items, gate) {
   const container = document.getElementById(containerId);
   if (!container) return;
-  let html = items.map(item => {
+  let html = items.map((item, idx) => {
+    if (gate && idx > 0) {
+      return `
+      <div class="link-card lc-blue" style="cursor:pointer;opacity:.65" onclick="window._openLockNoticeModal(window.__currentChapterGate)">
+        <div class="lc-top">
+          <div class="lc-icon">🔒</div>
+          <div class="lc-info">
+            <h3>${item.title || ''}</h3>
+            <p style="color:#c0392b">🔒 يتطلب اشتراكاً لعرض هذا الفصل</p>
+          </div>
+        </div>
+      </div>`;
+    }
     const safeUrl = (item.url || '').replace(/'/g,"\\'");
     const safeTitle = (item.title || '').replace(/'/g,"\\'");
     const safeType = (item.content_type || '').replace(/'/g,"\\'");
@@ -3474,9 +3501,19 @@ function getResourceIcon(resource) {
   return '📄';
 }
 
-function buildResourcesHTML(resources) {
+function buildResourcesHTML(resources, gate) {
   if (!resources || resources.length === 0) return '';
   const cards = resources.map(r => {
+    if (gate) {
+      return `
+      <div class="resource-item" onclick="window._openLockNoticeModal(window.__currentChapterGate)" style="cursor:pointer;opacity:.65">
+        <div class="ri-icon" style="font-size:1.7rem;min-width:36px;text-align:center">🔒</div>
+        <div class="ri-info">
+          <h5 style="font-size:.88rem;font-weight:700;color:var(--primary)">${r.title || 'مورد'}</h5>
+          <p style="font-size:.72rem;color:#c0392b;margin-top:2px;line-height:1.4">🔒 يتطلب اشتراكاً لعرضه</p>
+        </div>
+      </div>`;
+    }
     const icon = getResourceIcon(r);
     const desc = r.description ? `<p style="font-size:.72rem;color:#777;margin-top:2px;line-height:1.4">${r.description}</p>` : '';
     const safeUrl = (r.file_url || '').replace(/'/g,"\\'").replace(/"/g,'&quot;');
@@ -5001,15 +5038,22 @@ function _renderUserBox(user, role) {
   if (!box) return;
   if (!user) {
     window._isAdminUser = false;
+    window._isBranchAdmin = false;
     window._currentUserRole = null;
+    window._branchAdminSectionIds = [];
+    window._branchAdminPerms = null;
     document.body.classList.remove('is-admin');
     document.body.classList.remove('content-protected'); // المحتوى مجاني للجميع
     box.innerHTML = '<button class="chatgpt-login-btn" onclick="loginWithGoogle()">🔐 دخول</button>';
     return;
   }
   // role يأتي من profiles.role في Supabase — ليس من HTML
-  const isAdmin = (role === 'admin');
-  window._isAdminUser = isAdmin;
+  const isSuperAdmin  = (role === 'admin');
+  const isBranchAdmin = (role === 'branch_admin');
+  const isAdmin = isSuperAdmin || isBranchAdmin; // كلاهما يرى واجهة الأدمن، لكن بصلاحيات مختلفة تماماً من القاعدة
+  window._isAdminUser  = isAdmin;
+  window._isSuperAdmin = isSuperAdmin;
+  window._isBranchAdmin = isBranchAdmin;
   window._currentUserRole = role || 'user';
   if (isAdmin) {
     document.body.classList.add('is-admin');
@@ -5021,13 +5065,18 @@ function _renderUserBox(user, role) {
     _checkAndApplySubscription(user.id);
   }
   if (isAdmin) {
+    var badge = isSuperAdmin ? '👑' : '🛡️';
     box.innerHTML =
       '<div class="user-card">'
-      + '<span class="user-email">👑 ' + user.email + '</span>'
+      + '<span class="user-email">' + badge + ' ' + user.email + '</span>'
       + '<button style="background:rgba(255,255,255,.2);color:#fff;border:1.5px solid rgba(255,255,255,.35);padding:6px 12px;border-radius:16px;cursor:pointer;font-size:12px;font-family:inherit;" onclick="toggleAdminPanel()">⚙️ تحكم</button>'
       + '<button class="logout-btn" onclick="logoutUser()">خروج</button>'
       + '</div>';
-    adminLoadSections();
+    (async function() {
+      if (isBranchAdmin) { await _loadBranchAdminScope(user.id); }
+      adminLoadSections();
+      _applyBranchAdminPanelGating();
+    })();
   } else {
     box.innerHTML =
       '<div class="user-card">'
@@ -5049,6 +5098,52 @@ async function _fetchUserRole(userId) {
     if (error) { console.warn('[AUTH] fetchUserRole error:', error.message); return null; }
     return (data && data.role) ? data.role : 'user';
   } catch(e) { return null; }
+}
+
+// ════════════════════════════════════════════════════════════════
+// BRANCH ADMIN — نظام صلاحيات مبني بالكامل على قاعدة البيانات (admin_permissions)
+// لا توجد أي شعبة أو صلاحية مكتوبة يدوياً في الكود — كل شيء يُقرأ من Supabase
+// ════════════════════════════════════════════════════════════════
+window._branchAdminSectionIds = [];   // كل أقسام الشعبة (وكل الفصول/المواد التابعة لها) المسموح بها لهذا الأدمن
+window._branchAdminPerms = null;      // آخر صف صلاحيات مُحمَّل { can_manage_materials, can_manage_chapters, ... }
+window._branchAdminRows = [];         // كل صفوف admin_permissions الخاصة بهذا المستخدم (قد يدير أكثر من قسم لنفس الشعبة)
+
+// يجلب صلاحيات أدمن الشعبة + يحسب كل الأقسام الفرعية (Chapters/Materials) عبر RPC في القاعدة
+async function _loadBranchAdminScope(userId) {
+  window._branchAdminSectionIds = [];
+  window._branchAdminPerms = null;
+  window._branchAdminRows = [];
+  if (!window.supabase || !userId) return;
+  try {
+    var { data, error } = await window.supabase
+      .from('admin_permissions')
+      .select('*, site_sections(title)')
+      .eq('user_id', userId);
+    if (error) { console.warn('[BranchAdmin] فشل تحميل الصلاحيات:', error.message); return; }
+    if (!data || data.length === 0) return;
+    window._branchAdminRows = data;
+
+    // ادمج كل الصلاحيات (لو الأدمن مسؤول عن أكثر من صف — يكفي أن يملك الصلاحية في صف واحد)
+    var merged = {
+      can_manage_materials: false, can_manage_chapters: false,
+      can_manage_subscriptions: false, can_manage_payments: false,
+      can_manage_chats: false, can_view_stats: false
+    };
+    data.forEach(function(row) {
+      Object.keys(merged).forEach(function(k) { if (row[k]) merged[k] = true; });
+    });
+    window._branchAdminPerms = merged;
+
+    // احسب كل الأقسام الفرعية (الفصول + المواد) لكل شعبة يديرها عبر RPC واحدة لكل قسم
+    var idSets = await Promise.all(data.map(function(row) {
+      return window.supabase.rpc('get_branch_subtree_ids', { root_id: row.branch_section_id })
+        .then(function(res) { return (res && res.data) || [row.branch_section_id]; })
+        .catch(function() { return [row.branch_section_id]; });
+    }));
+    var flat = [];
+    idSets.forEach(function(arr) { (arr || []).forEach(function(id) { if (flat.indexOf(id) === -1) flat.push(id); }); });
+    window._branchAdminSectionIds = flat;
+  } catch(e) { console.warn('[BranchAdmin] خطأ:', e.message); }
 }
 
 window.checkUser = async function() {
@@ -5710,6 +5805,7 @@ window.checkBanStatus = async function(email) {
       <button class="ap-nav-btn" onclick="apSwitchTab('users')"     id="ap-tab-users"     role="tab">🔒 الحظر</button>
       <button class="ap-nav-btn" onclick="apSwitchTab('messages')"  id="ap-tab-messages"  role="tab">💬 Messages</button>
       <button class="ap-nav-btn" onclick="apSwitchTab('content')"   id="ap-tab-content"   role="tab">➕ المحتوى</button>
+      <button class="ap-nav-btn" onclick="apSwitchTab('branchadmins')" id="ap-tab-branchadmins" role="tab">🛡️ أدمن الشعب</button>
     </nav>
 
     <!-- Body -->
@@ -6033,9 +6129,108 @@ window.checkBanStatus = async function(email) {
       </div>
       <!-- End Content Tab -->
 
+      <!-- ═══════════════════ TAB: BRANCH ADMINS (Super Admin only) ═══════════════════ -->
+      <div class="ap-tab-panel" id="ap-panel-branchadmins" role="tabpanel">
+        <div class="ap-section-heading" style="margin:0 0 10px;border:none;padding:0;">🛡️ إدارة أدمن الشعب — صلاحيات مبنية بالكامل من قاعدة البيانات</div>
+        <div style="font-size:.76rem;color:#888;margin-bottom:14px;">
+          هذه الشاشة فقط لسوبر أدمن. عيّن أي مستخدم (لازم يكون سجّل دخول مرة واحدة على الأقل ليكون له صف في profiles)
+          ليصبح "أدمن شعبة" — واختر الشعبة (قسم رئيسي من site_sections) وصلاحياته. لا حاجة لأي تعديل بالكود مستقبلاً.
+        </div>
+        <div style="background:#f5f9fd;border-radius:12px;padding:14px;margin-bottom:16px;">
+          <div class="ap-field">
+            <label class="ap-label">بريد المستخدم (أو username@bsm-admin.local لحسابات كلمة المرور)</label>
+            <input id="ba-user-email" type="text" class="ap-input" placeholder="example@gmail.com أو bdatyabdo014@bsm-admin.local" style="direction:ltr;text-align:right;">
+          </div>
+          <div class="ap-field">
+            <label class="ap-label">الشعبة (القسم الرئيسي)</label>
+            <select id="ba-branch-select" class="ap-select"><option value="">اختر الشعبة</option></select>
+          </div>
+          <div class="ap-field">
+            <label class="ap-label">الصلاحيات</label>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:.8rem;">
+              <label><input type="checkbox" id="ba-perm-materials" checked> إدارة المواد</label>
+              <label><input type="checkbox" id="ba-perm-chapters" checked> إدارة الفصول</label>
+              <label><input type="checkbox" id="ba-perm-subs" checked> طلبات الاشتراك</label>
+              <label><input type="checkbox" id="ba-perm-payments" checked> طلبات الدفع</label>
+              <label><input type="checkbox" id="ba-perm-chats" checked> إدارة المحادثات</label>
+              <label><input type="checkbox" id="ba-perm-stats" checked> مشاهدة الإحصائيات</label>
+            </div>
+          </div>
+          <button onclick="baAssignBranchAdmin()" class="ap-btn ap-btn-primary" style="width:100%;justify-content:center;padding:11px;margin-top:6px;">💾 حفظ / تعيين أدمن الشعبة</button>
+          <div id="ba-msg" style="margin-top:8px;font-size:.8rem;text-align:center;min-height:18px;"></div>
+        </div>
+        <div class="ap-section-heading" style="margin:0 0 8px;border:none;padding:0;">📋 أدمن الشعب الحاليين</div>
+        <div id="ba-list-body"><div class="ap-empty">اضغط "تحديث" لعرض القائمة</div></div>
+        <button onclick="baLoadList()" class="ap-btn ap-btn-ghost" style="margin-top:8px;">🔄 تحديث القائمة</button>
+      </div>
+      <!-- End Branch Admins Tab -->
+
     </div><!-- /ap-body -->
   </div><!-- /ap-modal -->
 </div><!-- /admin-panel -->
+
+<!-- ==================== BRANCH ADMIN PASSWORD LOGIN MODAL ==================== -->
+<div id="pw-login-overlay" style="display:none;position:fixed;inset:0;z-index:9999998;background:rgba(10,20,40,.75);backdrop-filter:blur(4px);align-items:center;justify-content:center;padding:16px;">
+  <div style="background:var(--card-bg,#fff);border-radius:16px;max-width:360px;width:100%;padding:24px;box-shadow:0 20px 60px rgba(0,0,0,.4);">
+    <div style="font-weight:800;font-size:1.05rem;margin-bottom:4px;">🔑 دخول أدمن الشعبة</div>
+    <div style="font-size:.78rem;color:#888;margin-bottom:16px;">لحسابات أدمن الشعب (Branch Admin) — بيانات الدخول من مسؤول المنصة.</div>
+    <input id="pw-login-username" type="text" placeholder="اسم المستخدم" autocomplete="username" style="width:100%;box-sizing:border-box;padding:10px 12px;border-radius:9px;border:1px solid #d5e2ee;margin-bottom:10px;font-family:inherit;direction:ltr;text-align:right;">
+    <input id="pw-login-password" type="password" placeholder="كلمة المرور" autocomplete="current-password" style="width:100%;box-sizing:border-box;padding:10px 12px;border-radius:9px;border:1px solid #d5e2ee;margin-bottom:14px;font-family:inherit;direction:ltr;text-align:right;">
+    <div id="pw-login-msg" style="font-size:.78rem;min-height:18px;margin-bottom:8px;color:#e74c3c;"></div>
+    <div style="display:flex;gap:8px;">
+      <button onclick="submitPasswordLogin()" class="ap-btn ap-btn-primary" style="flex:1;justify-content:center;padding:10px;">دخول</button>
+      <button onclick="closePasswordLogin()" class="ap-btn ap-btn-ghost" style="flex:1;justify-content:center;padding:10px;">إلغاء</button>
+    </div>
+  </div>
+</div>
+<script>
+// ==================== BRANCH ADMIN — Username/Password Login ====================
+// اسم المستخدم يُحوَّل داخلياً لبريد وهمي (username@bsm-admin.local) لأن Supabase Auth
+// يعتمد على البريد الإلكتروني. هذا لا يؤثر على حسابات Google العادية للطلاب.
+var BSM_ADMIN_EMAIL_DOMAIN = '@bsm-admin.local';
+
+window.openPasswordLogin = function() {
+  var ov = document.getElementById('pw-login-overlay');
+  if (!ov) return;
+  ov.style.display = 'flex';
+  document.getElementById('pw-login-msg').textContent = '';
+  document.getElementById('pw-login-username').value = '';
+  document.getElementById('pw-login-password').value = '';
+  setTimeout(function(){ document.getElementById('pw-login-username').focus(); }, 50);
+};
+window.closePasswordLogin = function() {
+  var ov = document.getElementById('pw-login-overlay');
+  if (ov) ov.style.display = 'none';
+};
+
+window.submitPasswordLogin = async function() {
+  var msgEl = document.getElementById('pw-login-msg');
+  var uname = (document.getElementById('pw-login-username').value || '').trim();
+  var pass  = document.getElementById('pw-login-password').value || '';
+  if (!uname || !pass) { msgEl.textContent = 'من فضلك أدخل اسم المستخدم وكلمة المرور'; return; }
+  msgEl.style.color = '#888';
+  msgEl.textContent = 'جاري تسجيل الدخول...';
+  try {
+    var db = await _waitForSupabase();
+    var email = uname.indexOf('@') > -1 ? uname : (uname + BSM_ADMIN_EMAIL_DOMAIN);
+    var { data, error } = await db.auth.signInWithPassword({ email: email, password: pass });
+    if (error) throw error;
+    msgEl.style.color = '#17a589';
+    msgEl.textContent = '✅ تم تسجيل الدخول';
+    setTimeout(closePasswordLogin, 500);
+  } catch(err) {
+    msgEl.style.color = '#e74c3c';
+    msgEl.textContent = '❌ بيانات الدخول غير صحيحة أو الحساب غير موجود';
+    console.warn('[PW-LOGIN] error:', err && err.message);
+  }
+};
+document.getElementById('pw-login-overlay') && document.getElementById('pw-login-overlay').addEventListener('click', function(e){
+  if (e.target === this) closePasswordLogin();
+});
+document.getElementById('pw-login-password') && document.getElementById('pw-login-password').addEventListener('keydown', function(e){
+  if (e.key === 'Enter') submitPasswordLogin();
+});
+</script>
 
 <style>
 #admin-panel select:focus, #admin-panel input:focus, #admin-panel textarea:focus {
@@ -6050,8 +6245,15 @@ window.checkBanStatus = async function(email) {
 async function adminLoadSections() {
   if (!window.supabase) return;
   try {
-    const { data } = await window.supabase.from('site_sections').select('id, title, parent_id, subtitle, requires_subscription, payment_method, payment_number, price').order('display_order');
+    var { data } = await window.supabase.from('site_sections').select('id, title, parent_id, subtitle, requires_subscription, payment_method, payment_number, price').order('display_order');
     if (!data) return;
+    // ── أدمن الشعبة: يرى فقط أقسام شعبته (المحتوى نفسه قراءته عامة، لكن لوحة التحكم مقيَّدة) ──
+    if (window._isBranchAdmin && Array.isArray(window._branchAdminSectionIds) && window._branchAdminSectionIds.length) {
+      var allowed = window._branchAdminSectionIds;
+      data = data.filter(function(s) { return allowed.indexOf(s.id) > -1; });
+    } else if (window._isBranchAdmin) {
+      data = []; // لا يوجد نطاق مُعيَّن له بعد
+    }
     window._adminSections = data;
     const selAdd  = document.getElementById('admin-section-select');
     const selList = document.getElementById('admin-list-section');
@@ -6322,6 +6524,45 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 });
 
+// ════════════════════════════════════════════════════════════════
+// BRANCH ADMIN — إخفاء التابات والصلاحيات غير المسموحة (طبقة UX فقط،
+// الحماية الحقيقية تتم عبر RLS في قاعدة البيانات — انظر ملف SQL المرفق)
+// ════════════════════════════════════════════════════════════════
+function _applyBranchAdminPanelGating() {
+  var isSuper  = window._isSuperAdmin === true;
+  var isBranch = window._isBranchAdmin === true;
+
+  // تاب "أدمن الشعب" لسوبر أدمن فقط
+  var baTab = document.getElementById('ap-tab-branchadmins');
+  if (baTab) baTab.style.display = isSuper ? '' : 'none';
+
+  if (!isBranch) {
+    // مستخدم عادي أو سوبر أدمن: أظهر كل التابات كما هي
+    ['ap-tab-requests','ap-tab-usermgmt','ap-tab-users','ap-tab-messages','ap-tab-divsubs','ap-tab-content','ap-tab-dashboard']
+      .forEach(function(id) { var el = document.getElementById(id); if (el) el.style.display = ''; });
+    return;
+  }
+
+  var perms = window._branchAdminPerms || {};
+
+  // أدمن الشعبة لا يرى: Requests العامة، إدارة المستخدمين، الحظر، Messages — كلها خارج نطاق شعبته
+  ['ap-tab-requests','ap-tab-usermgmt','ap-tab-users','ap-tab-messages'].forEach(function(id) {
+    var el = document.getElementById(id); if (el) el.style.display = 'none';
+  });
+  var divsubsTab = document.getElementById('ap-tab-divsubs');
+  if (divsubsTab) divsubsTab.style.display = (perms.can_manage_subscriptions || perms.can_manage_payments) ? '' : 'none';
+  var contentTab = document.getElementById('ap-tab-content');
+  if (contentTab) contentTab.style.display = (perms.can_manage_materials || perms.can_manage_chapters) ? '' : 'none';
+  var dashTab = document.getElementById('ap-tab-dashboard');
+  if (dashTab) dashTab.style.display = perms.can_view_stats ? '' : 'none';
+
+  // افتح أول تاب متاح تلقائياً
+  var firstVisible = ['ap-tab-dashboard','ap-tab-divsubs','ap-tab-content'].find(function(id) {
+    var el = document.getElementById(id); return el && el.style.display !== 'none';
+  });
+  if (firstVisible) apSwitchTab(firstVisible.replace('ap-tab-',''));
+}
+
 // ── apSwitchTab ─────────────────────────────────────────────────
 function apSwitchTab(tab) {
   // Update nav buttons
@@ -6347,6 +6588,137 @@ function apSwitchTab(tab) {
   else if (tab === 'users')    apLoadUsers();
   else if (tab === 'messages') apLoadMessages();
   else if (tab === 'content')  { /* already managed by adminTab */ }
+  else if (tab === 'branchadmins') { baPopulateBranchSelect(); baLoadList(); }
+}
+
+// ── لوحة إحصائيات مقيَّدة بشعبة أدمن الشعبة فقط (تقرأ من site_sections + section_content + subscriptions) ──
+async function _apLoadBranchDashboard() {
+  var heading = document.querySelector('#ap-panel-dashboard .ap-section-heading');
+  var branchTitle = (window._branchAdminRows[0] && window._branchAdminRows[0].site_sections && window._branchAdminRows[0].site_sections.title) || 'شعبتك';
+  if (heading) heading.textContent = '📊 إحصائيات شعبة "' + branchTitle + '" فقط';
+  var scope = window._branchAdminSectionIds || [];
+  if (!scope.length) { scope = [-1]; }
+  try {
+    var [contentRes, subsRes] = await Promise.all([
+      window.supabase.from('section_content').select('id', { count: 'exact', head: true }).in('section_id', scope),
+      window.supabase.from('subscriptions').select('id, status').in('section_id', scope)
+    ]);
+    var allSubs = subsRes.data || [];
+    _apSetStat('ap-stat-users',   scope.length);       // عدد أقسام الشعبة (فصول/مواد)
+    _apSetStat('ap-stat-pending', allSubs.filter(function(s){ return s.status === 'pending'; }).length);
+    _apSetStat('ap-stat-active',  allSubs.filter(function(s){ return s.status === 'active';  }).length);
+    _apSetStat('ap-stat-msgs',    '—');
+    _apSetStat('ap-stat-content', contentRes.count || 0);
+    var actEl = document.getElementById('ap-recent-activity');
+    if (actEl) actEl.innerHTML = '<div style="font-size:.8rem;color:#888;">إحصائيات هذه اللوحة خاصة بشعبتك فقط.</div>';
+    // بدّل تسمية بطاقة "المستخدمين" لتناسب أدمن الشعبة
+    var lbl = document.querySelector('#ap-stat-users')?.nextElementSibling;
+    if (lbl) lbl.textContent = 'أقسام الشعبة';
+  } catch(e) { console.warn('[BranchDashboard] error:', e.message); }
+}
+
+// ════════════════════════════════════════════════════════════════
+// BRANCH ADMINS TAB (Super Admin only) — كل شيء مدفوع من قاعدة البيانات
+// أي أدمن شعبة جديد مستقبلاً يُنشأ من هنا فقط بدون أي تعديل بالكود
+// ════════════════════════════════════════════════════════════════
+async function baPopulateBranchSelect() {
+  if (!window.supabase) return;
+  var sel = document.getElementById('ba-branch-select');
+  if (!sel) return;
+  try {
+    var { data } = await window.supabase.from('site_sections').select('id, title, parent_id').order('display_order');
+    if (!data) return;
+    sel.innerHTML = '<option value="">اختر الشعبة</option>' +
+      data.map(function(s) { return '<option value="' + s.id + '">' + s.title + (s.parent_id ? '' : ' (رئيسي)') + '</option>'; }).join('');
+  } catch(e) { console.warn('[BranchAdmins] populate error:', e.message); }
+}
+
+async function baAssignBranchAdmin() {
+  var msgEl = document.getElementById('ba-msg');
+  var email = (document.getElementById('ba-user-email').value || '').trim();
+  var branchId = document.getElementById('ba-branch-select').value;
+  if (!email || !branchId) { msgEl.style.color = '#e74c3c'; msgEl.textContent = 'أدخل البريد واختر الشعبة'; return; }
+  msgEl.style.color = '#888'; msgEl.textContent = 'جاري الحفظ...';
+  try {
+    var { data: prof, error: profErr } = await window.supabase
+      .from('profiles').select('id, role').eq('email', email).maybeSingle();
+    if (profErr) throw profErr;
+    if (!prof) {
+      msgEl.style.color = '#e74c3c';
+      msgEl.textContent = '❌ هذا المستخدم لم يسجّل دخول من قبل — لازم يدخل مرة واحدة أولاً (Google أو كلمة مرور) ليُنشأ له حساب';
+      return;
+    }
+    var perms = {
+      can_manage_materials:     document.getElementById('ba-perm-materials').checked,
+      can_manage_chapters:      document.getElementById('ba-perm-chapters').checked,
+      can_manage_subscriptions: document.getElementById('ba-perm-subs').checked,
+      can_manage_payments:      document.getElementById('ba-perm-payments').checked,
+      can_manage_chats:         document.getElementById('ba-perm-chats').checked,
+      can_view_stats:           document.getElementById('ba-perm-stats').checked
+    };
+    var { error: upErr } = await window.supabase.from('admin_permissions').upsert(
+      Object.assign({ user_id: prof.id, branch_section_id: parseInt(branchId, 10) }, perms),
+      { onConflict: 'user_id,branch_section_id' }
+    );
+    if (upErr) throw upErr;
+    // رفع الدور إلى branch_admin (لا نغيّر سوبر أدمن موجود بالفعل)
+    if (prof.role !== 'admin') {
+      var { error: roleErr } = await window.supabase.from('profiles').update({ role: 'branch_admin' }).eq('id', prof.id);
+      if (roleErr) throw roleErr;
+    }
+    msgEl.style.color = '#17a589';
+    msgEl.textContent = '✅ تم تعيين/تحديث صلاحيات أدمن الشعبة بنجاح';
+    baLoadList();
+  } catch(err) {
+    msgEl.style.color = '#e74c3c';
+    msgEl.textContent = '❌ خطأ: ' + err.message;
+  }
+}
+
+async function baLoadList() {
+  var el = document.getElementById('ba-list-body');
+  if (!el || !window.supabase) return;
+  el.innerHTML = '<div class="ap-loading"><div class="spinner"></div> جاري التحميل...</div>';
+  try {
+    var { data, error } = await window.supabase
+      .from('admin_permissions')
+      .select('*, profiles(email), site_sections(title)')
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    if (!data || data.length === 0) { el.innerHTML = '<div class="ap-empty">لا يوجد أدمن شعب بعد</div>'; return; }
+    el.innerHTML = '<div class="ap-table-wrap"><table class="ap-table"><thead><tr>' +
+      '<th>البريد</th><th>الشعبة</th><th>الصلاحيات</th><th>إجراء</th>' +
+      '</tr></thead><tbody>' +
+      data.map(function(r) {
+        var email = (r.profiles && r.profiles.email) || r.user_id;
+        var branch = (r.site_sections && r.site_sections.title) || ('#' + r.branch_section_id);
+        var pTags = [];
+        if (r.can_manage_materials) pTags.push('مواد');
+        if (r.can_manage_chapters) pTags.push('فصول');
+        if (r.can_manage_subscriptions) pTags.push('اشتراكات');
+        if (r.can_manage_payments) pTags.push('دفع');
+        if (r.can_manage_chats) pTags.push('محادثات');
+        if (r.can_view_stats) pTags.push('إحصائيات');
+        return '<tr><td style="direction:ltr;font-size:.72rem;">' + email + '</td>' +
+          '<td>' + branch + '</td>' +
+          '<td style="font-size:.7rem;">' + pTags.join('، ') + '</td>' +
+          '<td><button class="ap-btn ap-btn-danger" onclick="baRemove(' + r.id + ')">🗑️ إزالة</button></td></tr>';
+      }).join('') + '</tbody></table></div>';
+  } catch(err) {
+    el.innerHTML = '<div class="ap-empty" style="color:#e74c3c;">❌ ' + err.message + '</div>';
+  }
+}
+
+async function baRemove(id) {
+  if (!confirm('هل تريد إزالة صلاحيات أدمن الشعبة هذه؟')) return;
+  try {
+    var { error } = await window.supabase.from('admin_permissions').delete().eq('id', id);
+    if (error) throw error;
+    _showToast ? _showToast('✅ تم الإزالة', 'success') : null;
+    baLoadList();
+  } catch(err) {
+    _showToast ? _showToast('❌ خطأ: ' + err.message, 'error') : alert(err.message);
+  }
 }
 
 // ────────────────────────────────────────────────────────────────
@@ -6354,6 +6726,8 @@ function apSwitchTab(tab) {
 // ────────────────────────────────────────────────────────────────
 async function apLoadDashboard() {
   if (!window.supabase) return;
+  // ── أدمن الشعبة: إحصائيات شعبته فقط، وليس إحصائيات الموقع كله ──
+  if (window._isBranchAdmin) { return _apLoadBranchDashboard(); }
   try {
     var [usersRes, subsRes, msgsRes, contentRes] = await Promise.all([
       window.supabase.from('profiles').select('id', { count: 'exact', head: true }),
@@ -6517,7 +6891,7 @@ async function apCancelSub(subId, userId) {
 }
 
 // ────────────────────────────────────────────────────────────────
-// DIVISION SUBSCRIPTIONS TAB (section_subscriptions — اشتراك مستقل لكل شعبة)
+// DIVISION SUBSCRIPTIONS TAB (subscriptions — اشتراك مستقل لكل شعبة عن طريق section_id)
 // ────────────────────────────────────────────────────────────────
 function _divSubStatusLabel(row) {
   if (row.status === 'active') {
@@ -6538,9 +6912,15 @@ async function apLoadDivisionSubs() {
   var filterVal = (document.getElementById('ap-divsub-filter') || {}).value || '';
   try {
     var query = window.supabase
-      .from('section_subscriptions')
+      .from('subscriptions')
       .select('*, site_sections(title, payment_method, payment_number)')
+      .not('section_id', 'is', null)
       .order('requested_at', { ascending: false });
+    // ── أدمن الشعبة: يرى فقط طلبات شعبته (الأمان الفعلي عبر RLS في القاعدة) ──
+    if (window._isBranchAdmin) {
+      var scope = window._branchAdminSectionIds || [];
+      query = query.in('section_id', scope.length ? scope : [-1]);
+    }
     if (filterVal === 'expired') {
       query = query.eq('status', 'active').lt('end_date', new Date().toISOString());
     } else if (filterVal) {
@@ -6593,7 +6973,7 @@ async function apApproveDivisionSub(id) {
   try {
     var end = new Date(); end.setDate(end.getDate() + 30);
     var { error } = await window.supabase
-      .from('section_subscriptions')
+      .from('subscriptions')
       .update({ status: 'active', start_date: new Date().toISOString(), end_date: end.toISOString(), reject_reason: null, reviewed_at: new Date().toISOString() })
       .eq('id', id);
     if (error) throw error;
@@ -6612,7 +6992,7 @@ async function apCancelDivisionSub(id) {
   if (reason === null) return;
   try {
     var { error } = await window.supabase
-      .from('section_subscriptions')
+      .from('subscriptions')
       .update({ status: 'cancelled', reject_reason: reason || null, reviewed_at: new Date().toISOString() })
       .eq('id', id);
     if (error) throw error;
@@ -7943,6 +8323,7 @@ var NativePDFViewer = (function() {
       _buildPlaceholders();
       _setupObserver();
       _setupScrollPageTracking();
+      _setupResizeRelayout();
 
       // فعّل التمرير باللمس بسلاسة على الموبايل
       wrapper.style.webkitOverflowScrolling = 'touch';
@@ -8005,6 +8386,62 @@ var NativePDFViewer = (function() {
         ticking = false;
       });
     }, { passive: true });
+  }
+
+  // ==================== إعادة ضبط عرض الصفحات عند تدوير الشاشة/تغيير الحجم ====================
+  // يحل مشكلة "الصفحة تظهر مصغّرة" لو تغيّر عرض الشاشة الفعلي بعد فتح الملف
+  // (مثلاً: تدوير الهاتف، أو فتح لوحة المفاتيح، أو تغيير حجم نافذة سطح المكتب)
+  function _debounce(fn, ms) {
+    var t;
+    return function() {
+      clearTimeout(t);
+      var args = arguments, ctx = this;
+      t = setTimeout(function() { fn.apply(ctx, args); }, ms);
+    };
+  }
+
+  function _relayoutPages() {
+    if (!S) return;
+    var containerW = Math.max(280, S.wrapper.clientWidth - 24);
+    Object.keys(S.pageEls).forEach(function(key) {
+      var n = parseInt(key, 10);
+      var entry = S.pageEls[n];
+      var w = containerW * S.zoom;
+      var h = w * S.baseAspect;
+      entry.container.style.width = Math.floor(w) + 'px';
+      entry.container.style.height = Math.floor(h) + 'px';
+      if (entry.rendered) {
+        entry.rendered = false;
+        entry.canvas = null;
+        entry.textLayerDiv = null;
+        S.renderedSet.delete(n);
+        entry.container.innerHTML = '<div class="pdfv-page-loading"><div class="pdfv-spin"></div>صفحة ' + n + '</div>';
+      }
+    });
+    for (var i = Math.max(1, S.currentPage - 1); i <= Math.min(S.numPages, S.currentPage + 1); i++) {
+      _renderPage(i);
+    }
+  }
+
+  function _setupResizeRelayout() {
+    var relayout = _debounce(function() { _relayoutPages(); }, 220);
+    S._resizeHandler = relayout;
+    window.addEventListener('resize', relayout);
+    window.addEventListener('orientationchange', relayout);
+    // بعض متصفحات Android Chrome تُطلق orientationchange قبل اكتمال تغيير الأبعاد فعلياً
+    S._orientationSettleHandler = function() { setTimeout(relayout, 350); };
+    window.addEventListener('orientationchange', S._orientationSettleHandler);
+  }
+
+  function _teardownResizeRelayout() {
+    if (!S) return;
+    if (S._resizeHandler) {
+      window.removeEventListener('resize', S._resizeHandler);
+      window.removeEventListener('orientationchange', S._resizeHandler);
+    }
+    if (S._orientationSettleHandler) {
+      window.removeEventListener('orientationchange', S._orientationSettleHandler);
+    }
   }
 
   function _updateCurrentPageFromScroll() {
@@ -8313,6 +8750,7 @@ var NativePDFViewer = (function() {
   // ==================== إغلاق العارض ====================
   function close() {
     if (S && S.observer) { try { S.observer.disconnect(); } catch(e) {} }
+    if (S) { try { _teardownResizeRelayout(); } catch(e) {} }
     S = null;
     if (_overlayEl) {
       document.removeEventListener('keydown', _overlayEl._keyHandler);
@@ -9689,10 +10127,13 @@ self.addEventListener('fetch', function(e) {
 </script>
 <!-- ============================================================ -->
 <!-- نظام الاشتراكات لكل شعبة على حدة (Per-Division Subscriptions) -->
-<!-- كل شعبة (site_sections.requires_subscription = true) لها     -->
-<!-- اشتراك مستقل شهري (100 جنيه / 30 يوماً) — أي شعبة جديدة تُضاف -->
-<!-- لاحقاً وتُفعَّل عليها هذا العلم تدخل النظام تلقائياً بدون أي   -->
-<!-- تعديل في الكود.                                                -->
+<!-- يعتمد بالكامل على جدول subscriptions (النظام الوحيد للاشتراكات)-->
+<!-- وكل صف فيه مرتبط بشعبة عن طريق subscriptions.section_id.      -->
+<!-- كل شعبة (site_sections.requires_subscription = true) لها      -->
+<!-- payment_method / payment_number / price خاصة بها، ويظل الفصل  -->
+<!-- الأول من كل شعبة محجوبة مجانياً للمعاينة، وباقي الفصول تُقفل   -->
+<!-- وتظهر شاشة الاشتراك عند الضغط عليها. أي شعبة جديدة تُفعَّل     -->
+<!-- عليها هذا العلم تدخل النظام تلقائياً بدون أي تعديل في الكود.  -->
 <!-- ============================================================ -->
 <script>
 (function() {
@@ -9744,7 +10185,7 @@ self.addEventListener('fetch', function(e) {
     var db = window.supabase;
     var result = { state: 'none' };
     try {
-      var res = await db.from('section_subscriptions').select('*')
+      var res = await db.from('subscriptions').select('*')
         .eq('user_id', userId).eq('section_id', sectionId).maybeSingle();
       if (!res.error && res.data) {
         var row = res.data;
@@ -9765,14 +10206,37 @@ self.addEventListener('fetch', function(e) {
     delete window._subStatusCache[userId + ':' + sectionId];
   }
 
+  // ── يحدد هل sectionId هو «الفصل الأول» المجاني التابع للشعبة anchorId أو أحد أبنائه ──
+  // (الفصل الأول = أول ابن مباشر للشعبة بحسب display_order — يظل مفتوحاً دائماً كمعاينة مجانية)
+  async function _isWithinFreeChapter(anchorId, sectionId) {
+    if (sectionId === anchorId) return false; // صفحة الشعبة نفسها (قائمة الفصول) — تُعرض مع قفل الفصول التالية
+    var children = await loadSections(anchorId);
+    if (!children || children.length === 0) return false; // لا فصول فرعية — القفل يتم على مستوى عناصر المحتوى نفسها
+    var firstChildId = children[0].id;
+    var current = await _getSectionRow(sectionId);
+    var depth = 0;
+    while (current && depth < 20) {
+      if (current.id === firstChildId) return true;
+      if (current.id === anchorId) return false;
+      if (current.parent_id === null || current.parent_id === undefined) return false;
+      current = await _getSectionRow(current.parent_id);
+      depth++;
+    }
+    return false;
+  }
+
   // ── نقطة الفحص الرئيسية: تُستدعى قبل عرض أي قسم ──
-  // ترجع null = مسموح بالدخول، أو object = يجب حجب المحتوى وعرض رسالة الاشتراك
+  // ترجع null = مسموح بالدخول بالكامل، أو object = يجب عرض الفصل الأول فقط وقفل الباقي
   window.checkSectionAccess = async function(sectionId) {
     try {
       if (window._isAdminUser) return null; // الأدمن يرى كل شيء دائماً
 
       var anchor = await _findSubscriptionAnchor(sectionId);
-      if (!anchor) return null; // هذا القسم/الشعبة لا يتطلب اشتراكاً
+      if (!anchor) return null; // هذا القسم/الشعبة لا يتطلب اشتراكاً (requires_subscription = false)
+
+      // ── الفصل الأول من الشعبة (ومحتواه بالكامل) مفتوح دائماً كمعاينة مجانية ──
+      var isFreePreview = await _isWithinFreeChapter(anchor.id, sectionId);
+      if (isFreePreview) return null;
 
       var db = window.supabase;
       if (!db) return null; // fail-open حتى لا يتعطل الموقع
@@ -9782,7 +10246,7 @@ self.addEventListener('fetch', function(e) {
       if (!user) return { anchor: anchor, state: 'guest' };
 
       var status = await _getSectionSubStatus(user.id, anchor.id);
-      if (status.state === 'active') return null; // اشتراك نشط → مسموح
+      if (status.state === 'active') return null; // اشتراك نشط → مسموح بالكامل
 
       return { anchor: anchor, state: status.state, row: status.row, user: user };
     } catch(e) {
@@ -9842,6 +10306,18 @@ self.addEventListener('fetch', function(e) {
     if (el) el.innerHTML = window._renderSubscriptionGateHTML(gate);
   };
 
+  // ── يُستدعى عند الضغط على أي فصل/ملف مقفول — يفتح شاشة الاشتراك المناسبة لحالة المستخدم ──
+  window._triggerSubscriptionFlow = async function(gate) {
+    if (!gate) return;
+    window._currentGateAnchor = gate.anchor;
+    if (gate.state === 'guest') { loginWithGoogle(); return; }
+    if (gate.state === 'pending') {
+      if (window._showToast) _showToast('⏳ طلبك قيد المراجعة بالفعل — برجاء الانتظار', 'warning');
+      return;
+    }
+    await window.requestOrRenewSubscription();
+  };
+
   // ── طلب اشتراك جديد أو تجديد اشتراك منتهٍ — يفتح مودال الدفع اليدوي داخل الموقع ──
   window.requestOrRenewSubscription = async function() {
     var anchor = window._currentGateAnchor;
@@ -9875,6 +10351,115 @@ self.addEventListener('fetch', function(e) {
   window._SUBS_WHATSAPP_NUMBER = WHATSAPP_NUMBER;
   window._SUBS_DEFAULT_PRICE   = MONTHLY_PRICE;
 
+})();
+</script>
+
+<!-- ============================================================ -->
+<!-- نافذة تنبيه القفل — تظهر عند الضغط على أي فصل مقفول          -->
+<!-- ============================================================ -->
+<style>
+.ln-overlay {
+  position: fixed; inset: 0; z-index: 999997;
+  background: rgba(8,20,32,.72);
+  backdrop-filter: blur(3px);
+  display: none; align-items: center; justify-content: center;
+  padding: 16px; animation: pm-fade .18s ease;
+}
+.ln-overlay.ln-open { display: flex; }
+.ln-modal {
+  width: 100%; max-width: 400px;
+  background: linear-gradient(180deg,#ffffff,#f7fbff);
+  border-radius: 22px; padding: 34px 26px 28px;
+  box-shadow: 0 20px 60px rgba(0,0,0,.35);
+  position: relative; text-align: center;
+  font-family: 'Cairo','Tajawal',sans-serif;
+  animation: pm-pop .22s cubic-bezier(.2,.9,.3,1.2);
+}
+.ln-close {
+  position: absolute; top: 14px; left: 14px;
+  width: 32px; height: 32px; border-radius: 50%; border: none;
+  background: #eef3f8; color: #5a6b7d; font-weight: 900; cursor: pointer; font-size: .9rem;
+}
+.ln-close:hover { background:#e2ebf3; }
+.ln-icon { font-size: 3rem; margin-bottom: 8px; }
+.ln-title { font-size: 1.15rem; font-weight: 900; color: var(--primary); margin-bottom: 12px; line-height: 1.6; }
+.ln-sub { font-size: .9rem; color: #5a6b7d; line-height: 1.9; margin-bottom: 22px; }
+.ln-sub b { color: var(--primary); font-weight: 900; }
+.ln-btn {
+  width: 100%; border: none; background: linear-gradient(135deg,#0a3d62,#1a5276);
+  color: #fff; font-weight: 900; font-size: .95rem; padding: 14px; border-radius: 12px;
+  cursor: pointer; box-shadow: 0 8px 20px rgba(10,61,98,.3);
+}
+.ln-btn:hover { filter: brightness(1.06); }
+@media (max-width: 480px) {
+  .ln-modal { padding: 28px 20px 22px; border-radius: 18px; }
+}
+</style>
+
+<div id="lock-notice-overlay" class="ln-overlay" onclick="if(event.target===this) closeLockNoticeModal()">
+  <div class="ln-modal" role="dialog" aria-modal="true" aria-labelledby="ln-title">
+    <button class="ln-close" onclick="closeLockNoticeModal()" aria-label="إغلاق">✕</button>
+    <div class="ln-icon">🔒</div>
+    <div class="ln-title" id="ln-title">هذا المحتوى متاح للمشتركين فقط</div>
+    <p class="ln-sub" id="ln-sub">اشترك الآن مقابل <b id="ln-price">100</b> جنيه شهرياً لفتح جميع الفصول فوراً.</p>
+    <button class="ln-btn" id="ln-btn" onclick="_lockNoticeAction()">🚀 اشترك الآن</button>
+  </div>
+</div>
+
+<script>
+(function() {
+  var _lnGate = null;
+
+  window._openLockNoticeModal = function(gate) {
+    if (!gate) return;
+    _lnGate = gate;
+    var anchor = gate.anchor || {};
+    var price  = (anchor.price != null && anchor.price !== '') ? anchor.price : (window._SUBS_DEFAULT_PRICE || 100);
+
+    var titleEl = document.getElementById('ln-title');
+    var subEl   = document.getElementById('ln-sub');
+    var btnEl   = document.getElementById('ln-btn');
+
+    if (gate.state === 'guest') {
+      titleEl.textContent = '🔐 سجّل الدخول أولاً';
+      subEl.innerHTML = 'يجب تسجيل الدخول حتى تقدر تشترك وتفتح جميع فصول «' + (_apEsc ? _apEsc(anchor.title || 'هذه المادة') : (anchor.title || 'هذه المادة')) + '».';
+      btnEl.textContent = '🔐 تسجيل الدخول';
+    } else if (gate.state === 'pending') {
+      titleEl.textContent = '⏳ طلبك قيد المراجعة';
+      subEl.innerHTML = 'تم استلام طلب اشتراكك، وسيتم فتح جميع الفصول تلقائياً بمجرد موافقة الأدمن.';
+      btnEl.textContent = '💬 تواصل عبر واتساب';
+    } else if (gate.state === 'expired') {
+      titleEl.textContent = '⌛ انتهى اشتراكك';
+      subEl.innerHTML = 'جدّد اشتراكك الآن مقابل <b>' + price + '</b> جنيه شهرياً لتفتح جميع الفصول من جديد.';
+      btnEl.textContent = '🔄 تجديد الاشتراك الآن';
+    } else {
+      titleEl.textContent = '🔒 هذا المحتوى متاح للمشتركين فقط';
+      subEl.innerHTML = 'اشترك الآن مقابل <b>' + price + '</b> جنيه شهرياً لفتح جميع الفصول فوراً.';
+      btnEl.textContent = '🚀 اشترك الآن';
+    }
+
+    document.getElementById('lock-notice-overlay').classList.add('ln-open');
+    document.body.style.overflow = 'hidden';
+  };
+
+  window.closeLockNoticeModal = function() {
+    document.getElementById('lock-notice-overlay').classList.remove('ln-open');
+    document.body.style.overflow = '';
+  };
+
+  // ── يُنفَّذ عند الضغط على زر "اشترك الآن" داخل نافذة التنبيه ──
+  window._lockNoticeAction = async function() {
+    var gate = _lnGate;
+    closeLockNoticeModal();
+    if (!gate) return;
+    if (gate.state === 'pending') {
+      window.open('https://wa.me/' + (window._SUBS_WHATSAPP_NUMBER || '201147908978'), '_blank', 'noopener');
+      return;
+    }
+    if (typeof window._triggerSubscriptionFlow === 'function') {
+      await window._triggerSubscriptionFlow(gate);
+    }
+  };
 })();
 </script>
 
@@ -10117,20 +10702,24 @@ self.addEventListener('fetch', function(e) {
     msgEl.style.color = '#0a3d62'; msgEl.textContent = 'جاري رفع الإيصال وإرسال الطلب...';
 
     try {
-      // 1) إنشاء/إعادة تعيين طلب الاشتراك كـ pending عبر الدالة الحالية
-      var reqRes = await db.rpc('request_section_subscription', { p_section_id: _pmAnchor.id });
-      if (reqRes.error) throw reqRes.error;
-
-      // 2) رفع صورة الإيصال في bucket خاص
+      // 1) رفع صورة الإيصال في bucket خاص
       var ext = (_pmFile.name.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';
       var path = _pmUser.id + '/' + _pmAnchor.id + '-' + Date.now() + '.' + ext;
       var upRes = await db.storage.from('receipts').upload(path, _pmFile, { upsert: true, contentType: _pmFile.type });
       if (upRes.error) throw upRes.error;
 
-      // 3) ربط الإيصال بالطلب المُعلَّق لهذا المستخدم/الشعبة
-      var updRes = await db.from('section_subscriptions')
-        .update({ receipt_url: 'receipts/' + path, reject_reason: null })
-        .eq('user_id', _pmUser.id).eq('section_id', _pmAnchor.id);
+      // 2) إنشاء/إعادة تعيين طلب الاشتراك كـ pending في جدول subscriptions الموحّد
+      //    (مربوط بالشعبة عن طريق section_id) — upsert على (user_id, section_id)
+      var updRes = await db.from('subscriptions').upsert({
+        user_id: _pmUser.id,
+        user_email: _pmUser.email || null,
+        section_id: _pmAnchor.id,
+        status: 'pending',
+        subscription_type: 'monthly',
+        receipt_url: 'receipts/' + path,
+        reject_reason: null,
+        requested_at: new Date().toISOString()
+      }, { onConflict: 'user_id,section_id' });
       if (updRes.error) throw updRes.error;
 
       msgEl.style.color = '#17a589';
