@@ -6,6 +6,27 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <!-- ✅ FIX: تطبيق الثيم (فاتح/داكن) فوراً قبل أي رسم للصفحة — يمنع وميض الشاشة (FOUC) -->
 <script>
+// ══════════════════════════════════════════════════════
+// 🔍 TEMP DEBUG (Aug 2026) — يُزال بعد إيجاد السبب
+// يلتقط أي خطأ متزامن أو Promise غير معالَج من أول لحظة تحميل الصفحة،
+// بغض النظر عن أي فلتر نصي في Console (لأنه بيطبع أيضاً كـ [BOOT-FATAL]
+// بادئة موحّدة يسهل البحث عنها حتى لو كان فيه فلتر شغّال بالغلط)
+// ══════════════════════════════════════════════════════
+window._bootLog = [];
+function _boot(n, msg) {
+  var line = '[BOOT ' + n + '] ' + (msg || '');
+  window._bootLog.push(line);
+  console.log('%c' + line, 'color:#0a3d62;font-weight:bold');
+}
+window.addEventListener('error', function(e) {
+  console.error('[BOOT-FATAL] Uncaught error:', e.message, '| file:', e.filename, '| line:', e.lineno, '| col:', e.colno, e.error);
+});
+window.addEventListener('unhandledrejection', function(e) {
+  console.error('[BOOT-FATAL] Unhandled promise rejection:', e.reason && (e.reason.message || e.reason));
+});
+_boot(0, 'page script parsing started');
+</script>
+<script>
 (function() {
   var saved = '';
   try { saved = localStorage.getItem('theme_pref') || ''; } catch(e) {}
@@ -95,8 +116,10 @@ window._supabaseReady = new Promise(function(resolve) { _sbLibResolve = resolve;
 // ── clientReady: الـ Promise الصحيح الذي يُنتظر في كل مكان
 var _sbClientResolve;
 window._supabaseClientReady = new Promise(function(resolve) { _sbClientResolve = resolve; });
+_boot('0.5', 'promises declared, about to start lib loading');
 
 (function() {
+  _boot(1, 'library loading IIFE started');
   function _loadLib(src, onSuccess, onFail) {
     var s = document.createElement('script');
     s.src = src;
@@ -108,13 +131,16 @@ window._supabaseClientReady = new Promise(function(resolve) { _sbClientResolve =
   }
 
   function _onLibLoaded() {
+    _boot(2, 'CDN script onload fired — checking window.supabase');
     var lib = window.supabase; // UMD يضع { createClient } على window.supabase
     if (!lib || typeof lib.createClient !== 'function') {
       console.error('[Supabase] المكتبة لم تُعرِّف createClient');
+      _boot('2-FAIL', 'lib loaded but createClient missing');
       _sbLibResolve(null);
       _sbClientResolve(null);
       return;
     }
+    _boot(3, 'lib has createClient — resolving _supabaseReady');
     _sbLibResolve(lib); // أطلع _supabaseReady بالـ lib
   }
 
@@ -123,11 +149,13 @@ window._supabaseClientReady = new Promise(function(resolve) { _sbClientResolve =
     _onLibLoaded,
     function() {
       console.warn('[Supabase] jsdelivr فشل — جاري تجربة unpkg...');
+      _boot('1-FALLBACK', 'jsdelivr onerror — trying unpkg');
       _loadLib(
         'https://unpkg.com/@supabase/supabase-js@2.39.8/dist/umd/supabase.min.js',
         _onLibLoaded,
         function() {
           console.error('[Supabase] ❌ فشل تحميل المكتبة من كل CDNs');
+          _boot('1-FATAL', 'both CDNs failed to load supabase-js');
           _sbLibResolve(null);
           _sbClientResolve(null);
         }
@@ -2481,8 +2509,10 @@ var _supabaseUrl = "https://xiqeaohemuxgujrcnpzd.supabase.co";
 var _supabaseKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhpcWVhb2hlbXV4Z3VqcmNucHpkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkxMjEwNjUsImV4cCI6MjA5NDY5NzA2NX0.vnpHTfn9KhRUjJDxKGPlzhPHyrrEaBWlACxxv2QEFWY";
 
 window._supabaseReady.then(function(lib) {
+  _boot(4, 'entered window._supabaseReady.then() callback');
   if (!lib || typeof lib.createClient !== 'function') {
     console.error("❌ مكتبة Supabase لم تُحمَّل أو createClient غير موجود");
+    _boot('4-FAIL', 'lib missing or createClient missing inside .then()');
     window._sbClientResolve && window._sbClientResolve(null);
     renderHomeFallback();
     return;
@@ -2498,17 +2528,22 @@ window._supabaseReady.then(function(lib) {
         }
       });
     }
+    _boot(5, 'createClient() returned successfully');
     // نعيّن window.supabase للـ CLIENT (فيه .from) وليس للـ lib
     window.supabase = window._db;
     // أطلق clientReady بالـ client الجاهز ✅
     window._sbClientResolve && window._sbClientResolve(window._db);
+    _boot(6, '_sbClientResolve fired — client is now globally available');
     console.log("✅ Supabase Client جاهز");
   } catch(initErr) {
     console.error("❌ فشل إنشاء Supabase client:", initErr.message);
+    _boot('5-FATAL', 'createClient() threw: ' + initErr.message);
     window._sbClientResolve && window._sbClientResolve(null);
     renderHomeFallback();
     return;
   }
+
+  _boot(7, 'about to call renderHomeSections()');
 
   // ✅ PERF: تجميع فحص الاتصال مع renderHomeSections في طلب واحد (بدلاً من طلبين)
   renderHomeSections();
@@ -2764,9 +2799,12 @@ async function loadSections(parentId) {
 
   var fetchPromise = (async function() {
     try {
+      if (parentId === null || parentId === undefined) _boot(9, 'loadSections(null) started — waiting for supabase client');
       var db = await _waitForSupabase();
+      if (parentId === null || parentId === undefined) _boot(10, '_waitForSupabase resolved with ' + (db ? 'a client' : 'null'));
       if (!db) { window._dataCache.sections[key] = []; return []; }
       // ✅ استخدام Retry تلقائي
+      if (parentId === null || parentId === undefined) _boot(11, 'about to run _fetchWithRetry query on site_sections');
       const { data, error } = await _fetchWithRetry(function() {
         let query = db.from('site_sections').select('*').order('display_order', { ascending: true });
         if (parentId === null || parentId === undefined) {
@@ -2778,6 +2816,7 @@ async function loadSections(parentId) {
         }
         return query;
       });
+      if (parentId === null || parentId === undefined) _boot(12, '_fetchWithRetry settled — error=' + (error ? error.message : 'none') + ', rows=' + ((data||[]).length));
       if (error) {
         console.error('[loadSections] ❌ error:', error.message, '| code:', error.code);
         // ✅ FIX: لا نُخزِّن الخطأ في الـ cache حتى تتم إعادة المحاولة عند الفتح التالي
@@ -3043,9 +3082,11 @@ window.renderSiteAds = renderSiteAds;
 
 // ==================== HOME: RENDER DYNAMIC SECTIONS ====================
 async function renderHomeSections() {
+  _boot(8, 'renderHomeSections() entered');
   // ✅ FIXED: زيادة timeout لـ 20 ثانية على الموبايل
   var _loadingTimeout = setTimeout(function() {
     var el = document.getElementById('dynamic-home-sections');
+    _boot('8-TIMEOUT', '20s timeout fired — el found=' + !!el + ', has .spinner=' + !!(el && el.querySelector('.spinner')));
     if (el && el.querySelector('.spinner')) {
       console.warn('[renderHomeSections] timeout — عرض الـ fallback');
       renderHomeFallback();
@@ -3054,10 +3095,12 @@ async function renderHomeSections() {
 
   try {
     const sections = await loadSections(null);
+    _boot(13, 'loadSections(null) returned — rows=' + (sections ? sections.length : 'null/undefined'));
     clearTimeout(_loadingTimeout);
 
     if (!sections || sections.length === 0) {
       console.warn('[Supabase] لا توجد بيانات في site_sections — تأكد من RLS policy');
+      _boot('13-EMPTY', 'sections empty — calling renderHomeFallback()');
       renderHomeFallback();
       return;
     }
@@ -3095,9 +3138,11 @@ async function renderHomeSections() {
       <div class="cards-grid home-cards-grid">${items.map(sec => buildSectionCard(sec)).join('')}</div>`;
     }
     document.getElementById('dynamic-home-sections').innerHTML = html;
+    _boot(14, 'renderHomeSections DONE — HTML inserted, ' + sections.length + ' sections rendered');
   } catch(err) {
     clearTimeout(_loadingTimeout);
     console.error('[renderHomeSections] خطأ غير متوقع:', err.message);
+    _boot('CATCH', 'renderHomeSections threw: ' + (err && err.message));
     // ✅ عرض زر إعادة المحاولة عند الخطأ
     var el = document.getElementById('dynamic-home-sections');
     if (el) {
@@ -3241,11 +3286,7 @@ async function _renderDynamicSectionPage(sec) {
       window[`__sectionData_${child.id}`] = child;
       window[`__sectionAction_${child.id}`] = (s) => openDynamicSubSection(s);
     });
-    // ✅ المجانية مرتبطة بالمادة (Course) وليس بالشعبة كلها: لا نقفل بطاقات المواد نفسها
-    // (كل مادة لها فصلها الأول المجاني الخاص بها)، ونقفل فقط بطاقات الفصول داخل كل مادة
-    // (أي عند عرض sec وهي "مادة" — ابن مباشر لـ gate.anchor) ما عدا الفصل الأول.
-    var lockChildren = !!(gate && gate.anchor && sec.parent_id === gate.anchor.id);
-    var gridHtml = children.map((child, idx) => buildSubSectionCard(child, lockChildren && idx > 0)).join('');
+    var gridHtml = children.map((child, idx) => buildSubSectionCard(child, !!gate && idx > 0)).join('');
     if (gate) gridHtml += window._renderSubscriptionGateHTML(gate);
     document.getElementById('dynamic-section-grid').innerHTML = gridHtml;
   } catch(err) {
@@ -3412,8 +3453,7 @@ async function trackSectionProgress(sectionId) {
  * يقبل البيانات المحمّلة مسبقاً لتجنب double-fetch
  */
 async function _openContentPage(sec, _preloadedContent, _preloadedResources) {
-  // ── فحص اشتراك الشعبة: المجانية هنا على مستوى «القسم/الفصل» بالكامل (checkSectionAccess) ──
-  // لو gate!=null فالقسم الحالي مش الفصل الأول المجاني لمادته → كل محتواه يُعرض مقفولاً.
+  // ── فحص اشتراك الشعبة: لو محجوبة، الفصل الأول (أول عنصر) يظل مفتوحاً وباقي الفصول تُعرض مقفولة ──
   // ✅ DEBUG FIX: كانت هذه الدالة كلها بدون try/catch — أي تعليق أو خطأ هنا كان يجمّد
   // الصفحة للأبد بدون أي رسالة خطأ. الآن محمي محلياً بالإضافة لحماية checkSectionAccess نفسها.
   var gate = null;
@@ -3502,9 +3542,7 @@ function renderPreformatted(text) {
 function buildContentHTML(contentItems, gate) {
   let html = '';
   contentItems.forEach((item, idx) => {
-    // ✅ لو الفصل نفسه مقفول (مش الفصل الأول المجاني للمادة) نقفل كل عناصر محتواه بدون استثناء
-    // العنصر الأول — القفل بقى على مستوى «الفصل» ككل، مش على مستوى عناصر المحتوى.
-    if (gate) {
+    if (gate && idx > 0) {
       html += `
         <div class="resource-item" onclick="window._openLockNoticeModal(window.__currentChapterGate)" style="cursor:pointer;margin-bottom:10px;padding:18px 22px;opacity:.65">
           <div class="ri-icon" style="font-size:2rem">🔒</div>
@@ -11415,143 +11453,6 @@ NOTIFY pgrst, 'reload schema';
 };
 console.log('%c[SUBSCRIPTIONS] اكتب printRequestedAtColumnMigration() لعرض/نسخ SQL إضافة عمود requested_at المفقود', 'color:#0a3d62;font-weight:bold');
 
-// printChapterAccessRLSMigration — تأمين «الفصل الأول مجاني لكل مادة» على مستوى القاعدة/RLS
-// (Additive بالكامل — دالة جديدة + استبدال policy القراءة فقط، بدون حذف أي بيانات أو جداول)
-// السبب: الاعتماد على الـ Frontend وحده لإخفاء الفصول المدفوعة غير كافٍ أمنياً — أي حد يقدر
-// يعمل استعلام مباشر على section_content/section_resources بمعرفة section_id ويقرأ المحتوى
-// المدفوع حتى لو كان القفل شغال في الواجهة. الدالة دي بتطبّق نفس منطق «أول فصل مجاني لكل مادة»
-// (الموجود في _isWithinFreeChapter بالـ JS) لكن كـ RLS حقيقي على مستوى Postgres.
-window.printChapterAccessRLSMigration = function() {
-  var sql = `
--- ================================================================
--- تأمين المحتوى المدفوع على مستوى RLS (Additive — بدون حذف بيانات)
--- المنطق: أول فصل (site_sections، أقل display_order) داخل كل مادة (الابن المباشر
--- للشعبة التي عليها requires_subscription = true) = مجاني للجميع.
--- باقي الفصول تتطلب اشتراكاً Active في نفس الشعبة (subscriptions.section_id = الشعبة).
--- مادة بدون فصول فرعية = فصل واحد ضمني = مجاني بالكامل (نفس منطق TEST 3).
--- ================================================================
-
-CREATE OR REPLACE FUNCTION can_access_section(target_id BIGINT)
-RETURNS boolean
-LANGUAGE plpgsql STABLE SECURITY DEFINER
-AS $$
-DECLARE
-  anchor_id        BIGINT;
-  material_id       BIGINT;
-  chapter_count     INT;
-  first_chapter_id  BIGINT;
-  is_chapter_free   BOOLEAN;
-  has_active_sub    BOOLEAN;
-BEGIN
-  IF is_admin() THEN
-    RETURN true;
-  END IF;
-
-  -- أقرب جد (أو نفس القسم) عليه requires_subscription = true — وهو "الشعبة" (anchor)
-  WITH RECURSIVE up AS (
-    SELECT id, parent_id, requires_subscription, 0 AS depth
-    FROM site_sections WHERE id = target_id
-    UNION ALL
-    SELECT s.id, s.parent_id, s.requires_subscription, up.depth + 1
-    FROM site_sections s JOIN up ON s.id = up.parent_id
-    WHERE up.depth < 20
-  )
-  SELECT id INTO anchor_id FROM up WHERE requires_subscription = true
-  ORDER BY depth ASC LIMIT 1;
-
-  IF anchor_id IS NULL THEN
-    RETURN true; -- القسم مش تابع لأي شعبة تتطلب اشتراكاً → محتوى عام
-  END IF;
-
-  -- "المادة" = الابن المباشر للشعبة الواقع على مسار target_id
-  WITH RECURSIVE up AS (
-    SELECT id, parent_id, 0 AS depth
-    FROM site_sections WHERE id = target_id
-    UNION ALL
-    SELECT s.id, s.parent_id, up.depth + 1
-    FROM site_sections s JOIN up ON s.id = up.parent_id
-    WHERE up.depth < 20
-  )
-  SELECT id INTO material_id FROM up WHERE parent_id = anchor_id
-  ORDER BY depth ASC LIMIT 1;
-
-  IF material_id IS NULL THEN
-    RETURN false; -- حالة غير متوقعة — الأمان أولاً
-  END IF;
-
-  SELECT COUNT(*) INTO chapter_count FROM site_sections WHERE parent_id = material_id;
-
-  IF chapter_count = 0 THEN
-    RETURN true; -- مادة بدون فصول فرعية = فصل واحد ضمني = مجاني بالكامل
-  END IF;
-
-  SELECT id INTO first_chapter_id FROM site_sections WHERE parent_id = material_id
-  ORDER BY display_order ASC, id ASC LIMIT 1;
-
-  -- الفصل التابع له target_id (الابن المباشر للمادة الواقع على مسار target_id)
-  WITH RECURSIVE up AS (
-    SELECT id, parent_id, 0 AS depth
-    FROM site_sections WHERE id = target_id
-    UNION ALL
-    SELECT s.id, s.parent_id, up.depth + 1
-    FROM site_sections s JOIN up ON s.id = up.parent_id
-    WHERE up.depth < 20
-  )
-  SELECT (id = first_chapter_id) INTO is_chapter_free FROM up WHERE parent_id = material_id
-  ORDER BY depth ASC LIMIT 1;
-
-  IF is_chapter_free THEN
-    RETURN true;
-  END IF;
-
-  -- غير الفصل الأول → لازم اشتراك Active في نفس الشعبة (anchor)
-  SELECT EXISTS (
-    SELECT 1 FROM subscriptions
-    WHERE user_id = auth.uid()
-      AND section_id = anchor_id
-      AND status = 'active'
-      AND end_date >= now()
-  ) INTO has_active_sub;
-
-  RETURN COALESCE(has_active_sub, false);
-END;
-$$;
-
-GRANT EXECUTE ON FUNCTION can_access_section(BIGINT) TO anon, authenticated;
-
--- section_content: استبدال policy القراءة العامة بقراءة مُقيَّدة بالدالة (الكتابة كما هي بدون تغيير)
-ALTER TABLE section_content ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "content_read_all"          ON section_content;
-DROP POLICY IF EXISTS "content_read_authenticated" ON section_content;
-DROP POLICY IF EXISTS "auth_read"                  ON section_content;
-DROP POLICY IF EXISTS "content_read_gated"         ON section_content;
-CREATE POLICY "content_read_gated" ON section_content
-  FOR SELECT USING (
-    is_admin() OR is_branch_admin_of(section_id) OR can_access_section(section_id)
-  );
-
--- section_resources: نفس الفكرة
-ALTER TABLE section_resources ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "resources_read_all"  ON section_resources;
-DROP POLICY IF EXISTS "resources_read_auth" ON section_resources;
-DROP POLICY IF EXISTS "resources_read_gated" ON section_resources;
-CREATE POLICY "resources_read_gated" ON section_resources
-  FOR SELECT USING (
-    is_admin() OR is_branch_admin_of(section_id) OR can_access_section(section_id)
-  );
-`;
-  console.group('%c🔐 Chapter Access RLS Migration SQL', 'color:#c0392b;font-size:1.1em;font-weight:bold');
-  console.log(sql);
-  console.groupEnd();
-  if (navigator.clipboard) {
-    navigator.clipboard.writeText(sql).then(function() {
-      console.log('%c✅ تم نسخ الـ SQL للـ clipboard!', 'color:#17a589;font-weight:bold');
-    }).catch(function(){});
-  }
-  return sql;
-};
-console.log('%c[CHAPTER-ACCESS] اكتب printChapterAccessRLSMigration() لعرض/نسخ SQL تأمين «الفصل الأول مجاني لكل مادة» على مستوى RLS', 'color:#c0392b;font-weight:bold');
-
 // printPathsMigration — نظام المسارات التعليمية (Additive بالكامل)
 window.printPathsMigration = function() {
   var sql = `
@@ -12162,13 +12063,19 @@ self.addEventListener('fetch', function(e) {
     var db = window.supabase;
     if (!db) return null;
     try {
-      var res = await db.from('site_sections')
-        .select('id, title, icon, parent_id, requires_subscription, payment_method, payment_number, price')
-        .eq('id', id).maybeSingle();
+      // ✅ FIX (Aug 2026): كانت هذه أول استعلام في الملف بدون أي حماية timeout —
+      // لو تعلّق (بطء/سياسة RLS بطيئة على site_sections) كانت الصفحة تجمّد للأبد
+      // على "جاري التحميل من قاعدة البيانات..." بصمت تام. الآن محدودة بـ 8 ثوانٍ
+      // مع fail-open، بنفس نمط الحماية المستخدم في checkSectionAccess.
+      var res = await _fetchWithTimeout(function() {
+        return db.from('site_sections')
+          .select('id, title, icon, parent_id, requires_subscription, payment_method, payment_number, price')
+          .eq('id', id).maybeSingle();
+      }, 8000);
       if (res.error || !res.data) return null;
       window._sectionRowCache[id] = res.data;
       return res.data;
-    } catch(e) { return null; }
+    } catch(e) { console.warn('[_getSectionRow] timeout/error:', e && e.message); return null; }
   }
 
   // ── يصعد في شجرة الأقسام حتى يجد أقرب "شعبة" تتطلب اشتراكاً ──
@@ -12191,8 +12098,14 @@ self.addEventListener('fetch', function(e) {
     var db = window.supabase;
     var result = { state: 'none' };
     try {
-      var res = await db.from('subscriptions').select('*')
-        .eq('user_id', userId).eq('section_id', sectionId).maybeSingle();
+      // ✅ FIX (Aug 2026): كانت هذه أيضاً بدون حماية timeout — وهي الاستعلام الوحيد
+      // على جدول subscriptions الذي يُنفَّذ لكل مستخدم مسجّل دخول عند فتح أي قسم
+      // مقفول. لو تعلّقت (بسبب سياسة RLS بطيئة/معلّقة على subscriptions) كانت
+      // الصفحة تجمّد للأبد بلا أي خطأ ظاهر — بالضبط الأعراض المُبلَّغ عنها.
+      var res = await _fetchWithTimeout(function() {
+        return db.from('subscriptions').select('*')
+          .eq('user_id', userId).eq('section_id', sectionId).maybeSingle();
+      }, 8000);
       if (!res.error && res.data) {
         var row = res.data;
         if (row.status === 'active' && row.end_date && new Date(row.end_date).getTime() >= Date.now()) {
@@ -12203,7 +12116,7 @@ self.addEventListener('fetch', function(e) {
           result = { state: 'expired', row: row }; // منتهي أو مُلغى
         }
       }
-    } catch(e) { /* fail-open أدناه */ }
+    } catch(e) { console.warn('[_getSectionSubStatus] timeout/error:', e && e.message); /* fail-open أدناه */ }
     window._subStatusCache[key] = result;
     return result;
   }
@@ -12212,44 +12125,18 @@ self.addEventListener('fetch', function(e) {
     delete window._subStatusCache[userId + ':' + sectionId];
   }
 
-  // ── يحدد هل sectionId يقع ضمن «الفصل الأول» المجاني الخاص بالمادة (Course) التابع لها ──
-  // (المجانية أصبحت مرتبطة بكل مادة على حدة، وليس بأول مادة في الشعبة كلها):
-  // المادة = الابن المباشر للشعبة anchorId. أول فصل داخل كل مادة (بحسب display_order) = مجاني.
-  // مادة بدون فصول فرعية (ورقة واحدة) تُعتبر فصلاً واحداً ضمنياً = مجاني بالكامل (TEST 3).
-  async function _findMaterialAncestor(anchorId, sectionId) {
-    // يصعد من sectionId حتى يجد الابن المباشر للشعبة (anchorId) الواقع على مسار sectionId
-    var current = await _getSectionRow(sectionId);
-    var depth = 0;
-    while (current && depth < 20) {
-      if (current.parent_id === anchorId) return current; // وجدنا المادة
-      if (current.id === anchorId) return null; // sectionId هو الشعبة نفسها أو وصلنا لها بدون مادة
-      if (current.parent_id === null || current.parent_id === undefined) return null;
-      current = await _getSectionRow(current.parent_id);
-      depth++;
-    }
-    return null;
-  }
-
+  // ── يحدد هل sectionId هو «الفصل الأول» المجاني التابع للشعبة anchorId أو أحد أبنائه ──
+  // (الفصل الأول = أول ابن مباشر للشعبة بحسب display_order — يظل مفتوحاً دائماً كمعاينة مجانية)
   async function _isWithinFreeChapter(anchorId, sectionId) {
-    if (sectionId === anchorId) return false; // صفحة الشعبة نفسها (قائمة المواد) — لا قفل على مستوى بطاقات المواد
-
-    var materialNode = await _findMaterialAncestor(anchorId, sectionId);
-    if (!materialNode) return false; // حالة غير متوقعة — الأكثر أماناً هو عدم اعتبارها مجانية
-
-    var chapters = await loadSections(materialNode.id);
-
-    if (!chapters || chapters.length === 0) {
-      return true; // مادة بدون فصول فرعية = فصل واحد ضمني وهو المادة نفسها → مجاني بالكامل
-    }
-
-    if (sectionId === materialNode.id) return false; // صفحة المادة نفسها (قائمة الفصول) — القفل يتم على مستوى بطاقات الفصول، وليس على الصفحة نفسها
-
-    var firstChapterId = chapters[0].id; // أول فصل حسب ترتيب display_order (loadSections بترتب تصاعدياً بالفعل)
+    if (sectionId === anchorId) return false; // صفحة الشعبة نفسها (قائمة الفصول) — تُعرض مع قفل الفصول التالية
+    var children = await loadSections(anchorId);
+    if (!children || children.length === 0) return false; // لا فصول فرعية — القفل يتم على مستوى عناصر المحتوى نفسها
+    var firstChildId = children[0].id;
     var current = await _getSectionRow(sectionId);
     var depth = 0;
     while (current && depth < 20) {
-      if (current.id === firstChapterId) return true;
-      if (current.id === materialNode.id) return false;
+      if (current.id === firstChildId) return true;
+      if (current.id === anchorId) return false;
       if (current.parent_id === null || current.parent_id === undefined) return false;
       current = await _getSectionRow(current.parent_id);
       depth++;
