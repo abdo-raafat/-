@@ -7105,7 +7105,7 @@ async function apLoadDashboard() {
   try {
     var [usersRes, subsRes, msgsRes, contentRes] = await Promise.all([
       window.supabase.from('profiles').select('id', { count: 'exact', head: true }),
-      window.supabase.from('subscriptions').select('id, status, full_name, user_email, created_at, end_date, receipt_url', { count: 'exact' }),
+      window.supabase.from('subscriptions').select('id, status, full_name, user_email, created_at, end_date, receipt_image', { count: 'exact' }),
       window.supabase.from('contact_messages').select('id', { count: 'exact', head: true }),
       window.supabase.from('section_content').select('id', { count: 'exact', head: true }),
     ]);
@@ -7128,7 +7128,7 @@ async function apLoadDashboard() {
     var newRequests  = allSubs.filter(function(s){ return s.status === 'pending'; }).length;
 
     // طلبات دفع معلقة: طلبات معلقة ومعاها إيصال دفع مرفوع (تحتاج مراجعة دفع تحديداً)
-    var pendingPay   = allSubs.filter(function(s){ return s.status === 'pending' && !!s.receipt_url; }).length;
+    var pendingPay   = allSubs.filter(function(s){ return s.status === 'pending' && !!s.receipt_image; }).length;
 
     var totalMsgs    = msgsRes.count  || 0;
     var totalContent = contentRes.count || 0;
@@ -7342,8 +7342,8 @@ async function apLoadDivisionSubs() {
             actions += '<button class="ap-btn ap-btn-danger" onclick="apCancelDivisionSub(' + r.id + ')">🚫 إلغاء</button>';
           }
         }
-        var receiptCell = r.receipt_url
-          ? '<button class="ap-btn ap-btn-ghost" style="padding:5px 9px;font-size:.72rem;" onclick="apViewReceipt(\'' + _apEsc(r.receipt_url).replace(/'/g,"\\'") + '\')">🧾 عرض</button>'
+        var receiptCell = r.receipt_image
+          ? '<button class="ap-btn ap-btn-ghost" style="padding:5px 9px;font-size:.72rem;" onclick="apViewReceipt(\'' + _apEsc(r.receipt_image).replace(/'/g,"\\'") + '\')">🧾 عرض</button>'
           : '<span style="color:#b0b8c1;font-size:.72rem;">— لا يوجد</span>';
         var reasonRow = (r.status === 'cancelled' && r.reject_reason)
           ? '<div style="font-size:.68rem;color:#e74c3c;margin-top:4px;">سبب الرفض: ' + _apEsc(r.reject_reason) + '</div>' : '';
@@ -7421,7 +7421,7 @@ async function apViewReceipt(rawUrl) {
 }
 
 // ────────────────────────────────────────────────────────────────
-// PAYMENTS TAB (إدارة المدفوعات) — طلبات لها إيصال دفع (receipt_url)
+// PAYMENTS TAB (إدارة المدفوعات) — طلبات لها إيصال دفع (receipt_image)
 // يعمل على نفس جدول subscriptions (عام أو خاص بشعبة) بدون جدول إضافي
 // ────────────────────────────────────────────────────────────────
 async function apLoadPayments() {
@@ -7434,7 +7434,7 @@ async function apLoadPayments() {
     var query = window.supabase
       .from('subscriptions')
       .select('*, site_sections(title, payment_method, payment_number, price)')
-      .not('receipt_url', 'is', null)
+      .not('receipt_image', 'is', null)
       .order('requested_at', { ascending: false });
     if (filterVal) query = query.eq('status', filterVal);
     if (searchVal) query = query.ilike('user_email', '%' + searchVal + '%');
@@ -7458,7 +7458,7 @@ async function apLoadPayments() {
         var label     = secInfo.title || (r.subscription_type === 'yearly' ? 'اشتراك سنوي عام' : 'اشتراك شهري عام');
         var price     = secInfo.price != null ? (secInfo.price + ' ج.م') : '—';
         var method    = secInfo.payment_method || '—';
-        var receiptCell = '<button class="ap-btn ap-btn-ghost" style="padding:5px 9px;font-size:.72rem;" onclick="apViewReceipt(\'' + _apEsc(r.receipt_url).replace(/'/g,"\\'") + '\')">🧾 عرض</button>';
+        var receiptCell = '<button class="ap-btn ap-btn-ghost" style="padding:5px 9px;font-size:.72rem;" onclick="apViewReceipt(\'' + _apEsc(r.receipt_image).replace(/'/g,"\\'") + '\')">🧾 عرض</button>';
         var actions = '';
         if (r.status === 'pending') {
           actions += '<button class="ap-btn ap-btn-success" style="margin-left:4px;" onclick="apPaymentDecision(' + r.id + ',\'' + (r.section_id ? 'div' : 'gen') + '\',\'' + r.user_id + '\',true)">✅ قبول</button>';
@@ -12287,7 +12287,7 @@ self.addEventListener('fetch', function(e) {
         section_id: _pmAnchor.id,
         status: 'pending',
         subscription_type: 'monthly',
-        receipt_url: 'receipts/' + path,
+        receipt_image: 'receipts/' + path,
         reject_reason: null,
         requested_at: new Date().toISOString()
       }, { onConflict: 'user_id,section_id' });
