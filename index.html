@@ -2578,7 +2578,21 @@ function toValidId(value) {
 
 function showLoading(containerId) {
   const el = document.getElementById(containerId);
-  if (el) el.innerHTML = `<div class="loading"><div class="spinner"></div> جاري التحميل من قاعدة البيانات...</div>`;
+  if (!el) return;
+  const myToken = (el._loadToken = (el._loadToken || 0) + 1);
+  el.innerHTML = `<div class="loading"><div class="spinner"></div> جاري التحميل من قاعدة البيانات...</div>`;
+  // ✅ WATCHDOG: لو نفس الحاوية لسه عالقة على شاشة "جاري التحميل" بعد 12 ثانية
+  // (لأي سبب: RLS بطيئة، جلسة تسجيل دخول تالفة، شبكة بطيئة...) نعرض له زر
+  // "إعادة المحاولة" تلقائياً بدل ما تفضل الشاشة معلّقة للأبد بصمت.
+  setTimeout(function() {
+    if (el._loadToken !== myToken) return; // تم تحديث المحتوى فعلاً، تجاهل
+    if (!el.querySelector('.loading')) return; // المحتوى اتغيّر بالفعل
+    el.innerHTML = `<div style="text-align:center;padding:40px;color:#666;grid-column:1/-1">
+      <div style="font-size:2.2rem;margin-bottom:10px">⏳</div>
+      <p style="margin-bottom:14px">التحميل استغرق وقتاً أطول من المعتاد — تحقق من اتصالك بالإنترنت</p>
+      <button onclick="location.reload()" style="background:linear-gradient(135deg,var(--primary),var(--teal));color:#fff;border:none;border-radius:12px;padding:10px 22px;font-family:var(--font);font-size:.9rem;font-weight:700;cursor:pointer">🔄 إعادة تحميل الصفحة</button>
+    </div>`;
+  }, 12000);
 }
 
 function showError(containerId, msg) {
@@ -3286,7 +3300,11 @@ async function _renderDynamicSectionPage(sec) {
       window[`__sectionData_${child.id}`] = child;
       window[`__sectionAction_${child.id}`] = (s) => openDynamicSubSection(s);
     });
-    var gridHtml = children.map((child, idx) => buildSubSectionCard(child, !!gate && idx > 0)).join('');
+    // ✅ تحديث (Aug 2026): القفل بالترقيم (idx>0) يتطبّق بس لما نكون بنعرض
+    // فصول مادة معيّنة، مش لما نكون بنعرض قائمة المواد نفسها تحت الشعبة —
+    // عشان كل مادة تفضل قابلة للفتح (فيها فصلها الأول مجاني بالداخل).
+    var _isListingSubjectsUnderDivision = !!gate && sec && sec.id === gate.anchor.id;
+    var gridHtml = children.map((child, idx) => buildSubSectionCard(child, !!gate && idx > 0 && !_isListingSubjectsUnderDivision)).join('');
     if (gate) gridHtml += window._renderSubscriptionGateHTML(gate);
     document.getElementById('dynamic-section-grid').innerHTML = gridHtml;
   } catch(err) {
@@ -12169,18 +12187,38 @@ self.addEventListener('fetch', function(e) {
     delete window._subStatusCache[userId + ':' + sectionId];
   }
 
-  // ── يحدد هل sectionId هو «الفصل الأول» المجاني التابع للشعبة anchorId أو أحد أبنائه ──
-  // (الفصل الأول = أول ابن مباشر للشعبة بحسب display_order — يظل مفتوحاً دائماً كمعاينة مجانية)
+  // ── يحدد هل sectionId هو «الفصل الأول» المجاني لأي مادة تابعة للشعبة anchorId ──
+  // ✅ تحديث (Aug 2026): بدل ما تكون المعاينة المجانية مقصورة على أول ابن مباشر
+  // للشعبة كلها (يعني مادة واحدة بس من أصل كل المواد)، بقت المعاينة تُطبَّق على
+  // مستوى كل مادة على حدة: أول فصل من *كل مادة* داخل الشعبة يفضل مجاني، وباقي
+  // فصول نفس المادة يتقفلوا وراء الاشتراك.
   async function _isWithinFreeChapter(anchorId, sectionId) {
-    if (sectionId === anchorId) return false; // صفحة الشعبة نفسها (قائمة الفصول) — تُعرض مع قفل الفصول التالية
-    var children = await loadSections(anchorId);
-    if (!children || children.length === 0) return false; // لا فصول فرعية — القفل يتم على مستوى عناصر المحتوى نفسها
-    var firstChildId = children[0].id;
+    if (sectionId === anchorId) return false; // صفحة الشعبة نفسها (قائمة المواد) — تُعرض كاملة بدون قفل هنا (القفل يبقى داخل كل مادة)
+
+    // ① اطلع لحد ما تلاقي "المادة" — أول ابن مباشر للشعبة على مسار sectionId
     var current = await _getSectionRow(sectionId);
+    var subjectNode = null;
     var depth = 0;
     while (current && depth < 20) {
-      if (current.id === firstChildId) return true;
-      if (current.id === anchorId) return false;
+      if (current.parent_id === anchorId) { subjectNode = current; break; }
+      if (current.id === anchorId) return false; // مفيش مادة وسيطة (sectionId نفسه ابن مباشر) — يُعامل حسب حالته أدناه
+      if (current.parent_id === null || current.parent_id === undefined) return false;
+      current = await _getSectionRow(current.parent_id);
+      depth++;
+    }
+    if (!subjectNode) return false;
+    if (subjectNode.id === sectionId) return false; // sectionId هو صفحة المادة نفسها (قائمة الفصول) — تُعرض كاملة، القفل على مستوى الفصول جوّاها
+
+    // ② هات فصول المادة دي بالذات، وشوف هل sectionId هو الفصل الأول أو حاجة جواه
+    var chapters = await loadSections(subjectNode.id);
+    if (!chapters || chapters.length === 0) return false;
+    var firstChapterId = chapters[0].id;
+
+    current = await _getSectionRow(sectionId);
+    depth = 0;
+    while (current && depth < 20) {
+      if (current.id === firstChapterId) return true;
+      if (current.id === subjectNode.id) return false;
       if (current.parent_id === null || current.parent_id === undefined) return false;
       current = await _getSectionRow(current.parent_id);
       depth++;
@@ -12204,15 +12242,28 @@ self.addEventListener('fetch', function(e) {
       var db = window.supabase;
       if (!db) return null; // fail-open حتى لا يتعطل الموقع
 
-      // ✅ DEBUG FIX: db.auth.getSession() كان بدون أي timeout — لو تعلّق (مثلاً بسبب
-      // جلسة/رمز تحديث تالف في localStorage) كانت الصفحة تظل معلّقة على "جاري التحميل
-      // من قاعدة البيانات..." للأبد بدون أي خطأ في الـ Console. الآن محدود بـ 8 ثوانٍ.
-      var sessionRes = await Promise.race([
-        db.auth.getSession(),
-        new Promise(function(_, reject) {
-          setTimeout(function() { reject(new Error('getSession timeout after 8000ms')); }, 8000);
-        })
-      ]);
+      // ✅ FIX (Aug 2026): لو مفيش أي جلسة محفوظة في localStorage أصلاً (زائر حقيقي
+      // لم يسجل الدخول أبداً) لا داعي لاستدعاء db.auth.getSession() على الإطلاق —
+      // هذا الاستدعاء هو بالضبط ما كان يتجمّد أحياناً (توكن قديم/تالف يحاول يتجدد
+      // عبر الشبكة) وهو سبب ظهور المشكلة تحديداً عند عدم تسجيل الدخول بجوجل.
+      var sessionRes;
+      var hasStoredAuth = false;
+      try { hasStoredAuth = !!localStorage.getItem('benisuef_auth'); } catch(e) {}
+      if (!hasStoredAuth) {
+        sessionRes = { data: { session: null } };
+      } else {
+        try {
+          sessionRes = await Promise.race([
+            db.auth.getSession(),
+            new Promise(function(_, reject) {
+              setTimeout(function() { reject(new Error('getSession timeout after 4000ms')); }, 4000);
+            })
+          ]);
+        } catch(sessErr) {
+          console.warn('[checkSectionAccess] getSession timeout/error — معاملة كزائر:', sessErr && sessErr.message);
+          sessionRes = { data: { session: null } };
+        }
+      }
       var user = sessionRes && sessionRes.data && sessionRes.data.session && sessionRes.data.session.user;
       if (!user) return { anchor: anchor, state: 'guest' };
 
