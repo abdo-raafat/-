@@ -5963,6 +5963,7 @@ window.checkBanStatus = async function(email) {
       <button class="ap-nav-btn" onclick="apSwitchTab('divsubs')"   id="ap-tab-divsubs"   role="tab">🎓 إدارة الاشتراكات</button>
       <button class="ap-nav-btn" onclick="apSwitchTab('payments')"  id="ap-tab-payments"  role="tab">💳 إدارة المدفوعات</button>
       <button class="ap-nav-btn" onclick="apSwitchTab('sectionsmgmt')" id="ap-tab-sectionsmgmt" role="tab">🗂️ الشعب / المواد / الفصول</button>
+      <button class="ap-nav-btn" onclick="apSwitchTab('paths')"      id="ap-tab-paths"      role="tab">🎯 إدارة المسارات</button>
       <button class="ap-nav-btn" onclick="apSwitchTab('ads')"       id="ap-tab-ads"        role="tab">📢 إدارة الإعلانات</button>
       <button class="ap-nav-btn" onclick="apSwitchTab('monthlystats')" id="ap-tab-monthlystats" role="tab">📈 إحصائيات شهرية</button>
       <button class="ap-nav-btn" onclick="apSwitchTab('usermgmt')"  id="ap-tab-usermgmt"  role="tab">👥 إدارة المستخدمين</button>
@@ -6360,6 +6361,63 @@ window.checkBanStatus = async function(email) {
         </div>
         <div id="ap-messages-body">
           <div class="ap-loading"><div class="spinner"></div> جاري التحميل...</div>
+        </div>
+      </div>
+
+      <!-- ═══════════════════ TAB: LEARNING PATHS (🎯 المسارات) ═══════════════════ -->
+      <div class="ap-tab-panel" id="ap-panel-paths" role="tabpanel">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:14px;">
+          <div class="ap-section-heading" style="margin:0;border:none;padding:0;">🎯 إدارة المسارات التعليمية</div>
+          <button class="ap-btn ap-btn-primary" onclick="lpOpenAdd()">➕ مسار جديد</button>
+        </div>
+        <p style="font-size:.78rem;color:#7a8a9a;margin:-6px 0 14px;">المسار تنظيم وترتيب لدورات موجودة بالفعل — لا يُنشئ أو ينسخ أي محتوى.</p>
+        <div id="lp-list-body">
+          <div class="ap-loading"><div class="spinner"></div> جاري التحميل...</div>
+        </div>
+      </div>
+
+      <!-- Modal: إضافة/تعديل مسار -->
+      <div id="lp-edit-modal" style="display:none;position:fixed;inset:0;z-index:9999999;background:rgba(10,20,40,0.82);backdrop-filter:blur(6px);align-items:center;justify-content:center;padding:16px;direction:rtl;font-family:'Cairo','Tajawal',sans-serif;">
+        <div style="background:var(--white);border-radius:20px;width:100%;max-width:480px;max-height:88vh;overflow-y:auto;box-shadow:0 30px 80px rgba(0,0,0,0.4);">
+          <div style="background:linear-gradient(135deg,#6c3483,#8e44ad);padding:18px 22px;display:flex;align-items:center;justify-content:space-between;color:#fff;position:sticky;top:0;">
+            <span style="font-size:1rem;font-weight:900;" id="lp-modal-title">➕ مسار جديد</span>
+            <button onclick="lpCloseEdit()" style="background:rgba(255,255,255,.2);border:none;border-radius:50%;width:32px;height:32px;color:#fff;cursor:pointer;font-size:1rem;">✕</button>
+          </div>
+          <div style="padding:22px;">
+            <div class="ap-field"><label class="ap-label">عنوان المسار *</label><input class="ap-input" id="lp-f-title" type="text" placeholder="مثال: مسار التسجيل الطبي"></div>
+            <div class="ap-field"><label class="ap-label">وصف مختصر</label><input class="ap-input" id="lp-f-desc" type="text"></div>
+            <div class="ap-field"><label class="ap-label">أيقونة (إيموجي)</label><input class="ap-input" id="lp-f-icon" type="text" placeholder="🎯"></div>
+            <div class="ap-field">
+              <label class="ap-label">الشعبة المرتبطة</label>
+              <select class="ap-select" id="lp-f-section"><option value="">— جاري التحميل —</option></select>
+              <div style="font-size:.72rem;color:#999;margin-top:4px;" id="lp-f-section-hint"></div>
+            </div>
+            <div class="ap-field" style="display:flex;align-items:center;gap:8px;">
+              <input type="checkbox" id="lp-f-active" style="width:auto;" checked>
+              <label class="ap-label" style="margin:0;" for="lp-f-active">✅ مسار مفعّل (ظاهر للطلاب)</label>
+            </div>
+            <input type="hidden" id="lp-f-id">
+            <div id="lp-edit-msg" style="font-size:.8rem;margin:8px 0;min-height:18px;"></div>
+            <button class="ap-btn ap-btn-primary" style="width:100%;justify-content:center;" onclick="lpSave()">💾 حفظ</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Modal: إدارة عناصر المسار -->
+      <div id="lp-items-modal" style="display:none;position:fixed;inset:0;z-index:9999999;background:rgba(10,20,40,0.82);backdrop-filter:blur(6px);align-items:center;justify-content:center;padding:16px;direction:rtl;font-family:'Cairo','Tajawal',sans-serif;">
+        <div style="background:var(--white);border-radius:20px;width:100%;max-width:560px;max-height:88vh;overflow-y:auto;box-shadow:0 30px 80px rgba(0,0,0,0.4);">
+          <div style="background:linear-gradient(135deg,#6c3483,#8e44ad);padding:18px 22px;display:flex;align-items:center;justify-content:space-between;color:#fff;position:sticky;top:0;">
+            <span style="font-size:1rem;font-weight:900;" id="lp-items-title">🎯 عناصر المسار</span>
+            <button onclick="lpCloseItems()" style="background:rgba(255,255,255,.2);border:none;border-radius:50%;width:32px;height:32px;color:#fff;cursor:pointer;font-size:1rem;">✕</button>
+          </div>
+          <div style="padding:22px;">
+            <div style="display:flex;gap:8px;margin-bottom:14px;">
+              <select class="ap-select" id="lp-add-course-select" style="flex:1;"><option value="">— جاري تحميل الدورات —</option></select>
+              <button class="ap-btn ap-btn-primary" onclick="lpAddItem()">➕ إضافة</button>
+            </div>
+            <div id="lp-items-msg" style="font-size:.8rem;margin-bottom:8px;min-height:18px;"></div>
+            <div id="lp-items-list"><div class="ap-loading"><div class="spinner"></div> جاري التحميل...</div></div>
+          </div>
         </div>
       </div>
 
@@ -6848,7 +6906,7 @@ function _applyBranchAdminPanelGating() {
   if (!isBranch) {
     // مستخدم عادي أو سوبر أدمن: أظهر كل التابات كما هي
     ['ap-tab-requests','ap-tab-usermgmt','ap-tab-users','ap-tab-messages','ap-tab-divsubs','ap-tab-content','ap-tab-dashboard',
-     'ap-tab-payments','ap-tab-sectionsmgmt','ap-tab-ads','ap-tab-monthlystats']
+     'ap-tab-payments','ap-tab-sectionsmgmt','ap-tab-paths','ap-tab-ads','ap-tab-monthlystats']
       .forEach(function(id) { var el = document.getElementById(id); if (el) el.style.display = ''; });
     return;
   }
@@ -6862,6 +6920,8 @@ function _applyBranchAdminPanelGating() {
   });
   var smTab = document.getElementById('ap-tab-sectionsmgmt');
   if (smTab) smTab.style.display = (perms.can_manage_materials || perms.can_manage_chapters) ? '' : 'none';
+  var pathsTab = document.getElementById('ap-tab-paths');
+  if (pathsTab) pathsTab.style.display = (perms.can_manage_materials || perms.can_manage_chapters) ? '' : 'none';
   var divsubsTab = document.getElementById('ap-tab-divsubs');
   if (divsubsTab) divsubsTab.style.display = (perms.can_manage_subscriptions || perms.can_manage_payments) ? '' : 'none';
   var contentTab = document.getElementById('ap-tab-content');
@@ -6914,6 +6974,7 @@ function apSwitchTab(tab) {
       smLoad(null);
     }
   }
+  else if (tab === 'paths')    lpLoad();
   else if (tab === 'ads')      adLoad();
   else if (tab === 'monthlystats') msLoadMonthlyStats();
   else if (tab === 'usermgmt') umLoadUsers();
@@ -8242,6 +8303,318 @@ async function smDelete(id) {
     _showToast ? _showToast('❌ خطأ: ' + err.message, 'error') : alert(err.message);
   }
 }
+
+// ════════════════════════════════════════════════════════════════
+// LEARNING PATHS MANAGER — إدارة المسارات التعليمية
+// المسار = تنظيم/ترتيب لعناصر موجودة أصلاً في site_sections (لا نسخ ولا حذف)
+// جدولان: learning_paths (المسار) + learning_path_items (الربط بالدورات)
+// ════════════════════════════════════════════════════════════════
+var _lpCache = [];       // المسارات المحمَّلة حالياً
+var _lpCurrentItemsPathId = null; // المسار المفتوح حالياً في مودال العناصر
+
+async function lpLoad() {
+  var el = document.getElementById('lp-list-body');
+  if (!el || !window.supabase) return;
+  el.innerHTML = '<div class="ap-loading"><div class="spinner"></div> جاري التحميل...</div>';
+  try {
+    var query = window.supabase
+      .from('learning_paths')
+      .select('*, learning_path_items(count)')
+      .order('display_order', { ascending: true });
+    // ── أدمن الشعبة: يرى فقط مسارات شعبته ──
+    if (window._isBranchAdmin) {
+      var scope = window._branchAdminSectionIds || [];
+      if (!scope.length) { _lpCache = []; lpRenderList(); return; }
+      query = query.in('section_id', scope);
+    }
+    var { data, error } = await query;
+    if (error) throw error;
+    _lpCache = data || [];
+    lpRenderList();
+  } catch (err) {
+    el.innerHTML = '<div class="ap-empty" style="color:#e74c3c;">❌ خطأ: ' + err.message + '</div>';
+  }
+}
+
+function lpRenderList() {
+  var el = document.getElementById('lp-list-body');
+  if (!el) return;
+  if (!_lpCache.length) {
+    el.innerHTML = '<div class="ap-empty"><div class="ap-empty-icon">🎯</div>لا توجد مسارات بعد — اضغط "➕ مسار جديد"</div>';
+    return;
+  }
+  var scopedSections = window._adminSections || [];
+  el.innerHTML = '<div class="ap-table-wrap"><table class="ap-table"><thead><tr>'
+    + '<th>#</th><th>المسار</th><th>الشعبة</th><th>عدد العناصر</th><th>الحالة</th><th>إجراءات</th>'
+    + '</tr></thead><tbody>'
+    + _lpCache.map(function(p, idx) {
+        var secTitle = '🌐 عام (كل الطلاب)';
+        if (p.section_id) {
+          var sec = scopedSections.find(function(s){ return s.id === p.section_id; });
+          secTitle = sec ? sec.title : ('#' + p.section_id);
+        }
+        var itemsCount = (p.learning_path_items && p.learning_path_items[0] && p.learning_path_items[0].count) || 0;
+        var statusBadge = p.is_active
+          ? '<span class="ap-badge active">✅ مفعّل</span>'
+          : '<span class="ap-badge pending">⏸️ معطّل</span>';
+        return '<tr>'
+          + '<td>' + (idx+1) + '</td>'
+          + '<td style="font-weight:700;">' + (p.icon || '🎯') + ' ' + _apEsc(p.title) + '</td>'
+          + '<td style="font-size:.78rem;">' + _apEsc(secTitle) + '</td>'
+          + '<td style="text-align:center;">' + itemsCount + '</td>'
+          + '<td>' + statusBadge + '</td>'
+          + '<td style="display:flex;gap:6px;flex-wrap:wrap;">'
+          +   '<button class="ap-btn ap-btn-ghost" style="padding:5px 9px;font-size:.75rem;" onclick="lpOpenItems(' + p.id + ')">🎯 العناصر</button>'
+          +   '<button class="ap-btn ap-btn-ghost" style="padding:5px 9px;font-size:.75rem;" onclick="lpOpenEdit(' + p.id + ')">✏️</button>'
+          +   '<button class="ap-btn ap-btn-ghost" style="padding:5px 9px;font-size:.75rem;color:#e74c3c;" onclick="lpDelete(' + p.id + ')">🗑️</button>'
+          + '</td>'
+          + '</tr>';
+      }).join('')
+    + '</tbody></table></div>';
+}
+
+// ── تحميل الشُّعب المتاحة لاختيارها كـ "الشعبة المرتبطة" بالمسار (مقيَّد لأدمن الشعبة) ──
+async function _lpPopulateSectionSelect(selectedId) {
+  var sel  = document.getElementById('lp-f-section');
+  var hint = document.getElementById('lp-f-section-hint');
+  if (!sel) return;
+  var list = window._adminSections || [];
+  var opts = list.map(function(s){
+    return '<option value="' + s.id + '"' + (String(s.id) === String(selectedId) ? ' selected' : '') + '>' + _apEsc(s.title) + '</option>';
+  }).join('');
+  if (window._isBranchAdmin) {
+    // أدمن الشعبة: لازم يختار شعبة داخل نطاقه — مفيش خيار "عام"
+    sel.innerHTML = opts || '<option value="">— لا توجد شُعب متاحة —</option>';
+    if (hint) hint.textContent = 'مسارك سيكون مرتبطاً بشعبتك فقط.';
+  } else {
+    sel.innerHTML = '<option value="">🌐 عام — لكل الطلاب</option>' + opts;
+    if (hint) hint.textContent = 'اتركه "عام" ليظهر لكل الطلاب، أو اختر شعبة معيّنة.';
+  }
+}
+
+function lpOpenAdd() {
+  document.getElementById('lp-modal-title').textContent = '➕ مسار جديد';
+  document.getElementById('lp-f-title').value = '';
+  document.getElementById('lp-f-desc').value  = '';
+  document.getElementById('lp-f-icon').value  = '';
+  document.getElementById('lp-f-active').checked = true;
+  document.getElementById('lp-f-id').value = '';
+  document.getElementById('lp-edit-msg').textContent = '';
+  _lpPopulateSectionSelect(window._isBranchAdmin && window._branchAdminSectionIds ? window._branchAdminSectionIds[0] : '');
+  document.getElementById('lp-edit-modal').style.display = 'flex';
+}
+
+function lpOpenEdit(id) {
+  var p = _lpCache.find(function(x){ return x.id === id; });
+  if (!p) return;
+  document.getElementById('lp-modal-title').textContent = '✏️ تعديل: ' + p.title;
+  document.getElementById('lp-f-title').value = p.title || '';
+  document.getElementById('lp-f-desc').value  = p.description || '';
+  document.getElementById('lp-f-icon').value  = p.icon || '';
+  document.getElementById('lp-f-active').checked = !!p.is_active;
+  document.getElementById('lp-f-id').value = p.id;
+  document.getElementById('lp-edit-msg').textContent = '';
+  _lpPopulateSectionSelect(p.section_id);
+  document.getElementById('lp-edit-modal').style.display = 'flex';
+}
+
+function lpCloseEdit() {
+  document.getElementById('lp-edit-modal').style.display = 'none';
+}
+
+async function lpSave() {
+  var msgEl = document.getElementById('lp-edit-msg');
+  var title = document.getElementById('lp-f-title').value.trim();
+  if (!title) { msgEl.textContent = '❌ عنوان المسار مطلوب'; msgEl.style.color = '#e74c3c'; return; }
+  var id = document.getElementById('lp-f-id').value;
+  var sectionVal = document.getElementById('lp-f-section').value;
+  if (window._isBranchAdmin && !sectionVal) {
+    msgEl.textContent = '❌ اختر شعبتك أولاً'; msgEl.style.color = '#e74c3c'; return;
+  }
+  var payload = {
+    title: title,
+    description: document.getElementById('lp-f-desc').value.trim() || null,
+    icon: document.getElementById('lp-f-icon').value.trim() || null,
+    section_id: sectionVal ? Number(sectionVal) : null,
+    is_active: document.getElementById('lp-f-active').checked
+  };
+  var accessCheck = await requireBranchAccess(payload.section_id);
+  if (!accessCheck.ok) return;
+  try {
+    msgEl.style.color = '#0a3d62'; msgEl.textContent = '⏳ جاري الحفظ...';
+    var res = id
+      ? await window.supabase.from('learning_paths').update(payload).eq('id', id)
+      : await window.supabase.from('learning_paths').insert([payload]);
+    if (res.error) throw res.error;
+    lpCloseEdit();
+    _showToast ? _showToast('✅ تم الحفظ', 'success') : null;
+    lpLoad();
+  } catch (err) {
+    msgEl.style.color = '#e74c3c'; msgEl.textContent = '❌ خطأ: ' + err.message;
+  }
+}
+
+async function lpDelete(id) {
+  var p = _lpCache.find(function(x){ return x.id === id; });
+  if (!p) return;
+  // الحذف يمسح المسار وربطه بالعناصر (learning_path_items عبر CASCADE) فقط —
+  // لا يمسّ site_sections ولا أي دورة إطلاقاً
+  if (!confirm('هل تريد حذف مسار "' + p.title + '"؟ (الدورات الموجودة بداخله ستظل موجودة كما هي، فقط سيُحذف التنظيم)')) return;
+  var accessCheck = await requireBranchAccess(p.section_id);
+  if (!accessCheck.ok) return;
+  try {
+    var { error } = await window.supabase.from('learning_paths').delete().eq('id', id);
+    if (error) throw error;
+    _showToast ? _showToast('✅ تم حذف المسار', 'success') : null;
+    lpLoad();
+  } catch (err) {
+    _showToast ? _showToast('❌ خطأ: ' + err.message, 'error') : alert(err.message);
+  }
+}
+
+// ── إدارة عناصر المسار (إضافة/إزالة/إعادة ترتيب دورات) ──
+async function lpOpenItems(pathId) {
+  var p = _lpCache.find(function(x){ return x.id === pathId; });
+  if (!p) return;
+  _lpCurrentItemsPathId = pathId;
+  document.getElementById('lp-items-title').textContent = '🎯 عناصر مسار: ' + p.title;
+  document.getElementById('lp-items-msg').textContent = '';
+  document.getElementById('lp-items-modal').style.display = 'flex';
+  await Promise.all([_lpLoadItemsList(pathId), _lpPopulateCourseSelect(p.section_id)]);
+}
+
+function lpCloseItems() {
+  document.getElementById('lp-items-modal').style.display = 'none';
+  _lpCurrentItemsPathId = null;
+}
+
+async function _lpLoadItemsList(pathId) {
+  var el = document.getElementById('lp-items-list');
+  el.innerHTML = '<div class="ap-loading"><div class="spinner"></div> جاري التحميل...</div>';
+  try {
+    var { data, error } = await window.supabase
+      .from('learning_path_items')
+      .select('id, section_id, display_order, site_sections(title, icon, type)')
+      .eq('path_id', pathId)
+      .order('display_order', { ascending: true });
+    if (error) throw error;
+    if (!data || !data.length) {
+      el.innerHTML = '<div class="ap-empty" style="padding:20px;">لا توجد عناصر مضافة بعد — اختر دورة من فوق وأضِفها.</div>';
+      return;
+    }
+    el.innerHTML = data.map(function(it, idx) {
+      var sec = it.site_sections || {};
+      return '<div style="display:flex;align-items:center;gap:8px;padding:9px 10px;border:1px solid #eee;border-radius:10px;margin-bottom:6px;">'
+        + '<span style="font-weight:700;color:#999;min-width:20px;">' + (idx+1) + '</span>'
+        + '<span style="flex:1;">' + (sec.icon || '📚') + ' ' + _apEsc(sec.title || ('#' + it.section_id)) + '</span>'
+        + '<button class="ap-btn ap-btn-ghost" style="padding:4px 8px;" title="لأعلى" ' + (idx === 0 ? 'disabled' : '') + ' onclick="_lpMoveItem(' + it.id + ',-1)">▲</button>'
+        + '<button class="ap-btn ap-btn-ghost" style="padding:4px 8px;" title="لأسفل" ' + (idx === data.length-1 ? 'disabled' : '') + ' onclick="_lpMoveItem(' + it.id + ',1)">▼</button>'
+        + '<button class="ap-btn ap-btn-ghost" style="padding:4px 8px;color:#e74c3c;" title="إزالة من المسار" onclick="lpRemoveItem(' + it.id + ')">✕</button>'
+        + '</div>';
+    }).join('');
+  } catch (err) {
+    el.innerHTML = '<div class="ap-empty" style="color:#e74c3c;">❌ ' + err.message + '</div>';
+  }
+}
+
+// قائمة الدورات (type='course') القابلة للإضافة — مقيَّدة بنطاق أدمن الشعبة لو لزم
+async function _lpPopulateCourseSelect(pathSectionId) {
+  var sel = document.getElementById('lp-add-course-select');
+  if (!sel || !window.supabase) return;
+  try {
+    var query = window.supabase.from('site_sections').select('id, title, icon').eq('type', 'course').order('title');
+    if (window._isBranchAdmin) {
+      var scope = window._branchAdminSectionIds || [];
+      if (!scope.length) { sel.innerHTML = '<option value="">— لا توجد دورات متاحة —</option>'; return; }
+      query = query.in('id', scope);
+    }
+    var { data, error } = await query;
+    if (error) throw error;
+    if (!data || !data.length) {
+      sel.innerHTML = '<option value="">— لا توجد دورات (type=course) بعد —</option>';
+      return;
+    }
+    sel.innerHTML = '<option value="">— اختر دورة —</option>'
+      + data.map(function(s){ return '<option value="' + s.id + '">' + (s.icon || '📚') + ' ' + _apEsc(s.title) + '</option>'; }).join('');
+  } catch (err) {
+    sel.innerHTML = '<option value="">❌ خطأ في تحميل الدورات</option>';
+  }
+}
+
+async function lpAddItem() {
+  var msgEl = document.getElementById('lp-items-msg');
+  var sel = document.getElementById('lp-add-course-select');
+  var sectionId = sel.value;
+  if (!sectionId || !_lpCurrentItemsPathId) { msgEl.style.color = '#e74c3c'; msgEl.textContent = '❌ اختر دورة أولاً'; return; }
+  var p = _lpCache.find(function(x){ return x.id === _lpCurrentItemsPathId; });
+  var accessCheck = await requireBranchAccess(p ? p.section_id : null);
+  if (!accessCheck.ok) return;
+  try {
+    msgEl.style.color = '#0a3d62'; msgEl.textContent = '⏳ جاري الإضافة...';
+    var { error } = await window.supabase.from('learning_path_items').insert([{
+      path_id: _lpCurrentItemsPathId,
+      section_id: Number(sectionId),
+      display_order: Date.now()
+    }]);
+    if (error) {
+      if (error.code === '23505') { msgEl.style.color = '#e74c3c'; msgEl.textContent = '⚠️ هذه الدورة مضافة بالفعل لهذا المسار'; return; }
+      throw error;
+    }
+    msgEl.style.color = '#17a589'; msgEl.textContent = '✅ تمت الإضافة';
+    sel.value = '';
+    await _lpLoadItemsList(_lpCurrentItemsPathId);
+    lpLoad(); // تحديث عدد العناصر في القائمة الرئيسية
+  } catch (err) {
+    msgEl.style.color = '#e74c3c'; msgEl.textContent = '❌ خطأ: ' + err.message;
+  }
+}
+
+// إزالة عنصر من المسار فقط — الدورة نفسها تظل موجودة في site_sections كما هي
+async function lpRemoveItem(itemId) {
+  if (!_lpCurrentItemsPathId) return;
+  var p = _lpCache.find(function(x){ return x.id === _lpCurrentItemsPathId; });
+  var accessCheck = await requireBranchAccess(p ? p.section_id : null);
+  if (!accessCheck.ok) return;
+  try {
+    var { error } = await window.supabase.from('learning_path_items').delete().eq('id', itemId);
+    if (error) throw error;
+    await _lpLoadItemsList(_lpCurrentItemsPathId);
+    lpLoad();
+  } catch (err) {
+    document.getElementById('lp-items-msg').style.color = '#e74c3c';
+    document.getElementById('lp-items-msg').textContent = '❌ خطأ: ' + err.message;
+  }
+}
+
+// إعادة ترتيب عناصر المسار (تبديل display_order مع الجار)
+async function _lpMoveItem(itemId, dir) {
+  if (!_lpCurrentItemsPathId) return;
+  try {
+    var { data, error } = await window.supabase
+      .from('learning_path_items')
+      .select('id, display_order')
+      .eq('path_id', _lpCurrentItemsPathId)
+      .order('display_order', { ascending: true });
+    if (error) throw error;
+    var idx = data.findIndex(function(x){ return x.id === itemId; });
+    var swapIdx = idx + dir;
+    if (idx === -1 || swapIdx < 0 || swapIdx >= data.length) return;
+    var a = data[idx], b = data[swapIdx];
+    await Promise.all([
+      window.supabase.from('learning_path_items').update({ display_order: b.display_order }).eq('id', a.id),
+      window.supabase.from('learning_path_items').update({ display_order: a.display_order }).eq('id', b.id)
+    ]);
+    await _lpLoadItemsList(_lpCurrentItemsPathId);
+  } catch (err) {
+    document.getElementById('lp-items-msg').style.color = '#e74c3c';
+    document.getElementById('lp-items-msg').textContent = '❌ خطأ: ' + err.message;
+  }
+}
+
+window.lpLoad = lpLoad; window.lpOpenAdd = lpOpenAdd; window.lpOpenEdit = lpOpenEdit;
+window.lpCloseEdit = lpCloseEdit; window.lpSave = lpSave; window.lpDelete = lpDelete;
+window.lpOpenItems = lpOpenItems; window.lpCloseItems = lpCloseItems;
+window.lpAddItem = lpAddItem; window.lpRemoveItem = lpRemoveItem; window._lpMoveItem = _lpMoveItem;
 
 // ════════════════════════════════════════════════════════════════
 // ADS MANAGER — إدارة الإعلانات (جدول site_ads)
@@ -10743,6 +11116,123 @@ CREATE INDEX IF NOT EXISTS idx_site_sections_type ON site_sections(type);
   return sql;
 };
 console.log('%c[COURSES] اكتب printCoursesMigration() لعرض/نسخ SQL إضافة عمود type', 'color:#0b6e4f;font-weight:bold');
+
+// printPathsMigration — نظام المسارات التعليمية (Additive بالكامل)
+window.printPathsMigration = function() {
+  var sql = `
+-- ================================================================
+-- نظام المسارات التعليمية (Learning Paths) — جداول جديدة فقط
+-- لا تحذف ولا تعدّل أي بيانات موجودة في site_sections/subscriptions
+-- ================================================================
+
+-- 1) learning_paths — المسار نفسه (تنظيم/تجميع، وليس محتوى مستقل)
+CREATE TABLE IF NOT EXISTS learning_paths (
+  id            BIGSERIAL PRIMARY KEY,
+  title         TEXT NOT NULL,
+  description   TEXT,
+  icon          TEXT,
+  section_id    BIGINT REFERENCES site_sections(id) ON DELETE SET NULL, -- NULL = مسار عام لكل الطلاب
+  display_order INT DEFAULT 0,
+  is_active     BOOLEAN DEFAULT true,
+  created_at    TIMESTAMPTZ DEFAULT NOW(),
+  updated_at    TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_learning_paths_section ON learning_paths(section_id);
+
+-- تحديث updated_at تلقائياً عند أي تعديل
+CREATE OR REPLACE FUNCTION _set_updated_at() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN NEW.updated_at = NOW(); RETURN NEW; END;
+$$;
+DROP TRIGGER IF EXISTS trg_learning_paths_updated_at ON learning_paths;
+CREATE TRIGGER trg_learning_paths_updated_at
+  BEFORE UPDATE ON learning_paths
+  FOR EACH ROW EXECUTE FUNCTION _set_updated_at();
+
+-- 2) learning_path_items — ربط المسار بعناصر site_sections الموجودة (بدون نسخ)
+CREATE TABLE IF NOT EXISTS learning_path_items (
+  id            BIGSERIAL PRIMARY KEY,
+  path_id       BIGINT NOT NULL REFERENCES learning_paths(id) ON DELETE CASCADE,
+  section_id    BIGINT NOT NULL REFERENCES site_sections(id)  ON DELETE CASCADE,
+  display_order INT DEFAULT 0,
+  created_at    TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE (path_id, section_id) -- منع تكرار نفس العنصر داخل نفس المسار
+);
+CREATE INDEX IF NOT EXISTS idx_lp_items_path    ON learning_path_items(path_id);
+CREATE INDEX IF NOT EXISTS idx_lp_items_section ON learning_path_items(section_id);
+
+-- ================================================================
+-- RLS — نفس نظام الصلاحيات الموجود (is_admin / is_branch_admin_of)
+-- ================================================================
+ALTER TABLE learning_paths      ENABLE ROW LEVEL SECURITY;
+ALTER TABLE learning_path_items ENABLE ROW LEVEL SECURITY;
+
+-- learning_paths: الطالب يرى المسارات النشطة فقط، الأدمن/أدمن الشعبة حسب نطاقه
+DROP POLICY IF EXISTS "paths_read"          ON learning_paths;
+DROP POLICY IF EXISTS "paths_admin_write"   ON learning_paths;
+DROP POLICY IF EXISTS "paths_branch_insert" ON learning_paths;
+DROP POLICY IF EXISTS "paths_branch_modify" ON learning_paths;
+DROP POLICY IF EXISTS "paths_branch_delete" ON learning_paths;
+
+CREATE POLICY "paths_read" ON learning_paths
+  FOR SELECT USING (is_active = true OR is_admin() OR is_branch_admin_of(section_id));
+
+CREATE POLICY "paths_admin_write" ON learning_paths
+  FOR ALL USING (is_admin()) WITH CHECK (is_admin());
+
+-- أدمن الشعبة: يُنشئ فقط مسارات مربوطة بشعبته (section_id لازم يكون داخل نطاقه، مش NULL)
+CREATE POLICY "paths_branch_insert" ON learning_paths
+  FOR INSERT WITH CHECK (section_id IS NOT NULL AND is_branch_admin_of(section_id));
+CREATE POLICY "paths_branch_modify" ON learning_paths
+  FOR UPDATE USING (is_branch_admin_of(section_id)) WITH CHECK (section_id IS NOT NULL AND is_branch_admin_of(section_id));
+CREATE POLICY "paths_branch_delete" ON learning_paths
+  FOR DELETE USING (is_branch_admin_of(section_id));
+
+-- learning_path_items: الرؤية/الإدارة تتبع صلاحية المسار الأب (path_id)
+DROP POLICY IF EXISTS "path_items_read"  ON learning_path_items;
+DROP POLICY IF EXISTS "path_items_write" ON learning_path_items;
+
+CREATE POLICY "path_items_read" ON learning_path_items
+  FOR SELECT USING (
+    EXISTS (
+      SELECT 1 FROM learning_paths lp
+      WHERE lp.id = path_id
+        AND (lp.is_active = true OR is_admin() OR is_branch_admin_of(lp.section_id))
+    )
+  );
+
+CREATE POLICY "path_items_write" ON learning_path_items
+  FOR ALL USING (
+    EXISTS (
+      SELECT 1 FROM learning_paths lp
+      WHERE lp.id = path_id
+        AND (is_admin() OR is_branch_admin_of(lp.section_id))
+    )
+  ) WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM learning_paths lp
+      WHERE lp.id = path_id
+        AND (is_admin() OR is_branch_admin_of(lp.section_id))
+    )
+  );
+
+-- ================================================================
+-- تحقق من التطبيق
+-- ================================================================
+-- SELECT schemaname, tablename, policyname, cmd FROM pg_policies
+-- WHERE tablename IN ('learning_paths','learning_path_items') ORDER BY tablename, cmd;
+`;
+  console.group('%c🎯 Learning Paths Migration SQL', 'color:#6c3483;font-size:1.1em;font-weight:bold');
+  console.log(sql);
+  console.groupEnd();
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(sql).then(function() {
+      console.log('%c✅ تم نسخ الـ SQL للـ clipboard!', 'color:#17a589;font-weight:bold');
+    }).catch(function(){});
+  }
+  return sql;
+};
+console.log('%c[PATHS] اكتب printPathsMigration() لعرض/نسخ SQL نظام المسارات', 'color:#6c3483;font-weight:bold');
 
 window.printGoogleAuthSetup = function() {
   var url = window.location.origin + window.location.pathname;
