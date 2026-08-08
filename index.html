@@ -2288,6 +2288,7 @@ body.sm-open {
   </div>
   <div class="breadcrumb" id="breadcrumb"></div>
   <div style="display:flex;align-items:center;gap:8px;">
+    <button id="courses-nav-btn" onclick="openCoursesPage()" title="الدورات" aria-label="الدورات" style="background:transparent;border:none;color:inherit;cursor:pointer;font-size:.85rem;font-weight:700;opacity:.85;padding:4px 8px;display:flex;align-items:center;gap:4px;">📚 الدورات</button>
     <button id="dark-mode-btn" onclick="toggleDarkMode()" title="الوضع الليلي" aria-label="تبديل الوضع الليلي">🌙</button>
     <button id="admin-pw-login-btn" onclick="openPasswordLogin()" title="دخول أدمن الشعبة" aria-label="دخول أدمن الشعبة" style="background:transparent;border:none;color:inherit;cursor:pointer;font-size:1.05rem;opacity:.75;padding:4px 6px;">🔑</button>
     <div id="user-box">
@@ -2335,6 +2336,22 @@ body.sm-open {
     شعبة تسجيل طبي وإحصاء — دفعة 2025<br>
     جميع الحقوق محفوظة © 2025
   </footer>
+</div>
+
+<!-- ==================== PAGE: COURSES (📚 الدورات) ==================== -->
+<!-- ملاحظة: صفحة إضافية فقط — لا تعدّل أي بيانات ولا نظام موجود، بتعرض
+     الأقسام اللي معمول لها type='course' في site_sections وتفتحها بنفس آلية القسم العادي -->
+<div id="page-courses" class="page">
+  <div class="links-page">
+    <button class="back-btn" onclick="goHome()">← العودة للرئيسية</button>
+    <div class="page-header">
+      <h2>📚 الدورات</h2>
+      <p style="color:#7a8a9a;font-size:.85rem;margin-top:4px;">كل الدورات المتاحة في مكان واحد</p>
+    </div>
+    <div class="cards-grid" id="courses-grid">
+      <div class="loading" style="padding:60px 20px"><div class="spinner"></div> جاري تحميل الدورات...</div>
+    </div>
+  </div>
 </div>
 
 <!-- ==================== PAGE: LINKS ==================== -->
@@ -3261,6 +3278,46 @@ async function openDynamicSection(sec) {
   window._lastOpenSectionId = sec.id;
   await _renderDynamicSectionPage(sec);
 }
+
+/**
+ * openCoursesPage / renderCoursesPage — صفحة "📚 الدورات"
+ * إضافة صرفة، ما بتلمسش نظام المراحل/الشعب/الاشتراكات:
+ * بتعرض أي section في site_sections عليها type='course' وتفتحها
+ * بنفس آلية فتح أي قسم عادي (openDynamicSection) — مفيش نسخ بيانات.
+ */
+async function openCoursesPage() {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.getElementById('page-courses').classList.add('active');
+  window.scrollTo(0, 0);
+  state.navigationStack.push({ label: '📚 الدورات', restore: () => openCoursesPage() });
+  await renderCoursesPage();
+}
+window.openCoursesPage = openCoursesPage;
+
+async function renderCoursesPage() {
+  var grid = document.getElementById('courses-grid');
+  if (!grid || !window.supabase) return;
+  try {
+    var { data, error } = await window.supabase
+      .from('site_sections')
+      .select('*')
+      .eq('type', 'course')
+      .order('display_order', { ascending: true });
+    if (error) throw error;
+    if (!data || !data.length) {
+      grid.innerHTML = '<div style="text-align:center;padding:40px;color:#999;grid-column:1/-1">'
+        + '<div style="font-size:2.5rem;margin-bottom:12px">📚</div>'
+        + '<p>لا توجد دورات مضافة بعد</p></div>';
+      return;
+    }
+    _registerSectionHandlers(data);
+    grid.innerHTML = data.map(function(sec) { return buildSectionCard(sec); }).join('');
+  } catch (err) {
+    console.error('[renderCoursesPage] خطأ:', err.message);
+    grid.innerHTML = '<div style="text-align:center;padding:40px;color:#e74c3c;grid-column:1/-1">❌ تعذّر تحميل الدورات</div>';
+  }
+}
+window.renderCoursesPage = renderCoursesPage;
 
 /**
  * openDynamicSubSection — فتح قسم فرعي (يُضاف للـ stack)
@@ -6028,6 +6085,10 @@ window.checkBanStatus = async function(email) {
               </div>
               <div class="ap-field"><label class="ap-label">التصنيف (Category) — اختياري</label><input class="ap-input" id="sm-f-category" type="text"></div>
               <div class="ap-field"><label class="ap-label">Tags — اختياري (مفصولة بفاصلة)</label><input class="ap-input" id="sm-f-tags" type="text"></div>
+              <div class="ap-field" style="display:flex;align-items:center;gap:8px;background:#eefaf6;border:1px solid #b8e6d8;border-radius:10px;padding:10px 12px;">
+                <input type="checkbox" id="sm-f-is-course" style="width:auto;">
+                <label class="ap-label" style="margin:0;" for="sm-f-is-course">📚 هذا العنصر دورة (Course) — يظهر في صفحة "الدورات"</label>
+              </div>
               <div class="ap-field" style="display:flex;align-items:center;gap:8px;">
                 <input type="checkbox" id="sm-f-requires-sub" style="width:auto;">
                 <label class="ap-label" style="margin:0;" for="sm-f-requires-sub">🔒 يتطلب اشتراكاً مدفوعاً</label>
@@ -8028,12 +8089,13 @@ function smRenderList() {
     + '</tr></thead><tbody>'
     + rows.map(function(s, idx) {
       var icon = s._hasChildren ? '📂' : (s.icon || '📄');
+      var courseBadge = s.type === 'course' ? ' <span class="ap-badge active" style="background:#e8f8f0;color:#0b6e4f;">📚 دورة</span>' : '';
       var lockBadge = s.requires_subscription
         ? '<span class="ap-badge pending">🔒 مدفوع' + (s.price ? ' — ' + s.price + ' ج.م' : '') + '</span>'
         : '<span class="ap-badge active">🔓 مجاني</span>';
       return '<tr>'
         + '<td>' + (idx+1) + '</td>'
-        + '<td style="cursor:pointer;font-weight:700;" onclick="smDrillInto(' + s.id + ',\'' + _apEsc(s.title).replace(/'/g,"\\'") + '\')">' + icon + ' ' + _apEsc(s.title) + '</td>'
+        + '<td style="cursor:pointer;font-weight:700;" onclick="smDrillInto(' + s.id + ',\'' + _apEsc(s.title).replace(/'/g,"\\'") + '\')">' + icon + ' ' + _apEsc(s.title) + courseBadge + '</td>'
         + '<td style="font-size:.75rem;color:#888;">' + _apEsc(s.subtitle || '—') + '</td>'
         + '<td>' + lockBadge + '</td>'
         + '<td style="white-space:nowrap;">'
@@ -8079,6 +8141,7 @@ function smOpenAdd() {
   document.getElementById('sm-f-price').value = '';
   document.getElementById('sm-f-pay-method').value = 'Vodafone Cash';
   document.getElementById('sm-f-requires-sub').checked = false;
+  document.getElementById('sm-f-is-course').checked = false;
   document.getElementById('sm-payment-fields').style.display = 'none';
   document.getElementById('sm-f-id').value = '';
   document.getElementById('sm-edit-msg').textContent = '';
@@ -8096,6 +8159,7 @@ function smOpenEdit(id) {
   document.getElementById('sm-f-category').value = s.category || '';
   document.getElementById('sm-f-tags').value     = s.tags || '';
   document.getElementById('sm-f-requires-sub').checked = !!s.requires_subscription;
+  document.getElementById('sm-f-is-course').checked = (s.type === 'course');
   document.getElementById('sm-payment-fields').style.display = s.requires_subscription ? 'block' : 'none';
   document.getElementById('sm-f-pay-method').value = s.payment_method || 'Vodafone Cash';
   document.getElementById('sm-f-price').value = s.price != null ? s.price : '';
@@ -8128,6 +8192,7 @@ async function smSave() {
     display_order: parseInt(document.getElementById('sm-f-order').value, 10) || 0,
     category: document.getElementById('sm-f-category').value.trim() || null,
     tags: document.getElementById('sm-f-tags').value.trim() || null,
+    type: document.getElementById('sm-f-is-course').checked ? 'course' : null,
     requires_subscription: requiresSub,
     payment_method: requiresSub ? document.getElementById('sm-f-pay-method').value : null,
     price: requiresSub ? (parseFloat(document.getElementById('sm-f-price').value) || null) : null,
@@ -10658,6 +10723,26 @@ CREATE POLICY "ads_admin_write" ON site_ads FOR ALL    USING (is_admin());
   return sql;
 };
 console.log('%c[RLS] اكتب printFullRLS() في الـ Console لعرض + نسخ كامل SQL الإصلاح', 'color:#e74c3c;font-weight:bold;font-size:13px');
+
+// printCoursesMigration — إضافة عمود type لتمييز "الدورات" فقط (Additive, بدون أي حذف)
+window.printCoursesMigration = function() {
+  var sql = `
+-- إضافة عمود type لتمييز الدورات (Courses) داخل site_sections الحالي
+-- بدون أي تعديل أو حذف لأي بيانات موجودة — كل الصفوف الحالية تبقى type = NULL
+ALTER TABLE site_sections ADD COLUMN IF NOT EXISTS type TEXT;
+CREATE INDEX IF NOT EXISTS idx_site_sections_type ON site_sections(type);
+`;
+  console.group('%c📚 Courses Migration SQL', 'color:#0b6e4f;font-size:1.1em;font-weight:bold');
+  console.log(sql);
+  console.groupEnd();
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(sql).then(function() {
+      console.log('%c✅ تم نسخ الـ SQL للـ clipboard!', 'color:#17a589;font-weight:bold');
+    }).catch(function(){});
+  }
+  return sql;
+};
+console.log('%c[COURSES] اكتب printCoursesMigration() لعرض/نسخ SQL إضافة عمود type', 'color:#0b6e4f;font-weight:bold');
 
 window.printGoogleAuthSetup = function() {
   var url = window.location.origin + window.location.pathname;
