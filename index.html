@@ -1325,21 +1325,20 @@ body.rv-open {
   display: block; width: 100%; height: 100%;
   border-radius: 3px;
 }
-.pdfv-page .pdfv-text-layer {
+/* ── طبقة تظليل نتائج البحث فقط — لا تحتوي على أي نص، فقط مستطيلات تظليل ──
+   لا يوجد TextLayer دائم فوق الـ canvas؛ هذه الطبقة تُملأ فقط أثناء بحث نشط،
+   وتُفرّغ بمجرد إغلاق البحث. لا opacity tricks ولا color:transparent — العناصر
+   هنا مستطيلات تظليل مرئية بتصميمها، وتختفي بحذفها من الـ DOM وليس بإخفائها. */
+.pdfv-page .pdfv-highlight-layer {
   position: absolute; inset: 0;
-  overflow: hidden; line-height: 1;
-  opacity: .0001; /* invisible but selectable, sits over the canvas */
+  overflow: hidden; pointer-events: none;
 }
-.pdfv-page .pdfv-text-layer span {
-  position: absolute; white-space: pre; transform-origin: 0 0;
-  color: transparent;
-}
-.pdfv-page .pdfv-text-layer span.pdfv-hit {
+.pdfv-page .pdfv-highlight-layer .pdfv-hit-box {
+  position: absolute;
   background: rgba(255, 213, 0, .55);
-  color: transparent;
   border-radius: 2px;
 }
-.pdfv-page .pdfv-text-layer span.pdfv-hit-current {
+.pdfv-page .pdfv-highlight-layer .pdfv-hit-box.pdfv-hit-current {
   background: rgba(255, 120, 0, .75);
 }
 .pdfv-page-loading {
@@ -9591,7 +9590,7 @@ var NativePDFViewer = (function() {
         currentPage: 1,
         zoom: 1,
         baseAspect: null,          // height/width لصفحة 1 (لتقدير ارتفاع الحاويات قبل الرسم)
-        pageEls: {},               // pageNum -> { container, canvas, textLayer, rendered, renderTask, textContent }
+        pageEls: {},               // pageNum -> { container, canvas, highlightLayer, rendered, renderTask, textContent }
         observer: null,
         renderedSet: new Set(),
         pagesDark: pagesDark,
@@ -9699,7 +9698,7 @@ var NativePDFViewer = (function() {
       if (entry.rendered) {
         entry.rendered = false;
         entry.canvas = null;
-        entry.textLayerDiv = null;
+        entry.highlightLayer = null;
         S.renderedSet.delete(n);
         entry.container.innerHTML = '<div class="pdfv-page-loading"><div class="pdfv-spin"></div>صفحة ' + n + '</div>';
       }
@@ -9773,33 +9772,32 @@ var NativePDFViewer = (function() {
         container.style.height = Math.floor(cssViewport.height) + 'px';
         container.innerHTML = '';
 
+        // ✅ الـ canvas هو المسؤول الوحيد عن العرض البصري — دقة حقيقية (pixelRatio)
+        //    مرسومة على canvas.width/height، ومُصغّرة بصريًا عبر CSS (width:100%/height:100%
+        //    في .pdfv-page canvas) لتُطابق cssViewport، بدون أي transform إضافي.
         var canvas = document.createElement('canvas');
         canvas.width = Math.floor(viewport.width);
         canvas.height = Math.floor(viewport.height);
         container.appendChild(canvas);
 
-        var textLayerDiv = document.createElement('div');
-        textLayerDiv.className = 'pdfv-text-layer';
-        textLayerDiv.style.width = Math.floor(cssViewport.width) + 'px';
-        textLayerDiv.style.height = Math.floor(cssViewport.height) + 'px';
-        container.appendChild(textLayerDiv);
+        // ✅ طبقة تظليل نتائج بحث فقط — فارغة تمامًا الآن، لا يوجد بها أي نص أو Span.
+        //    لا نصنع أي TextLayer مرئي فوق الـ canvas أثناء العرض العادي.
+        var highlightLayer = document.createElement('div');
+        highlightLayer.className = 'pdfv-highlight-layer';
+        highlightLayer.style.width = Math.floor(cssViewport.width) + 'px';
+        highlightLayer.style.height = Math.floor(cssViewport.height) + 'px';
+        container.appendChild(highlightLayer);
 
         await page.render({ canvasContext: canvas.getContext('2d'), viewport: viewport }).promise;
 
-        // نص قابل للتحديد + أساس التمييز عند البحث
+        // ✅ نحتفظ بـ getTextContent() لأغراض البحث فقط (فهرسة نصية) —
+        //    لا نستخدمه لبناء أي طبقة نص مرئية فوق الـ canvas.
         var textContent = entry.textContent || await page.getTextContent();
         entry.textContent = textContent;
-        try {
-          var textLayer = new S.lib.TextLayer({
-            textContentSource: textContent,
-            container: textLayerDiv,
-            viewport: cssViewport
-          });
-          await textLayer.render();
-        } catch(te) { /* التحديد النصي غير حرج — نتابع بدونه لو فشل */ }
+        entry.cssViewport = cssViewport;
 
         entry.canvas = canvas;
-        entry.textLayerDiv = textLayerDiv;
+        entry.highlightLayer = highlightLayer;
         entry.rendered = true;
         S.renderedSet.add(n);
 
@@ -9830,7 +9828,7 @@ var NativePDFViewer = (function() {
         entry.container.innerHTML = '<div class="pdfv-page-loading"><div class="pdfv-spin"></div>صفحة ' + n + '</div>';
         entry.rendered = false;
         entry.canvas = null;
-        entry.textLayerDiv = null;
+        entry.highlightLayer = null;
         S.renderedSet.delete(n);
       }
     });
@@ -9869,7 +9867,7 @@ var NativePDFViewer = (function() {
       if (entry.rendered) {
         entry.rendered = false;
         entry.canvas = null;
-        entry.textLayerDiv = null;
+        entry.highlightLayer = null;
         S.renderedSet.delete(n);
         entry.container.innerHTML = '<div class="pdfv-page-loading"><div class="pdfv-spin"></div>صفحة ' + n + '</div>';
       }
@@ -9927,16 +9925,53 @@ var NativePDFViewer = (function() {
     if (countEl) countEl.textContent = '';
   }
 
+  // يفرّغ طبقة التظليل (لا يوجد بها نص أبدًا — فقط مستطيلات تظليل تُحذف بالكامل هنا)
   function _clearHighlights() {
     if (!S) return;
     Object.keys(S.pageEls).forEach(function(key) {
       var entry = S.pageEls[key];
-      if (entry.textLayerDiv) {
-        entry.textLayerDiv.querySelectorAll('span.pdfv-hit,span.pdfv-hit-current').forEach(function(sp) {
-          sp.classList.remove('pdfv-hit', 'pdfv-hit-current');
-        });
-      }
+      if (entry.highlightLayer) entry.highlightLayer.innerHTML = '';
     });
+  }
+
+  // ── حساب مستطيل التظليل لعنصر نصي (item من getTextContent) بدون بناء أي span نصي ──
+  // نفس منطق دمج المصفوفات (viewport.transform × item.transform) الذي يستخدمه PDF.js
+  // داخليًا لوضع النص، لكن هنا نستخدمه فقط لحساب صندوق التظليل، وليس لرسم أي حرف.
+  function _matrixMultiply(m1, m2) {
+    return [
+      m1[0] * m2[0] + m1[2] * m2[1],
+      m1[1] * m2[0] + m1[3] * m2[1],
+      m1[0] * m2[2] + m1[2] * m2[3],
+      m1[1] * m2[2] + m1[3] * m2[3],
+      m1[0] * m2[4] + m1[2] * m2[5] + m1[4],
+      m1[1] * m2[4] + m1[3] * m2[5] + m1[5]
+    ];
+  }
+
+  function _itemHighlightRect(item, viewport) {
+    var tx = _matrixMultiply(viewport.transform, item.transform);
+    var height = Math.hypot(tx[2], tx[3]) || Math.hypot(tx[0], tx[1]) || 10;
+    var width  = (item.width || 0) * Math.hypot(tx[0], tx[1]);
+    return {
+      left: tx[4],
+      top: tx[5] - height,
+      width: Math.max(width, 2),
+      height: Math.max(height, 2)
+    };
+  }
+
+  // يبني (أو يحدّث) مستطيل تظليل واحد لعنصر مطابقة داخل highlightLayer الخاص بالصفحة
+  function _paintHighlightBox(entry, item, isCurrent) {
+    if (!entry.highlightLayer || !entry.cssViewport) return null;
+    var rect = _itemHighlightRect(item, entry.cssViewport);
+    var box = document.createElement('div');
+    box.className = 'pdfv-hit-box' + (isCurrent ? ' pdfv-hit-current' : '');
+    box.style.left   = rect.left + 'px';
+    box.style.top    = rect.top + 'px';
+    box.style.width  = rect.width + 'px';
+    box.style.height = rect.height + 'px';
+    entry.highlightLayer.appendChild(box);
+    return box;
   }
 
   // يبني فهرس نصي تدريجي عبر كل الصفحات (يُطلب نص الصفحة فقط dict — خفيف مقارنة بالرسم)
@@ -10007,12 +10042,11 @@ var NativePDFViewer = (function() {
     _applyHighlightsForPage(m.page);
 
     var entry = S.pageEls[m.page];
-    if (entry && entry.textLayerDiv) {
-      // حدّد span النص المطابق داخل هذه الصفحة كنتيجة "حالية"
-      var targetSpan = entry.textLayerDiv.children[m.itemIndex];
-      if (targetSpan) {
-        targetSpan.classList.add('pdfv-hit-current');
-        targetSpan.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    if (entry && entry.highlightLayer) {
+      // مرّر إلى صندوق التظليل "الحالي" في هذه الصفحة
+      var currentBox = entry.highlightLayer.querySelector('.pdfv-hit-current');
+      if (currentBox) {
+        currentBox.scrollIntoView({ block: 'center', behavior: 'smooth' });
       } else {
         entry.container.scrollIntoView({ block: 'center', behavior: 'smooth' });
       }
@@ -10022,14 +10056,17 @@ var NativePDFViewer = (function() {
     if (input) input.value = m.page;
   }
 
+  // يبني مستطيلات التظليل لكل نتائج البحث الموجودة في صفحة مُعيّنة — فقط أثناء بحث نشط.
+  // لا ينشئ أي نص، فقط مستطيلات تظليل مؤقتة تُحذف بالكامل عند _clearHighlights().
   function _applyHighlightsForPage(n) {
     if (!S || !S.search.query) return;
     var entry = S.pageEls[n];
-    if (!entry || !entry.rendered || !entry.textLayerDiv) return;
+    if (!entry || !entry.rendered || !entry.highlightLayer || !entry.textContent) return;
+    var items = entry.textContent.items;
     S.search.matches.forEach(function(m, i) {
       if (m.page !== n) return;
-      var span = entry.textLayerDiv.children[m.itemIndex];
-      if (span) span.classList.add(i === S.search.index ? 'pdfv-hit-current' : 'pdfv-hit');
+      var item = items[m.itemIndex];
+      if (item) _paintHighlightBox(entry, item, i === S.search.index);
     });
   }
 
