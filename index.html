@@ -2317,7 +2317,6 @@ body.sm-open {
   <div style="display:flex;align-items:center;gap:8px;">
     <button id="courses-nav-btn" onclick="openCoursesPage()" title="الدورات" aria-label="الدورات" style="background:transparent;border:none;color:inherit;cursor:pointer;font-size:.85rem;font-weight:700;opacity:.85;padding:4px 8px;display:flex;align-items:center;gap:4px;">📚 الدورات</button>
     <button id="dark-mode-btn" onclick="toggleDarkMode()" title="الوضع الليلي" aria-label="تبديل الوضع الليلي">🌙</button>
-    <button id="admin-pw-login-btn" onclick="openPasswordLogin()" title="دخول أدمن الشعبة" aria-label="دخول أدمن الشعبة" style="background:transparent;border:none;color:inherit;cursor:pointer;font-size:1.05rem;opacity:.75;padding:4px 6px;">🔑</button>
     <div id="user-box">
       <button class="chatgpt-login-btn" onclick="loginWithGoogle()">🔐 دخول</button>
     </div>
@@ -3542,7 +3541,7 @@ function renderPreformatted(text) {
 function buildContentHTML(contentItems, gate) {
   let html = '';
   contentItems.forEach((item, idx) => {
-    if (gate && idx > 0) {
+    if (gate) {
       html += `
         <div class="resource-item" onclick="window._openLockNoticeModal(window.__currentChapterGate)" style="cursor:pointer;margin-bottom:10px;padding:18px 22px;opacity:.65">
           <div class="ri-icon" style="font-size:2rem">🔒</div>
@@ -3669,7 +3668,7 @@ function renderResourceCards(containerId, items, gate) {
   const container = document.getElementById(containerId);
   if (!container) return;
   let html = items.map((item, idx) => {
-    if (gate && idx > 0) {
+    if (gate) {
       return `
       <div class="link-card lc-blue" style="cursor:pointer;opacity:.65" onclick="window._openLockNoticeModal(window.__currentChapterGate)">
         <div class="lc-top">
@@ -12197,14 +12196,12 @@ self.addEventListener('fetch', function(e) {
       var anchor = await _findSubscriptionAnchor(sectionId);
       if (!anchor) return null; // هذا القسم/الشعبة لا يتطلب اشتراكاً (requires_subscription = false)
 
-      // ── ✅ تم تعطيل هذا التجاوز عمداً (Aug 2026):
-      // كان يفتح أول "مادة" بالكامل (كل دروسها) كمعاينة مجانية، بدل فتح أول درس فقط.
-      // الآن الحماية تعتمد فقط على منطق "أول عنصر مفتوح والباقي مقفول" الموجود أصلاً
-      // في buildSubSectionCard/renderResourceCards/buildContentHTML (idx > 0 مقفول)،
-      // وهو يتكرر تلقائياً في كل مستوى: أول مادة مفتوحة (كبطاقة) ← جوه المادة أول
-      // درس فقط مفتوح والباقي مقفول. هذا يطابق تماماً "أول درس فقط من أول مادة".
-      // var isFreePreview = await _isWithinFreeChapter(anchor.id, sectionId);
-      // if (isFreePreview) return null;
+      // ── ✅ مُفعَّل مجدداً (Aug 2026): Chapter 1 من كل مادة/شعبة يكون مجاناً بالكامل
+      // (كل section_content و section_resources والفيديوهات وملفات الـ PDF التابعة له)
+      // — وليس فقط أول عنصر بداخله. أول Chapter تابع لأي شعبة تتطلب اشتراكاً يُعتبر
+      // معاينة مجانية كاملة، وكل ما بعده (Chapter 2 فأكثر) يظل محمياً بالاشتراك كالمعتاد.
+      var isFreePreview = await _isWithinFreeChapter(anchor.id, sectionId);
+      if (isFreePreview) return null;
 
       var db = window.supabase;
       if (!db) return null; // fail-open حتى لا يتعطل الموقع
