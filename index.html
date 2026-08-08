@@ -7078,12 +7078,12 @@ async function _apLoadBranchDashboard() {
   try {
     var [contentRes, subsRes] = await Promise.all([
       window.supabase.from('section_content').select('id', { count: 'exact', head: true }).in('section_id', scope),
-      window.supabase.from('subscriptions').select('id, status').in('section_id', scope)
+      window.supabase.from('subscriptions').select('id, payment_status').in('section_id', scope)
     ]);
     var allSubs = subsRes.data || [];
     _apSetStat('ap-stat-users',   scope.length);       // عدد أقسام الشعبة (فصول/مواد)
-    _apSetStat('ap-stat-pending', allSubs.filter(function(s){ return s.status === 'pending'; }).length);
-    _apSetStat('ap-stat-active',  allSubs.filter(function(s){ return s.status === 'active';  }).length);
+    _apSetStat('ap-stat-pending', allSubs.filter(function(s){ return s.payment_status === 'pending'; }).length);
+    _apSetStat('ap-stat-active',  allSubs.filter(function(s){ return s.payment_status === 'active';  }).length);
     _apSetStat('ap-stat-msgs',    '—');
     _apSetStat('ap-stat-content', contentRes.count || 0);
     var actEl = document.getElementById('ap-recent-activity');
@@ -7336,6 +7336,19 @@ async function baDoRemove() {
   }
 }
 
+// ── subscriptions لا تحتوي على user_email/full_name فعلياً — نجيبهم من profiles ──
+async function _apGetProfilesMap(userIds) {
+  var uniq = Array.from(new Set((userIds || []).filter(Boolean)));
+  if (!uniq.length || !window.supabase) return {};
+  try {
+    var { data, error } = await window.supabase.from('profiles').select('id, email, full_name').in('id', uniq);
+    if (error) throw error;
+    var map = {};
+    (data || []).forEach(function(p) { map[p.id] = p; });
+    return map;
+  } catch (e) { return {}; }
+}
+
 // ────────────────────────────────────────────────────────────────
 // DASHBOARD TAB
 // ────────────────────────────────────────────────────────────────
@@ -7346,7 +7359,7 @@ async function apLoadDashboard() {
   try {
     var [usersRes, subsRes, msgsRes, contentRes] = await Promise.all([
       window.supabase.from('profiles').select('id', { count: 'exact', head: true }),
-      window.supabase.from('subscriptions').select('id, status, full_name, user_email, created_at, end_date, receipt_image', { count: 'exact' }),
+      window.supabase.from('subscriptions').select('id, user_id, payment_status, created_at, end_date, receipt_image', { count: 'exact' }),
       window.supabase.from('contact_messages').select('id', { count: 'exact', head: true }),
       window.supabase.from('section_content').select('id', { count: 'exact', head: true }),
     ]);
@@ -7355,21 +7368,21 @@ async function apLoadDashboard() {
     var allSubs      = subsRes.data   || [];
     var nowMs        = Date.now();
 
-    // عدد المشتركين: اشتراكات نشطة فعلياً (status=active وتاريخ الانتهاء لم يمر بعد أو غير محدد)
+    // عدد المشتركين: اشتراكات نشطة فعلياً (payment_status=active وتاريخ الانتهاء لم يمر بعد أو غير محدد)
     var activeSubs   = allSubs.filter(function(s){
-      return s.status === 'active' && (!s.end_date || new Date(s.end_date).getTime() >= nowMs);
+      return s.payment_status === 'active' && (!s.end_date || new Date(s.end_date).getTime() >= nowMs);
     }).length;
 
-    // اشتراكات منتهية: status=active لكن end_date فات، أو status=expired صراحة
+    // اشتراكات منتهية: payment_status=active لكن end_date فات، أو payment_status=expired صراحة
     var expiredSubs  = allSubs.filter(function(s){
-      return s.status === 'expired' || (s.status === 'active' && s.end_date && new Date(s.end_date).getTime() < nowMs);
+      return s.payment_status === 'expired' || (s.payment_status === 'active' && s.end_date && new Date(s.end_date).getTime() < nowMs);
     }).length;
 
     // طلبات جديدة: كل الطلبات المعلقة (لسه محتاجة مراجعة الأدمن)
-    var newRequests  = allSubs.filter(function(s){ return s.status === 'pending'; }).length;
+    var newRequests  = allSubs.filter(function(s){ return s.payment_status === 'pending'; }).length;
 
     // طلبات دفع معلقة: طلبات معلقة ومعاها إيصال دفع مرفوع (تحتاج مراجعة دفع تحديداً)
-    var pendingPay   = allSubs.filter(function(s){ return s.status === 'pending' && !!s.receipt_image; }).length;
+    var pendingPay   = allSubs.filter(function(s){ return s.payment_status === 'pending' && !!s.receipt_image; }).length;
 
     var totalMsgs    = msgsRes.count  || 0;
     var totalContent = contentRes.count || 0;
@@ -7396,13 +7409,15 @@ async function apLoadDashboard() {
       expired: '<span class="ap-badge expired">❌ منتهي</span>',
       cancelled: '<span class="ap-badge cancelled">🚫 ملغي</span>',
     };
+    var profMap = await _apGetProfilesMap(recent.map(function(s){ return s.user_id; }));
     actEl.innerHTML = '<div class="ap-table-wrap"><table class="ap-table"><thead><tr>'
       + '<th>الاسم</th><th>البريد</th><th>الحالة</th><th>تاريخ الطلب</th>'
       + '</tr></thead><tbody>'
       + recent.map(function(s) {
-        return '<tr><td>' + _apEsc(s.full_name || '—') + '</td>'
-          + '<td style="direction:ltr;text-align:right;">' + _apEsc(s.user_email || '—') + '</td>'
-          + '<td>' + (statusLabels[s.status] || s.status) + '</td>'
+        var prof = profMap[s.user_id] || {};
+        return '<tr><td>' + _apEsc(prof.full_name || '—') + '</td>'
+          + '<td style="direction:ltr;text-align:right;">' + _apEsc(prof.email || '—') + '</td>'
+          + '<td>' + (statusLabels[s.payment_status] || s.payment_status) + '</td>'
           + '<td>' + _apDate(s.created_at) + '</td></tr>';
       }).join('')
       + '</tbody></table></div>';
@@ -7428,20 +7443,22 @@ async function apLoadRequests() {
     var { data, error } = await window.supabase
       .from('subscriptions')
       .select('*')
-      .eq('status', 'pending')
+      .eq('payment_status', 'pending')
       .order('requested_at', { ascending: false });
     if (error) throw error;
     if (!data || data.length === 0) {
       el.innerHTML = '<div class="ap-empty"><div class="ap-empty-icon">🎉</div>لا توجد طلبات معلقة</div>';
       return;
     }
+    var profMap = await _apGetProfilesMap(data.map(function(r){ return r.user_id; }));
     el.innerHTML = '<div class="ap-table-wrap"><table class="ap-table"><thead><tr>'
       + '<th>الاسم</th><th>البريد</th><th>التخصص</th><th>النوع</th><th>التاريخ</th><th>إجراء</th>'
       + '</tr></thead><tbody>'
       + data.map(function(r) {
+        var prof = profMap[r.user_id] || {};
         return '<tr>'
-          + '<td>' + _apEsc(r.full_name || '—') + '</td>'
-          + '<td style="direction:ltr;font-size:.72rem;">' + _apEsc(r.user_email || '—') + '</td>'
+          + '<td>' + _apEsc(prof.full_name || '—') + '</td>'
+          + '<td style="direction:ltr;font-size:.72rem;">' + _apEsc(prof.email || '—') + '</td>'
           + '<td>' + _apEsc(r.specialty || '—') + '</td>'
           + '<td><span class="ap-badge pending">' + (r.subscription_type === 'yearly' ? '📅 سنوي' : '📆 شهري') + '</span></td>'
           + '<td>' + _apDate(r.requested_at) + '</td>'
@@ -7481,7 +7498,7 @@ async function apLoadSubscriptions() {
       .from('subscriptions')
       .select('*')
       .order('created_at', { ascending: false });
-    if (filterVal) query = query.eq('status', filterVal);
+    if (filterVal) query = query.eq('payment_status', filterVal);
     var { data, error } = await query;
     if (error) throw error;
     if (!data || data.length === 0) {
@@ -7494,19 +7511,21 @@ async function apLoadSubscriptions() {
       expired: '<span class="ap-badge expired">❌ منتهي</span>',
       cancelled: '<span class="ap-badge cancelled">🚫 ملغي</span>',
     };
+    var profMap = await _apGetProfilesMap(data.map(function(s){ return s.user_id; }));
     el.innerHTML = '<div class="ap-table-wrap"><table class="ap-table"><thead><tr>'
       + '<th>الاسم</th><th>البريد</th><th>الحالة</th><th>النوع</th><th>الانتهاء</th><th>إجراء</th>'
       + '</tr></thead><tbody>'
       + data.map(function(s) {
+        var prof = profMap[s.user_id] || {};
         return '<tr>'
-          + '<td>' + _apEsc(s.full_name || '—') + '</td>'
-          + '<td style="direction:ltr;font-size:.72rem;">' + _apEsc(s.user_email || '—') + '</td>'
-          + '<td>' + (statusMap[s.status] || s.status) + '</td>'
+          + '<td>' + _apEsc(prof.full_name || '—') + '</td>'
+          + '<td style="direction:ltr;font-size:.72rem;">' + _apEsc(prof.email || '—') + '</td>'
+          + '<td>' + (statusMap[s.payment_status] || s.payment_status) + '</td>'
           + '<td>' + (s.subscription_type === 'yearly' ? '📅 سنوي' : '📆 شهري') + '</td>'
           + '<td>' + _apDate(s.end_date) + '</td>'
           + '<td style="white-space:nowrap;">'
-          + (s.status === 'pending' ? '<button class="ap-btn ap-btn-success" style="margin-left:4px;" onclick="apApproveReq(\'' + s.id + '\',\'' + s.user_id + '\')">✅</button>' : '')
-          + (s.status !== 'cancelled' ? '<button class="ap-btn ap-btn-danger" onclick="apCancelSub(\'' + s.id + '\',\'' + s.user_id + '\')">🚫</button>' : '')
+          + (s.payment_status === 'pending' ? '<button class="ap-btn ap-btn-success" style="margin-left:4px;" onclick="apApproveReq(\'' + s.id + '\',\'' + s.user_id + '\')">✅</button>' : '')
+          + (s.payment_status !== 'cancelled' ? '<button class="ap-btn ap-btn-danger" onclick="apCancelSub(\'' + s.id + '\',\'' + s.user_id + '\')">🚫</button>' : '')
           + '</td></tr>';
       }).join('')
       + '</tbody></table></div>';
@@ -7525,15 +7544,15 @@ async function apCancelSub(subId, userId) {
 // DIVISION SUBSCRIPTIONS TAB (subscriptions — اشتراك مستقل لكل شعبة عن طريق section_id)
 // ────────────────────────────────────────────────────────────────
 function _divSubStatusLabel(row) {
-  if (row.status === 'active') {
+  if (row.payment_status === 'active') {
     var active = row.end_date && new Date(row.end_date).getTime() >= Date.now();
     return active
       ? '<span class="ap-badge active">✅ نشط</span>'
       : '<span class="ap-badge expired">❌ منتهي</span>';
   }
-  if (row.status === 'pending')   return '<span class="ap-badge pending">⏳ معلق</span>';
-  if (row.status === 'cancelled') return '<span class="ap-badge cancelled">🚫 ملغي</span>';
-  return _apEsc(row.status);
+  if (row.payment_status === 'pending')   return '<span class="ap-badge pending">⏳ معلق</span>';
+  if (row.payment_status === 'cancelled') return '<span class="ap-badge cancelled">🚫 ملغي</span>';
+  return _apEsc(row.payment_status);
 }
 
 async function apLoadDivisionSubs() {
@@ -7557,39 +7576,47 @@ async function apLoadDivisionSubs() {
       query = query.in('section_id', scope.length ? scope : [-1]);
     }
     if (filterVal === 'expired') {
-      query = query.eq('status', 'active').lt('end_date', new Date().toISOString());
+      query = query.eq('payment_status', 'active').lt('end_date', new Date().toISOString());
     } else if (filterVal) {
-      query = query.eq('status', filterVal);
+      query = query.eq('payment_status', filterVal);
     }
-    if (searchVal) query = query.ilike('user_email', '%' + searchVal + '%');
+    // subscriptions ليس بها عمود user_email — نبحث أولاً في profiles ثم نقيّد بالـ user_id
+    if (searchVal) {
+      var matchProf = await window.supabase.from('profiles').select('id')
+        .or('email.ilike.%' + searchVal + '%,full_name.ilike.%' + searchVal + '%');
+      var matchIds = (matchProf.data || []).map(function(p){ return p.id; });
+      query = query.in('user_id', matchIds.length ? matchIds : ['00000000-0000-0000-0000-000000000000']);
+    }
     var { data, error } = await query;
     if (error) throw error;
     if (!data || data.length === 0) {
       el.innerHTML = '<div class="ap-empty"><div class="ap-empty-icon">📭</div>لا توجد اشتراكات</div>';
       return;
     }
+    var profMap = await _apGetProfilesMap(data.map(function(r){ return r.user_id; }));
     el.innerHTML = '<div class="ap-table-wrap"><table class="ap-table"><thead><tr>'
       + '<th>البريد</th><th>الشعبة</th><th>الحالة</th><th>الإيصال</th><th>البداية</th><th>الانتهاء</th><th>إجراء</th>'
       + '</tr></thead><tbody>'
       + data.map(function(r) {
         var secTitle = (r.site_sections && r.site_sections.title) || ('#' + r.section_id);
+        var prof = profMap[r.user_id] || {};
         var actions = '';
-        if (r.status === 'pending') {
+        if (r.payment_status === 'pending') {
           actions += '<button class="ap-btn ap-btn-success" style="margin-left:4px;" onclick="apApproveDivisionSub(' + r.id + ')">✅ قبول</button>';
           actions += '<button class="ap-btn ap-btn-danger" onclick="apCancelDivisionSub(' + r.id + ')">❌ رفض</button>';
         } else {
           actions += '<button class="ap-btn ap-btn-primary" style="margin-left:4px;" onclick="apApproveDivisionSub(' + r.id + ')">🔄 تجديد 30 يوم</button>';
-          if (r.status !== 'cancelled') {
+          if (r.payment_status !== 'cancelled') {
             actions += '<button class="ap-btn ap-btn-danger" onclick="apCancelDivisionSub(' + r.id + ')">🚫 إلغاء</button>';
           }
         }
         var receiptCell = r.receipt_image
           ? '<button class="ap-btn ap-btn-ghost" style="padding:5px 9px;font-size:.72rem;" onclick="apViewReceipt(\'' + _apEsc(r.receipt_image).replace(/'/g,"\\'") + '\')">🧾 عرض</button>'
           : '<span style="color:#b0b8c1;font-size:.72rem;">— لا يوجد</span>';
-        var reasonRow = (r.status === 'cancelled' && r.reject_reason)
+        var reasonRow = (r.payment_status === 'cancelled' && r.reject_reason)
           ? '<div style="font-size:.68rem;color:#e74c3c;margin-top:4px;">سبب الرفض: ' + _apEsc(r.reject_reason) + '</div>' : '';
         return '<tr>'
-          + '<td style="direction:ltr;font-size:.72rem;">' + _apEsc(r.user_email || r.user_id) + '</td>'
+          + '<td style="direction:ltr;font-size:.72rem;">' + _apEsc(prof.email || r.user_id) + '</td>'
           + '<td>' + _apEsc(secTitle) + '</td>'
           + '<td>' + _divSubStatusLabel(r) + reasonRow + '</td>'
           + '<td>' + receiptCell + '</td>'
@@ -7610,7 +7637,7 @@ async function apApproveDivisionSub(id) {
     var end = new Date(); end.setDate(end.getDate() + 30);
     var { error } = await window.supabase
       .from('subscriptions')
-      .update({ status: 'active', start_date: new Date().toISOString(), end_date: end.toISOString(), reject_reason: null, reviewed_at: new Date().toISOString() })
+      .update({ payment_status: 'active', start_date: new Date().toISOString(), end_date: end.toISOString(), reject_reason: null, reviewed_at: new Date().toISOString() })
       .eq('id', id);
     if (error) throw error;
     _showToast ? _showToast('✅ تم تفعيل/تجديد الاشتراك لمدة 30 يوم', 'success') : null;
@@ -7629,7 +7656,7 @@ async function apCancelDivisionSub(id) {
   try {
     var { error } = await window.supabase
       .from('subscriptions')
-      .update({ status: 'cancelled', reject_reason: reason || null, reviewed_at: new Date().toISOString() })
+      .update({ payment_status: 'cancelled', reject_reason: reason || null, reviewed_at: new Date().toISOString() })
       .eq('id', id);
     if (error) throw error;
     window._subStatusCache = {};
@@ -7677,8 +7704,13 @@ async function apLoadPayments() {
       .select('*, site_sections(title, payment_method, payment_number, price)')
       .not('receipt_image', 'is', null)
       .order('requested_at', { ascending: false });
-    if (filterVal) query = query.eq('status', filterVal);
-    if (searchVal) query = query.ilike('user_email', '%' + searchVal + '%');
+    if (filterVal) query = query.eq('payment_status', filterVal);
+    if (searchVal) {
+      var matchProfPay = await window.supabase.from('profiles').select('id')
+        .or('email.ilike.%' + searchVal + '%,full_name.ilike.%' + searchVal + '%');
+      var matchIdsPay = (matchProfPay.data || []).map(function(p){ return p.id; });
+      query = query.in('user_id', matchIdsPay.length ? matchIdsPay : ['00000000-0000-0000-0000-000000000000']);
+    }
     var { data, error } = await query;
     if (error) throw error;
     if (!data || data.length === 0) {
@@ -7691,6 +7723,7 @@ async function apLoadPayments() {
       expired: '<span class="ap-badge expired">❌ منتهي</span>',
       cancelled: '<span class="ap-badge cancelled">🚫 مرفوضة</span>',
     };
+    var profMapPay = await _apGetProfilesMap(data.map(function(r){ return r.user_id; }));
     el.innerHTML = '<div class="ap-table-wrap"><table class="ap-table"><thead><tr>'
       + '<th>البريد</th><th>الشعبة/النوع</th><th>السعر</th><th>وسيلة الدفع</th><th>الحالة</th><th>الإيصال</th><th>إجراء</th>'
       + '</tr></thead><tbody>'
@@ -7701,18 +7734,19 @@ async function apLoadPayments() {
         var method    = secInfo.payment_method || '—';
         var receiptCell = '<button class="ap-btn ap-btn-ghost" style="padding:5px 9px;font-size:.72rem;" onclick="apViewReceipt(\'' + _apEsc(r.receipt_image).replace(/'/g,"\\'") + '\')">🧾 عرض</button>';
         var actions = '';
-        if (r.status === 'pending') {
+        var prof = profMapPay[r.user_id] || {};
+        if (r.payment_status === 'pending') {
           actions += '<button class="ap-btn ap-btn-success" style="margin-left:4px;" onclick="apPaymentDecision(' + r.id + ',\'' + (r.section_id ? 'div' : 'gen') + '\',\'' + r.user_id + '\',true)">✅ قبول</button>';
           actions += '<button class="ap-btn ap-btn-danger" onclick="apPaymentDecision(' + r.id + ',\'' + (r.section_id ? 'div' : 'gen') + '\',\'' + r.user_id + '\',false)">❌ رفض</button>';
         } else {
           actions += '<span style="color:#aaa;font-size:.72rem;">تمت المراجعة</span>';
         }
         return '<tr>'
-          + '<td style="direction:ltr;font-size:.72rem;">' + _apEsc(r.user_email || r.user_id) + '</td>'
+          + '<td style="direction:ltr;font-size:.72rem;">' + _apEsc(prof.email || r.user_id) + '</td>'
           + '<td>' + _apEsc(label) + '</td>'
           + '<td>' + _apEsc(price) + '</td>'
           + '<td>' + _apEsc(method) + '</td>'
-          + '<td>' + (statusMap[r.status] || r.status) + '</td>'
+          + '<td>' + (statusMap[r.payment_status] || r.payment_status) + '</td>'
           + '<td>' + receiptCell + '</td>'
           + '<td style="white-space:nowrap;">' + actions + '</td></tr>';
       }).join('')
@@ -7843,7 +7877,7 @@ async function umLoadUsers() {
     var [profRes, bannedRes, subsRes] = await Promise.all([
       window.supabase.from('profiles').select('*').order('updated_at', { ascending: false }),
       window.supabase.from('banned_users').select('email, reason, banned_at'),
-      window.supabase.from('subscriptions').select('user_id, status, subscription_type, end_date').order('created_at', { ascending: false }),
+      window.supabase.from('subscriptions').select('user_id, payment_status, subscription_type, end_date').order('created_at', { ascending: false }),
     ]);
     if (profRes.error) throw profRes.error;
 
@@ -8134,11 +8168,11 @@ async function umActivateSub(userId, email) {
     if (error) throw error;
 
     // تحديث أو إنشاء سجل في subscriptions
+    // (لا يوجد عمود user_email في subscriptions فعلياً — البريد موجود في profiles فقط)
     await window.supabase.from('subscriptions').upsert([{
       user_id:           userId,
-      user_email:        email,
       subscription_type: 'yearly',
-      status:            'active',
+      payment_status:    'active',
       start_date:        new Date().toISOString(),
       end_date:          endDate.toISOString(),
       requested_at:      new Date().toISOString(),
@@ -8165,8 +8199,8 @@ async function umDeactivateSub(userId, email) {
     }).eq('id', userId);
     if (error) throw error;
 
-    await window.supabase.from('subscriptions').update({ status: 'cancelled' })
-      .eq('user_id', userId).eq('status', 'active');
+    await window.supabase.from('subscriptions').update({ payment_status: 'cancelled' })
+      .eq('user_id', userId).eq('payment_status', 'active');
 
     var u = _umCache.find(function(x){ return x.id === userId; });
     if (u) u.subscription_status = 'cancelled';
@@ -9060,15 +9094,24 @@ async function apQuickSearch(q) {
   if (q.length < 2) { box.style.display = 'none'; box.innerHTML = ''; return; }
   _apQuickSearchTimer = setTimeout(async function() {
     try {
-      var [usersRes, sectionsRes, subsRes] = await Promise.all([
+      var [usersRes, sectionsRes] = await Promise.all([
         window.supabase.from('profiles').select('id, email, full_name').or('email.ilike.%' + q + '%,full_name.ilike.%' + q + '%').limit(5),
         window.supabase.from('site_sections').select('id, title, parent_id').ilike('title', '%' + q + '%').limit(5),
-        window.supabase.from('subscriptions').select('id, user_email, status').ilike('user_email', '%' + q + '%').limit(5),
       ]);
       var html = '';
       var users = usersRes.data || [];
       var sections = sectionsRes.data || [];
-      var subs = subsRes.data || [];
+      // subscriptions ليس بها user_email/status — نبحث فيها عبر user_id للمستخدمين المطابقين أعلاه
+      var subs = [];
+      if (users.length) {
+        var subsRes = await window.supabase.from('subscriptions')
+          .select('id, user_id, payment_status')
+          .in('user_id', users.map(function(u){ return u.id; }))
+          .limit(5);
+        subs = subsRes.data || [];
+      }
+      var usersByIdQS = {};
+      users.forEach(function(u){ usersByIdQS[u.id] = u; });
       if (users.length) {
         html += '<div style="font-size:.68rem;font-weight:800;color:#888;margin:8px 4px 2px;">👥 مستخدمون</div>';
         html += users.map(function(u) {
@@ -9084,7 +9127,8 @@ async function apQuickSearch(q) {
       if (subs.length) {
         html += '<div style="font-size:.68rem;font-weight:800;color:#888;margin:8px 4px 2px;">💳 اشتراكات</div>';
         html += subs.map(function(s) {
-          return '<div class="ap-qs-item" onclick="apSwitchTab(\'divsubs\');document.getElementById(\'ap-divsub-search\').value=\'' + _apEsc(s.user_email||'').replace(/'/g,"\\'") + '\';apLoadDivisionSubs();apQuickSearchClose();" style="padding:8px 10px;border-radius:8px;cursor:pointer;font-size:.8rem;">💳 ' + _apEsc(s.user_email || '—') + ' — ' + _apEsc(s.status) + '</div>';
+          var sEmail = (usersByIdQS[s.user_id] || {}).email || '';
+          return '<div class="ap-qs-item" onclick="apSwitchTab(\'divsubs\');document.getElementById(\'ap-divsub-search\').value=\'' + _apEsc(sEmail).replace(/'/g,"\\'") + '\';apLoadDivisionSubs();apQuickSearchClose();" style="padding:8px 10px;border-radius:8px;cursor:pointer;font-size:.8rem;">💳 ' + _apEsc(sEmail || '—') + ' — ' + _apEsc(s.payment_status) + '</div>';
         }).join('');
       }
       if (!html) html = '<div style="padding:10px;font-size:.8rem;color:#888;">لا نتائج</div>';
@@ -12108,9 +12152,9 @@ self.addEventListener('fetch', function(e) {
       }, 8000);
       if (!res.error && res.data) {
         var row = res.data;
-        if (row.status === 'active' && row.end_date && new Date(row.end_date).getTime() >= Date.now()) {
+        if (row.payment_status === 'active' && row.end_date && new Date(row.end_date).getTime() >= Date.now()) {
           result = { state: 'active', row: row };
-        } else if (row.status === 'pending') {
+        } else if (row.payment_status === 'pending') {
           result = { state: 'pending', row: row };
         } else {
           result = { state: 'expired', row: row }; // منتهي أو مُلغى
@@ -12637,12 +12681,19 @@ self.addEventListener('fetch', function(e) {
 
       // 2) إنشاء/إعادة تعيين طلب الاشتراك كـ pending في جدول subscriptions الموحّد
       //    (مربوط بالشعبة عن طريق section_id) — upsert على (user_id, section_id)
+      //    ملاحظة: subscriptions ليس بها عمود user_email/status فعلياً — البريد يُقرأ من profiles،
+      //    وحالة الطلب تُخزَّن في payment_status (وليس status).
+      var subPrice  = (_pmAnchor.price != null && _pmAnchor.price !== '') ? _pmAnchor.price : (window._SUBS_DEFAULT_PRICE || 100);
+      var subMethod = _pmAnchor.payment_method || 'Vodafone Cash';
+      var subNumber = _pmAnchor.payment_number || null;
       var updRes = await db.from('subscriptions').upsert({
         user_id: _pmUser.id,
-        user_email: _pmUser.email || null,
         section_id: _pmAnchor.id,
-        status: 'pending',
+        payment_status: 'pending',
         subscription_type: 'monthly',
+        payment_method: subMethod,
+        payment_number: subNumber,
+        amount: subPrice,
         receipt_image: 'receipts/' + path,
         reject_reason: null,
         requested_at: new Date().toISOString()
