@@ -6507,29 +6507,55 @@ window.checkBanStatus = async function(email) {
 
       <!-- ═══════════════════ TAB: BRANCH ADMINS (Super Admin only) ═══════════════════ -->
       <div class="ap-tab-panel" id="ap-panel-branchadmins" role="tabpanel">
-        <div class="ap-section-heading" style="margin:0 0 10px;border:none;padding:0;">🛡️ إدارة أدمن الشعب</div>
+        <div class="ap-section-heading" style="margin:0 0 10px;border:none;padding:0;">👑 إدارة أدمن الشعب</div>
         <div style="font-size:.76rem;color:#888;margin-bottom:14px;">
-          هذه الشاشة فقط لسوبر أدمن. عيّن أي مستخدم (لازم يكون سجّل دخول مرة واحدة على الأقل ليكون له صف في profiles)
-          ليصبح "أدمن شعبة" — واختر الشعبة (قسم من site_sections). الأدمن هيدير كل حاجة في شعبته (مواد، فصول،
-          طلبات اشتراك، طلبات دفع). تقدر تلغيه أو تغيّر شعبته في أي وقت من نفس الشاشة.
+          هذه الشاشة فقط لسوبر أدمن. عيّن حساب Google موجود بالفعل في المستخدمين (لازم يكون سجّل دخول مرة واحدة
+          على الأقل) ليصبح "أدمن شعبة" مسؤول عن شعبة واحدة فقط. الأدمن هيدير كل حاجة في شعبته (مواد، فصول،
+          طلبات اشتراك، طلبات دفع، إيصالات). تقدر تغيّره أو تزيله في أي وقت من نفس الشاشة — إزالته لا تحذف
+          حسابه ولا اشتراكاته، فقط تُلغي صلاحية إدارة الشعبة.
         </div>
-        <div style="background:#f5f9fd;border-radius:12px;padding:14px;margin-bottom:16px;">
-          <div class="ap-field">
-            <label class="ap-label">بريد المستخدم</label>
-            <input id="ba-user-email" type="text" class="ap-input" placeholder="example@gmail.com" style="direction:ltr;text-align:right;">
-          </div>
-          <div class="ap-field">
-            <label class="ap-label">الشعبة</label>
-            <select id="ba-branch-select" class="ap-select"><option value="">اختر الشعبة</option></select>
-          </div>
-          <button onclick="baAssignBranchAdmin()" class="ap-btn ap-btn-primary" style="width:100%;justify-content:center;padding:11px;margin-top:6px;">💾 حفظ / تعيين أدمن الشعبة</button>
-          <div id="ba-msg" style="margin-top:8px;font-size:.8rem;text-align:center;min-height:18px;"></div>
+        <div id="ba-table-wrap">
+          <div id="ba-list-body"><div class="ap-empty">جاري التحميل...</div></div>
         </div>
-        <div class="ap-section-heading" style="margin:0 0 8px;border:none;padding:0;">📋 أدمن الشعب الحاليين</div>
-        <div id="ba-list-body"><div class="ap-empty">اضغط "تحديث" لعرض القائمة</div></div>
-        <button onclick="baLoadList()" class="ap-btn ap-btn-ghost" style="margin-top:8px;">🔄 تحديث القائمة</button>
+        <button onclick="baLoadList()" class="ap-btn ap-btn-ghost" style="margin-top:10px;">🔄 تحديث القائمة</button>
       </div>
       <!-- End Branch Admins Tab -->
+
+      <!-- ═══════════════════ MODAL: Assign / Change Section Admin ═══════════════════ -->
+      <div id="ba-assign-overlay" style="display:none;position:fixed;inset:0;z-index:9999998;background:rgba(10,20,40,.75);backdrop-filter:blur(4px);align-items:center;justify-content:center;padding:16px;">
+        <div style="background:var(--card-bg,#fff);border-radius:16px;max-width:440px;width:100%;max-height:88vh;overflow-y:auto;padding:22px;box-shadow:0 20px 60px rgba(0,0,0,.4);">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+            <div id="ba-assign-title" style="font-weight:800;font-size:1.02rem;">➕ تعيين أدمن الشعبة</div>
+            <button onclick="baCloseAssignModal()" style="background:none;border:none;font-size:1.3rem;cursor:pointer;color:#888;line-height:1;">✕</button>
+          </div>
+          <div id="ba-assign-section-label" style="font-size:.8rem;color:#888;margin-bottom:14px;"></div>
+
+          <div id="ba-current-admin-box" style="display:none;background:#fff6e9;border:1px solid #f5d9a8;border-radius:10px;padding:10px 12px;margin-bottom:14px;font-size:.78rem;"></div>
+
+          <div class="ap-field">
+            <label class="ap-label">🔍 ابحث بالبريد الإلكتروني أو الاسم</label>
+            <input id="ba-search-input" type="text" class="ap-input" placeholder="اكتب جزءاً من البريد أو الاسم..." style="direction:ltr;text-align:right;" oninput="baOnSearchInput()" autocomplete="off">
+          </div>
+          <div id="ba-search-results" style="max-height:220px;overflow-y:auto;margin-bottom:8px;"></div>
+
+          <div id="ba-selected-user-box" style="display:none;background:#eefaf3;border:1px solid #a8e6c1;border-radius:10px;padding:10px 12px;margin:10px 0;font-size:.8rem;"></div>
+
+          <button id="ba-confirm-btn" onclick="baConfirmAssign()" class="ap-btn ap-btn-primary" style="width:100%;justify-content:center;padding:11px;margin-top:6px;" disabled>✅ تعيين الأدمن</button>
+          <div id="ba-assign-msg" style="margin-top:8px;font-size:.8rem;text-align:center;min-height:18px;"></div>
+        </div>
+      </div>
+
+      <!-- ═══════════════════ MODAL: Remove confirmation ═══════════════════ -->
+      <div id="ba-remove-overlay" style="display:none;position:fixed;inset:0;z-index:9999999;background:rgba(10,20,40,.75);backdrop-filter:blur(4px);align-items:center;justify-content:center;padding:16px;">
+        <div style="background:var(--card-bg,#fff);border-radius:16px;max-width:380px;width:100%;padding:22px;box-shadow:0 20px 60px rgba(0,0,0,.4);text-align:center;">
+          <div style="font-size:2rem;margin-bottom:8px;">⚠️</div>
+          <div id="ba-remove-text" style="font-weight:700;font-size:.95rem;margin-bottom:18px;line-height:1.6;"></div>
+          <div style="display:flex;gap:8px;">
+            <button onclick="baCloseRemoveModal()" class="ap-btn ap-btn-ghost" style="flex:1;justify-content:center;">إلغاء</button>
+            <button id="ba-remove-confirm-btn" onclick="baDoRemove()" class="ap-btn ap-btn-danger" style="flex:1;justify-content:center;">❌ نعم، إزالة</button>
+          </div>
+        </div>
+      </div>
 
     </div><!-- /ap-body -->
   </div><!-- /ap-modal -->
@@ -6980,7 +7006,7 @@ function apSwitchTab(tab) {
   else if (tab === 'users')    apLoadUsers();
   else if (tab === 'messages') apLoadMessages();
   else if (tab === 'content')  { /* already managed by adminTab */ }
-  else if (tab === 'branchadmins') { baPopulateBranchSelect(); baLoadList(); }
+  else if (tab === 'branchadmins') { baLoadList(); }
 }
 
 // ── لوحة إحصائيات مقيَّدة بشعبة أدمن الشعبة فقط (تقرأ من site_sections + section_content + subscriptions) ──
@@ -7013,84 +7039,241 @@ async function _apLoadBranchDashboard() {
 // BRANCH ADMINS TAB (Super Admin only) — كل شيء مدفوع من قاعدة البيانات
 // أي أدمن شعبة جديد مستقبلاً يُنشأ من هنا فقط بدون أي تعديل بالكود
 // ════════════════════════════════════════════════════════════════
-async function baPopulateBranchSelect() {
-  if (!window.supabase) return;
-  var sel = document.getElementById('ba-branch-select');
-  if (!sel) return;
-  try {
-    var { data } = await window.supabase.from('site_sections').select('id, title, parent_id').order('display_order');
-    if (!data) return;
-    sel.innerHTML = '<option value="">اختر الشعبة</option>' +
-      data.map(function(s) { return '<option value="' + s.id + '">' + s.title + (s.parent_id ? '' : ' (رئيسي)') + '</option>'; }).join('');
-  } catch(e) { console.warn('[BranchAdmins] populate error:', e.message); }
-}
+// ════════════════════════════════════════════════════════════════
+// إدارة أدمن الشعب — نظام مبسّط يعتمد على profiles.role + profiles.managed_section_id
+// (لا يوجد جدول section_admins منفصل — هذا هو النظام الموجود بالفعل في المشروع
+//  وتم التوسّع فيه هنا بدل بناء نظام صلاحيات مواز يتعارض معه)
+// ════════════════════════════════════════════════════════════════
+window._baSectionsCache = [];      // كل "الشعب" الرئيسية (site_sections بدون parent_id)
+window._baAdminsBySection = {};    // section_id -> { id, email, full_name }
+window._baSelectedUser = null;     // المستخدم المختار حالياً داخل مودال التعيين/التغيير
+window._baModalCtx = null;         // { sectionId, sectionTitle, mode: 'assign'|'change' }
+window._baRemoveCtx = null;        // { profileId, name, sectionTitle }
+var _baSearchTimer = null;
 
-async function baAssignBranchAdmin() {
-  var msgEl = document.getElementById('ba-msg');
-  var email = (document.getElementById('ba-user-email').value || '').trim();
-  var branchId = document.getElementById('ba-branch-select').value;
-  if (!email || !branchId) { msgEl.style.color = '#e74c3c'; msgEl.textContent = 'أدخل البريد واختر الشعبة'; return; }
-  msgEl.style.color = '#888'; msgEl.textContent = 'جاري الحفظ...';
-  try {
-    var { data: prof, error: profErr } = await window.supabase
-      .from('profiles').select('id, role').eq('email', email).maybeSingle();
-    if (profErr) throw profErr;
-    if (!prof) {
-      msgEl.style.color = '#e74c3c';
-      msgEl.textContent = '❌ هذا المستخدم لم يسجّل دخول من قبل — لازم يدخل مرة واحدة أولاً (Google أو كلمة مرور) ليُنشأ له حساب';
-      return;
-    }
-    // ── نظام مبسّط: عمود واحد فقط managed_section_id في profiles (بدون أي جدول إضافي) ──
-    var updates = { managed_section_id: parseInt(branchId, 10) };
-    if (prof.role !== 'admin') updates.role = 'branch_admin'; // لا نغيّر سوبر أدمن موجود بالفعل
-    var { error: upErr } = await window.supabase.from('profiles').update(updates).eq('id', prof.id);
-    if (upErr) throw upErr;
-    msgEl.style.color = '#17a589';
-    msgEl.textContent = '✅ تم تعيين/تحديث أدمن الشعبة بنجاح';
-    baLoadList();
-  } catch(err) {
-    msgEl.style.color = '#e74c3c';
-    msgEl.textContent = '❌ خطأ: ' + err.message;
-  }
-}
-
+// ── جلب الشعب الرئيسية + الأدمن الحالي لكل شعبة ثم رسم الجدول المطلوب ──
 async function baLoadList() {
   var el = document.getElementById('ba-list-body');
   if (!el || !window.supabase) return;
   el.innerHTML = '<div class="ap-loading"><div class="spinner"></div> جاري التحميل...</div>';
   try {
-    var { data, error } = await window.supabase
+    var { data: sections, error: secErr } = await window.supabase
+      .from('site_sections').select('id, title, parent_id')
+      .is('parent_id', null).order('display_order');
+    if (secErr) throw secErr;
+    window._baSectionsCache = sections || [];
+
+    var { data: admins, error: admErr } = await window.supabase
       .from('profiles')
-      .select('id, email, managed_section_id, site_sections:managed_section_id(title)')
+      .select('id, email, full_name, managed_section_id')
       .eq('role', 'branch_admin')
       .not('managed_section_id', 'is', null);
-    if (error) throw error;
-    if (!data || data.length === 0) { el.innerHTML = '<div class="ap-empty">لا يوجد أدمن شعب بعد</div>'; return; }
+    if (admErr) throw admErr;
+
+    var bySection = {};
+    (admins || []).forEach(function(a) {
+      // لو فيه أكثر من صف بنفس القسم (حالة غير متوقعة)، ناخد أول واحد فقط للعرض
+      if (!bySection[a.managed_section_id]) bySection[a.managed_section_id] = a;
+    });
+    window._baAdminsBySection = bySection;
+
+    if (!window._baSectionsCache.length) {
+      el.innerHTML = '<div class="ap-empty">لا توجد شعب رئيسية بعد (site_sections بدون parent_id)</div>';
+      return;
+    }
+
     el.innerHTML = '<div class="ap-table-wrap"><table class="ap-table"><thead><tr>' +
-      '<th>البريد</th><th>الشعبة</th><th>إجراء</th>' +
+      '<th>الشعبة</th><th>الأدمن الحالي</th><th>البريد الإلكتروني</th><th>الحالة</th><th>الإجراءات</th>' +
       '</tr></thead><tbody>' +
-      data.map(function(r) {
-        var branch = (r.site_sections && r.site_sections.title) || ('#' + r.managed_section_id);
-        return '<tr><td style="direction:ltr;font-size:.72rem;">' + _apEsc(r.email || r.id) + '</td>' +
-          '<td>' + _apEsc(branch) + '</td>' +
-          '<td><button class="ap-btn ap-btn-danger" onclick="baRemove(\'' + r.id + '\')">🗑️ إزالة</button></td></tr>';
+      window._baSectionsCache.map(function(s) {
+        var adm = bySection[s.id];
+        var titleEsc = _apEsc(s.title).replace(/'/g, "\\'");
+        if (adm) {
+          return '<tr>'
+            + '<td>' + _apEsc(s.title) + '</td>'
+            + '<td>' + _apEsc(adm.full_name || '—') + '</td>'
+            + '<td style="direction:ltr;font-size:.72rem;">' + _apEsc(adm.email || '—') + '</td>'
+            + '<td><span class="ap-badge admin" style="background:#eafaf1;color:#17a589;">✅ فعال</span></td>'
+            + '<td style="white-space:nowrap;">'
+              + '<button class="ap-btn ap-btn-primary" style="margin-left:4px;" onclick="baOpenAssignModal(' + s.id + ', \'' + titleEsc + '\', \'change\')">🔄 تغيير</button>'
+              + '<button class="ap-btn ap-btn-danger" onclick="baOpenRemoveConfirm(\'' + adm.id + '\', \'' + _apEsc(adm.full_name || adm.email || 'الأدمن').replace(/'/g,"\\'") + '\', \'' + titleEsc + '\')">❌ إزالة</button>'
+            + '</td></tr>';
+        }
+        return '<tr>'
+          + '<td>' + _apEsc(s.title) + '</td>'
+          + '<td style="color:#b0b8c1;">لا يوجد</td>'
+          + '<td style="color:#b0b8c1;">—</td>'
+          + '<td><span class="ap-badge user">🚫 بدون أدمن</span></td>'
+          + '<td><button class="ap-btn ap-btn-success" onclick="baOpenAssignModal(' + s.id + ', \'' + titleEsc + '\', \'assign\')">➕ تعيين</button></td>'
+          + '</tr>';
       }).join('') + '</tbody></table></div>';
   } catch(err) {
     el.innerHTML = '<div class="ap-empty" style="color:#e74c3c;">❌ ' + _apEsc(err.message) + '</div>';
   }
 }
 
-async function baRemove(userId) {
-  if (!confirm('هل تريد إزالة صلاحيات أدمن الشعبة هذه؟')) return;
+// ── فتح مودال تعيين/تغيير الأدمن ──
+function baOpenAssignModal(sectionId, sectionTitle, mode) {
+  window._baModalCtx = { sectionId: sectionId, sectionTitle: sectionTitle, mode: mode };
+  window._baSelectedUser = null;
+  var overlay = document.getElementById('ba-assign-overlay');
+  var titleEl = document.getElementById('ba-assign-title');
+  var labelEl = document.getElementById('ba-assign-section-label');
+  var curBox  = document.getElementById('ba-current-admin-box');
+  var searchInput = document.getElementById('ba-search-input');
+  var resultsEl = document.getElementById('ba-search-results');
+  var selBox = document.getElementById('ba-selected-user-box');
+  var confirmBtn = document.getElementById('ba-confirm-btn');
+  var msgEl = document.getElementById('ba-assign-msg');
+
+  titleEl.textContent = mode === 'change' ? '🔄 تغيير أدمن الشعبة' : '➕ تعيين أدمن الشعبة';
+  labelEl.textContent = 'الشعبة: ' + sectionTitle;
+  searchInput.value = ''; resultsEl.innerHTML = ''; msgEl.textContent = '';
+  selBox.style.display = 'none'; selBox.innerHTML = '';
+  confirmBtn.disabled = true;
+  confirmBtn.textContent = mode === 'change' ? '✅ تأكيد التغيير' : '✅ تعيين الأدمن';
+
+  var currentAdmin = window._baAdminsBySection[sectionId];
+  if (mode === 'change' && currentAdmin) {
+    curBox.style.display = '';
+    curBox.innerHTML = '👤 الأدمن الحالي: <b>' + _apEsc(currentAdmin.full_name || currentAdmin.email) + '</b> ('
+      + _apEsc(currentAdmin.email || '') + ')<br>اختر حساب Google آخر أدناه لاستبداله.';
+  } else {
+    curBox.style.display = 'none';
+  }
+
+  overlay.style.display = 'flex';
+  setTimeout(function(){ searchInput.focus(); }, 50);
+}
+
+function baCloseAssignModal() {
+  document.getElementById('ba-assign-overlay').style.display = 'none';
+  window._baModalCtx = null;
+  window._baSelectedUser = null;
+}
+
+// ── بحث حي بالبريد أو الاسم داخل profiles (بدون نسخ UID يدويًا) ──
+function baOnSearchInput() {
+  var q = (document.getElementById('ba-search-input').value || '').trim();
+  clearTimeout(_baSearchTimer);
+  if (q.length < 2) { document.getElementById('ba-search-results').innerHTML = ''; return; }
+  _baSearchTimer = setTimeout(function() { baSearchUsers(q); }, 300);
+}
+
+async function baSearchUsers(q) {
+  var resultsEl = document.getElementById('ba-search-results');
+  if (!window.supabase) return;
+  resultsEl.innerHTML = '<div style="font-size:.75rem;color:#888;padding:6px;">⏳ جاري البحث...</div>';
   try {
+    var { data, error } = await window.supabase
+      .from('profiles')
+      .select('id, email, full_name, role')
+      .or('email.ilike.%' + q + '%,full_name.ilike.%' + q + '%')
+      .neq('role', 'admin') // لا نعرض سوبر أدمن كخيار لتعيينه أدمن شعبة
+      .limit(8);
+    if (error) throw error;
+    if (!data || !data.length) {
+      resultsEl.innerHTML = '<div style="font-size:.75rem;color:#888;padding:6px;">لا توجد نتائج — تأكد أن المستخدم سجّل دخول من قبل</div>';
+      return;
+    }
+    resultsEl.innerHTML = data.map(function(u) {
+      var short = (u.id || '').slice(0, 8);
+      var already = u.role === 'branch_admin' ? ' <span style="color:#f39c12;">(أدمن شعبة أخرى حاليًا)</span>' : '';
+      return '<div class="ba-user-result" style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;border:1px solid #eee;border-radius:8px;margin-bottom:6px;cursor:pointer;" '
+        + 'onclick=\'baSelectUser(' + JSON.stringify(u.id) + ', ' + JSON.stringify(u.email || "") + ', ' + JSON.stringify(u.full_name || "") + ')\'>'
+        + '<div><div style="font-weight:700;font-size:.82rem;">' + _apEsc(u.full_name || 'بدون اسم') + already + '</div>'
+        + '<div style="font-size:.7rem;color:#888;direction:ltr;text-align:right;">' + _apEsc(u.email || '') + ' · #' + short + '</div></div>'
+        + '<button class="ap-btn ap-btn-ghost" style="padding:4px 10px;font-size:.72rem;">اختيار</button></div>';
+    }).join('');
+  } catch(err) {
+    resultsEl.innerHTML = '<div style="font-size:.75rem;color:#e74c3c;padding:6px;">❌ ' + _apEsc(err.message) + '</div>';
+  }
+}
+
+function baSelectUser(id, email, fullName) {
+  window._baSelectedUser = { id: id, email: email, full_name: fullName };
+  document.getElementById('ba-search-results').innerHTML = '';
+  document.getElementById('ba-search-input').value = '';
+  var selBox = document.getElementById('ba-selected-user-box');
+  selBox.style.display = '';
+  selBox.innerHTML = '✅ تم اختيار: <b>' + _apEsc(fullName || 'بدون اسم') + '</b> — <span style="direction:ltr;display:inline-block;">' + _apEsc(email || '') + '</span>';
+  document.getElementById('ba-confirm-btn').disabled = false;
+}
+
+// ── تنفيذ التعيين/التغيير بأقل خطر: نعيّن الجديد أولاً، ثم نُزيل القديم فقط بعد نجاح ذلك
+//    (لضمان ألا تبقى الشعبة بدون أدمن بسبب فشل منتصف العملية) ──
+async function baConfirmAssign() {
+  var ctx = window._baModalCtx;
+  var user = window._baSelectedUser;
+  var msgEl = document.getElementById('ba-assign-msg');
+  if (!ctx || !user) return;
+  msgEl.style.color = '#888'; msgEl.textContent = 'جاري الحفظ...';
+  var confirmBtn = document.getElementById('ba-confirm-btn');
+  confirmBtn.disabled = true;
+  try {
+    // 1) اجلب أي أدمن حالي آخر لنفس الشعبة (لمنع التكرار — أدمن واحد فقط لكل شعبة)
+    var { data: existing, error: exErr } = await window.supabase
+      .from('profiles').select('id, email, full_name')
+      .eq('role', 'branch_admin').eq('managed_section_id', ctx.sectionId);
+    if (exErr) throw exErr;
+    var oldAdmins = (existing || []).filter(function(p) { return p.id !== user.id; });
+
+    // 2) عيّن المستخدم الجديد أولاً (الخطوة الحرجة — لو فشلت، لا شيء تغيّر)
+    var { error: upErr } = await window.supabase.from('profiles')
+      .update({ managed_section_id: ctx.sectionId, role: 'branch_admin' })
+      .eq('id', user.id);
+    if (upErr) throw upErr;
+
+    // 3) بعد نجاح التعيين، أزل أي أدمن قديم لنفس الشعبة (منع تكرار الربط)
+    var cleanupWarning = '';
+    for (var i = 0; i < oldAdmins.length; i++) {
+      var { error: clErr } = await window.supabase.from('profiles')
+        .update({ managed_section_id: null, role: 'user' })
+        .eq('id', oldAdmins[i].id);
+      if (clErr) cleanupWarning = ' (تنبيه: تعذّرت إزالة الأدمن القديم "' + (oldAdmins[i].email || '') + '" تلقائيًا — راجعه يدويًا)';
+    }
+
+    _showToast ? _showToast('✅ تم تعيين الأدمن بنجاح' + cleanupWarning, cleanupWarning ? 'warning' : 'success') : null;
+    baCloseAssignModal();
+    baLoadList();
+  } catch(err) {
+    msgEl.style.color = '#e74c3c';
+    msgEl.textContent = '❌ خطأ: ' + err.message;
+    confirmBtn.disabled = false;
+  }
+}
+
+// ── مودال تأكيد الإزالة (نص واضح بالاسم والشعبة، وليس confirm() المتصفح) ──
+function baOpenRemoveConfirm(profileId, name, sectionTitle) {
+  window._baRemoveCtx = { profileId: profileId, name: name, sectionTitle: sectionTitle };
+  document.getElementById('ba-remove-text').textContent =
+    'هل أنت متأكد من إزالة ' + name + ' من إدارة شعبة "' + sectionTitle + '"؟';
+  document.getElementById('ba-remove-overlay').style.display = 'flex';
+}
+
+function baCloseRemoveModal() {
+  document.getElementById('ba-remove-overlay').style.display = 'none';
+  window._baRemoveCtx = null;
+}
+
+async function baDoRemove() {
+  var ctx = window._baRemoveCtx;
+  if (!ctx) return;
+  var btn = document.getElementById('ba-remove-confirm-btn');
+  btn.disabled = true; btn.textContent = '⏳ جاري الإزالة...';
+  try {
+    // فقط نزيل علاقة الإدارة (role + managed_section_id) — لا نحذف الحساب ولا الاشتراكات ولا الرسائل
     var { error } = await window.supabase.from('profiles')
       .update({ managed_section_id: null, role: 'user' })
-      .eq('id', userId);
+      .eq('id', ctx.profileId);
     if (error) throw error;
-    _showToast ? _showToast('✅ تم الإزالة', 'success') : null;
+    _showToast ? _showToast('✅ تم إزالة صلاحية إدارة الشعبة (الحساب باقٍ كما هو)', 'success') : null;
+    baCloseRemoveModal();
     baLoadList();
   } catch(err) {
     _showToast ? _showToast('❌ خطأ: ' + err.message, 'error') : alert(err.message);
+  } finally {
+    btn.disabled = false; btn.textContent = '❌ نعم، إزالة';
   }
 }
 
