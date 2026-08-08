@@ -3175,10 +3175,17 @@ async function _renderDynamicSectionPage(sec) {
   updateBreadcrumb();
 
   // ── فحص اشتراك الشعبة: لو محجوبة، الفصل الأول يظل مفتوحاً وباقي الفصول تُعرض مقفولة ──
+  // ✅ DEBUG FIX: هذا الاستدعاء كان خارج أي try/catch محلي — أي تعليق (hang) هنا كان
+  // يجمّد الصفحة للأبد على "جاري التحميل من قاعدة البيانات..." بدون أي خطأ ظاهر.
   var gate = null;
   if (window.checkSectionAccess && sec && sec.id) {
-    gate = await window.checkSectionAccess(sec.id);
-    if (gate) { window._lastGateSec = sec; window.__currentChapterGate = gate; }
+    try {
+      gate = await window.checkSectionAccess(sec.id);
+      if (gate) { window._lastGateSec = sec; window.__currentChapterGate = gate; }
+    } catch(gateErr) {
+      console.error('[DB LOAD ERROR][_renderDynamicSectionPage:checkSectionAccess]', gateErr && gateErr.message, gateErr);
+      gate = null; // fail-open — لا نعطّل عرض القسم بسبب فشل فحص الاشتراك
+    }
   }
 
   try {
@@ -3234,7 +3241,11 @@ async function _renderDynamicSectionPage(sec) {
       window[`__sectionData_${child.id}`] = child;
       window[`__sectionAction_${child.id}`] = (s) => openDynamicSubSection(s);
     });
-    var gridHtml = children.map((child, idx) => buildSubSectionCard(child, !!gate && idx > 0)).join('');
+    // ✅ المجانية مرتبطة بالمادة (Course) وليس بالشعبة كلها: لا نقفل بطاقات المواد نفسها
+    // (كل مادة لها فصلها الأول المجاني الخاص بها)، ونقفل فقط بطاقات الفصول داخل كل مادة
+    // (أي عند عرض sec وهي "مادة" — ابن مباشر لـ gate.anchor) ما عدا الفصل الأول.
+    var lockChildren = !!(gate && gate.anchor && sec.parent_id === gate.anchor.id);
+    var gridHtml = children.map((child, idx) => buildSubSectionCard(child, lockChildren && idx > 0)).join('');
     if (gate) gridHtml += window._renderSubscriptionGateHTML(gate);
     document.getElementById('dynamic-section-grid').innerHTML = gridHtml;
   } catch(err) {
@@ -3401,11 +3412,19 @@ async function trackSectionProgress(sectionId) {
  * يقبل البيانات المحمّلة مسبقاً لتجنب double-fetch
  */
 async function _openContentPage(sec, _preloadedContent, _preloadedResources) {
-  // ── فحص اشتراك الشعبة: لو محجوبة، الفصل الأول (أول عنصر) يظل مفتوحاً وباقي الفصول تُعرض مقفولة ──
+  // ── فحص اشتراك الشعبة: المجانية هنا على مستوى «القسم/الفصل» بالكامل (checkSectionAccess) ──
+  // لو gate!=null فالقسم الحالي مش الفصل الأول المجاني لمادته → كل محتواه يُعرض مقفولاً.
+  // ✅ DEBUG FIX: كانت هذه الدالة كلها بدون try/catch — أي تعليق أو خطأ هنا كان يجمّد
+  // الصفحة للأبد بدون أي رسالة خطأ. الآن محمي محلياً بالإضافة لحماية checkSectionAccess نفسها.
   var gate = null;
   if (window.checkSectionAccess && sec && sec.id) {
-    gate = await window.checkSectionAccess(sec.id);
-    if (gate) { window._lastGateSec = sec; window.__currentChapterGate = gate; }
+    try {
+      gate = await window.checkSectionAccess(sec.id);
+      if (gate) { window._lastGateSec = sec; window.__currentChapterGate = gate; }
+    } catch(gateErr) {
+      console.error('[DB LOAD ERROR][_openContentPage:checkSectionAccess]', gateErr && gateErr.message, gateErr);
+      gate = null; // fail-open
+    }
   }
 
   // حفظ القسم الحالي لإعادة التحميل التلقائي
@@ -3483,7 +3502,9 @@ function renderPreformatted(text) {
 function buildContentHTML(contentItems, gate) {
   let html = '';
   contentItems.forEach((item, idx) => {
-    if (gate && idx > 0) {
+    // ✅ لو الفصل نفسه مقفول (مش الفصل الأول المجاني للمادة) نقفل كل عناصر محتواه بدون استثناء
+    // العنصر الأول — القفل بقى على مستوى «الفصل» ككل، مش على مستوى عناصر المحتوى.
+    if (gate) {
       html += `
         <div class="resource-item" onclick="window._openLockNoticeModal(window.__currentChapterGate)" style="cursor:pointer;margin-bottom:10px;padding:18px 22px;opacity:.65">
           <div class="ri-icon" style="font-size:2rem">🔒</div>
@@ -11337,6 +11358,200 @@ CREATE INDEX IF NOT EXISTS idx_site_sections_type ON site_sections(type);
 };
 console.log('%c[COURSES] اكتب printCoursesMigration() لعرض/نسخ SQL إضافة عمود type', 'color:#0b6e4f;font-weight:bold');
 
+// printCategoryColumnMigration — إضافة عمود category المفقود في site_sections (Additive, بدون أي حذف)
+// السبب: كود لوحة الإدارة (smSave) يرسل category ضمن الـ payload لأن حقل "التصنيف" موجود فعلاً
+// في واجهة تعديل القسم ومُستخدم كـ fallback للتجميع (renderHomeSections)، لكن العمود لم يُنشأ
+// فعلياً في قاعدة البيانات الحية (الجدول الأساسي أُنشئ قبل إضافة هذا الحقل، فـ CREATE TABLE IF
+// NOT EXISTS في printSeedSQL() ما كانش هيضيفه لجدول موجود بالفعل).
+window.printCategoryColumnMigration = function() {
+  var sql = `
+-- إضافة عمود category المفقود داخل site_sections (نص اختياري — NULL مسموح)
+-- بدون أي تعديل أو حذف لأي بيانات موجودة — كل الصفوف الحالية تبقى category = NULL
+ALTER TABLE site_sections ADD COLUMN IF NOT EXISTS category TEXT;
+
+-- تحديث schema cache الخاص بـ PostgREST فوراً بدل انتظار إعادة التحميل التلقائي
+NOTIFY pgrst, 'reload schema';
+`;
+  console.group('%c🏷️ Category Column Migration SQL', 'color:#6c3483;font-size:1.1em;font-weight:bold');
+  console.log(sql);
+  console.groupEnd();
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(sql).then(function() {
+      console.log('%c✅ تم نسخ الـ SQL للـ clipboard!', 'color:#17a589;font-weight:bold');
+    }).catch(function(){});
+  }
+  return sql;
+};
+console.log('%c[CATEGORY] اكتب printCategoryColumnMigration() لعرض/نسخ SQL إضافة عمود category المفقود', 'color:#6c3483;font-weight:bold');
+
+// printRequestedAtColumnMigration — إضافة عمود requested_at المفقود في subscriptions (Additive)
+// السبب: زر "إرسال الطلب" (_pmSubmit) وكذلك umActivateSub يرسلان requested_at ضمن upsert على
+// subscriptions، وتبويبات الأدمن (apLoadSubscriptions / apLoadDivisionSubs) تعتمد عليه في
+// الترتيب والعرض — لكن العمود غير موجود فعلياً في الجدول الحي (created_at موجود ومختلف الغرض:
+// created_at = وقت إنشاء الصف تلقائياً، requested_at = وقت تقديم الطلب فعلياً وممكن يتغيّر
+// عند تجديد/إعادة تقديم الطلب عبر upsert).
+window.printRequestedAtColumnMigration = function() {
+  var sql = `
+-- إضافة عمود requested_at المفقود داخل subscriptions (timestamptz — افتراضي NOW())
+-- بدون أي تعديل أو حذف لأي بيانات موجودة أو أي جدول
+ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS requested_at TIMESTAMPTZ DEFAULT NOW();
+
+-- تعبئة الصفوف القديمة (لو موجودة) بقيمة منطقية بدل NULL، باستخدام created_at لو موجود
+UPDATE subscriptions SET requested_at = created_at
+WHERE requested_at IS NULL AND created_at IS NOT NULL;
+
+-- تحديث schema cache الخاص بـ PostgREST فوراً بدل انتظار إعادة التحميل التلقائي
+NOTIFY pgrst, 'reload schema';
+`;
+  console.group('%c🕒 requested_at Column Migration SQL', 'color:#0a3d62;font-size:1.1em;font-weight:bold');
+  console.log(sql);
+  console.groupEnd();
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(sql).then(function() {
+      console.log('%c✅ تم نسخ الـ SQL للـ clipboard!', 'color:#17a589;font-weight:bold');
+    }).catch(function(){});
+  }
+  return sql;
+};
+console.log('%c[SUBSCRIPTIONS] اكتب printRequestedAtColumnMigration() لعرض/نسخ SQL إضافة عمود requested_at المفقود', 'color:#0a3d62;font-weight:bold');
+
+// printChapterAccessRLSMigration — تأمين «الفصل الأول مجاني لكل مادة» على مستوى القاعدة/RLS
+// (Additive بالكامل — دالة جديدة + استبدال policy القراءة فقط، بدون حذف أي بيانات أو جداول)
+// السبب: الاعتماد على الـ Frontend وحده لإخفاء الفصول المدفوعة غير كافٍ أمنياً — أي حد يقدر
+// يعمل استعلام مباشر على section_content/section_resources بمعرفة section_id ويقرأ المحتوى
+// المدفوع حتى لو كان القفل شغال في الواجهة. الدالة دي بتطبّق نفس منطق «أول فصل مجاني لكل مادة»
+// (الموجود في _isWithinFreeChapter بالـ JS) لكن كـ RLS حقيقي على مستوى Postgres.
+window.printChapterAccessRLSMigration = function() {
+  var sql = `
+-- ================================================================
+-- تأمين المحتوى المدفوع على مستوى RLS (Additive — بدون حذف بيانات)
+-- المنطق: أول فصل (site_sections، أقل display_order) داخل كل مادة (الابن المباشر
+-- للشعبة التي عليها requires_subscription = true) = مجاني للجميع.
+-- باقي الفصول تتطلب اشتراكاً Active في نفس الشعبة (subscriptions.section_id = الشعبة).
+-- مادة بدون فصول فرعية = فصل واحد ضمني = مجاني بالكامل (نفس منطق TEST 3).
+-- ================================================================
+
+CREATE OR REPLACE FUNCTION can_access_section(target_id BIGINT)
+RETURNS boolean
+LANGUAGE plpgsql STABLE SECURITY DEFINER
+AS $$
+DECLARE
+  anchor_id        BIGINT;
+  material_id       BIGINT;
+  chapter_count     INT;
+  first_chapter_id  BIGINT;
+  is_chapter_free   BOOLEAN;
+  has_active_sub    BOOLEAN;
+BEGIN
+  IF is_admin() THEN
+    RETURN true;
+  END IF;
+
+  -- أقرب جد (أو نفس القسم) عليه requires_subscription = true — وهو "الشعبة" (anchor)
+  WITH RECURSIVE up AS (
+    SELECT id, parent_id, requires_subscription, 0 AS depth
+    FROM site_sections WHERE id = target_id
+    UNION ALL
+    SELECT s.id, s.parent_id, s.requires_subscription, up.depth + 1
+    FROM site_sections s JOIN up ON s.id = up.parent_id
+    WHERE up.depth < 20
+  )
+  SELECT id INTO anchor_id FROM up WHERE requires_subscription = true
+  ORDER BY depth ASC LIMIT 1;
+
+  IF anchor_id IS NULL THEN
+    RETURN true; -- القسم مش تابع لأي شعبة تتطلب اشتراكاً → محتوى عام
+  END IF;
+
+  -- "المادة" = الابن المباشر للشعبة الواقع على مسار target_id
+  WITH RECURSIVE up AS (
+    SELECT id, parent_id, 0 AS depth
+    FROM site_sections WHERE id = target_id
+    UNION ALL
+    SELECT s.id, s.parent_id, up.depth + 1
+    FROM site_sections s JOIN up ON s.id = up.parent_id
+    WHERE up.depth < 20
+  )
+  SELECT id INTO material_id FROM up WHERE parent_id = anchor_id
+  ORDER BY depth ASC LIMIT 1;
+
+  IF material_id IS NULL THEN
+    RETURN false; -- حالة غير متوقعة — الأمان أولاً
+  END IF;
+
+  SELECT COUNT(*) INTO chapter_count FROM site_sections WHERE parent_id = material_id;
+
+  IF chapter_count = 0 THEN
+    RETURN true; -- مادة بدون فصول فرعية = فصل واحد ضمني = مجاني بالكامل
+  END IF;
+
+  SELECT id INTO first_chapter_id FROM site_sections WHERE parent_id = material_id
+  ORDER BY display_order ASC, id ASC LIMIT 1;
+
+  -- الفصل التابع له target_id (الابن المباشر للمادة الواقع على مسار target_id)
+  WITH RECURSIVE up AS (
+    SELECT id, parent_id, 0 AS depth
+    FROM site_sections WHERE id = target_id
+    UNION ALL
+    SELECT s.id, s.parent_id, up.depth + 1
+    FROM site_sections s JOIN up ON s.id = up.parent_id
+    WHERE up.depth < 20
+  )
+  SELECT (id = first_chapter_id) INTO is_chapter_free FROM up WHERE parent_id = material_id
+  ORDER BY depth ASC LIMIT 1;
+
+  IF is_chapter_free THEN
+    RETURN true;
+  END IF;
+
+  -- غير الفصل الأول → لازم اشتراك Active في نفس الشعبة (anchor)
+  SELECT EXISTS (
+    SELECT 1 FROM subscriptions
+    WHERE user_id = auth.uid()
+      AND section_id = anchor_id
+      AND status = 'active'
+      AND end_date >= now()
+  ) INTO has_active_sub;
+
+  RETURN COALESCE(has_active_sub, false);
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION can_access_section(BIGINT) TO anon, authenticated;
+
+-- section_content: استبدال policy القراءة العامة بقراءة مُقيَّدة بالدالة (الكتابة كما هي بدون تغيير)
+ALTER TABLE section_content ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "content_read_all"          ON section_content;
+DROP POLICY IF EXISTS "content_read_authenticated" ON section_content;
+DROP POLICY IF EXISTS "auth_read"                  ON section_content;
+DROP POLICY IF EXISTS "content_read_gated"         ON section_content;
+CREATE POLICY "content_read_gated" ON section_content
+  FOR SELECT USING (
+    is_admin() OR is_branch_admin_of(section_id) OR can_access_section(section_id)
+  );
+
+-- section_resources: نفس الفكرة
+ALTER TABLE section_resources ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "resources_read_all"  ON section_resources;
+DROP POLICY IF EXISTS "resources_read_auth" ON section_resources;
+DROP POLICY IF EXISTS "resources_read_gated" ON section_resources;
+CREATE POLICY "resources_read_gated" ON section_resources
+  FOR SELECT USING (
+    is_admin() OR is_branch_admin_of(section_id) OR can_access_section(section_id)
+  );
+`;
+  console.group('%c🔐 Chapter Access RLS Migration SQL', 'color:#c0392b;font-size:1.1em;font-weight:bold');
+  console.log(sql);
+  console.groupEnd();
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(sql).then(function() {
+      console.log('%c✅ تم نسخ الـ SQL للـ clipboard!', 'color:#17a589;font-weight:bold');
+    }).catch(function(){});
+  }
+  return sql;
+};
+console.log('%c[CHAPTER-ACCESS] اكتب printChapterAccessRLSMigration() لعرض/نسخ SQL تأمين «الفصل الأول مجاني لكل مادة» على مستوى RLS', 'color:#c0392b;font-weight:bold');
+
 // printPathsMigration — نظام المسارات التعليمية (Additive بالكامل)
 window.printPathsMigration = function() {
   var sql = `
@@ -11997,18 +12212,44 @@ self.addEventListener('fetch', function(e) {
     delete window._subStatusCache[userId + ':' + sectionId];
   }
 
-  // ── يحدد هل sectionId هو «الفصل الأول» المجاني التابع للشعبة anchorId أو أحد أبنائه ──
-  // (الفصل الأول = أول ابن مباشر للشعبة بحسب display_order — يظل مفتوحاً دائماً كمعاينة مجانية)
-  async function _isWithinFreeChapter(anchorId, sectionId) {
-    if (sectionId === anchorId) return false; // صفحة الشعبة نفسها (قائمة الفصول) — تُعرض مع قفل الفصول التالية
-    var children = await loadSections(anchorId);
-    if (!children || children.length === 0) return false; // لا فصول فرعية — القفل يتم على مستوى عناصر المحتوى نفسها
-    var firstChildId = children[0].id;
+  // ── يحدد هل sectionId يقع ضمن «الفصل الأول» المجاني الخاص بالمادة (Course) التابع لها ──
+  // (المجانية أصبحت مرتبطة بكل مادة على حدة، وليس بأول مادة في الشعبة كلها):
+  // المادة = الابن المباشر للشعبة anchorId. أول فصل داخل كل مادة (بحسب display_order) = مجاني.
+  // مادة بدون فصول فرعية (ورقة واحدة) تُعتبر فصلاً واحداً ضمنياً = مجاني بالكامل (TEST 3).
+  async function _findMaterialAncestor(anchorId, sectionId) {
+    // يصعد من sectionId حتى يجد الابن المباشر للشعبة (anchorId) الواقع على مسار sectionId
     var current = await _getSectionRow(sectionId);
     var depth = 0;
     while (current && depth < 20) {
-      if (current.id === firstChildId) return true;
-      if (current.id === anchorId) return false;
+      if (current.parent_id === anchorId) return current; // وجدنا المادة
+      if (current.id === anchorId) return null; // sectionId هو الشعبة نفسها أو وصلنا لها بدون مادة
+      if (current.parent_id === null || current.parent_id === undefined) return null;
+      current = await _getSectionRow(current.parent_id);
+      depth++;
+    }
+    return null;
+  }
+
+  async function _isWithinFreeChapter(anchorId, sectionId) {
+    if (sectionId === anchorId) return false; // صفحة الشعبة نفسها (قائمة المواد) — لا قفل على مستوى بطاقات المواد
+
+    var materialNode = await _findMaterialAncestor(anchorId, sectionId);
+    if (!materialNode) return false; // حالة غير متوقعة — الأكثر أماناً هو عدم اعتبارها مجانية
+
+    var chapters = await loadSections(materialNode.id);
+
+    if (!chapters || chapters.length === 0) {
+      return true; // مادة بدون فصول فرعية = فصل واحد ضمني وهو المادة نفسها → مجاني بالكامل
+    }
+
+    if (sectionId === materialNode.id) return false; // صفحة المادة نفسها (قائمة الفصول) — القفل يتم على مستوى بطاقات الفصول، وليس على الصفحة نفسها
+
+    var firstChapterId = chapters[0].id; // أول فصل حسب ترتيب display_order (loadSections بترتب تصاعدياً بالفعل)
+    var current = await _getSectionRow(sectionId);
+    var depth = 0;
+    while (current && depth < 20) {
+      if (current.id === firstChapterId) return true;
+      if (current.id === materialNode.id) return false;
       if (current.parent_id === null || current.parent_id === undefined) return false;
       current = await _getSectionRow(current.parent_id);
       depth++;
@@ -12032,7 +12273,15 @@ self.addEventListener('fetch', function(e) {
       var db = window.supabase;
       if (!db) return null; // fail-open حتى لا يتعطل الموقع
 
-      var sessionRes = await db.auth.getSession();
+      // ✅ DEBUG FIX: db.auth.getSession() كان بدون أي timeout — لو تعلّق (مثلاً بسبب
+      // جلسة/رمز تحديث تالف في localStorage) كانت الصفحة تظل معلّقة على "جاري التحميل
+      // من قاعدة البيانات..." للأبد بدون أي خطأ في الـ Console. الآن محدود بـ 8 ثوانٍ.
+      var sessionRes = await Promise.race([
+        db.auth.getSession(),
+        new Promise(function(_, reject) {
+          setTimeout(function() { reject(new Error('getSession timeout after 8000ms')); }, 8000);
+        })
+      ]);
       var user = sessionRes && sessionRes.data && sessionRes.data.session && sessionRes.data.session.user;
       if (!user) return { anchor: anchor, state: 'guest' };
 
@@ -12041,8 +12290,8 @@ self.addEventListener('fetch', function(e) {
 
       return { anchor: anchor, state: status.state, row: status.row, user: user };
     } catch(e) {
-      console.warn('[SUBS] تعذر فحص الاشتراك:', e.message);
-      return null; // fail-open
+      console.error('[DB LOAD ERROR][checkSectionAccess]', e && e.message, e);
+      return null; // fail-open — لا نعطّل عرض الصفحة أبداً بسبب فشل فحص الاشتراك
     }
   };
 
