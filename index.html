@@ -10064,7 +10064,7 @@ window.printSecuritySQL = function() {
 -- ────────────────────────────────────────────────────────────────
 ALTER TABLE profiles
   ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'user'
-  CHECK (role IN ('admin', 'branch_admin', 'moderator', 'user'));
+  CHECK (role IN ('admin', 'branch_admin', 'moderator', 'user', 'student'));
 
 -- فهرس للبحث السريع
 CREATE INDEX IF NOT EXISTS idx_profiles_role ON profiles(role);
@@ -10261,7 +10261,7 @@ async function _runSilentDiagnostic() {
   var results = {};
   await Promise.all(tables.map(async function(t) {
     try {
-      var r = await window.supabase.from(t).select('id', {count:'exact', head:true});
+      var r = await window.supabase.from(t).select('*', {count:'exact', head:true});
       results[t] = r.error ? ('❌ ' + r.error.message) : ('✅ ' + (r.count ?? '?') + ' rows');
     } catch(e) {
       results[t] = '⚠️ ' + e.message;
@@ -10467,7 +10467,7 @@ window.printFullRLS = function() {
 -- 0.أ) لازم عمود role يقبل قيمة 'branch_admin' (كان مقصور على admin/moderator/user)
 ALTER TABLE profiles DROP CONSTRAINT IF EXISTS profiles_role_check;
 ALTER TABLE profiles ADD CONSTRAINT profiles_role_check
-  CHECK (role IN ('admin', 'branch_admin', 'moderator', 'user'));
+  CHECK (role IN ('admin', 'branch_admin', 'moderator', 'user', 'student'));
 
 -- 0.ب) عمود managed_section_id — الشعبة المُسندة لأدمن الشعبة
 ALTER TABLE profiles ADD COLUMN IF NOT EXISTS managed_section_id BIGINT REFERENCES site_sections(id) ON DELETE SET NULL;
