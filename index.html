@@ -248,129 +248,6 @@ body {
 .breadcrumb span:hover { color: var(--accent2); text-decoration: underline; }
 .breadcrumb .sep { opacity: .5; }
 
-/* ===================================================================
-   NAVIGATION SYSTEM — Hamburger + Side Drawer (mobile) / Sidebar (desktop)
-   =================================================================== */
-.hamburger-btn {
-  background: rgba(255,255,255,.12);
-  border: 1px solid rgba(255,255,255,.18);
-  color: #fff;
-  width: 38px; height: 38px;
-  border-radius: 10px;
-  font-size: 1.15rem;
-  cursor: pointer;
-  display: flex; align-items: center; justify-content: center;
-  transition: background .2s;
-  flex-shrink: 0;
-}
-.hamburger-btn:hover { background: rgba(255,255,255,.22); }
-
-/* ---- Overlay ---- */
-#drawer-overlay {
-  position: fixed; inset: 0;
-  background: rgba(10,20,35,.55);
-  backdrop-filter: blur(2px);
-  z-index: 1900;
-  opacity: 0; visibility: hidden;
-  transition: opacity .25s ease;
-}
-#drawer-overlay.open { opacity: 1; visibility: visible; }
-
-/* ---- Drawer / Sidebar shell ---- */
-#side-drawer {
-  position: fixed;
-  top: 0; bottom: 0; right: 0;
-  width: 300px; max-width: 85vw;
-  background: #fff;
-  z-index: 1950;
-  box-shadow: -10px 0 40px rgba(0,0,0,.25);
-  transform: translateX(100%);
-  transition: transform .28s cubic-bezier(.4,0,.2,1);
-  display: flex; flex-direction: column;
-  overflow: hidden;
-}
-#side-drawer.open { transform: translateX(0); }
-
-.drawer-profile {
-  background: linear-gradient(135deg, var(--primary) 0%, #1a5276 60%, #154360 100%);
-  color: #fff;
-  padding: 20px 18px;
-  display: flex; align-items: center; gap: 12px;
-  flex-shrink: 0;
-}
-.drawer-profile .dp-avatar {
-  width: 46px; height: 46px; border-radius: 50%;
-  background: rgba(255,255,255,.18);
-  display: flex; align-items: center; justify-content: center;
-  font-size: 1.4rem; flex-shrink: 0;
-}
-.drawer-profile .dp-info { min-width: 0; flex: 1; }
-.drawer-profile .dp-name { font-weight: 800; font-size: .95rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.drawer-profile .dp-sub { font-size: .74rem; opacity: .8; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.drawer-close-btn {
-  background: rgba(255,255,255,.15); border: none; color: #fff;
-  width: 30px; height: 30px; border-radius: 8px; font-size: 1rem; cursor: pointer; flex-shrink: 0;
-}
-
-.drawer-nav {
-  flex: 1;
-  overflow-y: auto;
-  padding: 10px 10px 90px;
-  -webkit-overflow-scrolling: touch;
-}
-.drawer-group-label {
-  font-size: .72rem;
-  font-weight: 800;
-  color: #8a9bab;
-  text-transform: uppercase;
-  letter-spacing: .5px;
-  padding: 14px 12px 6px;
-}
-.drawer-group-label:first-child { padding-top: 8px; }
-.drawer-link {
-  display: flex; align-items: center; gap: 12px;
-  padding: 11px 12px;
-  border-radius: 12px;
-  color: var(--text);
-  text-decoration: none;
-  font-size: .9rem; font-weight: 600;
-  cursor: pointer;
-  transition: background .15s;
-  background: transparent;
-  border: none;
-  width: 100%;
-  text-align: right;
-  font-family: inherit;
-}
-.drawer-link:hover, .drawer-link:focus-visible { background: var(--light); outline: none; }
-.drawer-link .dl-icon { font-size: 1.05rem; width: 22px; text-align: center; flex-shrink: 0; }
-.drawer-link.danger { color: var(--accent); }
-.drawer-link.admin-only { display: none; }
-body.is-admin .drawer-link.admin-only { display: flex; }
-
-.drawer-footer {
-  border-top: 1px solid #eef2f6;
-  padding: 12px 10px;
-  flex-shrink: 0;
-}
-
-/* ---- Desktop: persistent sidebar, no overlay, grouped nav ---- */
-@media (min-width: 1024px) {
-  .hamburger-btn { display: none; }
-  #drawer-overlay { display: none !important; }
-  #side-drawer {
-    position: fixed;
-    right: 0; top: 0; bottom: 0;
-    width: 264px; max-width: 264px;
-    transform: none;
-    box-shadow: 2px 0 0 rgba(10,61,98,.06);
-    border-left: 1px solid #eef2f6;
-  }
-  .drawer-close-btn { display: none; }
-  body.has-desktop-sidebar #main-content { margin-right: 264px; }
-  body.has-desktop-sidebar .topnav { margin-right: 264px; }
-}
-
 /* ===== HOME PAGE ===== */
 .hero {
   background: linear-gradient(135deg, var(--primary) 0%, #1b2a4a 50%, #0d2137 100%);
@@ -442,37 +319,6 @@ body.is-admin .drawer-link.admin-only { display: flex; }
 }
 .stat-card .num { font-size: 2rem; font-weight: 900; color: var(--primary); }
 .stat-card .lbl { font-size: .78rem; color: #666; margin-top: 2px; }
-
-/* ===== QUICK ACTIONS ===== */
-.quick-actions {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 10px;
-  padding: 16px;
-  max-width: 720px;
-  margin: 0 auto;
-}
-.qa-btn {
-  display: flex; flex-direction: column; align-items: center; gap: 6px;
-  background: var(--white);
-  border: 1px solid #e3eaf5;
-  border-radius: 16px;
-  padding: 14px 6px;
-  cursor: pointer;
-  font-family: inherit;
-  font-size: .78rem;
-  font-weight: 700;
-  color: var(--text);
-  box-shadow: 0 2px 10px rgba(10,61,98,0.06);
-  transition: transform .15s, box-shadow .15s;
-}
-.qa-btn:hover { transform: translateY(-2px); box-shadow: 0 6px 18px rgba(10,61,98,0.12); }
-.qa-btn .qa-icon { font-size: 1.5rem; }
-@media (max-width: 420px) {
-  .quick-actions { gap: 8px; padding: 12px; }
-  .qa-btn { padding: 10px 4px; font-size: .72rem; }
-  .qa-btn .qa-icon { font-size: 1.3rem; }
-}
 
 /* ===== SECTION TITLES ===== */
 .section-title {
@@ -2478,51 +2324,10 @@ body.sm-open {
     <div id="user-box">
       <button class="chatgpt-login-btn" onclick="loginWithGoogle()">🔐 دخول</button>
     </div>
-    <button class="hamburger-btn" onclick="openDrawer()" aria-label="فتح القائمة" title="القائمة">☰</button>
   </div>
 </nav>
 
-<!-- ==================== SIDE DRAWER / DESKTOP SIDEBAR ==================== -->
-<div id="drawer-overlay" onclick="closeDrawer()"></div>
-<aside id="side-drawer" role="dialog" aria-label="القائمة الرئيسية">
-  <div class="drawer-profile">
-    <div class="dp-avatar" id="drawer-avatar">👤</div>
-    <div class="dp-info">
-      <div class="dp-name" id="drawer-name">زائر</div>
-      <div class="dp-sub" id="drawer-sub">سجّل الدخول للوصول لكل الخدمات</div>
-    </div>
-    <button class="drawer-close-btn" onclick="closeDrawer()" aria-label="إغلاق القائمة">✕</button>
-  </div>
-
-  <nav class="drawer-nav">
-    <div class="drawer-group-label">التصفح</div>
-    <button class="drawer-link" onclick="drawerGo('goHome')"><span class="dl-icon">🏠</span> الرئيسية</button>
-    <button class="drawer-link" onclick="drawerGo('openCoursesPage')"><span class="dl-icon">📚</span> الدورات</button>
-    <button class="drawer-link" onclick="drawerGo('openLibraryPage')"><span class="dl-icon">📖</span> مكتبتي</button>
-    <button class="drawer-link" onclick="drawerGo('openProgressPage')"><span class="dl-icon">📊</span> تقدمي الدراسي</button>
-
-    <div class="drawer-group-label">التفاعل</div>
-    <button class="drawer-link" onclick="drawerGo('openNotificationsPanel')"><span class="dl-icon">🔔</span> الإشعارات <span id="drawer-notif-badge" style="margin-inline-start:auto;background:var(--accent);color:#fff;font-size:.68rem;font-weight:800;padding:1px 7px;border-radius:10px;display:none;"></span></button>
-
-    <div class="drawer-group-label">الحساب</div>
-    <button class="drawer-link" onclick="drawerGo('openSubscriptionsPage')"><span class="dl-icon">💳</span> اشتراكاتي</button>
-    <button class="drawer-link admin-only" onclick="drawerGo('toggleAdminPanel')"><span class="dl-icon">⚙️</span> لوحة التحكم</button>
-
-    <div class="drawer-group-label">الدعم</div>
-    <button class="drawer-link" onclick="drawerGo('openLinksPage')"><span class="dl-icon">📌</span> روابط مهمة</button>
-    <button class="drawer-link" onclick="drawerGo('toggleAI')"><span class="dl-icon">🎓</span> المساعد الذكي</button>
-  </nav>
-
-  <div class="drawer-footer" id="drawer-footer-guest">
-    <button class="drawer-link" onclick="closeDrawer();loginWithGoogle()"><span class="dl-icon">🔐</span> تسجيل الدخول</button>
-  </div>
-  <div class="drawer-footer" id="drawer-footer-user" style="display:none;">
-    <button class="drawer-link danger" onclick="drawerLogout()"><span class="dl-icon">🚪</span> تسجيل الخروج</button>
-  </div>
-</aside>
-
 <!-- ==================== PAGE: HOME ==================== -->
-<div id="main-content">
 <div id="page-home" class="page active">
   <div class="hero">
     <div class="hero-badge">🎓 منصة تعليمية متكاملة بالذكاء الاصطناعي</div>
@@ -2541,17 +2346,6 @@ body.sm-open {
 
   <!-- ✅ إعلانات الموقع — تُحمَّل من site_ads (لوحة التحكم) بدون أي تعديل بالكود -->
   <div id="site-ads-banner" style="padding:0 16px;"></div>
-
-  <!-- ترحيب — يظهر فقط للمستخدم المسجّل، يُملأ من _renderUserBox -->
-  <div id="home-greeting" style="display:none;padding:18px 16px 4px;font-weight:800;font-size:1.05rem;"></div>
-
-  <!-- Quick Actions -->
-  <div class="quick-actions" role="navigation" aria-label="إجراءات سريعة">
-    <button class="qa-btn" onclick="openCoursesPage()"><span class="qa-icon">📚</span><span>دوراتي</span></button>
-    <button class="qa-btn" onclick="openLibraryPage()"><span class="qa-icon">📖</span><span>مكتبتي</span></button>
-    <button class="qa-btn" onclick="toggleAI()"><span class="qa-icon">💬</span><span>المحادثة</span></button>
-    <button class="qa-btn" onclick="openNotificationsPanel()"><span class="qa-icon">🔔</span><span>الإشعارات</span></button>
-  </div>
 
   <div class="section-title">
     <h2>اختر مرحلتك الدراسية</h2>
@@ -2674,8 +2468,6 @@ body.sm-open {
     <div class="content-area" id="content-area"></div>
   </div>
 </div>
-
-</div><!-- /#main-content -->
 
 <!-- ==================== AI ASSISTANT ==================== -->
 <div class="ai-widget">
@@ -2852,96 +2644,6 @@ function updateBreadcrumb() {
   });
   bc.innerHTML = parts.join('');
 }
-
-// ==================== SIDE DRAWER / SIDEBAR NAVIGATION ====================
-// ملاحظة: هذا نظام تنقل إضافي فقط — لا يغيّر أي منطق Auth/Subscriptions/RLS.
-// يعتمد بالكامل على الدوال الموجودة أصلاً (goHome, openCoursesPage, openLinksPage...)
-
-function _isDesktopSidebar() { return window.matchMedia('(min-width: 1024px)').matches; }
-
-function openDrawer() {
-  document.getElementById('side-drawer').classList.add('open');
-  document.getElementById('drawer-overlay').classList.add('open');
-  if (!_isDesktopSidebar()) document.body.style.overflow = 'hidden';
-}
-function closeDrawer() {
-  document.getElementById('side-drawer').classList.remove('open');
-  document.getElementById('drawer-overlay').classList.remove('open');
-  document.body.style.overflow = '';
-}
-document.addEventListener('keydown', function(e) {
-  if (e.key === 'Escape') closeDrawer();
-});
-// إغلاق تلقائي عند تكبير الشاشة لوضع Desktop (لتفادي بقاء overflow:hidden عالقة)
-window.addEventListener('resize', function() {
-  if (_isDesktopSidebar()) { document.body.style.overflow = ''; document.body.classList.add('has-desktop-sidebar'); }
-  else document.body.classList.remove('has-desktop-sidebar');
-});
-if (_isDesktopSidebar()) document.body.classList.add('has-desktop-sidebar');
-
-// موجّه مركزي: يقفل الـ Drawer على الموبايل قبل تنفيذ أي إجراء تنقّل
-function drawerGo(fnName) {
-  if (!_isDesktopSidebar()) closeDrawer();
-  var fn = window[fnName];
-  if (typeof fn === 'function') { fn(); }
-  else { console.warn('[drawer] missing function:', fnName); }
-}
-
-function drawerLogout() {
-  if (!_isDesktopSidebar()) closeDrawer();
-  var btn = document.querySelector('#user-box .logout-btn');
-  if (btn) { logoutUser(btn); }
-  else if (typeof logoutUser === 'function') { logoutUser(null); }
-}
-
-// يُستدعى من _renderUserBox في كل مرة تتغيّر حالة تسجيل الدخول
-function _syncDrawerUser(user, isAdmin) {
-  var nameEl = document.getElementById('drawer-name');
-  var subEl  = document.getElementById('drawer-sub');
-  var avEl   = document.getElementById('drawer-avatar');
-  var guestFooter = document.getElementById('drawer-footer-guest');
-  var userFooter  = document.getElementById('drawer-footer-user');
-  var greetEl = document.getElementById('home-greeting');
-  if (user) {
-    var displayName = (user.user_metadata && (user.user_metadata.full_name || user.user_metadata.name))
-      || (user.email ? user.email.split('@')[0] : 'مستخدم');
-    nameEl.textContent = user.email || 'مستخدم';
-    subEl.textContent  = isAdmin ? '👑 صلاحيات إدارية' : 'طالب بالمنصة';
-    avEl.textContent   = isAdmin ? '👑' : '👤';
-    guestFooter.style.display = 'none';
-    userFooter.style.display  = 'block';
-    if (greetEl) { greetEl.textContent = '👋 مرحبًا بك يا ' + displayName; greetEl.style.display = 'block'; }
-  } else {
-    nameEl.textContent = 'زائر';
-    subEl.textContent  = 'سجّل الدخول للوصول لكل الخدمات';
-    avEl.textContent   = '👤';
-    guestFooter.style.display = 'block';
-    userFooter.style.display  = 'none';
-    if (greetEl) { greetEl.style.display = 'none'; }
-  }
-}
-
-// ---- صفحات قيد الإنشاء ضمن المراحل القادمة من الخطة (مكتبتي / تقدمي / اشتراكاتي / الإشعارات) ----
-// عرض placeholder احترافي بدل رابط مكسور، لحين بناء كل صفحة بالكامل في مرحلتها.
-function _openComingSoonPage(icon, title, note) {
-  state.navigationStack.push({ label: title, restore: function(){ _openComingSoonPage(icon, title, note); } });
-  var el = document.getElementById('page-dynamic-section');
-  document.getElementById('dynamic-section-title').textContent = icon + ' ' + title;
-  document.getElementById('dynamic-section-sub').textContent = '';
-  document.getElementById('dynamic-section-chat-entry').innerHTML = '';
-  document.getElementById('dynamic-section-resources-container').innerHTML = '';
-  document.getElementById('dynamic-section-grid').innerHTML =
-    '<div style="grid-column:1/-1;text-align:center;padding:60px 20px;color:#7a8a9a;">'
-    + '<div style="font-size:2.6rem;margin-bottom:12px;">' + icon + '</div>'
-    + '<div style="font-weight:800;font-size:1rem;color:var(--text);margin-bottom:6px;">' + title + '</div>'
-    + '<p style="font-size:.85rem;max-width:320px;margin:0 auto;">' + note + '</p>'
-    + '</div>';
-  showPage('page-dynamic-section');
-}
-function openLibraryPage()        { _openComingSoonPage('📖','مكتبتي','قريبًا: كل ملفاتك (PDF ومحاضرات) في مكان واحد قابل للبحث والفلترة.'); }
-function openProgressPage()       { _openComingSoonPage('📊','تقدمي الدراسي','قريبًا: نظرة شاملة على تقدمك في كل مادة وفصل.'); }
-function openSubscriptionsPage()  { _openComingSoonPage('💳','اشتراكاتي','قريبًا: حالة اشتراكاتك في كل شعبة بمكان واحد.'); }
-function openNotificationsPanel() { _openComingSoonPage('🔔','الإشعارات','قريبًا: كل إشعاراتك مع تفاصيلها وإمكانية الانتقال المباشر.'); }
 
 // ==================== SUPABASE DATA LAYER ====================
 
@@ -5569,7 +5271,6 @@ window.logoutUser = async function(btnEl) {
       window._branchAdminSectionIds = [];
       window._branchAdminPerms = null;
       window._branchAdminRows = [];
-      if (typeof closeDrawer === 'function') closeDrawer(); // إغلاق القائمة الجانبية عند الخروج
     } catch(e) {}
     try {
       // أغلق لوحة الأدمن لو كانت مفتوحة أثناء تسجيل الخروج
@@ -5644,7 +5345,6 @@ async function _renderUserBox(user, role) {
     document.body.classList.remove('is-admin');
     document.body.classList.remove('content-protected'); // المحتوى مجاني للجميع
     box.innerHTML = '<button class="chatgpt-login-btn" onclick="loginWithGoogle()">🔐 دخول</button>';
-    if (typeof _syncDrawerUser === 'function') _syncDrawerUser(null, false);
     return;
   }
   // role يأتي من profiles.role في Supabase — ليس من HTML
@@ -5658,6 +5358,7 @@ async function _renderUserBox(user, role) {
   window._isAdminUser  = isAdmin;
   window._isSuperAdmin = isSuperAdmin;
   window._isBranchAdmin = isBranchAdmin;
+  window._isSectionAdmin = isBranchAdmin; // اسم بديل مطابق، للتوافق مع تسمية section_admins
   window._currentUserRole = role || 'user';
   if (isAdmin) {
     document.body.classList.add('is-admin');
@@ -5688,7 +5389,6 @@ async function _renderUserBox(user, role) {
       + '<button class="logout-btn" onclick="logoutUser(this)">خروج</button>'
       + '</div>';
   }
-  if (typeof _syncDrawerUser === 'function') _syncDrawerUser(user, isAdmin);
 }
 
 // ── fetchUserRole: جلب الـ role من profiles ──────────────────
@@ -5725,7 +5425,15 @@ async function _resolveAdminStatus(userId) {
     } catch(e) { console.warn('[section_admins] check failed:', e && e.message); }
   }
   var isBranchAdmin = isLegacyBranchAdmin || hasSectionAdminRows;
-  return { role: role, isSuperAdmin: isSuperAdmin, isBranchAdmin: isBranchAdmin, isAdmin: isSuperAdmin || isBranchAdmin };
+  // isSectionAdmin: اسم بديل مطابق تمامًا لـ isBranchAdmin — نفس القيمة، فقط للتوافق
+  // مع أي كود جديد يتوقع هذا الاسم تحديدًا (المصطلح الرسمي الآن هو "Section Admin")
+  return {
+    role: role,
+    isSuperAdmin: isSuperAdmin,
+    isBranchAdmin: isBranchAdmin,
+    isSectionAdmin: isBranchAdmin,
+    isAdmin: isSuperAdmin || isBranchAdmin
+  };
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -5820,6 +5528,9 @@ window._selectBranchAdminRoot = async function(rootId) {
     can_manage_chats: true, can_view_stats: true
   };
   window._branchAdminSectionIds = await _computeSectionSubtree(rootId);
+  // أسماء بديلة مطابقة تمامًا (sectionIds/activeSectionId) — للتوافق مع تسمية section_admins
+  window._sectionAdminSectionIds = window._branchAdminSectionIds;
+  window._activeSectionId = rootId;
   if (typeof _renderBranchAdminSwitcher === 'function') _renderBranchAdminSwitcher();
   if (window._isBranchAdmin && typeof apLoadDashboard === 'function' && document.getElementById('admin-panel') &&
       document.getElementById('admin-panel').classList.contains('ap-open')) {
@@ -10282,21 +9993,6 @@ var NativePDFViewer = (function() {
     return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   }
 
-  // بعض متصفحات الـ in-app (فيسبوك/انستجرام/ماسنجر/تيك توك) تمنع أحيانًا
-  // dynamic import() أو Range requests، وهو ما يسبب فشل تحميل PDF.js أو تعطّل
-  // عرض الملف بشكل غير متوقع. نكتشفها مسبقًا لنعرض حلاً بدل شاشة فارغة.
-  function _isProblematicInAppBrowser() {
-    var ua = navigator.userAgent || '';
-    return /FBAN|FBAV|Instagram|Line\/|MicroMessenger|TikTok/i.test(ua);
-  }
-
-  function _externalOpenButtonHtml(url) {
-    return '<a href="' + _esc(url) + '" target="_blank" rel="noopener" ' +
-      'style="display:inline-block;margin-top:14px;background:#fff;color:#24313f;' +
-      'padding:10px 20px;border-radius:10px;font-size:.85rem;font-weight:800;text-decoration:none;">' +
-      '⬇ فتح الملف في متصفح الجهاز</a>';
-  }
-
   // ---- تحميل PDF.js (ESM) مرة واحدة فقط ----
   function _loadPdfJs() {
     if (_pdfjsLib) return Promise.resolve(_pdfjsLib);
@@ -10360,7 +10056,6 @@ var NativePDFViewer = (function() {
             '<button class="pdfv-btn" id="pdfv-zoom-out" title="تصغير">−</button>' +
             '<span class="pdfv-zoom-pct" id="pdfv-zoom-pct">100%</span>' +
             '<button class="pdfv-btn" id="pdfv-zoom-in" title="تكبير">+</button>' +
-            '<button class="pdfv-btn" id="pdfv-fit-width" title="ملائمة العرض">⇔</button>' +
           '</div>' +
           '<button class="pdfv-btn" id="pdfv-search-toggle" title="بحث">🔍</button>' +
           '<button class="pdfv-btn" id="pdfv-theme-toggle" title="وضع الصفحات الداكن">' + (pagesDark ? '☀️' : '🌗') + '</button>' +
@@ -10396,7 +10091,6 @@ var NativePDFViewer = (function() {
     document.getElementById('pdfv-page-num').addEventListener('keydown', function(e) { if (e.key === 'Enter') { _goToPage(parseInt(this.value, 10)); this.blur(); } });
     document.getElementById('pdfv-zoom-in').onclick = function() { _setZoom((S ? S.zoom : 1) + 0.25); };
     document.getElementById('pdfv-zoom-out').onclick = function() { _setZoom((S ? S.zoom : 1) - 0.25); };
-    document.getElementById('pdfv-fit-width').onclick = function() { _setZoom(1); };
     document.getElementById('pdfv-fullscreen').onclick = _toggleFullscreen;
     document.getElementById('pdfv-theme-toggle').onclick = _togglePageTheme;
     document.getElementById('pdfv-search-toggle').onclick = _openSearch;
@@ -10415,14 +10109,8 @@ var NativePDFViewer = (function() {
     });
 
     var wrapper = document.getElementById('native-pdf-pdfjs-wrapper');
-    var inAppWarning = _isProblematicInAppBrowser()
-      ? '<div style="margin-top:10px;font-size:.72rem;color:#f5d76e;max-width:260px;">' +
-        'ملاحظة: أنت تستخدم متصفح تطبيق (مثل فيسبوك/انستجرام)، وبعض هذه المتصفحات قد لا تعرض الملف بشكل صحيح.' +
-        '</div>'
-      : '';
     wrapper.innerHTML =
-      '<div class="pdfv-page-loading" style="min-height:60vh">' +
-      '<div class="pdfv-spin"></div>جاري فتح الملف...' + inAppWarning + '</div>';
+      '<div class="pdfv-page-loading" style="min-height:60vh"><div class="pdfv-spin"></div>جاري فتح الملف...</div>';
 
     try {
       var lib = await _loadPdfJs();
@@ -10474,19 +10162,10 @@ var NativePDFViewer = (function() {
       wrapper.style.webkitOverflowScrolling = 'touch';
 
     } catch(e) {
-      console.warn('[PDFjs] تعذّر فتح الملف:', e && e.name, e && e.message);
-      var errName = (e && e.name) || '';
-      var isCorrupt = /Invalid|Password|FormatError|CorruptedImage/i.test(errName) ||
-                       /invalid pdf structure|corrupt/i.test((e && e.message) || '');
-      var msgHtml = isCorrupt
-        ? '⚠️ يبدو أن ملف PDF نفسه تالف أو غير سليم (وليست مشكلة في العرض).<br>' +
-          'يُنصح بإعادة تصدير الملف. يمكنك تجربة فتحه مباشرة:'
-        : '⚠️ تعذّر فتح الملف داخل المنصة.<br>تأكد من اتصالك بالإنترنت، أو جرّب فتحه مباشرة:';
+      console.warn('[PDFjs] تعذّر فتح الملف:', e && e.message);
       wrapper.innerHTML =
-        '<div class="pdfv-page-loading" style="min-height:60vh;color:#f5b5b5;text-align:center;padding:0 20px">' +
-        msgHtml +
-        _externalOpenButtonHtml(finalUrl) +
-        '</div>';
+        '<div class="pdfv-page-loading" style="min-height:60vh;color:#f5b5b5">' +
+        '⚠️ تعذّر فتح الملف حالياً.<br>تأكد من اتصالك بالإنترنت وحاول مرة أخرى.</div>';
     }
   }
 
@@ -11095,11 +10774,19 @@ window.requireAdmin = async function(silent) {
 /**
  * requireBranchAccess(sectionId, silent)
  * يسمح بالمرور لـ:
- *   - Super Admin (role='admin') دائماً، بلا قيود على أي قسم
- *   - Branch Admin (role='branch_admin') فقط لو sectionId خالٍ (فتح اللوحة نفسها)
- *     أو ضمن نطاق شعبته (window._branchAdminSectionIds المحسوبة من managed_section_id)
+ *   - Super Admin (profiles.role='admin') دائماً، بلا قيود على أي قسم
+ *   - Section Admin — سواء كان مصدره القديم (profiles.role='branch_admin' +
+ *     profiles.managed_section_id) أو الجديد (جدول section_admins، بغض النظر
+ *     عن profiles.role — قد يكون 'student') — فقط لو sectionId خالٍ (فتح اللوحة
+ *     نفسها) أو ضمن نطاق شعبته/شعبه (window._branchAdminSectionIds، المحسوبة من
+ *     المصدرين معاً عبر _loadBranchAdminScope)
+ * ✅ (Aug 2026 fix): كان هذا الحاجز يتحقق فقط من profiles.role === 'branch_admin'،
+ * فكان يمنع أي Section Admin مُعيَّن فقط عبر جدول section_admins (وprofiles.role
+ * عنده لسه 'student') من فتح لوحة التحكم أصلاً أو حفظ أي تعديل — رغم إن زر
+ * "⚙️ تحكم" كان يظهر له بشكل صحيح أصلاً عبر _resolveAdminStatus(). دلوقتي بيستخدم
+ * نفس مصدر الحقيقة الموحّد _resolveAdminStatus() بدل مقارنة الـ role مباشرة.
  * الحماية الحقيقية النهائية تتم عبر RLS في قاعدة البيانات — هذا مجرد حاجز في الواجهة
- * يُرجع { ok, user, role, isSuperAdmin, isBranchAdmin }
+ * يُرجع { ok, user, role, isSuperAdmin, isBranchAdmin, isSectionAdmin }
  */
 window.requireBranchAccess = async function(sectionId, silent) {
   if (!window.supabase) {
@@ -11112,22 +10799,22 @@ window.requireBranchAccess = async function(sectionId, silent) {
     if (!silent) _secAlert('يجب تسجيل الدخول أولاً');
     return { ok: false };
   }
-  var role = await _fetchUserRole(session.user.id);
-  if (role === 'admin') {
-    return { ok: true, user: session.user, role: role, isSuperAdmin: true, isBranchAdmin: false };
+  var status = await _resolveAdminStatus(session.user.id);
+  if (status.isSuperAdmin) {
+    return { ok: true, user: session.user, role: status.role, isSuperAdmin: true, isBranchAdmin: false, isSectionAdmin: false };
   }
-  if (role === 'branch_admin') {
-    // تأكد من تحميل نطاق شعبته (لو لسه ما اتحملش)
+  if (status.isBranchAdmin) {
+    // تأكد من تحميل نطاق شعبته/شعبه (لو لسه ما اتحملش) — من المصدرين معاً
     if (!Array.isArray(window._branchAdminSectionIds) || !window._branchAdminSectionIds.length) {
       await _loadBranchAdminScope(session.user.id);
     }
     var scope = window._branchAdminSectionIds || [];
     var sid = (sectionId === null || sectionId === undefined || sectionId === '') ? null : Number(sectionId);
     if (sid === null || scope.indexOf(sid) > -1) {
-      return { ok: true, user: session.user, role: role, isSuperAdmin: false, isBranchAdmin: true };
+      return { ok: true, user: session.user, role: status.role, isSuperAdmin: false, isBranchAdmin: true, isSectionAdmin: true };
     }
     if (!silent) _secAlert('⛔ هذا القسم خارج نطاق شعبتك');
-    console.warn('[SECURITY] Branch admin tried to access out-of-scope section:', sid, session.user.email);
+    console.warn('[SECURITY] Section admin tried to access out-of-scope section:', sid, session.user.email);
     return { ok: false };
   }
   if (!silent) _secAlert('⛔ ليس لديك صلاحية الوصول لهذه العملية');
