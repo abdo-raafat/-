@@ -5613,15 +5613,32 @@ window.checkUser = async function() {
 
   // فحص الـ session الحالية عند تحميل الصفحة
   // ✅ FIX (Aug 2026): getSession() هنا بدون حماية timeout كانت تجمّد الصفحة للأبد
-  // على شاشة "جاري التحميل..." لو تعلّقت (مشكلة شبكة/توكن تالف). الآن محدودة بـ 8 ثوانٍ،
+  // على شاشة "جاري التحميل..." لو تعلّقت (مشكلة شبكة/توكن تالف). الآن محدودة بمهلة،
   // وفي حالة التعليق نُعامل المستخدم كـ Guest (fail-safe) — لا صلاحيات أدمن ولا اشتراك أبداً.
+  //
+  // ✅ FIX (Aug 2026 #2): لما تكون الصفحة راجعة من Google OAuth redirect (فيه
+  // access_token في الـ hash أو code في الـ query)، الـ Supabase client بيكون
+  // مشغول داخليًا بمعالجة الـ URL وتبادل التوكن مع الشبكة (detectSessionInUrl:true) —
+  // ده ممكن ياخد وقت أطول من مهلة الـ Guest fail-safe العادية (8 ثوانٍ)، فكان بيتحول
+  // المستخدم لـ Guest مؤقتًا بالخطأ رغم إن الـ session كانت هتوصل بعد لحظات عبر
+  // onAuthStateChange (مُسجَّل فعلاً فوق قبل هذا الكود). الحل: مهلة أطول أثناء OAuth
+  // callback، وفي حالة انتهائها لا نجزم بـ Guest؛ نسيب onAuthStateChange (اللي هيطلق
+  // حتماً بمجرد ما الـ client يخلص التهيئة) هو اللي يحدّد الحالة النهائية — بدل ما
+  // نفرض Guest مؤقت على الواجهة ثم نصلّحه لاحقاً.
+  var _isOAuthCallback = /[#&]access_token=|[?&#]code=/.test(window.location.href);
+  var _sessionTimeoutMs = _isOAuthCallback ? 25000 : 12000;
   var session = null;
   try {
     var sessionRes = await _fetchWithTimeout(function() {
       return window.supabase.auth.getSession();
-    }, 8000);
+    }, _sessionTimeoutMs);
     session = sessionRes && sessionRes.data && sessionRes.data.session;
   } catch (e) {
+    if (_isOAuthCallback) {
+      // مفيش Guest مؤقت هنا — الـ session لسه بتتأسّس؛ onAuthStateChange هو اللي هيتكفّل بالنتيجة
+      console.warn('[AUTH] checkUser: getSession OAuth timeout — في انتظار onAuthStateChange بدل Guest فوري:', e && e.message);
+      return;
+    }
     console.warn('[AUTH] checkUser: getSession timeout/error — معاملة كـ Guest:', e && e.message);
     _renderUserBox(null, null);
     return;
