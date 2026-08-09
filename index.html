@@ -248,6 +248,129 @@ body {
 .breadcrumb span:hover { color: var(--accent2); text-decoration: underline; }
 .breadcrumb .sep { opacity: .5; }
 
+/* ===================================================================
+   NAVIGATION SYSTEM — Hamburger + Side Drawer (mobile) / Sidebar (desktop)
+   =================================================================== */
+.hamburger-btn {
+  background: rgba(255,255,255,.12);
+  border: 1px solid rgba(255,255,255,.18);
+  color: #fff;
+  width: 38px; height: 38px;
+  border-radius: 10px;
+  font-size: 1.15rem;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: background .2s;
+  flex-shrink: 0;
+}
+.hamburger-btn:hover { background: rgba(255,255,255,.22); }
+
+/* ---- Overlay ---- */
+#drawer-overlay {
+  position: fixed; inset: 0;
+  background: rgba(10,20,35,.55);
+  backdrop-filter: blur(2px);
+  z-index: 1900;
+  opacity: 0; visibility: hidden;
+  transition: opacity .25s ease;
+}
+#drawer-overlay.open { opacity: 1; visibility: visible; }
+
+/* ---- Drawer / Sidebar shell ---- */
+#side-drawer {
+  position: fixed;
+  top: 0; bottom: 0; right: 0;
+  width: 300px; max-width: 85vw;
+  background: #fff;
+  z-index: 1950;
+  box-shadow: -10px 0 40px rgba(0,0,0,.25);
+  transform: translateX(100%);
+  transition: transform .28s cubic-bezier(.4,0,.2,1);
+  display: flex; flex-direction: column;
+  overflow: hidden;
+}
+#side-drawer.open { transform: translateX(0); }
+
+.drawer-profile {
+  background: linear-gradient(135deg, var(--primary) 0%, #1a5276 60%, #154360 100%);
+  color: #fff;
+  padding: 20px 18px;
+  display: flex; align-items: center; gap: 12px;
+  flex-shrink: 0;
+}
+.drawer-profile .dp-avatar {
+  width: 46px; height: 46px; border-radius: 50%;
+  background: rgba(255,255,255,.18);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.4rem; flex-shrink: 0;
+}
+.drawer-profile .dp-info { min-width: 0; flex: 1; }
+.drawer-profile .dp-name { font-weight: 800; font-size: .95rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.drawer-profile .dp-sub { font-size: .74rem; opacity: .8; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.drawer-close-btn {
+  background: rgba(255,255,255,.15); border: none; color: #fff;
+  width: 30px; height: 30px; border-radius: 8px; font-size: 1rem; cursor: pointer; flex-shrink: 0;
+}
+
+.drawer-nav {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px 10px 90px;
+  -webkit-overflow-scrolling: touch;
+}
+.drawer-group-label {
+  font-size: .72rem;
+  font-weight: 800;
+  color: #8a9bab;
+  text-transform: uppercase;
+  letter-spacing: .5px;
+  padding: 14px 12px 6px;
+}
+.drawer-group-label:first-child { padding-top: 8px; }
+.drawer-link {
+  display: flex; align-items: center; gap: 12px;
+  padding: 11px 12px;
+  border-radius: 12px;
+  color: var(--text);
+  text-decoration: none;
+  font-size: .9rem; font-weight: 600;
+  cursor: pointer;
+  transition: background .15s;
+  background: transparent;
+  border: none;
+  width: 100%;
+  text-align: right;
+  font-family: inherit;
+}
+.drawer-link:hover, .drawer-link:focus-visible { background: var(--light); outline: none; }
+.drawer-link .dl-icon { font-size: 1.05rem; width: 22px; text-align: center; flex-shrink: 0; }
+.drawer-link.danger { color: var(--accent); }
+.drawer-link.admin-only { display: none; }
+body.is-admin .drawer-link.admin-only { display: flex; }
+
+.drawer-footer {
+  border-top: 1px solid #eef2f6;
+  padding: 12px 10px;
+  flex-shrink: 0;
+}
+
+/* ---- Desktop: persistent sidebar, no overlay, grouped nav ---- */
+@media (min-width: 1024px) {
+  .hamburger-btn { display: none; }
+  #drawer-overlay { display: none !important; }
+  #side-drawer {
+    position: fixed;
+    right: 0; top: 0; bottom: 0;
+    width: 264px; max-width: 264px;
+    transform: none;
+    box-shadow: 2px 0 0 rgba(10,61,98,.06);
+    border-left: 1px solid #eef2f6;
+  }
+  .drawer-close-btn { display: none; }
+  body.has-desktop-sidebar #main-content { margin-right: 264px; }
+  body.has-desktop-sidebar .topnav { margin-right: 264px; }
+}
+
 /* ===== HOME PAGE ===== */
 .hero {
   background: linear-gradient(135deg, var(--primary) 0%, #1b2a4a 50%, #0d2137 100%);
@@ -319,6 +442,37 @@ body {
 }
 .stat-card .num { font-size: 2rem; font-weight: 900; color: var(--primary); }
 .stat-card .lbl { font-size: .78rem; color: #666; margin-top: 2px; }
+
+/* ===== QUICK ACTIONS ===== */
+.quick-actions {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  padding: 16px;
+  max-width: 720px;
+  margin: 0 auto;
+}
+.qa-btn {
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  background: var(--white);
+  border: 1px solid #e3eaf5;
+  border-radius: 16px;
+  padding: 14px 6px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: .78rem;
+  font-weight: 700;
+  color: var(--text);
+  box-shadow: 0 2px 10px rgba(10,61,98,0.06);
+  transition: transform .15s, box-shadow .15s;
+}
+.qa-btn:hover { transform: translateY(-2px); box-shadow: 0 6px 18px rgba(10,61,98,0.12); }
+.qa-btn .qa-icon { font-size: 1.5rem; }
+@media (max-width: 420px) {
+  .quick-actions { gap: 8px; padding: 12px; }
+  .qa-btn { padding: 10px 4px; font-size: .72rem; }
+  .qa-btn .qa-icon { font-size: 1.3rem; }
+}
 
 /* ===== SECTION TITLES ===== */
 .section-title {
@@ -594,6 +748,10 @@ body {
   z-index: 99998;
 }
 .ai-panel.open { display: flex; animation: aiPanelIn .3s cubic-bezier(.16,1,.3,1); }
+/* ✅ حماية إضافية (CSS): لو انفتحت لوحة المساعد الذكي، اخفِ زر واتساب العائم
+   حتى لا يتراكب فوق زر "إرسال" في أسفل يسار الشاشة على الموبايل — هذا مجرد
+   دعم إضافي، الإخفاء الأساسي يتم عبر JS في toggleAI()/closeAI() */
+body:has(.ai-panel.open) #whatsapp-float { display: none !important; }
 @keyframes aiPanelIn { from { opacity:0; transform:translateY(20px) scale(.97); } to { opacity:1; transform:none; } }
 
 /* Panel Header */
@@ -2320,10 +2478,51 @@ body.sm-open {
     <div id="user-box">
       <button class="chatgpt-login-btn" onclick="loginWithGoogle()">🔐 دخول</button>
     </div>
+    <button class="hamburger-btn" onclick="openDrawer()" aria-label="فتح القائمة" title="القائمة">☰</button>
   </div>
 </nav>
 
+<!-- ==================== SIDE DRAWER / DESKTOP SIDEBAR ==================== -->
+<div id="drawer-overlay" onclick="closeDrawer()"></div>
+<aside id="side-drawer" role="dialog" aria-label="القائمة الرئيسية">
+  <div class="drawer-profile">
+    <div class="dp-avatar" id="drawer-avatar">👤</div>
+    <div class="dp-info">
+      <div class="dp-name" id="drawer-name">زائر</div>
+      <div class="dp-sub" id="drawer-sub">سجّل الدخول للوصول لكل الخدمات</div>
+    </div>
+    <button class="drawer-close-btn" onclick="closeDrawer()" aria-label="إغلاق القائمة">✕</button>
+  </div>
+
+  <nav class="drawer-nav">
+    <div class="drawer-group-label">التصفح</div>
+    <button class="drawer-link" onclick="drawerGo('goHome')"><span class="dl-icon">🏠</span> الرئيسية</button>
+    <button class="drawer-link" onclick="drawerGo('openCoursesPage')"><span class="dl-icon">📚</span> الدورات</button>
+    <button class="drawer-link" onclick="drawerGo('openLibraryPage')"><span class="dl-icon">📖</span> مكتبتي</button>
+    <button class="drawer-link" onclick="drawerGo('openProgressPage')"><span class="dl-icon">📊</span> تقدمي الدراسي</button>
+
+    <div class="drawer-group-label">التفاعل</div>
+    <button class="drawer-link" onclick="drawerGo('openNotificationsPanel')"><span class="dl-icon">🔔</span> الإشعارات <span id="drawer-notif-badge" style="margin-inline-start:auto;background:var(--accent);color:#fff;font-size:.68rem;font-weight:800;padding:1px 7px;border-radius:10px;display:none;"></span></button>
+
+    <div class="drawer-group-label">الحساب</div>
+    <button class="drawer-link" onclick="drawerGo('openSubscriptionsPage')"><span class="dl-icon">💳</span> اشتراكاتي</button>
+    <button class="drawer-link admin-only" onclick="drawerGo('toggleAdminPanel')"><span class="dl-icon">⚙️</span> لوحة التحكم</button>
+
+    <div class="drawer-group-label">الدعم</div>
+    <button class="drawer-link" onclick="drawerGo('openLinksPage')"><span class="dl-icon">📌</span> روابط مهمة</button>
+    <button class="drawer-link" onclick="drawerGo('toggleAI')"><span class="dl-icon">🎓</span> المساعد الذكي</button>
+  </nav>
+
+  <div class="drawer-footer" id="drawer-footer-guest">
+    <button class="drawer-link" onclick="closeDrawer();loginWithGoogle()"><span class="dl-icon">🔐</span> تسجيل الدخول</button>
+  </div>
+  <div class="drawer-footer" id="drawer-footer-user" style="display:none;">
+    <button class="drawer-link danger" onclick="drawerLogout()"><span class="dl-icon">🚪</span> تسجيل الخروج</button>
+  </div>
+</aside>
+
 <!-- ==================== PAGE: HOME ==================== -->
+<div id="main-content">
 <div id="page-home" class="page active">
   <div class="hero">
     <div class="hero-badge">🎓 منصة تعليمية متكاملة بالذكاء الاصطناعي</div>
@@ -2342,6 +2541,17 @@ body.sm-open {
 
   <!-- ✅ إعلانات الموقع — تُحمَّل من site_ads (لوحة التحكم) بدون أي تعديل بالكود -->
   <div id="site-ads-banner" style="padding:0 16px;"></div>
+
+  <!-- ترحيب — يظهر فقط للمستخدم المسجّل، يُملأ من _renderUserBox -->
+  <div id="home-greeting" style="display:none;padding:18px 16px 4px;font-weight:800;font-size:1.05rem;"></div>
+
+  <!-- Quick Actions -->
+  <div class="quick-actions" role="navigation" aria-label="إجراءات سريعة">
+    <button class="qa-btn" onclick="openCoursesPage()"><span class="qa-icon">📚</span><span>دوراتي</span></button>
+    <button class="qa-btn" onclick="openLibraryPage()"><span class="qa-icon">📖</span><span>مكتبتي</span></button>
+    <button class="qa-btn" onclick="toggleAI()"><span class="qa-icon">💬</span><span>المحادثة</span></button>
+    <button class="qa-btn" onclick="openNotificationsPanel()"><span class="qa-icon">🔔</span><span>الإشعارات</span></button>
+  </div>
 
   <div class="section-title">
     <h2>اختر مرحلتك الدراسية</h2>
@@ -2441,6 +2651,7 @@ body.sm-open {
       <h2 id="dynamic-section-title">القسم</h2>
       <p id="dynamic-section-sub"></p>
     </div>
+    <div id="dynamic-section-chat-entry"></div>
     <div id="dynamic-section-resources-container"></div>
     <div class="cards-grid" id="dynamic-section-grid">
       <div class="loading"><div class="spinner"></div> جاري التحميل...</div>
@@ -2463,6 +2674,8 @@ body.sm-open {
     <div class="content-area" id="content-area"></div>
   </div>
 </div>
+
+</div><!-- /#main-content -->
 
 <!-- ==================== AI ASSISTANT ==================== -->
 <div class="ai-widget">
@@ -2639,6 +2852,96 @@ function updateBreadcrumb() {
   });
   bc.innerHTML = parts.join('');
 }
+
+// ==================== SIDE DRAWER / SIDEBAR NAVIGATION ====================
+// ملاحظة: هذا نظام تنقل إضافي فقط — لا يغيّر أي منطق Auth/Subscriptions/RLS.
+// يعتمد بالكامل على الدوال الموجودة أصلاً (goHome, openCoursesPage, openLinksPage...)
+
+function _isDesktopSidebar() { return window.matchMedia('(min-width: 1024px)').matches; }
+
+function openDrawer() {
+  document.getElementById('side-drawer').classList.add('open');
+  document.getElementById('drawer-overlay').classList.add('open');
+  if (!_isDesktopSidebar()) document.body.style.overflow = 'hidden';
+}
+function closeDrawer() {
+  document.getElementById('side-drawer').classList.remove('open');
+  document.getElementById('drawer-overlay').classList.remove('open');
+  document.body.style.overflow = '';
+}
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') closeDrawer();
+});
+// إغلاق تلقائي عند تكبير الشاشة لوضع Desktop (لتفادي بقاء overflow:hidden عالقة)
+window.addEventListener('resize', function() {
+  if (_isDesktopSidebar()) { document.body.style.overflow = ''; document.body.classList.add('has-desktop-sidebar'); }
+  else document.body.classList.remove('has-desktop-sidebar');
+});
+if (_isDesktopSidebar()) document.body.classList.add('has-desktop-sidebar');
+
+// موجّه مركزي: يقفل الـ Drawer على الموبايل قبل تنفيذ أي إجراء تنقّل
+function drawerGo(fnName) {
+  if (!_isDesktopSidebar()) closeDrawer();
+  var fn = window[fnName];
+  if (typeof fn === 'function') { fn(); }
+  else { console.warn('[drawer] missing function:', fnName); }
+}
+
+function drawerLogout() {
+  if (!_isDesktopSidebar()) closeDrawer();
+  var btn = document.querySelector('#user-box .logout-btn');
+  if (btn) { logoutUser(btn); }
+  else if (typeof logoutUser === 'function') { logoutUser(null); }
+}
+
+// يُستدعى من _renderUserBox في كل مرة تتغيّر حالة تسجيل الدخول
+function _syncDrawerUser(user, isAdmin) {
+  var nameEl = document.getElementById('drawer-name');
+  var subEl  = document.getElementById('drawer-sub');
+  var avEl   = document.getElementById('drawer-avatar');
+  var guestFooter = document.getElementById('drawer-footer-guest');
+  var userFooter  = document.getElementById('drawer-footer-user');
+  var greetEl = document.getElementById('home-greeting');
+  if (user) {
+    var displayName = (user.user_metadata && (user.user_metadata.full_name || user.user_metadata.name))
+      || (user.email ? user.email.split('@')[0] : 'مستخدم');
+    nameEl.textContent = user.email || 'مستخدم';
+    subEl.textContent  = isAdmin ? '👑 صلاحيات إدارية' : 'طالب بالمنصة';
+    avEl.textContent   = isAdmin ? '👑' : '👤';
+    guestFooter.style.display = 'none';
+    userFooter.style.display  = 'block';
+    if (greetEl) { greetEl.textContent = '👋 مرحبًا بك يا ' + displayName; greetEl.style.display = 'block'; }
+  } else {
+    nameEl.textContent = 'زائر';
+    subEl.textContent  = 'سجّل الدخول للوصول لكل الخدمات';
+    avEl.textContent   = '👤';
+    guestFooter.style.display = 'block';
+    userFooter.style.display  = 'none';
+    if (greetEl) { greetEl.style.display = 'none'; }
+  }
+}
+
+// ---- صفحات قيد الإنشاء ضمن المراحل القادمة من الخطة (مكتبتي / تقدمي / اشتراكاتي / الإشعارات) ----
+// عرض placeholder احترافي بدل رابط مكسور، لحين بناء كل صفحة بالكامل في مرحلتها.
+function _openComingSoonPage(icon, title, note) {
+  state.navigationStack.push({ label: title, restore: function(){ _openComingSoonPage(icon, title, note); } });
+  var el = document.getElementById('page-dynamic-section');
+  document.getElementById('dynamic-section-title').textContent = icon + ' ' + title;
+  document.getElementById('dynamic-section-sub').textContent = '';
+  document.getElementById('dynamic-section-chat-entry').innerHTML = '';
+  document.getElementById('dynamic-section-resources-container').innerHTML = '';
+  document.getElementById('dynamic-section-grid').innerHTML =
+    '<div style="grid-column:1/-1;text-align:center;padding:60px 20px;color:#7a8a9a;">'
+    + '<div style="font-size:2.6rem;margin-bottom:12px;">' + icon + '</div>'
+    + '<div style="font-weight:800;font-size:1rem;color:var(--text);margin-bottom:6px;">' + title + '</div>'
+    + '<p style="font-size:.85rem;max-width:320px;margin:0 auto;">' + note + '</p>'
+    + '</div>';
+  showPage('page-dynamic-section');
+}
+function openLibraryPage()        { _openComingSoonPage('📖','مكتبتي','قريبًا: كل ملفاتك (PDF ومحاضرات) في مكان واحد قابل للبحث والفلترة.'); }
+function openProgressPage()       { _openComingSoonPage('📊','تقدمي الدراسي','قريبًا: نظرة شاملة على تقدمك في كل مادة وفصل.'); }
+function openSubscriptionsPage()  { _openComingSoonPage('💳','اشتراكاتي','قريبًا: حالة اشتراكاتك في كل شعبة بمكان واحد.'); }
+function openNotificationsPanel() { _openComingSoonPage('🔔','الإشعارات','قريبًا: كل إشعاراتك مع تفاصيلها وإمكانية الانتقال المباشر.'); }
 
 // ==================== SUPABASE DATA LAYER ====================
 
@@ -3230,6 +3533,17 @@ async function _renderDynamicSectionPage(sec) {
       console.error('[DB LOAD ERROR][_renderDynamicSectionPage:checkSectionAccess]', gateErr && gateErr.message, gateErr);
       gate = null; // fail-open — لا نعطّل عرض القسم بسبب فشل فحص الاشتراك
     }
+  }
+
+  // ── زر دخول محادثة الشعبة — يظهر فقط على صفحة الشعبة نفسها ولمن يملك صلاحية ──
+  var chatEntryEl = document.getElementById('dynamic-section-chat-entry');
+  if (chatEntryEl) chatEntryEl.innerHTML = '';
+  if (window.getChatEligibility && sec && sec.id) {
+    window.getChatEligibility(sec.id).then(function(elig) {
+      if (elig && elig.allowed && chatEntryEl && document.getElementById('dynamic-section-title')) {
+        chatEntryEl.innerHTML = window._renderChatEntryButtonHTML(elig.anchor);
+      }
+    }).catch(function(e){ console.warn('[chat entry]', e && e.message); });
   }
 
   try {
@@ -4614,18 +4928,31 @@ var BSM_AI = (function() {
 })();
 
 // ── الدوال الموصّلة بالواجهة ──────────────────────────────────
-function closeAI() { var p=document.getElementById("ai-panel"); if(p) p.classList.remove("open"); }
+function closeAI() {
+  var p = document.getElementById("ai-panel");
+  if (p) p.classList.remove("open");
+  // ✅ رجّع زر واتساب العائم لما تُقفل لوحة المساعد الذكي (انظر toggleAI أسفل)
+  var waBtn = document.getElementById('whatsapp-float');
+  if (waBtn) waBtn.style.display = '';
+}
 function minimizeAI() { closeAI(); }
 function toggleAI() {
   var panel = document.getElementById('ai-panel');
   if (!panel) return;
   panel.classList.toggle('open');
+  var waBtn = document.getElementById('whatsapp-float');
   if (panel.classList.contains('open')) {
+    // ✅ FIX: زر واتساب العائم كان يظهر فوق زر "إرسال" في المساعد الذكي على الموبايل
+    // (المساعد الذكي بيفتح Full-screen sheet من تحت، وزر واتساب ثابت في نفس الركن)
+    // فنخفي زر واتساب طول ما لوحة المساعد الذكي مفتوحة، ونرجّعه لما تُقفل
+    if (waBtn) waBtn.style.display = 'none';
     BSM_AI.showWelcome();
     setTimeout(function() {
       var input = document.getElementById('ai-input');
       if (input) input.focus();
     }, 300);
+  } else {
+    if (waBtn) waBtn.style.display = '';
   }
 }
 
@@ -5224,9 +5551,71 @@ window.loginWithGoogle = async function() {
   }
 };
 
-window.logoutUser = async function() {
-  await window.supabase.auth.signOut();
-  location.reload();
+window.logoutUser = async function(btnEl) {
+  // btnEl: زر "خروج" الذي تم الضغط عليه (يُمرَّر من onclick="logoutUser(this)")
+  var btn = btnEl || document.querySelector('.logout-btn');
+  var originalText = btn ? btn.textContent : null;
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = '⏳ خروج...';
+  }
+
+  // ── ينظّف حالة الواجهة محلياً ويرجع المستخدم إلى Guest فوراً ──
+  // (لا نلمس نظام تخزين الجلسة الخاص بـ Supabase نفسه — فقط الكاشات المحلية
+  // الخاصة بحالة هذا المستخدم داخل الصفحة الحالية)
+  function _finishAsGuest() {
+    try {
+      window._subStatusCache = {};      // كاش حالة الاشتراك (خاص بالمستخدم القديم)
+      window._branchAdminSectionIds = [];
+      window._branchAdminPerms = null;
+      window._branchAdminRows = [];
+      if (typeof closeDrawer === 'function') closeDrawer(); // إغلاق القائمة الجانبية عند الخروج
+    } catch(e) {}
+    try {
+      // أغلق لوحة الأدمن لو كانت مفتوحة أثناء تسجيل الخروج
+      var panel = document.getElementById('admin-panel');
+      if (panel && panel.classList.contains('ap-open')) {
+        panel.classList.remove('ap-open');
+        document.body.style.overflow = '';
+      }
+    } catch(e) {}
+    // ✅ يحدّث الواجهة فوراً إلى حالة Guest (بدل الانتظار لحدث onAuthStateChange،
+    // الذي سيصل لاحقاً ويؤكد نفس الشيء دون أي تعارض)
+    _renderUserBox(null, null);
+  }
+
+  try {
+    var db = window.supabase;
+    if (!db) { _finishAsGuest(); return; }
+
+    // ✅ حماية من التعليق: لو signOut() تعلّق لأي سبب (شبكة/خادم)، لا نترك الزر
+    // أو الصفحة معلّقة للأبد — بعد 8 ثوانٍ نُنهي الجلسة محلياً كخطوة احتياطية
+    var outcome = await Promise.race([
+      db.auth.signOut().then(function(r) { return { timedOut: false, res: r }; }),
+      new Promise(function(resolve) {
+        setTimeout(function() { resolve({ timedOut: true }); }, 8000);
+      })
+    ]);
+
+    if (outcome.timedOut) {
+      console.warn('[AUTH] logoutUser: signOut() تجاوز 8 ثوانٍ — إنهاء الجلسة محلياً');
+      _finishAsGuest();
+      _showToast ? _showToast('تم تسجيل الخروج (تعذّر تأكيد الاتصال بالخادم)', 'warning') : null;
+      return;
+    }
+
+    if (outcome.res && outcome.res.error) throw outcome.res.error;
+
+    // ✅ نجاح — onAuthStateChange سيستقبل SIGNED_OUT ويؤكد نفس الحالة لاحقاً،
+    // لكن نحدّث الواجهة فوراً هنا حتى لا ينتظر المستخدم أي شيء
+    _finishAsGuest();
+    _showToast ? _showToast('✅ تم تسجيل الخروج بنجاح', 'success') : null;
+  } catch (err) {
+    console.error('[AUTH] logoutUser error:', err && err.message, err);
+    // ❌ فشل حقيقي — لا نترك الزر في Loading، نعيده لحالته الطبيعية مع رسالة خطأ واضحة
+    if (btn) { btn.disabled = false; btn.textContent = originalText || 'خروج'; }
+    _showToast ? _showToast('❌ حدث خطأ أثناء تسجيل الخروج، حاول مجدداً', 'error') : alert('حدث خطأ أثناء تسجيل الخروج، حاول مجدداً');
+  }
 };
 
 // ============================================================
@@ -5242,7 +5631,7 @@ function _checkAndApplySubscription(userId) {
   return Promise.resolve(true);
 }
 
-function _renderUserBox(user, role) {
+async function _renderUserBox(user, role) {
   const box = document.getElementById('user-box');
   if (!box) return;
   if (!user) {
@@ -5251,14 +5640,20 @@ function _renderUserBox(user, role) {
     window._currentUserRole = null;
     window._branchAdminSectionIds = [];
     window._branchAdminPerms = null;
+    window._branchAdminRoots = [];
     document.body.classList.remove('is-admin');
     document.body.classList.remove('content-protected'); // المحتوى مجاني للجميع
     box.innerHTML = '<button class="chatgpt-login-btn" onclick="loginWithGoogle()">🔐 دخول</button>';
+    if (typeof _syncDrawerUser === 'function') _syncDrawerUser(null, false);
     return;
   }
   // role يأتي من profiles.role في Supabase — ليس من HTML
-  const isSuperAdmin  = (role === 'admin');
-  const isBranchAdmin = (role === 'branch_admin');
+  // ✅ (Aug 2026): بنستخدم _resolveAdminStatus بدل الاعتماد على role وحده، عشان
+  // أدمن الشعبة المُعيّن عن طريق section_admins (بدون profiles.role='branch_admin')
+  // يظهر له الأدمن بردو، مش بس اللي معيّن بالطريقة القديمة
+  var status = (role === 'admin') ? { isSuperAdmin: true, isBranchAdmin: false, isAdmin: true } : await _resolveAdminStatus(user.id);
+  const isSuperAdmin  = status.isSuperAdmin;
+  const isBranchAdmin = status.isBranchAdmin;
   const isAdmin = isSuperAdmin || isBranchAdmin; // كلاهما يرى واجهة الأدمن، لكن بصلاحيات مختلفة تماماً من القاعدة
   window._isAdminUser  = isAdmin;
   window._isSuperAdmin = isSuperAdmin;
@@ -5279,7 +5674,7 @@ function _renderUserBox(user, role) {
       '<div class="user-card">'
       + '<span class="user-email">' + badge + ' ' + user.email + '</span>'
       + '<button style="background:rgba(255,255,255,.2);color:#fff;border:1.5px solid rgba(255,255,255,.35);padding:6px 12px;border-radius:16px;cursor:pointer;font-size:12px;font-family:inherit;" onclick="toggleAdminPanel()">⚙️ تحكم</button>'
-      + '<button class="logout-btn" onclick="logoutUser()">خروج</button>'
+      + '<button class="logout-btn" onclick="logoutUser(this)">خروج</button>'
       + '</div>';
     (async function() {
       if (isBranchAdmin) { await _loadBranchAdminScope(user.id); }
@@ -5290,9 +5685,10 @@ function _renderUserBox(user, role) {
     box.innerHTML =
       '<div class="user-card">'
       + '<span class="user-email">👤 ' + user.email + '</span>'
-      + '<button class="logout-btn" onclick="logoutUser()">خروج</button>'
+      + '<button class="logout-btn" onclick="logoutUser(this)">خروج</button>'
       + '</div>';
   }
+  if (typeof _syncDrawerUser === 'function') _syncDrawerUser(user, isAdmin);
 }
 
 // ── fetchUserRole: جلب الـ role من profiles ──────────────────
@@ -5309,13 +5705,42 @@ async function _fetchUserRole(userId) {
   } catch(e) { return null; }
 }
 
+// ── _resolveAdminStatus: مصدر الحقيقة الموحّد لتحديد صلاحيات الأدمن ──
+// يجمع بين النظام القديم (profiles.role='branch_admin') والجديد (section_admins)
+// عشان أي مكان في الكود بيحتاج يعرف "هل هذا المستخدم أدمن؟" يستخدم نفس المنطق بالظبط —
+// ده اللي كان ناقص وسبب إن أدمن الشعبة المُعيّن عن طريق section_admins كان يدخل بنجاح
+// لكن لوحة التحكم متظهرش له، لأن كل الكود القديم كان بيفحص profiles.role فقط.
+async function _resolveAdminStatus(userId) {
+  var role = await _fetchUserRole(userId);
+  var isSuperAdmin = (role === 'admin');
+  var isLegacyBranchAdmin = (role === 'branch_admin');
+  var hasSectionAdminRows = false;
+  if (!isSuperAdmin && window.supabase && userId) {
+    try {
+      var saCheck = await window.supabase
+        .from('section_admins')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', userId).eq('is_active', true).eq('role', 'admin');
+      hasSectionAdminRows = !saCheck.error && (saCheck.count || 0) > 0;
+    } catch(e) { console.warn('[section_admins] check failed:', e && e.message); }
+  }
+  var isBranchAdmin = isLegacyBranchAdmin || hasSectionAdminRows;
+  return { role: role, isSuperAdmin: isSuperAdmin, isBranchAdmin: isBranchAdmin, isAdmin: isSuperAdmin || isBranchAdmin };
+}
+
 // ════════════════════════════════════════════════════════════════
-// BRANCH ADMIN — نظام مبسّط يعتمد على عمود واحد فقط: profiles.managed_section_id
-// (لا يوجد أي جدول أو دالة RPC إضافية — فقط الجداول الموجودة بالفعل)
+// BRANCH ADMIN — مصدرين للتعيين، بدون أي جدول جديد ولا RPC إضافية:
+//   1) القديم:  profiles.managed_section_id + profiles.role='branch_admin'  (لسه شغال بدون كسر)
+//   2) الجديد:  section_admins (user_id, section_id, role='admin', is_active=true)
+//               — هذا هو المصدر الصحيح لتعيين أدمن الشعبة من الآن (✅ Aug 2026 fix)
+// المستخدم ممكن يظهر في المصدرين مع بعض؛ بنجمع كل الشعب المُسندة له من الاثنين
+// ونشيل التكرار، وإذا كان عنده أكثر من شعبة نديله Switcher يختار بيه.
 // ════════════════════════════════════════════════════════════════
-window._branchAdminSectionIds = [];   // كل أقسام الشعبة (وكل الفصول/المواد التابعة لها) المسموح بها لهذا الأدمن
+window._branchAdminSectionIds = [];   // كل أقسام الشعبة النشطة حالياً (subtree كامل) المسموح بها لهذا الأدمن
 window._branchAdminPerms = null;      // صلاحيات ثابتة كاملة على شعبته (لا يوجد جدول صلاحيات منفصل)
 window._branchAdminRows = [];         // { branch_section_id, site_sections:{title} } لعرضه في اللوحة
+window._branchAdminRoots = [];        // كل الشعب اللي هذا المستخدم أدمن عليها { id, title } (من المصدرين مجمّعة)
+window._branchAdminActiveRoot = null; // الشعبة المختارة حالياً للعرض (لو عنده أكثر من شعبة)
 
 // ── يحسب كل الأقسام الفرعية (الفصول/المواد) تحت قسم جذر معيّن — بدون أي RPC، اعتماداً على site_sections فقط ──
 async function _computeSectionSubtree(rootId) {
@@ -5333,29 +5758,91 @@ async function _computeSectionSubtree(rootId) {
   return all;
 }
 
-// يجلب الشعبة المُسندة لهذا الأدمن من profiles.managed_section_id ويحسب كل الأقسام الفرعية التابعة لها
+// يجلب كل الشعب المُسندة لهذا الأدمن (من profiles.managed_section_id القديم + section_admins الجديد)
 async function _loadBranchAdminScope(userId) {
   window._branchAdminSectionIds = [];
   window._branchAdminPerms = null;
   window._branchAdminRows = [];
+  window._branchAdminRoots = [];
   if (!window.supabase || !userId) return;
   try {
-    var { data, error } = await window.supabase
+    var roots = []; // { id, title }
+
+    // 1) النظام القديم — لسه بيشتغل بدون أي تغيير عشان الأدمنز المُعيّنين بيه أصلاً
+    var profRes = await window.supabase
       .from('profiles')
       .select('managed_section_id, site_sections:managed_section_id(id, title)')
       .eq('id', userId).maybeSingle();
-    if (error || !data || !data.managed_section_id) return;
+    if (!profRes.error && profRes.data && profRes.data.managed_section_id) {
+      roots.push({
+        id: profRes.data.managed_section_id,
+        title: (profRes.data.site_sections && profRes.data.site_sections.title) || ('#' + profRes.data.managed_section_id)
+      });
+    }
 
-    var rootId = data.managed_section_id;
-    window._branchAdminRows = [{ branch_section_id: rootId, site_sections: data.site_sections }];
-    // أدمن الشعبة له كل الصلاحيات على شعبته المُسندة له (مفيش داعي لجدول صلاحيات منفصل)
-    window._branchAdminPerms = {
-      can_manage_materials: true, can_manage_chapters: true,
-      can_manage_subscriptions: true, can_manage_payments: true,
-      can_manage_chats: true, can_view_stats: true
-    };
-    window._branchAdminSectionIds = await _computeSectionSubtree(rootId);
+    // 2) النظام الجديد — section_admins هو المصدر الصحيح الآن لتعيين أدمن الشعبة،
+    //    ويدعم أكثر من شعبة لنفس المستخدم (صف لكل شعبة)
+    var saRes = await window.supabase
+      .from('section_admins')
+      .select('section_id, role, is_active, site_sections:section_id(id, title)')
+      .eq('user_id', userId).eq('is_active', true).eq('role', 'admin');
+    if (!saRes.error && Array.isArray(saRes.data)) {
+      saRes.data.forEach(function(row) {
+        if (!row.section_id) return;
+        if (roots.some(function(r) { return r.id === row.section_id; })) return; // إزالة تكرار لو موجود بالفعل من المصدر القديم
+        roots.push({
+          id: row.section_id,
+          title: (row.site_sections && row.site_sections.title) || ('#' + row.section_id)
+        });
+      });
+    }
+
+    window._branchAdminRoots = roots;
+    if (!roots.length) return;
+
+    // لو عنده أكثر من شعبة، يفضل نفس اختياره السابق لو لسه صالح، وإلا أول شعبة في القائمة
+    var activeId = (window._branchAdminActiveRoot && roots.some(function(r) { return r.id === window._branchAdminActiveRoot; }))
+      ? window._branchAdminActiveRoot : roots[0].id;
+    await window._selectBranchAdminRoot(activeId);
   } catch(e) { console.warn('[BranchAdmin] خطأ:', e.message); }
+}
+
+// ── يبدّل الشعبة المعروضة حالياً في لوحة أدمن الشعبة (لمن يدير أكثر من شعبة) ──
+window._selectBranchAdminRoot = async function(rootId) {
+  if (!window._branchAdminRoots.some(function(r) { return r.id === rootId; })) return;
+  window._branchAdminActiveRoot = rootId;
+  var rootMeta = window._branchAdminRoots.find(function(r) { return r.id === rootId; });
+  window._branchAdminRows = [{ branch_section_id: rootId, site_sections: { title: rootMeta && rootMeta.title } }];
+  // أدمن الشعبة له كل الصلاحيات على شعبته المُسندة له (مفيش داعي لجدول صلاحيات منفصل)
+  window._branchAdminPerms = {
+    can_manage_materials: true, can_manage_chapters: true,
+    can_manage_subscriptions: true, can_manage_payments: true,
+    can_manage_chats: true, can_view_stats: true
+  };
+  window._branchAdminSectionIds = await _computeSectionSubtree(rootId);
+  if (typeof _renderBranchAdminSwitcher === 'function') _renderBranchAdminSwitcher();
+  if (window._isBranchAdmin && typeof apLoadDashboard === 'function' && document.getElementById('admin-panel') &&
+      document.getElementById('admin-panel').classList.contains('ap-open')) {
+    apLoadDashboard();
+  }
+};
+
+// ── يعرض/يخفي Switcher اختيار الشعبة في هيدر لوحة التحكم — يظهر فقط لو الأدمن يدير أكثر من شعبة ──
+function _renderBranchAdminSwitcher() {
+  var host = document.getElementById('ap-branch-switcher');
+  if (!host) return;
+  var roots = window._branchAdminRoots || [];
+  if (!window._isBranchAdmin || roots.length < 2) { host.style.display = 'none'; host.innerHTML = ''; return; }
+  host.style.display = 'block';
+  var opts = roots.map(function(r) {
+    var sel = (r.id === window._branchAdminActiveRoot) ? ' selected' : '';
+    return '<option value="' + r.id + '"' + sel + '>' + (r.title || ('#' + r.id)) + '</option>';
+  }).join('');
+  host.innerHTML =
+    '<label style="font-size:12px;font-weight:700;color:#0a3d62;display:flex;align-items:center;gap:6px;">'
+    + '🛡️ الشعبة: '
+    + '<select class="ap-input" style="width:auto;padding:4px 8px;" onchange="_selectBranchAdminRoot(parseInt(this.value,10))">'
+    + opts + '</select></label>';
 }
 
 window.checkUser = async function() {
@@ -5414,7 +5901,20 @@ window.checkUser = async function() {
   });
 
   // فحص الـ session الحالية عند تحميل الصفحة
-  const { data: { session } } = await window.supabase.auth.getSession();
+  // ✅ FIX (Aug 2026): getSession() هنا بدون حماية timeout كانت تجمّد الصفحة للأبد
+  // على شاشة "جاري التحميل..." لو تعلّقت (مشكلة شبكة/توكن تالف). الآن محدودة بـ 8 ثوانٍ،
+  // وفي حالة التعليق نُعامل المستخدم كـ Guest (fail-safe) — لا صلاحيات أدمن ولا اشتراك أبداً.
+  var session = null;
+  try {
+    var sessionRes = await _fetchWithTimeout(function() {
+      return window.supabase.auth.getSession();
+    }, 8000);
+    session = sessionRes && sessionRes.data && sessionRes.data.session;
+  } catch (e) {
+    console.warn('[AUTH] checkUser: getSession timeout/error — معاملة كـ Guest:', e && e.message);
+    _renderUserBox(null, null);
+    return;
+  }
 
   if (session && session.user && session.user.email) {
     var isBanned = await _isBanned(session.user.email);
@@ -6007,6 +6507,9 @@ window.checkBanStatus = async function(email) {
       <button class="ap-close-btn" onclick="toggleAdminPanel()" aria-label="إغلاق">✕</button>
     </div>
 
+    <!-- Branch Admin Switcher — يظهر فقط لأدمن يدير أكثر من شعبة (section_admins) -->
+    <div id="ap-branch-switcher" style="display:none;padding:8px 16px 0;"></div>
+
     <!-- Quick Search -->
     <div style="padding:10px 16px 0;">
       <input id="ap-quick-search" class="ap-input" type="text" placeholder="🔍 بحث سريع: مستخدم، بريد، قسم، اشتراك..." oninput="apQuickSearch(this.value)" style="width:100%;">
@@ -6027,6 +6530,7 @@ window.checkBanStatus = async function(email) {
       <button class="ap-nav-btn" onclick="apSwitchTab('users')"     id="ap-tab-users"     role="tab">🔒 الحظر</button>
       <button class="ap-nav-btn" onclick="apSwitchTab('messages')"  id="ap-tab-messages"  role="tab">💬 Messages</button>
       <button class="ap-nav-btn" onclick="apSwitchTab('content')"   id="ap-tab-content"   role="tab">➕ المحتوى</button>
+      <button class="ap-nav-btn" onclick="apSwitchTab('sectionchat')" id="ap-tab-sectionchat" role="tab">💬 محادثة الشعبة</button>
       <button class="ap-nav-btn" onclick="apSwitchTab('branchadmins')" id="ap-tab-branchadmins" role="tab">🛡️ أدمن الشعب</button>
     </nav>
 
@@ -6563,6 +7067,16 @@ window.checkBanStatus = async function(email) {
       </div>
       <!-- End Content Tab -->
 
+      <!-- ═══════════════════ TAB: SECTION CHAT (محادثة الشعبة) ═══════════════════ -->
+      <div class="ap-tab-panel" id="ap-panel-sectionchat" role="tabpanel">
+        <div class="ap-section-heading" style="margin:0 0 10px;border:none;padding:0;">💬 محادثة الشعبة</div>
+        <div style="font-size:.76rem;color:#888;margin-bottom:14px;">
+          أدمن الشعبة يقدر يقرأ ويرسل ويحذف الرسائل المسيئة في محادثة شعبته فقط. اضغط "فتح المحادثة" بجانب الشعبة.
+        </div>
+        <div id="ap-sectionchat-body"><div class="ap-loading"><div class="spinner"></div> جاري التحميل...</div></div>
+      </div>
+      <!-- End Section Chat Tab -->
+
       <!-- ═══════════════════ TAB: BRANCH ADMINS (Super Admin only) ═══════════════════ -->
       <div class="ap-tab-panel" id="ap-panel-branchadmins" role="tabpanel">
         <div class="ap-section-heading" style="margin:0 0 10px;border:none;padding:0;">👑 إدارة أدمن الشعب</div>
@@ -6989,7 +7503,7 @@ function _applyBranchAdminPanelGating() {
   if (!isBranch) {
     // مستخدم عادي أو سوبر أدمن: أظهر كل التابات كما هي
     ['ap-tab-requests','ap-tab-usermgmt','ap-tab-users','ap-tab-messages','ap-tab-divsubs','ap-tab-content','ap-tab-dashboard',
-     'ap-tab-payments','ap-tab-sectionsmgmt','ap-tab-paths','ap-tab-ads','ap-tab-monthlystats']
+     'ap-tab-payments','ap-tab-sectionsmgmt','ap-tab-paths','ap-tab-ads','ap-tab-monthlystats','ap-tab-sectionchat']
       .forEach(function(id) { var el = document.getElementById(id); if (el) el.style.display = ''; });
     return;
   }
@@ -7011,6 +7525,9 @@ function _applyBranchAdminPanelGating() {
   if (contentTab) contentTab.style.display = (perms.can_manage_materials || perms.can_manage_chapters) ? '' : 'none';
   var dashTab = document.getElementById('ap-tab-dashboard');
   if (dashTab) dashTab.style.display = perms.can_view_stats ? '' : 'none';
+  // محادثة الشعبة: متاحة دائماً لأدمن الشعبة (جزء أساسي من الإدارة، غير مرتبطة بصلاحيات إضافية)
+  var chatTab = document.getElementById('ap-tab-sectionchat');
+  if (chatTab) chatTab.style.display = '';
 
   // افتح أول تاب متاح تلقائياً
   var firstVisible = ['ap-tab-dashboard','ap-tab-divsubs','ap-tab-content'].find(function(id) {
@@ -7064,6 +7581,7 @@ function apSwitchTab(tab) {
   else if (tab === 'users')    apLoadUsers();
   else if (tab === 'messages') apLoadMessages();
   else if (tab === 'content')  { /* already managed by adminTab */ }
+  else if (tab === 'sectionchat') apLoadSectionChatTab();
   else if (tab === 'branchadmins') { baLoadList(); }
 }
 
@@ -7091,6 +7609,40 @@ async function _apLoadBranchDashboard() {
     var lbl = document.querySelector('#ap-stat-users')?.nextElementSibling;
     if (lbl) lbl.textContent = 'أقسام الشعبة';
   } catch(e) { console.warn('[BranchDashboard] error:', e.message); }
+}
+
+// ════════════════════════════════════════════════════════════════
+// SECTION CHAT TAB — يعتمد بالكامل على chat_rooms + get_or_create_chat_room()
+// أدمن الشعبة يرى شعبته فقط، سوبر أدمن يرى كل الشعب التي تتطلب اشتراكاً
+// ════════════════════════════════════════════════════════════════
+async function apLoadSectionChatTab() {
+  var el = document.getElementById('ap-sectionchat-body');
+  if (!el || !window.supabase) return;
+  el.innerHTML = '<div class="ap-loading"><div class="spinner"></div> جاري التحميل...</div>';
+  try {
+    var query = window.supabase.from('site_sections').select('id, title, icon').eq('requires_subscription', true);
+    if (window._isBranchAdmin && !window._isSuperAdmin) {
+      var rootRow = window._branchAdminRows && window._branchAdminRows[0];
+      var rootId  = rootRow ? rootRow.branch_section_id : null;
+      if (!rootId) { el.innerHTML = '<div class="ap-empty">لا توجد شعبة مُسندة إليك بعد.</div>'; return; }
+      query = query.eq('id', rootId);
+    }
+    var res = await query.order('title');
+    if (res.error) throw res.error;
+    var rows = res.data || [];
+    if (!rows.length) { el.innerHTML = '<div class="ap-empty">لا توجد شعب متاحة.</div>'; return; }
+
+    el.innerHTML = '<div class="ap-table-wrap"><table class="ap-table"><thead><tr>' +
+      '<th>الشعبة</th><th></th></tr></thead><tbody>' +
+      rows.map(function(s) {
+        var titleEsc = _apEsc(s.title).replace(/'/g, "\\'");
+        return '<tr><td>' + (s.icon || '🎓') + ' ' + _apEsc(s.title) + '</td>' +
+          '<td style="text-align:left;"><button class="ap-btn ap-btn-primary" onclick="openSectionChat(' + s.id + ', \'' + titleEsc + '\')">💬 فتح المحادثة</button></td></tr>';
+      }).join('') + '</tbody></table></div>';
+  } catch(err) {
+    console.error('[SectionChat] load error:', err && err.message);
+    el.innerHTML = '<div class="ap-empty" style="color:#e74c3c;">تعذّر تحميل قائمة الشعب.</div>';
+  }
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -9730,6 +10282,21 @@ var NativePDFViewer = (function() {
     return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   }
 
+  // بعض متصفحات الـ in-app (فيسبوك/انستجرام/ماسنجر/تيك توك) تمنع أحيانًا
+  // dynamic import() أو Range requests، وهو ما يسبب فشل تحميل PDF.js أو تعطّل
+  // عرض الملف بشكل غير متوقع. نكتشفها مسبقًا لنعرض حلاً بدل شاشة فارغة.
+  function _isProblematicInAppBrowser() {
+    var ua = navigator.userAgent || '';
+    return /FBAN|FBAV|Instagram|Line\/|MicroMessenger|TikTok/i.test(ua);
+  }
+
+  function _externalOpenButtonHtml(url) {
+    return '<a href="' + _esc(url) + '" target="_blank" rel="noopener" ' +
+      'style="display:inline-block;margin-top:14px;background:#fff;color:#24313f;' +
+      'padding:10px 20px;border-radius:10px;font-size:.85rem;font-weight:800;text-decoration:none;">' +
+      '⬇ فتح الملف في متصفح الجهاز</a>';
+  }
+
   // ---- تحميل PDF.js (ESM) مرة واحدة فقط ----
   function _loadPdfJs() {
     if (_pdfjsLib) return Promise.resolve(_pdfjsLib);
@@ -9793,6 +10360,7 @@ var NativePDFViewer = (function() {
             '<button class="pdfv-btn" id="pdfv-zoom-out" title="تصغير">−</button>' +
             '<span class="pdfv-zoom-pct" id="pdfv-zoom-pct">100%</span>' +
             '<button class="pdfv-btn" id="pdfv-zoom-in" title="تكبير">+</button>' +
+            '<button class="pdfv-btn" id="pdfv-fit-width" title="ملائمة العرض">⇔</button>' +
           '</div>' +
           '<button class="pdfv-btn" id="pdfv-search-toggle" title="بحث">🔍</button>' +
           '<button class="pdfv-btn" id="pdfv-theme-toggle" title="وضع الصفحات الداكن">' + (pagesDark ? '☀️' : '🌗') + '</button>' +
@@ -9828,6 +10396,7 @@ var NativePDFViewer = (function() {
     document.getElementById('pdfv-page-num').addEventListener('keydown', function(e) { if (e.key === 'Enter') { _goToPage(parseInt(this.value, 10)); this.blur(); } });
     document.getElementById('pdfv-zoom-in').onclick = function() { _setZoom((S ? S.zoom : 1) + 0.25); };
     document.getElementById('pdfv-zoom-out').onclick = function() { _setZoom((S ? S.zoom : 1) - 0.25); };
+    document.getElementById('pdfv-fit-width').onclick = function() { _setZoom(1); };
     document.getElementById('pdfv-fullscreen').onclick = _toggleFullscreen;
     document.getElementById('pdfv-theme-toggle').onclick = _togglePageTheme;
     document.getElementById('pdfv-search-toggle').onclick = _openSearch;
@@ -9846,8 +10415,14 @@ var NativePDFViewer = (function() {
     });
 
     var wrapper = document.getElementById('native-pdf-pdfjs-wrapper');
+    var inAppWarning = _isProblematicInAppBrowser()
+      ? '<div style="margin-top:10px;font-size:.72rem;color:#f5d76e;max-width:260px;">' +
+        'ملاحظة: أنت تستخدم متصفح تطبيق (مثل فيسبوك/انستجرام)، وبعض هذه المتصفحات قد لا تعرض الملف بشكل صحيح.' +
+        '</div>'
+      : '';
     wrapper.innerHTML =
-      '<div class="pdfv-page-loading" style="min-height:60vh"><div class="pdfv-spin"></div>جاري فتح الملف...</div>';
+      '<div class="pdfv-page-loading" style="min-height:60vh">' +
+      '<div class="pdfv-spin"></div>جاري فتح الملف...' + inAppWarning + '</div>';
 
     try {
       var lib = await _loadPdfJs();
@@ -9899,10 +10474,19 @@ var NativePDFViewer = (function() {
       wrapper.style.webkitOverflowScrolling = 'touch';
 
     } catch(e) {
-      console.warn('[PDFjs] تعذّر فتح الملف:', e && e.message);
+      console.warn('[PDFjs] تعذّر فتح الملف:', e && e.name, e && e.message);
+      var errName = (e && e.name) || '';
+      var isCorrupt = /Invalid|Password|FormatError|CorruptedImage/i.test(errName) ||
+                       /invalid pdf structure|corrupt/i.test((e && e.message) || '');
+      var msgHtml = isCorrupt
+        ? '⚠️ يبدو أن ملف PDF نفسه تالف أو غير سليم (وليست مشكلة في العرض).<br>' +
+          'يُنصح بإعادة تصدير الملف. يمكنك تجربة فتحه مباشرة:'
+        : '⚠️ تعذّر فتح الملف داخل المنصة.<br>تأكد من اتصالك بالإنترنت، أو جرّب فتحه مباشرة:';
       wrapper.innerHTML =
-        '<div class="pdfv-page-loading" style="min-height:60vh;color:#f5b5b5">' +
-        '⚠️ تعذّر فتح الملف حالياً.<br>تأكد من اتصالك بالإنترنت وحاول مرة أخرى.</div>';
+        '<div class="pdfv-page-loading" style="min-height:60vh;color:#f5b5b5;text-align:center;padding:0 20px">' +
+        msgHtml +
+        _externalOpenButtonHtml(finalUrl) +
+        '</div>';
     }
   }
 
@@ -10785,12 +11369,15 @@ function _applyBranchAdminPanelRestrictions() {
         }
         return;
       }
-      // تحقق من الـ role بشكل دوري (كل 5 دقائق)
-      var role = await _fetchUserRole(sess.user.id);
-      if (role !== 'admin' && window._isAdminUser) {
+      // تحقق من صلاحيات الأدمن بشكل دوري (كل 5 دقائق) — نفس منطق _resolveAdminStatus
+      // ✅ (Aug 2026): كان هذا الفحص يقارن بـ role==='admin' بس، فكان بيسحب صلاحيات
+      // أي أدمن شعبة (branch_admin أو section_admins) تلقائياً كل 5 دقائق حتى لو
+      // صلاحيته سليمة فعلياً — دلوقتي بيستخدم نفس مصدر الحقيقة الموحّد
+      var status = await _resolveAdminStatus(sess.user.id);
+      if (!status.isAdmin && window._isAdminUser) {
         // سُحبت صلاحيات الأدمن من قاعدة البيانات
         window._isAdminUser = false;
-        window._currentUserRole = role;
+        window._currentUserRole = status.role;
         document.body.classList.remove('is-admin');
         document.body.classList.add('content-protected');
         var panel = document.getElementById('admin-panel');
@@ -11365,18 +11952,57 @@ CREATE POLICY "notif_own"       ON notifications FOR SELECT USING (auth.uid() = 
 CREATE POLICY "notif_admin_all" ON notifications FOR ALL    USING (is_admin());
 
 -- 10. chat_rooms + chat_messages
+-- ✅ FIX (Aug 2026): كانت السياسة السابقة "auth.uid() IS NOT NULL" فقط، فيقدر
+-- أي مستخدم مسجّل دخول (حتى لو مش مشترك، أو مشترك في شعبة تانية) يقرأ/يكتب في
+-- شات أي شعبة. الآن القراءة/الكتابة تتطلب: أدمن عام، أو أدمن هذه الشعبة بالذات،
+-- أو مستخدم عنده اشتراك "active" (نفس تعريف الـ Active المستخدم في الموقع:
+-- payment_status='active' وend_date لسه لم ينته) على section_id الخاص بغرفة الشات.
+
+-- 10.أ) has_active_subscription(target_section_id) — نفس تعريف "Active" في الواجهة تمامًا
+CREATE OR REPLACE FUNCTION has_active_subscription(target_section_id BIGINT)
+RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER
+AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM subscriptions s
+    WHERE s.user_id = auth.uid()
+      AND s.section_id = target_section_id
+      AND s.payment_status = 'active'
+      AND (s.end_date IS NULL OR s.end_date >= NOW())
+  );
+$$;
+
 ALTER TABLE chat_rooms ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "chatrooms_read_auth" ON chat_rooms;
+DROP POLICY IF EXISTS "chatrooms_read_active_or_admin" ON chat_rooms;
 DROP POLICY IF EXISTS "chatrooms_admin_all" ON chat_rooms;
-CREATE POLICY "chatrooms_read_auth" ON chat_rooms FOR SELECT USING (auth.uid() IS NOT NULL);
+CREATE POLICY "chatrooms_read_active_or_admin" ON chat_rooms FOR SELECT
+  USING (is_admin() OR is_branch_admin_of(section_id) OR has_active_subscription(section_id));
 CREATE POLICY "chatrooms_admin_all" ON chat_rooms FOR ALL    USING (is_admin());
 
 ALTER TABLE chat_messages ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "chatmsg_read_auth"  ON chat_messages;
 DROP POLICY IF EXISTS "chatmsg_insert_auth" ON chat_messages;
+DROP POLICY IF EXISTS "chatmsg_read_active_or_admin"   ON chat_messages;
+DROP POLICY IF EXISTS "chatmsg_insert_active_or_admin" ON chat_messages;
 DROP POLICY IF EXISTS "chatmsg_admin_all"  ON chat_messages;
-CREATE POLICY "chatmsg_read_auth"   ON chat_messages FOR SELECT USING (auth.uid() IS NOT NULL);
-CREATE POLICY "chatmsg_insert_auth" ON chat_messages FOR INSERT WITH CHECK (auth.uid() IS NOT NULL);
+-- ملاحظة: chat_messages.room_id يشاور على chat_rooms.id — نجيب section_id
+-- الخاص بالغرفة أولاً، ثم نتحقق منه بنفس شرط القراءة أعلاه
+CREATE POLICY "chatmsg_read_active_or_admin" ON chat_messages FOR SELECT
+  USING (
+    is_admin()
+    OR is_branch_admin_of((SELECT cr.section_id FROM chat_rooms cr WHERE cr.id = chat_messages.room_id))
+    OR has_active_subscription((SELECT cr.section_id FROM chat_rooms cr WHERE cr.id = chat_messages.room_id))
+  );
+CREATE POLICY "chatmsg_insert_active_or_admin" ON chat_messages FOR INSERT
+  WITH CHECK (
+    auth.uid() IS NOT NULL
+    AND (
+      is_admin()
+      OR is_branch_admin_of((SELECT cr.section_id FROM chat_rooms cr WHERE cr.id = chat_messages.room_id))
+      OR has_active_subscription((SELECT cr.section_id FROM chat_rooms cr WHERE cr.id = chat_messages.room_id))
+    )
+  );
 CREATE POLICY "chatmsg_admin_all"   ON chat_messages FOR ALL    USING (is_admin());
 
 -- 11. site_ads — إعلانات الموقع (لوحة التحكم → إدارة الإعلانات)
@@ -11612,6 +12238,127 @@ CREATE POLICY "path_items_write" ON learning_path_items
   return sql;
 };
 console.log('%c[PATHS] اكتب printPathsMigration() لعرض/نسخ SQL نظام المسارات', 'color:#6c3483;font-weight:bold');
+
+// printChatSystemMigration — استكمال نظام محادثة الشعبة (Additive بالكامل)
+// لا ينشئ أي جدول جديد ولا يغيّر معمارية الأدمن الحالية (profiles.role / managed_section_id).
+// يعيد استخدام is_admin() و is_branch_admin_of() و has_active_subscription() الموجودين بالفعل.
+// يضيف فقط:
+//   1) قيد UNIQUE على chat_rooms.section_id (يمنع تكرار الغرف لنفس الشعبة).
+//   2) دالة get_or_create_chat_room() — تُنشئ غرفة الشعبة تلقائياً أول مرة فقط، بعد
+//      التحقق من صلاحية الوصول (SECURITY DEFINER لأن إدخال الغرف بحد ذاته أدمن-only حالياً).
+//   3) Trigger على chat_messages يفرض user_id = auth.uid() ويجيب user_name من profiles
+//      دائماً من السيرفر — لا يثق بأي قيمة قادمة من الـ Frontend لتحديد صاحب الرسالة.
+//   4) سياسة DELETE جديدة لأدمن الشعبة على chat_messages (كانت الحذف قبل ذلك Super Admin فقط).
+window.printChatSystemMigration = function() {
+  var sql = `
+-- ================================================================
+-- نظام محادثة الشعبة (Chat) — Additive فقط، يعتمد على chat_rooms/chat_messages
+-- الموجودين بالفعل ونفس دوال الصلاحيات الحالية (is_admin / is_branch_admin_of /
+-- has_active_subscription). لا ينشئ جدول section_admins ولا يغيّر نظام الأدمن الحالي.
+-- ================================================================
+
+-- 1) قيد UNIQUE يمنع وجود أكثر من غرفة شات لنفس الشعبة
+--    (محاط بفحص أمان: لو فيه صفوف مكررة حالياً لن يفشل السكربت كله، فقط يتجاهل القيد
+--     ويطبع تنبيه — راجع التكرارات يدوياً بالاستعلام الموضح في التعليق ثم أعد التشغيل)
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'chat_rooms_section_id_unique'
+  ) THEN
+    BEGIN
+      ALTER TABLE chat_rooms ADD CONSTRAINT chat_rooms_section_id_unique UNIQUE (section_id);
+    EXCEPTION WHEN unique_violation THEN
+      RAISE NOTICE '⚠️ يوجد أكثر من صف بنفس section_id في chat_rooms — لم يُضف القيد. '
+        'شغّل: SELECT section_id, COUNT(*) FROM chat_rooms GROUP BY section_id HAVING COUNT(*) > 1;'
+        ' ثم احذف يدوياً الغرف الزائدة وأعد تشغيل هذا السكربت.';
+    END;
+  END IF;
+END $$;
+
+-- 2) get_or_create_chat_room(p_section_id) — يُنشئ غرفة الشعبة أول مرة فقط
+--    يتحقق من نفس شرط دخول الشات المستخدم في RLS (أدمن عام / أدمن الشعبة / مشترك فعّال)
+--    قبل أي إنشاء أو قراءة — DENY ACCESS الصريح بدل أي fallback مسموح به بالخطأ.
+CREATE OR REPLACE FUNCTION get_or_create_chat_room(p_section_id BIGINT)
+RETURNS chat_rooms
+LANGUAGE plpgsql SECURITY DEFINER
+AS $$
+DECLARE
+  v_room  chat_rooms;
+  v_title TEXT;
+BEGIN
+  IF p_section_id IS NULL THEN
+    RAISE EXCEPTION 'DENY ACCESS: section_id مطلوب';
+  END IF;
+
+  IF NOT (is_admin() OR is_branch_admin_of(p_section_id) OR has_active_subscription(p_section_id)) THEN
+    RAISE EXCEPTION 'DENY ACCESS: لا تملك صلاحية الوصول لمحادثة هذه الشعبة';
+  END IF;
+
+  SELECT * INTO v_room FROM chat_rooms WHERE section_id = p_section_id LIMIT 1;
+  IF FOUND THEN
+    RETURN v_room;
+  END IF;
+
+  SELECT title INTO v_title FROM site_sections WHERE id = p_section_id;
+
+  INSERT INTO chat_rooms (room_name, section_id)
+  VALUES ('محادثة ' || COALESCE(v_title, 'الشعبة'), p_section_id)
+  ON CONFLICT (section_id) DO NOTHING
+  RETURNING * INTO v_room;
+
+  IF v_room.id IS NULL THEN
+    -- سباق نادر: مستخدم آخر أنشأ الغرفة في نفس اللحظة — اقرأها بدل الفشل
+    SELECT * INTO v_room FROM chat_rooms WHERE section_id = p_section_id LIMIT 1;
+  END IF;
+
+  RETURN v_room;
+END;
+$$;
+
+-- 3) فرض هوية المرسل من السيرفر دائماً (لا نثق بـ user_id/user_name القادمين من الـ Frontend)
+CREATE OR REPLACE FUNCTION _chat_messages_set_sender()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER AS $$
+DECLARE
+  v_name TEXT;
+BEGIN
+  IF auth.uid() IS NULL THEN
+    RAISE EXCEPTION 'DENY ACCESS: يجب تسجيل الدخول لإرسال رسالة';
+  END IF;
+  NEW.user_id := auth.uid();
+  SELECT COALESCE(full_name, email, 'مستخدم') INTO v_name FROM profiles WHERE id = auth.uid();
+  NEW.user_name := COALESCE(v_name, 'مستخدم');
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_chat_messages_set_sender ON chat_messages;
+CREATE TRIGGER trg_chat_messages_set_sender
+  BEFORE INSERT ON chat_messages
+  FOR EACH ROW EXECUTE FUNCTION _chat_messages_set_sender();
+
+-- 4) أدمن الشعبة يقدر يحذف رسالة مسيئة من شعبته فقط (كانت هذه الصلاحية Super Admin فقط)
+DROP POLICY IF EXISTS "chatmsg_delete_branch_admin" ON chat_messages;
+CREATE POLICY "chatmsg_delete_branch_admin" ON chat_messages FOR DELETE
+  USING (is_branch_admin_of((SELECT cr.section_id FROM chat_rooms cr WHERE cr.id = chat_messages.room_id)));
+
+-- ================================================================
+-- تحقق من التطبيق
+-- ================================================================
+-- SELECT proname FROM pg_proc WHERE proname IN ('get_or_create_chat_room','_chat_messages_set_sender');
+-- SELECT tablename, policyname, cmd FROM pg_policies WHERE tablename='chat_messages' ORDER BY cmd;
+`;
+  console.group('%c💬 Chat System Migration SQL', 'color:#0b6e4f;font-size:1.1em;font-weight:bold');
+  console.log('%cافتح: Supabase Dashboard → SQL Editor → New Query → الصق الكود → Run', 'color:#17a589;font-weight:bold');
+  console.log(sql);
+  console.groupEnd();
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(sql).then(function() {
+      console.log('%c✅ تم نسخ الـ SQL للـ clipboard!', 'color:#17a589;font-weight:bold');
+    }).catch(function(){});
+  }
+  return sql;
+};
+console.log('%c[CHAT] اكتب printChatSystemMigration() لعرض/نسخ SQL استكمال نظام الشات', 'color:#0b6e4f;font-weight:bold');
 
 window.printGoogleAuthSetup = function() {
   var url = window.location.origin + window.location.pathname;
@@ -12081,7 +12828,7 @@ self.addEventListener('fetch', function(e) {
 <!-- وكل صف فيه مرتبط بشعبة عن طريق subscriptions.section_id.      -->
 <!-- كل شعبة (site_sections.requires_subscription = true) لها      -->
 <!-- payment_method / payment_number / price خاصة بها، ويظل الفصل  -->
-<!-- الأول من كل شعبة محجوبة مجانياً للمعاينة، وباقي الفصول تُقفل   -->
+<!-- الفصل الأول من كل مادة (في كل شعبة) مجاني للمعاينة، وباقي الفصول تُقفل -->
 <!-- وتظهر شاشة الاشتراك عند الضغط عليها. أي شعبة جديدة تُفعَّل     -->
 <!-- عليها هذا العلم تدخل النظام تلقائياً بدون أي تعديل في الكود.  -->
 <!-- ============================================================ -->
@@ -12168,21 +12915,39 @@ self.addEventListener('fetch', function(e) {
     delete window._subStatusCache[userId + ':' + sectionId];
   }
 
-  // ── يحدد هل sectionId هو «الفصل الأول» المجاني التابع للشعبة anchorId أو أحد أبنائه ──
-  // (الفصل الأول = أول ابن مباشر للشعبة بحسب display_order — يظل مفتوحاً دائماً كمعاينة مجانية)
+  // ── يحدد هل sectionId يقع داخل «الفصل الأول» المجاني لمادّته (لا لشعبته) ──
+  // (المادة = أول ابن مباشر للشعبة anchorId، والفصل الأول = أول ابن مباشر لتلك المادة
+  //  بحسب display_order — فقط هو الذي يظل مفتوحاً دائماً كمعاينة مجانية، وليس المادة كلها،
+  //  وهذا ينطبق على كل مادة في كل شعبة، لا على أول مادة فقط)
   async function _isWithinFreeChapter(anchorId, sectionId) {
-    if (sectionId === anchorId) return false; // صفحة الشعبة نفسها (قائمة الفصول) — تُعرض مع قفل الفصول التالية
-    var children = await loadSections(anchorId);
-    if (!children || children.length === 0) return false; // لا فصول فرعية — القفل يتم على مستوى عناصر المحتوى نفسها
-    var firstChildId = children[0].id;
+    if (sectionId === anchorId) return false; // صفحة الشعبة نفسها (قائمة المواد) — لا معاينة مجانية هنا
+
+    // 1) نبني السلسلة الكاملة من sectionId صعوداً حتى نصل لـ anchorId (الشعبة)
+    var chain = [];
     var current = await _getSectionRow(sectionId);
     var depth = 0;
     while (current && depth < 20) {
-      if (current.id === firstChildId) return true;
-      if (current.id === anchorId) return false;
+      chain.push(current);
+      if (current.id === anchorId) break;
       if (current.parent_id === null || current.parent_id === undefined) return false;
       current = await _getSectionRow(current.parent_id);
       depth++;
+    }
+    if (!current || current.id !== anchorId) return false; // لم نصل للشعبة — سلسلة غير متوقعة
+
+    // آخر عنصر في chain هو anchor نفسه، والعنصر الذي قبله هو "المادة" المباشرة
+    // التابعة للشعبة والتي ينتمي إليها sectionId
+    if (chain.length < 2) return false;
+    var subjectNode = chain[chain.length - 2];
+
+    // 2) نجلب فصول هذه المادة بالتحديد (لا فصول الشعبة) ونحدد الفصل الأول منها
+    var chapters = await loadSections(subjectNode.id);
+    if (!chapters || chapters.length === 0) return false; // هذه المادة بلا فصول فرعية
+    var firstChapterId = chapters[0].id;
+
+    // 3) هل sectionId هو الفصل الأول لمادته أو يقع بداخله؟ (نستثني anchor من الفحص)
+    for (var i = 0; i < chain.length - 1; i++) {
+      if (chain[i].id === firstChapterId) return true;
     }
     return false;
   }
@@ -12196,10 +12961,10 @@ self.addEventListener('fetch', function(e) {
       var anchor = await _findSubscriptionAnchor(sectionId);
       if (!anchor) return null; // هذا القسم/الشعبة لا يتطلب اشتراكاً (requires_subscription = false)
 
-      // ── ✅ مُفعَّل مجدداً (Aug 2026): Chapter 1 من كل مادة/شعبة يكون مجاناً بالكامل
+      // ── ✅ (Aug 2026): الفصل الأول (Chapter 1) من كل مادة على حدة يكون مجاناً بالكامل
       // (كل section_content و section_resources والفيديوهات وملفات الـ PDF التابعة له)
-      // — وليس فقط أول عنصر بداخله. أول Chapter تابع لأي شعبة تتطلب اشتراكاً يُعتبر
-      // معاينة مجانية كاملة، وكل ما بعده (Chapter 2 فأكثر) يظل محمياً بالاشتراك كالمعتاد.
+      // — وينطبق هذا على كل مادة في كل شعبة (وليس فقط أول مادة في الشعبة كما كان سابقاً).
+      // كل ما بعد الفصل الأول من كل مادة (Chapter 2 فأكثر) يظل محمياً بالاشتراك كالمعتاد.
       var isFreePreview = await _isWithinFreeChapter(anchor.id, sectionId);
       if (isFreePreview) return null;
 
@@ -12225,6 +12990,36 @@ self.addEventListener('fetch', function(e) {
     } catch(e) {
       console.error('[DB LOAD ERROR][checkSectionAccess]', e && e.message, e);
       return null; // fail-open — لا نعطّل عرض الصفحة أبداً بسبب فشل فحص الاشتراك
+    }
+  };
+
+  // ── أهلية دخول محادثة الشعبة — تُستخدم فقط لإظهار/إخفاء زر "دخول المحادثة".
+  //    الأمان الحقيقي دائماً من RLS على chat_rooms/chat_messages، وهذه الدالة
+  //    fail-closed (أي شك = لا يظهر الزر) بعكس checkSectionAccess (fail-open).
+  window.getChatEligibility = async function(sectionId) {
+    try {
+      var anchor = await _findSubscriptionAnchor(sectionId);
+      // الشات فقط على صفحة الشعبة نفسها (site_sections.requires_subscription = true)
+      if (!anchor || anchor.id !== sectionId) return null;
+
+      if (window._isAdminUser) return { anchor: anchor, allowed: true, isAdmin: true };
+      if (window._isBranchAdmin && Array.isArray(window._branchAdminSectionIds) &&
+          window._branchAdminSectionIds.indexOf(anchor.id) !== -1) {
+        return { anchor: anchor, allowed: true, isAdmin: true };
+      }
+
+      var db = window.supabase;
+      if (!db) return null;
+      var sessionRes = await db.auth.getSession();
+      var user = sessionRes && sessionRes.data && sessionRes.data.session && sessionRes.data.session.user;
+      if (!user) return { anchor: anchor, allowed: false, state: 'guest' };
+
+      var status = await _getSectionSubStatus(user.id, anchor.id);
+      if (status.state === 'active') return { anchor: anchor, allowed: true, isAdmin: false };
+      return { anchor: anchor, allowed: false, state: status.state };
+    } catch(e) {
+      console.warn('[getChatEligibility] error:', e && e.message);
+      return null; // fail-closed — عند أي شك لا نعرض زر دخول الشات
     }
   };
 
@@ -12519,6 +13314,86 @@ self.addEventListener('fetch', function(e) {
   .pm-modal { padding: 24px 18px 20px; border-radius: 18px; }
   .pm-pay-number { font-size: 1rem; }
 }
+
+/* ============================================================ */
+/* محادثة الشعبة (Chat) — نفس نظام الألوان/الخطوط/المودال الحالي */
+/* ============================================================ */
+.chat-entry-btn {
+  width: 100%; border: none; cursor: pointer; text-align: center;
+  background: linear-gradient(135deg,var(--primary),var(--teal));
+  color: #fff; font-family: var(--font); font-weight: 800; font-size: .92rem;
+  padding: 13px 18px; border-radius: 14px; margin: 4px 0 18px;
+  box-shadow: 0 8px 20px rgba(10,61,98,.25); display: flex; align-items: center;
+  justify-content: center; gap: 8px;
+}
+.chat-entry-btn:hover { filter: brightness(1.06); }
+
+.chat-overlay {
+  position: fixed; inset: 0; z-index: 999999;
+  background: rgba(8,20,32,.72); backdrop-filter: blur(3px);
+  display: none; align-items: center; justify-content: center;
+  padding: 12px; animation: pm-fade .18s ease;
+}
+.chat-overlay.chat-open { display: flex; }
+.chat-modal {
+  width: 100%; max-width: 480px; height: min(640px,92vh);
+  background: linear-gradient(180deg,#ffffff,#f7fbff);
+  border-radius: 22px; box-shadow: 0 20px 60px rgba(0,0,0,.35);
+  display: flex; flex-direction: column; overflow: hidden;
+  font-family: var(--font); position: relative;
+  animation: pm-pop .22s cubic-bezier(.2,.9,.3,1.2);
+}
+.chat-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 16px 18px; background: linear-gradient(135deg,var(--primary),#1a5276);
+  color: #fff;
+}
+.chat-header-title { font-weight: 900; font-size: .98rem; display:flex; align-items:center; gap:8px; }
+.chat-close {
+  width: 30px; height: 30px; border-radius: 50%; border: none;
+  background: rgba(255,255,255,.16); color: #fff; font-weight: 900; cursor: pointer;
+}
+.chat-close:hover { background: rgba(255,255,255,.28); }
+.chat-body {
+  flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 10px;
+  background: #f5f9fd;
+}
+.chat-msg-row { display: flex; flex-direction: column; max-width: 82%; }
+.chat-msg-row.mine { align-self: flex-start; align-items: flex-start; }
+.chat-msg-row.theirs { align-self: flex-end; align-items: flex-end; }
+.chat-msg-bubble {
+  padding: 9px 13px; border-radius: 14px; font-size: .85rem; line-height: 1.6;
+  word-break: break-word; box-shadow: 0 2px 6px rgba(10,61,98,.08);
+}
+.chat-msg-row.mine .chat-msg-bubble { background: linear-gradient(135deg,var(--primary),var(--teal)); color:#fff; border-bottom-left-radius: 4px; }
+.chat-msg-row.theirs .chat-msg-bubble { background:#fff; color:#243342; border:1px solid #e3edf7; border-bottom-right-radius: 4px; }
+.chat-msg-meta { font-size: .68rem; color: #8ea0b3; margin: 3px 4px 0; display:flex; align-items:center; gap:6px; }
+.chat-msg-admin-badge {
+  background:#eafaf1; color:#17a589; font-weight:800; font-size:.62rem;
+  padding:1px 7px; border-radius:20px;
+}
+.chat-msg-del {
+  border:none; background:transparent; color:#c0392b; cursor:pointer; font-size:.68rem;
+  font-weight:800; padding:0 2px;
+}
+.chat-empty, .chat-loading { text-align:center; color:#8ea0b3; font-size:.82rem; padding:30px 10px; }
+.chat-footer {
+  display: flex; gap: 8px; padding: 12px; background:#fff; border-top: 1px solid #e3edf7;
+}
+.chat-input {
+  flex: 1; border: 1px solid #d7e4f0; border-radius: 24px; padding: 10px 16px;
+  font-family: var(--font); font-size: .85rem; outline: none; resize: none; max-height: 90px;
+}
+.chat-input:focus { border-color: var(--primary); }
+.chat-send-btn {
+  border: none; width: 42px; height: 42px; border-radius: 50%; cursor: pointer;
+  background: linear-gradient(135deg,var(--primary),var(--teal)); color:#fff; font-size: 1rem;
+  flex-shrink: 0; display:flex; align-items:center; justify-content:center;
+}
+.chat-send-btn:disabled { opacity: .5; cursor: not-allowed; }
+@media (max-width: 480px) {
+  .chat-modal { height: 100vh; max-height: 100vh; border-radius: 0; max-width: 100%; }
+}
 </style>
 
 <div id="payment-modal-overlay" class="pm-overlay" onclick="if(event.target===this) closePaymentModal()">
@@ -12718,6 +13593,237 @@ self.addEventListener('fetch', function(e) {
       msgEl.textContent = '❌ حدث خطأ: ' + (err.message || 'حاول مجدداً');
     }
   };
+})();
+</script>
+
+<!-- ============================================================ -->
+<!-- محادثة الشعبة (Chat) — تعتمد بالكامل على chat_rooms/chat_messages -->
+<!-- الموجودين بالفعل + get_or_create_chat_room() و RLS الحالية.       -->
+<!-- الأمان الفعلي دائماً من RLS/الـ Trigger على قاعدة البيانات، وليس   -->
+<!-- من أي فحص هنا في الـ Frontend.                                    -->
+<!-- ============================================================ -->
+<div id="chat-modal-overlay" class="chat-overlay" onclick="if(event.target===this) closeSectionChat()">
+  <div class="chat-modal" role="dialog" aria-modal="true" aria-labelledby="chat-header-title">
+    <div class="chat-header">
+      <div class="chat-header-title" id="chat-header-title">💬 <span id="chat-header-name">محادثة الشعبة</span></div>
+      <button class="chat-close" onclick="closeSectionChat()" aria-label="إغلاق">✕</button>
+    </div>
+    <div class="chat-body" id="chat-body">
+      <div class="chat-loading"><div class="spinner"></div> جاري تحميل المحادثة...</div>
+    </div>
+    <div class="chat-footer">
+      <textarea id="chat-input" class="chat-input" rows="1" placeholder="اكتب رسالتك هنا..." onkeydown="_chatHandleKeydown(event)"></textarea>
+      <button class="chat-send-btn" id="chat-send-btn" onclick="_chatSend()" aria-label="إرسال">➤</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function() {
+  var _chatAnchor   = null;   // { id, title } — الشعبة الحالية
+  var _chatRoom     = null;   // صف chat_rooms
+  var _chatMe       = null;   // المستخدم الحالي (auth)
+  var _chatIsAdmin  = false;  // أدمن عام أو أدمن هذه الشعبة تحديداً
+  var _chatChannel  = null;   // realtime channel
+  var _chatPollTimer = null;  // fallback polling لو تعطّل الـ realtime
+  var _chatProfilesCache = {};
+
+  // ── زر "دخول محادثة الشعبة" — يُستدعى من _renderDynamicSectionPage عند الأهلية ──
+  window._renderChatEntryButtonHTML = function(anchor) {
+    var titleEsc = _apEsc ? _apEsc(anchor.title || 'الشعبة') : (anchor.title || 'الشعبة');
+    return '<button class="chat-entry-btn" onclick="openSectionChat(' + anchor.id + ', \'' +
+      titleEsc.replace(/'/g, "\\'") + '\')">💬 دخول محادثة الشعبة</button>';
+  };
+
+  function _chatEsc(s) { return _apEsc ? _apEsc(s) : String(s == null ? '' : s).replace(/[&<>"']/g, function(c){
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+  }); }
+
+  function _chatFriendlyError(msg) {
+    // ✅ لا نعرض أبداً رسائل تقنية (RLS/PostgREST/SQL) — رسالة عربية مفهومة فقط
+    return '🔒 غير مسموح بالوصول لهذه المحادثة حالياً. تأكد من أن اشتراكك فعّال، أو تواصل معنا عبر واتساب.';
+  }
+
+  // ── نقطة الدخول: تُستدعى بالضغط على زر الشات ──
+  window.openSectionChat = async function(sectionId, sectionTitle) {
+    _chatAnchor = { id: sectionId, title: sectionTitle };
+    document.getElementById('chat-header-name').textContent = sectionTitle || 'محادثة الشعبة';
+    document.getElementById('chat-modal-overlay').classList.add('chat-open');
+    document.body.style.overflow = 'hidden';
+    var bodyEl = document.getElementById('chat-body');
+    bodyEl.innerHTML = '<div class="chat-loading"><div class="spinner"></div> جاري تحميل المحادثة...</div>';
+    document.getElementById('chat-send-btn').disabled = true;
+
+    var db = window.supabase;
+    if (!db) { bodyEl.innerHTML = '<div class="chat-empty">تعذّر الاتصال بالخادم، حاول مجدداً.</div>'; return; }
+
+    try {
+      var sessionRes = await db.auth.getSession();
+      _chatMe = sessionRes && sessionRes.data && sessionRes.data.session && sessionRes.data.session.user;
+      if (!_chatMe) { bodyEl.innerHTML = '<div class="chat-empty">🔐 يجب تسجيل الدخول أولاً لدخول المحادثة.</div>'; return; }
+
+      // إنشاء/جلب غرفة الشعبة عبر الدالة الآمنة (تتحقق من الصلاحية داخل قاعدة البيانات)
+      var roomRes = await db.rpc('get_or_create_chat_room', { p_section_id: sectionId });
+      if (roomRes.error || !roomRes.data) {
+        console.error('[CHAT] get_or_create_chat_room error:', roomRes.error && roomRes.error.message);
+        bodyEl.innerHTML = '<div class="chat-empty">' + _chatFriendlyError() + '</div>';
+        return;
+      }
+      _chatRoom = roomRes.data;
+
+      _chatIsAdmin = !!(window._isAdminUser ||
+        (window._isBranchAdmin && Array.isArray(window._branchAdminSectionIds) &&
+          window._branchAdminSectionIds.indexOf(sectionId) !== -1));
+
+      await _chatLoadMessages();
+      document.getElementById('chat-send-btn').disabled = false;
+      _chatStartRealtime();
+    } catch(e) {
+      console.error('[CHAT] openSectionChat error:', e && e.message);
+      bodyEl.innerHTML = '<div class="chat-empty">' + _chatFriendlyError() + '</div>';
+    }
+  };
+
+  window.closeSectionChat = function() {
+    document.getElementById('chat-modal-overlay').classList.remove('chat-open');
+    document.body.style.overflow = '';
+    _chatStopRealtime();
+    _chatRoom = null;
+  };
+
+  // ── تحميل الرسائل + جلب أسماء المرسلين من profiles (لا نثق بـ user_name المخزّن وحده) ──
+  async function _chatLoadMessages() {
+    var db = window.supabase;
+    var bodyEl = document.getElementById('chat-body');
+    try {
+      var msgRes = await db.from('chat_messages').select('*').eq('room_id', _chatRoom.id).order('created_at', { ascending: true });
+      if (msgRes.error) { bodyEl.innerHTML = '<div class="chat-empty">' + _chatFriendlyError() + '</div>'; return; }
+      var rows = msgRes.data || [];
+
+      var uids = Array.from(new Set(rows.map(function(r){ return r.user_id; }).filter(Boolean)));
+      var missing = uids.filter(function(id){ return !_chatProfilesCache[id]; });
+      if (missing.length) {
+        var profRes = await db.from('profiles').select('id, full_name, email, role').in('id', missing);
+        (profRes.data || []).forEach(function(p){ _chatProfilesCache[p.id] = p; });
+      }
+
+      _chatRenderMessages(rows);
+    } catch(e) {
+      console.error('[CHAT] loadMessages error:', e && e.message);
+      bodyEl.innerHTML = '<div class="chat-empty">' + _chatFriendlyError() + '</div>';
+    }
+  }
+
+  function _chatRenderMessages(rows) {
+    var bodyEl = document.getElementById('chat-body');
+    if (!rows.length) {
+      bodyEl.innerHTML = '<div class="chat-empty">لا توجد رسائل بعد — كن أول من يكتب 👋</div>';
+      return;
+    }
+    bodyEl.innerHTML = rows.map(_chatRenderOneMessage).join('');
+    bodyEl.scrollTop = bodyEl.scrollHeight;
+  }
+
+  function _chatRenderOneMessage(m) {
+    var mine = _chatMe && m.user_id === _chatMe.id;
+    var prof = _chatProfilesCache[m.user_id];
+    var displayName = (prof && (prof.full_name || prof.email)) || m.user_name || 'مستخدم';
+    var isSenderAdmin = prof && (prof.role === 'admin' || prof.role === 'branch_admin');
+    var timeStr = '';
+    try { timeStr = new Date(m.created_at).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }); } catch(e) {}
+
+    var canDelete = _chatIsAdmin; // الحذف للأدمن فقط (RLS تفرض هذا فعلياً على أي حال)
+    var delBtn = canDelete ? '<button class="chat-msg-del" onclick="_chatDeleteMessage(' + m.id + ')">🗑️ حذف</button>' : '';
+
+    return '' +
+      '<div class="chat-msg-row ' + (mine ? 'mine' : 'theirs') + '">' +
+        '<div class="chat-msg-bubble">' + _chatEsc(m.message) + '</div>' +
+        '<div class="chat-msg-meta">' +
+          (mine ? '' : '<span>' + _chatEsc(displayName) + '</span>') +
+          (isSenderAdmin ? '<span class="chat-msg-admin-badge">🛡️ أدمن</span>' : '') +
+          '<span>' + timeStr + '</span>' + delBtn +
+        '</div>' +
+      '</div>';
+  }
+
+  // ── إرسال رسالة جديدة — user_id/user_name يُفرَضان من السيرفر عبر Trigger دائماً ──
+  window._chatHandleKeydown = function(ev) {
+    if (ev.key === 'Enter' && !ev.shiftKey) { ev.preventDefault(); _chatSend(); }
+  };
+
+  window._chatSend = async function() {
+    var input = document.getElementById('chat-input');
+    var text = (input.value || '').trim();
+    if (!text || !_chatRoom || !window.supabase) return;
+    var btn = document.getElementById('chat-send-btn');
+    btn.disabled = true;
+    try {
+      var res = await window.supabase.from('chat_messages').insert([{
+        room_id: _chatRoom.id,
+        message: text,
+        user_id: _chatMe ? _chatMe.id : null,   // ✅ يُعاد ضبطه دائماً من السيرفر عبر Trigger
+        user_name: '' // ✅ يُعاد ضبطه دائماً من profiles عبر Trigger — لا نثق بأي قيمة هنا
+      }]);
+      if (res.error) {
+        console.error('[CHAT] send error:', res.error.message);
+        if (window._showToast) _showToast(_chatFriendlyError(), 'error');
+        return;
+      }
+      input.value = '';
+      await _chatLoadMessages();
+    } catch(e) {
+      console.error('[CHAT] send exception:', e && e.message);
+      if (window._showToast) _showToast(_chatFriendlyError(), 'error');
+    } finally {
+      btn.disabled = false;
+    }
+  };
+
+  // ── حذف رسالة (أدمن الشعبة أو الأدمن العام فقط — RLS تفرض هذا في قاعدة البيانات) ──
+  window._chatDeleteMessage = async function(msgId) {
+    if (!window.supabase) return;
+    try {
+      var res = await window.supabase.from('chat_messages').delete().eq('id', msgId);
+      if (res.error) {
+        if (window._showToast) _showToast('❌ لا تملك صلاحية حذف هذه الرسالة', 'error');
+        return;
+      }
+      await _chatLoadMessages();
+    } catch(e) {
+      console.error('[CHAT] delete error:', e && e.message);
+    }
+  };
+
+  // ── Realtime: تحديث فوري عند وصول رسائل جديدة، مع fallback polling كل 6 ثوانٍ ──
+  function _chatStartRealtime() {
+    _chatStopRealtime();
+    var db = window.supabase;
+    if (!db || !_chatRoom) return;
+    try {
+      _chatChannel = db.channel('chat-room-' + _chatRoom.id)
+        .on('postgres_changes', {
+          event: '*', schema: 'public', table: 'chat_messages',
+          filter: 'room_id=eq.' + _chatRoom.id
+        }, function() { _chatLoadMessages(); })
+        .subscribe();
+    } catch(e) {
+      console.warn('[CHAT] realtime unavailable, falling back to polling:', e && e.message);
+    }
+    // fallback خفيف حتى لو الـ realtime شغّال — يضمن عدم بقاء المحادثة "معلّقة" لو انقطع
+    _chatPollTimer = setInterval(function() {
+      if (_chatRoom && document.getElementById('chat-modal-overlay').classList.contains('chat-open')) {
+        _chatLoadMessages();
+      }
+    }, 6000);
+  }
+
+  function _chatStopRealtime() {
+    if (_chatChannel && window.supabase) {
+      try { window.supabase.removeChannel(_chatChannel); } catch(e) {}
+      _chatChannel = null;
+    }
+    if (_chatPollTimer) { clearInterval(_chatPollTimer); _chatPollTimer = null; }
+  }
 })();
 </script>
 
