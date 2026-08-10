@@ -1106,6 +1106,9 @@ footer strong { color: var(--accent2); }
 /* YouTube / embed iframe */
 .rv-embed-frame {
   width: 100%; height: 75vh; border: none; display: block;
+  /* ✅ يمنع أي iframe/embed (روابط خارجية أو صفحات HTML) من عمل تمرير
+     أفقي يكسر تخطيط الصفحة على الموبايل */
+  max-width: 100%; overflow-x: hidden;
 }
 /* Image viewer */
 .rv-image-wrap {
@@ -1140,8 +1143,11 @@ footer strong { color: var(--accent2); }
 .rv-fallback-wrap p { color: rgba(255,255,255,.75); font-size: .9rem; max-width: 320px; text-align: center; }
 
 @media(max-width: 600px) {
-  .rv-modal { border-radius: 14px; max-height: 96vh; }
-  .rv-embed-frame { height: 60vh; }
+  /* ✅ FIX: dvh بدل vh — نفس سبب مشكلة "الكلام متداخل" في PDF (شريط عنوان
+     المتصفح المتحرك على الموبايل يغيّر vh فعلياً)، ينطبق هنا أيضاً على
+     عارض الصور/الفيديو/الصوت/الروابط. dvh مع fallback إلى vh للمتصفحات القديمة. */
+  .rv-modal { border-radius: 14px; max-height: 96vh; max-height: 96dvh; }
+  .rv-embed-frame { height: 60vh; height: 60dvh; }
   .rv-video { max-height: 55vw; }
   .rv-footer { flex-direction: column; align-items: stretch; }
   .rv-footer-btns { justify-content: center; }
@@ -1203,16 +1209,26 @@ footer strong { color: var(--accent2); }
   }
   .rv-modal {
     border-radius: 20px 20px 0 0 !important;
+    /* ✅ FIX: نفس تشخيص "الكلام متداخل" لعارض PDF — vh لا يعكس ارتفاع
+       الشاشة الفعلي على الموبايل بسبب شريط عنوان المتصفح المتحرك، فيسبب
+       قص/تراكب للمحتوى فوق الـ header/footer الثابتين. نستخدم dvh مع
+       fallback لـ vh (المتصفحات التي لا تدعم dvh) بدل قيمة ثابتة فقط. */
     max-height: 98vh !important;
+    max-height: 98dvh !important;
     height: 98vh;
+    height: 98dvh;
     max-width: 100vw !important;
     width: 100vw !important;
   }
   .rv-embed-frame {
     height: calc(98vh - 120px) !important;
+    height: calc(98dvh - 120px) !important;
+    max-width: 100%;
+    overflow-x: hidden;
   }
   .rv-video {
     max-height: calc(98vh - 120px) !important;
+    max-height: calc(98dvh - 120px) !important;
   }
 }
 
@@ -1260,7 +1276,10 @@ body.rv-open {
   background: var(--pdfv-bg, #525659);
   border-radius: 16px;
   width: 100%; max-width: 1100px;
-  height: 92vh;
+  /* ✅ FIX: dvh بدل vh — يتتبّع الارتفاع المرئي الفعلي (بدون شريط عنوان المتصفح)
+     بدل vh التقليدي اللي بيفضل ياخد ارتفاع الشاشة كاملة حتى لو شريط العنوان
+     ظاهر، فيسبب قص/تراكب للمحتوى مع ظهور/اختفاء شريط المتصفح على الموبايل */
+  height: 92dvh;
   display: flex; flex-direction: column;
   overflow: hidden;
   box-shadow: 0 30px 80px rgba(0,0,0,0.5);
@@ -1339,7 +1358,11 @@ body.rv-open {
 #native-pdf-pdfjs-wrapper {
   flex: 1; overflow-y: auto; overflow-x: auto;
   -webkit-overflow-scrolling: touch;
-  touch-action: pan-x pan-y pinch-zoom;
+  /* ✅ FIX: pinch-zoom تم إزالتها عمداً هنا — انظر شرح "FIX v3" أسفل الملف.
+     الزوم بإصبعين الآن مُنفّذ برمجياً (يعيد رسم الـ canvas بدقة أعلى)
+     بدل الاعتماد على تكبير viewport المتصفح الأصلي، اللي كان بيسبب
+     "تسبح" الـ header الثابت فوق المحتوى أثناء اللمس/التمرير أثناء الزوم */
+  touch-action: pan-x pan-y;
   background: var(--pdfv-bg, #525659);
   padding: 14px 12px 30px;
   box-sizing: border-box; min-height: 0;
@@ -1409,7 +1432,13 @@ html[data-theme="light"] .pdfv-toolbar-group { background: rgba(10,61,98,.08); }
   #native-pdf-overlay { padding: 0; align-items: flex-end; }
   #native-pdf-modal {
     border-radius: 16px 16px 0 0;
-    height: 98vh; max-width: 100vw; width: 100vw;
+    /* ✅ FIX: 100dvh بدل 98vh — على الموبايل الفرق بين vh وdvh بيبقى واضح جداً
+       بسبب شريط عنوان المتصفح المتحرك (خصوصاً Safari/Chrome Mobile)، فاستخدام
+       vh كان بيسبب إما مساحة فاضية تحت المودال أو قص جزء من المحتوى فوقه،
+       وده أحد أسباب إحساس "الكلام متداخل" وقت التمرير أو الزوم */
+    height: 100dvh; max-width: 100vw; width: 100vw;
+    /* يحترم أي "حزّة" (notch/home-indicator) على iOS */
+    padding-bottom: env(safe-area-inset-bottom, 0);
   }
   .pdfv-toolbar { padding: 6px 8px; gap: 4px; }
   .pdfv-btn { width: 30px; height: 30px; font-size: .88rem; }
@@ -1476,9 +1505,19 @@ body.content-protected .rv-image-wrap img {
 /* إصلاح شامل للتمرير واللمس في PDF على الموبايل */
 
 /* wrapper الرئيسي — يجب أن يتمرر بحرية */
+/* ✅ FIX v3 (تشخيص مشكلة "الكلام متداخل" على الموبايل):
+   pinch-zoom الأصلي في المتصفح كان مفعّل هنا مع وجود header ثابت (position
+   خارج التمرير) فوق منطقة الصفحات. لما المستخدم يعمل pinch بإصبعين، المتصفح
+   (خصوصاً Safari على iOS) بيكبّر الـ "visual viewport" كامل، لكن العناصر
+   الثابتة (fixed/sticky) بتُعاد حسابها بالنسبة للـ "layout viewport" المختلف،
+   فبيحصل انزياح/تراكب بين الـ header والمحتوى المكبّر أثناء اللمس — وده
+   الشكل اللي وصفته "الكلام متداخل وغير مريح". الحل: نطفي pinch-zoom الأصلي
+   من المتصفح هنا (pan-x pan-y فقط) ونستبدله بزوم برمجي حقيقي (إصبعين) بيعيد
+   رسم الـ canvas بدقة أعلى فعلياً — انظر _setupPinchZoom() في NativePDFViewer.
+*/
 #native-pdf-pdfjs-wrapper {
   -webkit-overflow-scrolling: touch !important;
-  touch-action: pan-x pan-y pinch-zoom !important;
+  touch-action: pan-x pan-y !important;
   overscroll-behavior: contain !important;
   overflow-y: auto !important;
   overflow-x: auto !important;
@@ -1492,10 +1531,18 @@ body.content-protected .rv-image-wrap img {
 .rv-embed-frame {
   -webkit-overflow-scrolling: touch !important;
   touch-action: pan-x pan-y pinch-zoom !important;
+  /* ✅ لا نسمح لأي iframe/embed بعمل تمرير أفقي يكسر تخطيط الصفحة على الموبايل */
+  max-width: 100%;
 }
 
-/* الـ modal الخارجي — يسمح بالتمرير الداخلي */
-#native-pdf-modal,
+/* الـ modal الخارجي لعارض PDF — تمرير عمودي/أفقي فقط، pinch-zoom الأصلي
+   مُعطّل عمداً هنا (نفس سبب الـ wrapper أعلاه) لأن الـ header ثابت داخله */
+#native-pdf-modal {
+  touch-action: pan-x pan-y !important;
+  overflow: hidden;
+}
+/* عارض الموارد العام (صور/فيديو) — pinch-zoom الأصلي مقبول هنا لأنه مفيش
+   عناصر ثابتة معقّدة تتعارض معه بنفس طريقة عارض PDF */
 .rv-modal {
   touch-action: pan-x pan-y pinch-zoom !important;
   overflow: hidden;
@@ -1507,16 +1554,20 @@ body.content-protected .rv-image-wrap img {
   touch-action: none;
 }
 
-/* الـ canvas الخاص بـ PDF.js — يسمح بالتمرير والـ pinch zoom */
+/* الـ canvas الخاص بـ PDF.js — تمرير فقط، الزوم بإصبعين مُنفّذ برمجياً الآن */
 #native-pdf-pdfjs-wrapper canvas {
-  touch-action: pan-x pan-y pinch-zoom !important;
+  touch-action: pan-x pan-y !important;
   display: block;
   user-select: none;
   -webkit-user-select: none;
 }
 
 /* منع content-protected من كسر الـ scroll في PDF */
-body.content-protected #native-pdf-pdfjs-wrapper,
+body.content-protected #native-pdf-pdfjs-wrapper {
+  pointer-events: auto !important;
+  touch-action: pan-x pan-y !important;
+  -webkit-overflow-scrolling: touch !important;
+}
 body.content-protected .rv-embed-frame {
   pointer-events: auto !important;
   touch-action: pan-x pan-y pinch-zoom !important;
@@ -2927,6 +2978,33 @@ function _cacheKey(prefix, id) {
   return prefix + ':' + (id === null || id === undefined ? 'null' : String(id));
 }
 
+// ════════════════════════════════════════════════════════════════
+// ✅ [LOADING WATCHDOG] — حل جذري لمشكلة "جاري التحميل..." المُعلَّقة للأبد
+// ────────────────────────────────────────────────────────────────
+// السبب الجذري: كل شاشات لوحة التحكم (الاشتراكات، الشعب/المواد/الفصول،
+// المستخدمين، سجل التدقيق، ...إلخ) كانت تعرض Spinner ثم "await" على طلب
+// Supabase بلا أي حد أقصى للوقت. لو الطلب "تعلّق" فعلياً (لا ينجح ولا يفشل
+// أبداً — بسبب انقطاع شبكة جزئي أو تعليق داخلي في المتصفح/المكتبة) فإن
+// catch() لا يُستدعى إطلاقاً لأنه لا يوجد Reject، ويبقى الـ Spinner ظاهراً
+// للأبد بدون أي رسالة خطأ ولا أي وسيلة لإعادة المحاولة — وهذا هو بالضبط
+// شكل "الزرار المُعلَّق" الذي لا يستجيب.
+// الحل: مراقب عام (_apWatchLoading) يبدأ توقيتاً بمجرد عرض الـ Spinner، ولو
+// مر الوقت المحدد والعنصر ما زال يعرض نفس الـ Spinner (يعني الطلب الأصلي لم
+// يُكمل بعد نجاحاً أو فشلاً) يستبدله برسالة خطأ واضحة + زر "🔄 إعادة المحاولة"
+// يُعيد استدعاء نفس دالة التحميل. لو نجح الطلب الطبيعي أولاً فهو يستبدل الـ
+// innerHTML بنفسه قبل انتهاء هذه المهلة، فلا يظهر شيء من هذا المراقب إطلاقاً.
+function _apWatchLoading(elId, retryCall, timeoutMs) {
+  timeoutMs = timeoutMs || 12000;
+  setTimeout(function() {
+    var el = document.getElementById(elId);
+    if (!el || !el.querySelector || !el.querySelector('.ap-loading')) return;
+    el.innerHTML = '<div class="ap-empty" style="color:#e74c3c;text-align:center;padding:22px 10px;">'
+      + '⏳ التحميل استغرق وقتاً أطول من المعتاد (مشكلة اتصال أو خادم مؤقتة).<br>'
+      + '<button class="ap-btn ap-btn-primary" style="margin-top:12px;" onclick="' + retryCall.replace(/"/g, '&quot;') + '">🔄 إعادة المحاولة</button>'
+      + '</div>';
+  }, timeoutMs);
+}
+
 async function _fetchWithTimeout(promiseFn, timeoutMs) {
   return Promise.race([
     promiseFn(),
@@ -3840,7 +3918,7 @@ function buildResourcesInsideArea(resources, gate) {
           flex-shrink:0;box-shadow:0 4px 14px rgba(10,61,98,.2);
         ">${icon}</div>
         <div style="flex:1;min-width:0;">
-          <div style="font-size:1.05rem;font-weight:800;color:var(--primary);margin-bottom:4px;line-height:1.4">${r.title || 'مورد'}</div>
+          <div style="font-size:1.05rem;font-weight:800;color:var(--primary);margin-bottom:4px;line-height:1.4">${r.title || 'مورد'}${_resourceTypeLabel(r) ? ` <span style="font-size:.68rem;font-weight:700;color:var(--teal);background:rgba(10,61,98,.08);border-radius:8px;padding:2px 8px;vertical-align:middle;margin-right:4px">${_resourceTypeLabel(r)}</span>` : ''}</div>
           ${r.description ? `<pre class="preformatted-text" style="font-size:.98rem;margin-top:8px">${renderPreformatted(r.description)}</pre>` : ''}
         </div>
         ${hasLink ? `<div style="
@@ -3912,6 +3990,13 @@ function getResourceIcon(resource) {
   return '📄';
 }
 
+// شارة صغيرة لنوع الملف على الكارت (PDF / فيديو / صوت / صورة / رابط...)
+function _resourceTypeLabel(r) {
+  const t = (r.resource_type || r.content_type || '').toLowerCase();
+  const map = { pdf: 'PDF', video: 'فيديو', audio: 'صوت', image: 'صورة', link: 'رابط', text: 'نص', html: 'رابط' };
+  return map[t] || '';
+}
+
 function buildResourcesHTML(resources, gate) {
   if (!resources || resources.length === 0) return '';
   const cards = resources.map(r => {
@@ -3935,7 +4020,7 @@ function buildResourcesHTML(resources, gate) {
       <div class="resource-item" ${clickHandler} style="${r.file_url ? 'cursor:pointer' : 'cursor:default'}">
         <div class="ri-icon" style="font-size:1.7rem;min-width:36px;text-align:center">${icon}</div>
         <div class="ri-info">
-          <h5 style="font-size:.88rem;font-weight:700;color:var(--primary)">${r.title || 'مورد'}</h5>
+          <h5 style="font-size:.88rem;font-weight:700;color:var(--primary)">${r.title || 'مورد'}${_resourceTypeLabel(r) ? ` <span style="font-size:.62rem;font-weight:700;color:var(--teal);background:rgba(10,61,98,.08);border-radius:8px;padding:1px 7px;vertical-align:middle;margin-right:4px">${_resourceTypeLabel(r)}</span>` : ''}</h5>
           ${desc}
         </div>
         ${r.file_url ? '<div style="margin-right:auto;color:var(--teal);font-size:1rem">▶</div>' : ''}
@@ -5025,6 +5110,13 @@ const ResourceViewer = (function() {
   function buildBody(url, type, title) {
     switch(type) {
 
+      case 'invalid':
+        return `
+          <div class="rv-fallback-wrap">
+            <div class="rv-f-icon">⚠️</div>
+            <p>لا يمكن عرض الملف داخل المتصفح — رابط الملف غير صالح.</p>
+          </div>`;
+
       case 'pdf':
         // PDF.js internal viewer — no iframe, fully embedded
         setTimeout(function() { NativePDFViewer.open(url, title); }, 50);
@@ -5042,6 +5134,7 @@ const ResourceViewer = (function() {
             disablePictureInPicture
             disableRemotePlayback
             oncontextmenu="return false"
+            onerror="ResourceViewer._showMediaError('video')"
           >
             <source src="${escUrl(url)}">
             <p style="color:#fff;padding:20px">متصفحك لا يدعم تشغيل الفيديو.</p>
@@ -5105,7 +5198,7 @@ const ResourceViewer = (function() {
           <div class="rv-audio-wrap">
             <div class="rv-audio-icon">🎵</div>
             <div class="rv-audio-title">${escHtml(title)}</div>
-            <audio controls preload="metadata" id="rv-audio-el">
+            <audio controls preload="metadata" id="rv-audio-el" onerror="ResourceViewer._showMediaError('audio')">
               <source src="${escUrl(url)}">
               متصفحك لا يدعم تشغيل الصوت.
             </audio>
@@ -5145,6 +5238,7 @@ const ResourceViewer = (function() {
               document.getElementById('rv-loading-indicator').style.display='none';
               this.style.display='block';
             "
+            onerror="ResourceViewer._showExternalFallback('${escUrl(url)}')"
           ></iframe>`;
 
       case 'external_link':
@@ -5183,6 +5277,7 @@ const ResourceViewer = (function() {
       html: '🌐 صفحة HTML',
       external_link: '🌐 عرض داخلي',
       fallback: '📎 ملف',
+      invalid: '⚠️ رابط غير صالح',
     };
     return map[type] || '📎 ملف';
   }
@@ -5198,7 +5293,10 @@ const ResourceViewer = (function() {
     // إزالة أي modal موجود
     close();
 
-    const type = detectType(url, resourceType);
+    // ✅ حماية من رابط غير صالح (فارغ/بدون بروتوكول صحيح) — قبل محاولة أي عرض
+    //    (PDF عنده نفس الحماية داخل NativePDFViewer، وهنا نغطي باقي الأنواع)
+    var isValidUrl = /^https?:\/\//i.test(url) || url.indexOf('/') === 0 || url.indexOf('supabase') !== -1;
+    const type = isValidUrl ? detectType(url, resourceType) : 'invalid';
 
     const overlay = document.createElement('div');
     overlay.className = 'rv-overlay';
@@ -5220,7 +5318,7 @@ const ResourceViewer = (function() {
         <div class="rv-footer">
           <span style="font-size:.75rem;color:#999;direction:ltr;word-break:break-all;flex:1;max-width:55%" id="rv-url-display" class="admin-only-el" style="display:none">${escHtml(url.length > 60 ? url.substring(0,57)+'...' : url)}</span>
           <div class="rv-footer-btns">
-            ${type !== 'fallback' ? `<button class="rv-btn rv-btn-outline" onclick="ResourceViewer._reload()">🔄 إعادة التحميل</button>` : ''}
+            ${(type !== 'fallback' && type !== 'invalid') ? `<button class="rv-btn rv-btn-outline" onclick="ResourceViewer._reload()">🔄 إعادة التحميل</button>` : ''}
             ${(type === 'pdf' || type === 'gdrive_pdf' || type === 'image' || type === 'audio' || type === 'video_direct') ? `<button class="rv-btn rv-btn-primary admin-only-el" onclick="if(window._isAdminUser){var a=document.createElement('a');a.href='${escUrl(url)}';a.setAttribute('download','');document.body.appendChild(a);a.click();document.body.removeChild(a);}" style="display:none">&#11015;&#65039; تحميل (أدمن)</button>` : ''}
           </div>
         </div>
@@ -5268,7 +5366,7 @@ const ResourceViewer = (function() {
     const map = {
       pdf:'📄', video_direct:'🎬', youtube:'▶️',
       vimeo:'🎥', dailymotion:'📹', gdrive_pdf:'📁',
-      image:'🖼️', audio:'🎵', html:'🌐', external_link:'🔗', fallback:'📎'
+      image:'🖼️', audio:'🎵', html:'🌐', external_link:'🔗', fallback:'📎', invalid:'⚠️'
     };
     return map[type] || '📎';
   }
@@ -5312,6 +5410,27 @@ const ResourceViewer = (function() {
     }
   }
 
+  // ✅ حماية موحّدة لفشل تشغيل الفيديو/الصوت (رابط منتهي/معطوب/ملف مفقود)
+  function _showMediaError(kind) {
+    const body = document.getElementById('rv-body');
+    if (!body) return;
+    const isAdmin = window._isAdminUser === true;
+    const url = window._rvCurrentUrl || '';
+    const icon = kind === 'audio' ? '🎵' : '🎬';
+    const safeUrl = (url || '').replace(/'/g, '%27');
+    const actionsHtml = (isAdmin && url) ? `
+      <div style="display:flex;gap:10px;justify-content:center;margin-top:14px;flex-wrap:wrap">
+        <button class="rv-btn rv-btn-outline" onclick="window.open('${safeUrl}','_blank')">↗️ فتح الملف</button>
+        <button class="rv-btn rv-btn-outline" onclick="(function(){var a=document.createElement('a');a.href='${safeUrl}';a.setAttribute('download','');document.body.appendChild(a);a.click();document.body.removeChild(a);})()">⬇️ تحميل الملف</button>
+      </div>` : '';
+    body.innerHTML = `
+      <div class="rv-fallback-wrap">
+        <div class="rv-f-icon">${icon}</div>
+        <p>لا يمكن عرض الملف داخل المتصفح — رُبما الرابط منتهي الصلاحية أو الملف غير موجود.</p>
+        ${actionsHtml}
+      </div>`;
+  }
+
   function _showExternalFallback(url) {
     // fallback: نحاول Google Docs Viewer
     const body = document.getElementById('rv-body');
@@ -5337,7 +5456,7 @@ const ResourceViewer = (function() {
       </div>`;
   }
 
-  return { open, close, detectType, _reload, _showExternalFallback, _toggleFullscreen };
+  return { open, close, detectType, _reload, _showExternalFallback, _showMediaError, _toggleFullscreen };
 })();
 
 // ==================== تحديث دوال الـ resources لتستخدم ResourceViewer ====================
@@ -5580,6 +5699,33 @@ async function _renderUserBox(user, role) {
 }
 
 // ── fetchUserRole: جلب الـ role من profiles ──────────────────
+// ════════════════════════════════════════════════════════════════
+// ✅ [PROFILE EMAIL SELF-HEAL] — حل جذري لمشكلة ظهور UUID بدل البريد
+// في شاشات الإدارة (الاشتراكات، اشتراكات الشعب، ...إلخ)
+// ────────────────────────────────────────────────────────────────
+// السبب: صف "profiles" لكل مستخدم يُنشأ غالباً عبر Trigger داخل قاعدة
+// البيانات عند إنشاء الحساب (auth.users → profiles)، وبعض الحسابات القديمة
+// أو التي أُنشئت قبل ضبط الـ Trigger صح انتهى بها الأمر بعمود email فارغ.
+// الواجهة كانت وقتها تعرض user_id (UUID) كبديل — وهو المصدر الحقيقي لكل
+// السطور التي تظهر كأنها "بريد مُشفَّر" في لوحة الإدارة.
+// الحل الجذري: عند كل تسجيل دخول ناجح، نتأكد بأنفسنا (upsert) أن صف
+// profiles الخاص بالمستخدم يحمل بريده وconfirmed من Supabase Auth نفسه —
+// لا حاجة لانتظار أي Trigger. هذا يُصلح تلقائياً بريد أي مستخدم بمجرد
+// دخوله مرة واحدة فقط، ولا يُكرَّر إلا لو تغيّر البريد فعلاً.
+async function _ensureProfileEmailSynced(user) {
+  if (!window.supabase || !user || !user.id) return;
+  try {
+    var { data } = await window.supabase.from('profiles').select('email').eq('id', user.id).maybeSingle();
+    if (data && data.email) return; // البريد موجود بالفعل — لا حاجة لأي كتابة
+    await window.supabase.from('profiles').upsert({
+      id: user.id,
+      email: user.email || null
+    }, { onConflict: 'id' });
+  } catch (e) {
+    console.warn('[PROFILE SYNC] تعذّر مزامنة البريد:', e && e.message);
+  }
+}
+
 async function _fetchUserRole(userId) {
   if (!window.supabase || !userId) return null;
   try {
@@ -5804,6 +5950,10 @@ window.checkUser = async function() {
       // ── Admin Middleware: جلب الـ role من قاعدة البيانات ──
       var role = await _fetchUserRole(session.user.id);
       _renderUserBox(session.user, role);
+      // ✅ مزامنة بريد الحساب في profiles (مرة واحدة فقط لو كان ناقصاً — راجع _ensureProfileEmailSynced)
+      if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') {
+        _ensureProfileEmailSynced(session.user);
+      }
     } else {
       _renderUserBox(null, null);
     }
@@ -5955,12 +6105,16 @@ function _showBanMessage(reason) {
   if (existing) existing.remove();
 
   // امسح localStorage و sessionStorage المتعلقَين بـ Supabase Auth
+  // ✅ (AUTH CLEANUP): الـ storageKey الفعلي المُستخدَم هو 'benisuef_auth' (راجع
+  // إعداد createClient أعلى الملف) — الفلترة القديمة كانت تبحث فقط عن مفاتيح تبدأ
+  // بـ 'sb-' أو تحتوي 'supabase'، فكانت لا تطابق 'benisuef_auth' إطلاقاً ولا تحذف
+  // شيئاً فعلياً (signOut() نفسه هو من ينظّف الجلسة فعلياً؛ هذا مجرد تنظيف احتياطي إضافي).
   try {
     Object.keys(localStorage).forEach(function(k) {
-      if (k.startsWith('sb-') || k.includes('supabase')) localStorage.removeItem(k);
+      if (k.startsWith('sb-') || k.includes('supabase') || k === 'benisuef_auth') localStorage.removeItem(k);
     });
     Object.keys(sessionStorage).forEach(function(k) {
-      if (k.startsWith('sb-') || k.includes('supabase') || k.startsWith('_nav') || k.startsWith('_last')) sessionStorage.removeItem(k);
+      if (k.startsWith('sb-') || k.includes('supabase') || k === 'benisuef_auth' || k.startsWith('_nav') || k.startsWith('_last')) sessionStorage.removeItem(k);
     });
   } catch(e) {}
 
@@ -7598,6 +7752,7 @@ async function apLoadSectionChatTab() {
   var el = document.getElementById('ap-sectionchat-body');
   if (!el || !window.supabase) return;
   el.innerHTML = '<div class="ap-loading"><div class="spinner"></div> جاري التحميل...</div>';
+  _apWatchLoading('ap-sectionchat-body', 'apLoadSectionChatTab()');
   try {
     var query = window.supabase.from('site_sections').select('id, title, icon').eq('requires_subscription', true);
     if (window._isBranchAdmin && !window._isSuperAdmin) {
@@ -7645,6 +7800,7 @@ async function baLoadList() {
   var el = document.getElementById('ba-list-body');
   if (!el || !window.supabase) return;
   el.innerHTML = '<div class="ap-loading"><div class="spinner"></div> جاري التحميل...</div>';
+  _apWatchLoading('ba-list-body', 'baLoadList()');
   try {
     var { data: sections, error: secErr } = await window.supabase
       .from('site_sections').select('id, title, parent_id')
@@ -7887,6 +8043,7 @@ async function apLoadAuditLog() {
   var el = document.getElementById('al-list-body');
   if (!el || !window.supabase) return;
   el.innerHTML = '<div class="ap-loading"><div class="spinner"></div> جاري التحميل...</div>';
+  _apWatchLoading('al-list-body', 'apLoadAuditLog()');
   try {
     var { data, error } = await window.supabase
       .from('audit_log')
@@ -8045,6 +8202,7 @@ async function apLoadRequests() {
   var el = document.getElementById('ap-requests-body');
   if (!el || !window.supabase) return;
   el.innerHTML = '<div class="ap-loading"><div class="spinner"></div> جاري التحميل...</div>';
+  _apWatchLoading('ap-requests-body', 'apLoadRequests()');
   try {
     var { data, error } = await window.supabase
       .from('subscriptions')
@@ -8098,6 +8256,7 @@ async function apLoadSubscriptions() {
   var el = document.getElementById('ap-subscriptions-body');
   if (!el || !window.supabase) return;
   el.innerHTML = '<div class="ap-loading"><div class="spinner"></div> جاري التحميل...</div>';
+  _apWatchLoading('ap-subscriptions-body', 'apLoadSubscriptions()');
   var filterVal = (document.getElementById('ap-sub-filter') || {}).value || '';
   try {
     var query = window.supabase
@@ -8165,6 +8324,7 @@ async function apLoadDivisionSubs() {
   var el = document.getElementById('ap-divsubs-body');
   if (!el || !window.supabase) return;
   el.innerHTML = '<div class="ap-loading"><div class="spinner"></div> جاري التحميل...</div>';
+  _apWatchLoading('ap-divsubs-body', 'apLoadDivisionSubs()');
   var filterVal = (document.getElementById('ap-divsub-filter') || {}).value || '';
   var searchVal = ((document.getElementById('ap-divsub-search') || {}).value || '').trim();
   var sortVal   = (document.getElementById('ap-divsub-sort') || {}).value || 'requested_at_desc';
@@ -8306,6 +8466,7 @@ async function apLoadPayments() {
   var el = document.getElementById('ap-payments-body');
   if (!el || !window.supabase) return;
   el.innerHTML = '<div class="ap-loading"><div class="spinner"></div> جاري التحميل...</div>';
+  _apWatchLoading('ap-payments-body', 'apLoadPayments()');
   var filterVal = (document.getElementById('ap-pay-filter') || {}).value;
   var searchVal = ((document.getElementById('ap-pay-search') || {}).value || '').trim();
   try {
@@ -8388,6 +8549,7 @@ async function apLoadUsers() {
   var el = document.getElementById('ap-users-body');
   if (!el || !window.supabase) return;
   el.innerHTML = '<div class="ap-loading"><div class="spinner"></div> جاري التحميل...</div>';
+  _apWatchLoading('ap-users-body', 'apLoadUsers()');
   try {
     var [profilesRes, bannedRes] = await Promise.all([
       window.supabase.from('profiles').select('*').order('updated_at', { ascending: false }),
@@ -8482,6 +8644,7 @@ async function umLoadUsers() {
   var el = document.getElementById('um-users-body');
   if (!el || !window.supabase) return;
   el.innerHTML = '<div class="ap-loading"><div class="spinner"></div> جاري تحميل المستخدمين...</div>';
+  _apWatchLoading('um-users-body', 'umLoadUsers()');
   _umPage = 1;
   try {
     var [profRes, bannedRes, subsRes] = await Promise.all([
@@ -8903,6 +9066,7 @@ async function apLoadMessages() {
   var el = document.getElementById('ap-messages-body');
   if (!el || !window.supabase) return;
   el.innerHTML = '<div class="ap-loading"><div class="spinner"></div> جاري التحميل...</div>';
+  _apWatchLoading('ap-messages-body', 'apLoadMessages()');
   try {
     var { data, error } = await window.supabase
       .from('contact_messages')
@@ -8971,25 +9135,30 @@ async function smLoad(parentId) {
   var el = document.getElementById('sm-list-body');
   if (!el || !window.supabase) return;
   el.innerHTML = '<div class="ap-loading"><div class="spinner"></div> جاري التحميل...</div>';
+  _apWatchLoading('sm-list-body', 'smLoad(_smCurrentParentId())');
   try {
     var query = window.supabase.from('site_sections').select('*');
     if (parentId === null || parentId === undefined) query = query.is('parent_id', null);
     else query = query.eq('parent_id', parentId);
     query = query.order('display_order', { ascending: true });
-    var { data, error } = await query;
+    var { data, error } = await _fetchWithTimeout(function() { return query; });
     if (error) throw error;
     _smCache = data || [];
     // نتحقق أي العناصر لها أبناء (لعرض أيقونة 📂 بدلاً من 📄)
     if (_smCache.length) {
       var ids = _smCache.map(function(s){ return s.id; });
-      var childCountRes = await window.supabase.from('site_sections').select('parent_id').in('parent_id', ids);
+      var childCountRes = await _fetchWithTimeout(function() {
+        return window.supabase.from('site_sections').select('parent_id').in('parent_id', ids);
+      });
       var childParents = new Set((childCountRes.data || []).map(function(r){ return r.parent_id; }));
       _smCache.forEach(function(s){ s._hasChildren = childParents.has(s.id); });
     }
     smApplySearch();
     smRenderBreadcrumb();
   } catch(err) {
-    el.innerHTML = '<div class="ap-empty" style="color:#e74c3c;">❌ ' + _apEsc(err.message) + '</div>';
+    el.innerHTML = '<div class="ap-empty" style="color:#e74c3c;text-align:center;padding:22px 10px;">❌ '
+      + (err && err.message === 'fetch_timeout' ? 'انتهت مهلة الاتصال بالخادم.' : _apEsc(err && err.message || 'خطأ غير معروف'))
+      + '<br><button class="ap-btn ap-btn-primary" style="margin-top:12px;" onclick="smLoad(_smCurrentParentId())">🔄 إعادة المحاولة</button></div>';
   }
 }
 
@@ -9212,6 +9381,7 @@ async function lpLoad() {
   var el = document.getElementById('lp-list-body');
   if (!el || !window.supabase) return;
   el.innerHTML = '<div class="ap-loading"><div class="spinner"></div> جاري التحميل...</div>';
+  _apWatchLoading('lp-list-body', 'lpLoad()');
   try {
     var query = window.supabase
       .from('learning_paths')
@@ -9387,6 +9557,7 @@ function lpCloseItems() {
 async function _lpLoadItemsList(pathId) {
   var el = document.getElementById('lp-items-list');
   el.innerHTML = '<div class="ap-loading"><div class="spinner"></div> جاري التحميل...</div>';
+  _apWatchLoading('lp-items-list', '_lpLoadItemsList(_lpCurrentItemsPathId)');
   try {
     var { data, error } = await window.supabase
       .from('learning_path_items')
@@ -9521,6 +9692,7 @@ async function adLoad() {
   var el = document.getElementById('ad-list-body');
   if (!el || !window.supabase) return;
   el.innerHTML = '<div class="ap-loading"><div class="spinner"></div> جاري التحميل...</div>';
+  _apWatchLoading('ad-list-body', 'adLoad()');
   try {
     var { data, error } = await window.supabase.from('site_ads').select('*').order('display_order', { ascending: true });
     if (error) {
@@ -9688,6 +9860,7 @@ async function msLoadMonthlyStats() {
   var usersEl = document.getElementById('ms-users-chart');
   var subsEl  = document.getElementById('ms-subs-chart');
   if (usersEl) usersEl.innerHTML = '<div class="ap-loading"><div class="spinner"></div> جاري التحميل...</div>';
+  _apWatchLoading('ms-users-chart', 'msLoadMonthlyStats()');
   if (subsEl)  subsEl.innerHTML  = '';
   try {
     var [usersRes, subsRes] = await Promise.all([
@@ -10395,7 +10568,11 @@ var NativePDFViewer = (function() {
           '<span style="font-size:1.2rem;flex-shrink:0">📄</span>' +
           '<span id="native-pdf-title">' + _esc(title || 'PDF') + '</span>' +
           (isAdmin
-            ? '<button id="native-pdf-dl" title="تحميل" ' +
+            ? '<button id="native-pdf-newtab" title="فتح في نافذة جديدة" ' +
+              'style="background:rgba(255,255,255,.18);border:none;border-radius:8px;color:#fff;' +
+              'padding:6px 10px;cursor:pointer;font-size:.78rem;font-family:inherit;margin-left:6px;" ' +
+              'onclick="window.open(\'' + finalUrl.replace(/'/g,'%27') + '\',\'_blank\')">↗️</button>' +
+              '<button id="native-pdf-dl" title="تحميل" ' +
               'style="background:rgba(255,255,255,.18);border:none;border-radius:8px;color:#fff;' +
               'padding:6px 12px;cursor:pointer;font-size:.78rem;font-family:inherit;margin-left:6px;" ' +
               'onclick="(function(){var a=document.createElement(\'a\');a.href=\'' + finalUrl.replace(/'/g,'%27') + '\';' +
@@ -10472,6 +10649,13 @@ var NativePDFViewer = (function() {
       '<div class="pdfv-page-loading" style="min-height:60vh"><div class="pdfv-spin"></div>جاري فتح الملف...</div>';
 
     try {
+      // ✅ حماية من URL غير صالح (فارغ/بدون بروتوكول صحيح) قبل محاولة الجلب
+      if (!finalUrl || !/^https?:\/\//i.test(finalUrl)) {
+        var invalidErr = new Error('invalid-url');
+        invalidErr.name = 'InvalidUrlException';
+        throw invalidErr;
+      }
+
       var lib = await _loadPdfJs();
       if (!lib) throw new Error('pdfjs-not-loaded');
 
@@ -10516,16 +10700,106 @@ var NativePDFViewer = (function() {
       _setupObserver();
       _setupScrollPageTracking();
       _setupResizeRelayout();
+      _setupPinchZoom();
 
       // فعّل التمرير باللمس بسلاسة على الموبايل
       wrapper.style.webkitOverflowScrolling = 'touch';
 
     } catch(e) {
       console.warn('[PDFjs] تعذّر فتح الملف:', e && e.message);
-      wrapper.innerHTML =
-        '<div class="pdfv-page-loading" style="min-height:60vh;color:#f5b5b5">' +
-        '⚠️ تعذّر فتح الملف حالياً.<br>تأكد من اتصالك بالإنترنت وحاول مرة أخرى.</div>';
+      _showOpenError(e, url);
     }
+  }
+
+  // ==================== رسالة فشل موحّدة (URL غير صالح / منتهي / تعذّر الجلب / ملف مفقود) ====================
+  // يفرّق بين أنواع الأخطاء المعروفة من PDF.js ليعطي رسالة عربية دقيقة،
+  // ويعرض دائماً [فتح الملف]/[تحميل الملف] كطبقة أمان أخيرة (لغير الطلاب فقط
+  // إذا كانت الحماية مفعّلة، حفاظاً على سياسة منع تحميل المحتوى بالموقع)
+  function _showOpenError(e, url) {
+    var wrapper = document.getElementById('native-pdf-pdfjs-wrapper');
+    if (!wrapper) return;
+    var name = (e && e.name) || '';
+    var msg  = (e && e.message) || '';
+    var reason = 'لا يمكن عرض الملف داخل المتصفح.';
+    if (name === 'InvalidUrlException' || !url) reason = 'رابط الملف غير صالح.';
+    else if (name === 'MissingPDFException' || /404|not found/i.test(msg)) reason = 'الملف غير موجود (رُبما تم حذفه أو نقله).';
+    else if (name === 'UnexpectedResponseException' || /expired|403|signature/i.test(msg)) reason = 'انتهت صلاحية رابط الملف أو لا تملك صلاحية الوصول إليه.';
+    else if (name === 'InvalidPDFException') reason = 'هذا الملف تالف أو ليس بصيغة PDF صحيحة.';
+    else if (/network|fetch|Failed to fetch/i.test(msg)) reason = 'تعذّر الاتصال لتحميل الملف — تحقّق من اتصالك بالإنترنت.';
+
+    var isAdmin = window._isAdminUser === true;
+    url = url || window._rvCurrentUrl || '';
+    var actionsHtml = '';
+    if (isAdmin && url) {
+      var safeUrl = url.replace(/'/g, '%27');
+      actionsHtml =
+        '<div style="display:flex;gap:10px;justify-content:center;margin-top:14px;flex-wrap:wrap">' +
+          '<button class="pdfv-btn" style="width:auto;padding:0 16px;background:rgba(255,255,255,.15)" onclick="window.open(\'' + safeUrl + '\',\'_blank\')">↗️ فتح الملف</button>' +
+          '<button class="pdfv-btn" style="width:auto;padding:0 16px;background:rgba(255,255,255,.15)" onclick="(function(){var a=document.createElement(\'a\');a.href=\'' + safeUrl + '\';a.setAttribute(\'download\',\'\');document.body.appendChild(a);a.click();document.body.removeChild(a);})()">⬇️ تحميل الملف</button>' +
+        '</div>';
+    } else {
+      actionsHtml = '<p style="font-size:.74rem;color:rgba(255,255,255,.5);margin-top:8px">حاول مرة أخرى لاحقاً، أو تواصل مع إدارة الشعبة إذا استمرت المشكلة.</p>';
+    }
+    wrapper.innerHTML =
+      '<div class="pdfv-page-loading" style="min-height:60vh;color:#f5b5b5">' +
+      '⚠️ ' + reason + '<br>' + actionsHtml + '</div>';
+  }
+
+  // ==================== زوم بإصبعين (Pinch) — برمجي بالكامل ====================
+  // ✅ بديل عن pinch-zoom الأصلي في المتصفح (المُعطّل عمداً في CSS أعلاه).
+  // بيتتبع بُعد إصبعين على شاشة اللمس، ولما يتغيّر بنسبة معيّنة بينادي _setZoom()
+  // اللي بتعيد رسم الـ canvas فعلياً بدقة أعلى — نفس فكرة تطبيقات قراءة PDF
+  // الأصلية (زي Adobe/Google PDF Viewer)، وبيحل تعارض native zoom مع الـ header الثابت.
+  function _setupPinchZoom() {
+    if (!S || !S.wrapper) return;
+    var startDist = 0, startZoom = 1, pinching = false;
+
+    S.wrapper.addEventListener('touchstart', function(e) {
+      if (e.touches.length === 2) {
+        pinching = true;
+        startDist = _touchDist(e.touches);
+        startZoom = S.zoom;
+      }
+    }, { passive: true });
+
+    S.wrapper.addEventListener('touchmove', function(e) {
+      if (!pinching || e.touches.length !== 2 || !S) return;
+      var dist = _touchDist(e.touches);
+      if (!startDist) return;
+      var ratio = dist / startDist;
+      var newZoom = Math.max(0.5, Math.min(3, startZoom * ratio));
+      // تحديث فوري وخفيف لعرض الحاوية (بدون إعادة رسم canvas أثناء الحركة نفسها،
+      // توفيراً للأداء) — إعادة الرسم الفعلية تحصل فقط عند رفع الأصابع (touchend)
+      _previewZoomScale(newZoom);
+    }, { passive: true });
+
+    S.wrapper.addEventListener('touchend', function(e) {
+      if (!pinching) return;
+      pinching = false;
+      if (e.touches.length === 0 && S && S._pendingPinchZoom) {
+        _setZoom(S._pendingPinchZoom);
+        S._pendingPinchZoom = null;
+      }
+    }, { passive: true });
+  }
+
+  function _touchDist(touches) {
+    var dx = touches[0].clientX - touches[1].clientX;
+    var dy = touches[0].clientY - touches[1].clientY;
+    return Math.sqrt(dx * dx + dy * dy);
+  }
+
+  // معاينة سريعة أثناء الحركة عبر CSS transform (بدون تكلفة إعادة رسم)، ثم
+  // الرسم الحقيقي بدقة كاملة يحصل بعد ما المستخدم يسيب الشاشة (touchend)
+  function _previewZoomScale(z) {
+    if (!S) return;
+    S._pendingPinchZoom = Math.round(z * 100) / 100;
+    var pct = document.getElementById('pdfv-zoom-pct');
+    if (pct) pct.textContent = Math.round(z * 100) + '%';
+    // ملاحظة: عمداً لا نستخدم CSS transform كمعاينة حيّة هنا — الوسم الوحيد
+    // اللي بيتغيّر فوراً هو نسبة % في الشريط، أما إعادة الرسم الفعلية (الدقيقة
+    // والصحيحة) تحصل مرة واحدة عند touchend عبر _setZoom() — تفادياً لأي تشويه
+    // بصري مؤقت من محاولة "معاينة" بتحويل CSS على حاوية بها overflow:auto.
   }
 
   // ==================== بناء عناصر الصفحات (Placeholders) ====================
@@ -11753,59 +12027,13 @@ document.addEventListener('click', function(e) {
 }, true);
 
 // ════════════════════════════════════════════════════════
-// FIX B — Google Login يعمل صح على كل المتصفحات
-// ════════════════════════════════════════════════════════
-
-window.loginWithGoogle = async function() {
-  var db = window.supabase;
-  if (!db) {
-    var rp = window._supabaseClientReady || window._supabaseReady;
-    db = rp ? await rp.catch(function(){ return null; }) : null;
-    if (db && typeof db.from !== 'function') db = window.supabase || null;
-  }
-  if (!db) {
-    _showToast('جاري تحميل النظام، حاول مجدداً بعد ثانية', 'warning');
-    return;
-  }
-
-  // Redirect URL صحيح لـ GitHub Pages وكل البيئات
-  var redirectTo = window.location.origin + window.location.pathname;
-  if (!redirectTo.endsWith('/') && !redirectTo.endsWith('.html')) {
-    redirectTo += '/';
-  }
-
-  // حفظ آخر section
-  try {
-    if (window.state && window.state.navigationStack) {
-      sessionStorage.setItem('_nav_stack_labels', JSON.stringify(
-        state.navigationStack.map(function(s) { return { label: s.label }; })
-      ));
-    }
-    if (window._lastOpenSectionId) {
-      sessionStorage.setItem('_last_section_id', String(window._lastOpenSectionId));
-    }
-  } catch(e) {}
-
-  console.log('[AUTH FIX B] loginWithGoogle → redirectTo:', redirectTo);
-  try {
-    var result = await db.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo: redirectTo,
-        skipBrowserRedirect: false,
-        queryParams: { access_type: 'offline', prompt: 'consent' }
-      }
-    });
-    if (result.error) {
-      console.error('[AUTH] Google error:', result.error.message);
-      _showToast('خطأ: ' + result.error.message, 'error');
-    }
-  } catch(err) {
-    console.error('[AUTH] Exception:', err);
-    _showToast('تحقق من اتصال الإنترنت وحاول مجدداً', 'error');
-  }
-};
-
+// [AUTH CLEANUP] — تمت إزالة تعريف مكرر لـ window.loginWithGoogle كان هنا
+// (سابقاً "FIX B"). كان يُعيد كتابة نفس الدالة المُعرَّفة مسبقاً أعلاه بجانب
+// باقي دوال Auth (loginWithGoogle / logoutUser / checkUser) بنفس المنطق تقريباً،
+// وبما أن هذا الملف يُحمَّل لاحقاً كان هو النسخة الفعلية المستخدمة فعلياً —
+// ما يعني وجود مصدرين مختلفين لنفس الدالة يمكن تعديل أحدهما بالخطأ دون الآخر.
+// تم توحيدها في تعريف واحد فقط (بالقرب من loginWithGoogle / logoutUser الأساسية)
+// دون أي تغيير في السلوك.
 // ════════════════════════════════════════════════════════
 // FIX C — renderHomeSections تنتظر Supabase CLIENT صح
 // ════════════════════════════════════════════════════════
@@ -13118,10 +13346,11 @@ self.addEventListener('fetch', function(e) {
     delete window._subStatusCache[userId + ':' + sectionId];
   }
 
-  // ── يحدد هل sectionId يقع داخل «الفصل الأول» المجاني لمادّته (لا لشعبته) ──
-  // (المادة = أول ابن مباشر للشعبة anchorId، والفصل الأول = أول ابن مباشر لتلك المادة
-  //  بحسب display_order — فقط هو الذي يظل مفتوحاً دائماً كمعاينة مجانية، وليس المادة كلها،
-  //  وهذا ينطبق على كل مادة في كل شعبة، لا على أول مادة فقط)
+  // ── يحدد هل sectionId يقع داخل «الفصل المجاني الوحيد» لكل شعبة ──
+  // ✅ (تحديث): الفصل المجاني هو فصل واحد بالتحديد لكل شعبة — الفصل الأول من
+  // أول مادة في تلك الشعبة (بحسب display_order) — وليس فصل أول من كل مادة
+  // على حدة كما كان سابقاً. أي مادة أخرى غير المادة الأولى تبقى محمية بالكامل
+  // بالاشتراك من فصلها الأول، وليس فقط من الفصل الثاني فأكثر.
   async function _isWithinFreeChapter(anchorId, sectionId) {
     if (sectionId === anchorId) return false; // صفحة الشعبة نفسها (قائمة المواد) — لا معاينة مجانية هنا
 
@@ -13137,20 +13366,28 @@ self.addEventListener('fetch', function(e) {
       depth++;
     }
     if (!current || current.id !== anchorId) return false; // لم نصل للشعبة — سلسلة غير متوقعة
-
-    // آخر عنصر في chain هو anchor نفسه، والعنصر الذي قبله هو "المادة" المباشرة
-    // التابعة للشعبة والتي ينتمي إليها sectionId
     if (chain.length < 2) return false;
-    var subjectNode = chain[chain.length - 2];
 
-    // 2) نجلب فصول هذه المادة بالتحديد (لا فصول الشعبة) ونحدد الفصل الأول منها
-    var chapters = await loadSections(subjectNode.id);
-    if (!chapters || chapters.length === 0) return false; // هذه المادة بلا فصول فرعية
+    // 2) نحدد أول مادة في هذه الشعبة تحديداً (وليس مادة sectionId نفسه)
+    var subjects = await loadSections(anchorId);
+    if (!subjects || subjects.length === 0) return false; // الشعبة بلا مواد بعد
+    var firstSubjectId = subjects[0].id;
+
+    // sectionId لازم يكون واقعاً بالفعل داخل أول مادة في الشعبة — غير كده مفيش معاينة مجانية
+    var passesFirstSubject = false;
+    for (var i = 0; i < chain.length - 1; i++) {
+      if (chain[i].id === firstSubjectId) { passesFirstSubject = true; break; }
+    }
+    if (!passesFirstSubject) return false;
+
+    // 3) نجلب فصول أول مادة تحديداً (لا فصول أي مادة أخرى) ونحدد الفصل الأول منها
+    var chapters = await loadSections(firstSubjectId);
+    if (!chapters || chapters.length === 0) return false; // المادة الأولى بلا فصول فرعية
     var firstChapterId = chapters[0].id;
 
-    // 3) هل sectionId هو الفصل الأول لمادته أو يقع بداخله؟ (نستثني anchor من الفحص)
-    for (var i = 0; i < chain.length - 1; i++) {
-      if (chain[i].id === firstChapterId) return true;
+    // 4) هل sectionId هو الفصل الأول لأول مادة أو يقع بداخله؟ (نستثني anchor من الفحص)
+    for (var j = 0; j < chain.length - 1; j++) {
+      if (chain[j].id === firstChapterId) return true;
     }
     return false;
   }
@@ -13164,10 +13401,10 @@ self.addEventListener('fetch', function(e) {
       var anchor = await _findSubscriptionAnchor(sectionId);
       if (!anchor) return null; // هذا القسم/الشعبة لا يتطلب اشتراكاً (requires_subscription = false)
 
-      // ── ✅ (Aug 2026): الفصل الأول (Chapter 1) من كل مادة على حدة يكون مجاناً بالكامل
-      // (كل section_content و section_resources والفيديوهات وملفات الـ PDF التابعة له)
-      // — وينطبق هذا على كل مادة في كل شعبة (وليس فقط أول مادة في الشعبة كما كان سابقاً).
-      // كل ما بعد الفصل الأول من كل مادة (Chapter 2 فأكثر) يظل محمياً بالاشتراك كالمعتاد.
+      // ── ✅ (تحديث): فصل واحد فقط مجاني لكل شعبة بالكامل — الفصل الأول من أول
+      // مادة في الشعبة فقط (كل section_content و section_resources والفيديوهات
+      // وملفات الـ PDF التابعة له تحديداً). باقي مواد الشعبة، وباقي فصول المادة
+      // الأولى نفسها، تظل كلها محمية بالاشتراك كالمعتاد.
       var isFreePreview = await _isWithinFreeChapter(anchor.id, sectionId);
       if (isFreePreview) return null;
 
