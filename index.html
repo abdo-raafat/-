@@ -5726,6 +5726,31 @@ window._selectBranchAdminRoot = async function(rootId) {
   }
 };
 
+// ════════════════════════════════════════════════════════════════
+// AUDIT LOG — logAudit(): يسجّل كل عملية إدارية حساسة في جدول audit_log
+// عبر RPC آمن (log_audit_event) يحدد actor_id من auth.uid() على السيرفر
+// نفسه — العميل لا يقدر يزوّر هويته أبداً. استدعاء "fire-and-forget":
+// لا يوقف أو يفشل العملية الأصلية لو فشل التسجيل (يطبع تحذير فقط).
+// انظر السطر التالي لـ SQL الجدول والدالة: printAuditAndScopeSQL()
+// ════════════════════════════════════════════════════════════════
+window.logAudit = async function(action, entityType, entityId, entityName, branchId, result, details) {
+  try {
+    if (!window.supabase) return;
+    await window.supabase.rpc('log_audit_event', {
+      p_action:      action,
+      p_entity_type: entityType,
+      p_entity_id:   entityId != null ? String(entityId) : null,
+      p_entity_name: entityName || null,
+      p_branch_id:   branchId != null ? Number(branchId) : null,
+      p_result:      result || 'success',
+      p_details:     details ? JSON.stringify(details) : null
+    });
+  } catch(e) {
+    // لا نوقف تدفق العملية الأصلية بسبب فشل التسجيل — فقط تحذير في الـ Console
+    console.warn('[logAudit] تعذّر تسجيل العملية (شغّل printAuditAndScopeSQL() إن لم يكن الجدول موجوداً):', e && e.message);
+  }
+};
+
 // ── يعرض/يخفي Switcher اختيار الشعبة في هيدر لوحة التحكم — يظهر فقط لو الأدمن يدير أكثر من شعبة ──
 function _renderBranchAdminSwitcher() {
   var host = document.getElementById('ap-branch-switcher');
@@ -6448,6 +6473,7 @@ window.checkBanStatus = async function(email) {
       <button class="ap-nav-btn" onclick="apSwitchTab('content')"   id="ap-tab-content"   role="tab">➕ المحتوى</button>
       <button class="ap-nav-btn" onclick="apSwitchTab('sectionchat')" id="ap-tab-sectionchat" role="tab">💬 محادثة الشعبة</button>
       <button class="ap-nav-btn" onclick="apSwitchTab('branchadmins')" id="ap-tab-branchadmins" role="tab">🛡️ أدمن الشعب</button>
+      <button class="ap-nav-btn" onclick="apSwitchTab('auditlog')" id="ap-tab-auditlog" role="tab">🧾 سجل العمليات</button>
     </nav>
 
     <!-- Body -->
@@ -7009,6 +7035,39 @@ window.checkBanStatus = async function(email) {
       </div>
       <!-- End Branch Admins Tab -->
 
+      <!-- ═══════════════════ TAB: AUDIT LOG (Super Admin: الكل — Branch Admin: شعبته فقط عبر RLS) ═══════════════════ -->
+      <div class="ap-tab-panel" id="ap-panel-auditlog" role="tabpanel">
+        <div class="ap-section-heading" style="margin:0 0 10px;border:none;padding:0;">🧾 سجل العمليات (Audit Log)</div>
+        <div style="font-size:.76rem;color:#888;margin-bottom:14px;">
+          يسجَّل هنا كل عملية إدارية حساسة: من قام بها، نوع العملية، العنصر المتأثر، الشعبة، الوقت، والنتيجة.
+          هذا السجل غير قابل للتعديل أو الحذف من الواجهة — التسجيل يتم عبر دالة آمنة على قاعدة البيانات (SECURITY DEFINER)
+          تحدد هوية الفاعل من الجلسة نفسها، بحيث لا يمكن لأي مستخدم تزوير سجل باسم غيره.
+          أدمن الشعبة يرى فقط سجل شعبته (مفروض عبر RLS، وليس فقط إخفاء بالواجهة).
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
+          <input id="al-filter-search" class="ap-input" type="text" placeholder="🔍 بحث: اسم الفاعل، العنصر..." style="flex:1;min-width:180px;" oninput="alApplyFilters()">
+          <select class="ap-select" id="al-filter-action" onchange="alApplyFilters()">
+            <option value="">كل العمليات</option>
+            <option value="create_section">إنشاء قسم/دورة</option>
+            <option value="update_section">تعديل قسم/دورة</option>
+            <option value="delete_section">حذف قسم/دورة</option>
+            <option value="assign_branch_admin">تعيين أدمن شعبة</option>
+            <option value="remove_branch_admin">إزالة أدمن شعبة</option>
+            <option value="change_user_role">تغيير صلاحية مستخدم</option>
+            <option value="approve_subscription">قبول اشتراك</option>
+            <option value="reject_subscription">رفض اشتراك</option>
+          </select>
+          <select class="ap-select" id="al-filter-result" onchange="alApplyFilters()">
+            <option value="">كل النتائج</option>
+            <option value="success">✅ نجاح</option>
+            <option value="failure">❌ فشل</option>
+          </select>
+          <button onclick="apLoadAuditLog()" class="ap-btn ap-btn-ghost">🔄 تحديث</button>
+        </div>
+        <div id="al-list-body"><div class="ap-loading"><div class="spinner"></div> جاري التحميل...</div></div>
+      </div>
+      <!-- End Audit Log Tab -->
+
       <!-- ═══════════════════ MODAL: Assign / Change Section Admin ═══════════════════ -->
       <div id="ba-assign-overlay" style="display:none;position:fixed;inset:0;z-index:9999998;background:rgba(10,20,40,.75);backdrop-filter:blur(4px);align-items:center;justify-content:center;padding:16px;">
         <div style="background:var(--card-bg,#fff);border-radius:16px;max-width:440px;width:100%;max-height:88vh;overflow-y:auto;padding:22px;box-shadow:0 20px 60px rgba(0,0,0,.4);">
@@ -7419,7 +7478,7 @@ function _applyBranchAdminPanelGating() {
   if (!isBranch) {
     // مستخدم عادي أو سوبر أدمن: أظهر كل التابات كما هي
     ['ap-tab-requests','ap-tab-usermgmt','ap-tab-users','ap-tab-messages','ap-tab-divsubs','ap-tab-content','ap-tab-dashboard',
-     'ap-tab-payments','ap-tab-sectionsmgmt','ap-tab-paths','ap-tab-ads','ap-tab-monthlystats','ap-tab-sectionchat']
+     'ap-tab-payments','ap-tab-sectionsmgmt','ap-tab-paths','ap-tab-ads','ap-tab-monthlystats','ap-tab-sectionchat','ap-tab-auditlog']
       .forEach(function(id) { var el = document.getElementById(id); if (el) el.style.display = ''; });
     return;
   }
@@ -7444,6 +7503,9 @@ function _applyBranchAdminPanelGating() {
   // محادثة الشعبة: متاحة دائماً لأدمن الشعبة (جزء أساسي من الإدارة، غير مرتبطة بصلاحيات إضافية)
   var chatTab = document.getElementById('ap-tab-sectionchat');
   if (chatTab) chatTab.style.display = '';
+  // سجل العمليات: متاح دائماً لأدمن الشعبة، لكن RLS في القاعدة تعرض له سجل شعبته فقط (وليس باقي الشعب)
+  var auditTab = document.getElementById('ap-tab-auditlog');
+  if (auditTab) auditTab.style.display = '';
 
   // افتح أول تاب متاح تلقائياً
   var firstVisible = ['ap-tab-dashboard','ap-tab-divsubs','ap-tab-content'].find(function(id) {
@@ -7470,6 +7532,7 @@ function apSwitchTab(tab) {
 
   // Lazy load data
   if (tab === 'dashboard')     apLoadDashboard();
+  else if (tab === 'auditlog') apLoadAuditLog();
   else if (tab === 'requests') apLoadRequests();
   else if (tab === 'subscriptions') apLoadSubscriptions();
   else if (tab === 'divsubs')  apLoadDivisionSubs();
@@ -7760,12 +7823,14 @@ async function baConfirmAssign() {
     }
 
     _showToast ? _showToast('✅ تم تعيين الأدمن بنجاح' + cleanupWarning, cleanupWarning ? 'warning' : 'success') : null;
+    logAudit('assign_branch_admin', 'branch_admin', user.id, (user.full_name || user.email || user.id), ctx.sectionId, 'success', { section_title: ctx.sectionTitle, replaced: oldAdmins.map(function(a){return a.email;}) });
     baCloseAssignModal();
     baLoadList();
   } catch(err) {
     msgEl.style.color = '#e74c3c';
     msgEl.textContent = '❌ خطأ: ' + err.message;
     confirmBtn.disabled = false;
+    logAudit('assign_branch_admin', 'branch_admin', user.id, (user.full_name || user.email || user.id), ctx.sectionId, 'failure', { error: err.message });
   }
 }
 
@@ -7794,13 +7859,87 @@ async function baDoRemove() {
       .eq('id', ctx.profileId);
     if (error) throw error;
     _showToast ? _showToast('✅ تم إزالة صلاحية إدارة الشعبة (الحساب باقٍ كما هو)', 'success') : null;
+    logAudit('remove_branch_admin', 'branch_admin', ctx.profileId, ctx.name, null, 'success', { section_title: ctx.sectionTitle });
     baCloseRemoveModal();
     baLoadList();
   } catch(err) {
+    logAudit('remove_branch_admin', 'branch_admin', ctx.profileId, ctx.name, null, 'failure', { error: err.message });
     _showToast ? _showToast('❌ خطأ: ' + err.message, 'error') : alert(err.message);
   } finally {
     btn.disabled = false; btn.textContent = '❌ نعم، إزالة';
   }
+}
+
+// ════════════════════════════════════════════════════════════════
+// AUDIT LOG TAB — Super Admin يرى الكل، Branch Admin يرى شعبته فقط
+// (الفلترة الحقيقية تتم عبر RLS في القاعدة على جدول audit_log — انظر
+// printAuditAndScopeSQL() — هنا فقط عرض/فلاتر واجهة على ما ترجعه القاعدة)
+// ════════════════════════════════════════════════════════════════
+var _alCache = [];
+var _alActionLabels = {
+  create_section: '➕ إنشاء قسم/دورة', update_section: '✏️ تعديل قسم/دورة', delete_section: '🗑️ حذف قسم/دورة',
+  assign_branch_admin: '🛡️ تعيين أدمن شعبة', remove_branch_admin: '🚫 إزالة أدمن شعبة',
+  change_user_role: '👤 تغيير صلاحية مستخدم', update_user: '✏️ تعديل مستخدم',
+  approve_subscription: '✅ قبول اشتراك', reject_subscription: '❌ رفض اشتراك'
+};
+
+async function apLoadAuditLog() {
+  var el = document.getElementById('al-list-body');
+  if (!el || !window.supabase) return;
+  el.innerHTML = '<div class="ap-loading"><div class="spinner"></div> جاري التحميل...</div>';
+  try {
+    var { data, error } = await window.supabase
+      .from('audit_log')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(300);
+    if (error) throw error;
+    _alCache = data || [];
+    _alRender(_alCache);
+  } catch(err) {
+    el.innerHTML = '<div class="ap-empty" style="color:#e74c3c;">❌ تعذّر تحميل السجل: ' + _apEsc(err.message) +
+      '<br><span style="font-size:.7rem;color:#888;">إن كان الجدول غير موجود بعد، شغّل printAuditAndScopeSQL() في الـ Console وانسخ SQL إلى Supabase.</span></div>';
+  }
+}
+
+function alApplyFilters() {
+  var q      = ((document.getElementById('al-filter-search') || {}).value || '').toLowerCase();
+  var action = ((document.getElementById('al-filter-action') || {}).value || '');
+  var result = ((document.getElementById('al-filter-result') || {}).value || '');
+  var filtered = _alCache.filter(function(r) {
+    if (action && r.action !== action) return false;
+    if (result && r.result !== result) return false;
+    if (q) {
+      var hay = ((r.actor_name || '') + ' ' + (r.entity_name || '') + ' ' + (r.branch_name || '')).toLowerCase();
+      if (hay.indexOf(q) === -1) return false;
+    }
+    return true;
+  });
+  _alRender(filtered);
+}
+
+function _alRender(rows) {
+  var el = document.getElementById('al-list-body');
+  if (!el) return;
+  if (!rows.length) { el.innerHTML = '<div class="ap-empty">لا توجد عمليات مسجّلة بعد.</div>'; return; }
+  el.innerHTML = '<div class="ap-table-wrap"><table class="ap-table"><thead><tr>'
+    + '<th>الوقت</th><th>الفاعل</th><th>الدور</th><th>العملية</th><th>العنصر</th><th>الشعبة</th><th>النتيجة</th>'
+    + '</tr></thead><tbody>'
+    + rows.map(function(r) {
+      var resultBadge = r.result === 'failure'
+        ? '<span class="ap-badge expired">❌ فشل</span>'
+        : '<span class="ap-badge admin" style="background:#eafaf1;color:#17a589;">✅ نجاح</span>';
+      return '<tr>'
+        + '<td style="white-space:nowrap;font-size:.72rem;">' + _apDate(r.created_at) + '</td>'
+        + '<td>' + _apEsc(r.actor_name || '—') + '</td>'
+        + '<td><span class="ap-badge user">' + _apEsc(r.actor_role || '—') + '</span></td>'
+        + '<td>' + _apEsc(_alActionLabels[r.action] || r.action) + '</td>'
+        + '<td>' + _apEsc(r.entity_name || r.entity_id || '—') + '</td>'
+        + '<td>' + _apEsc(r.branch_name || '—') + '</td>'
+        + '<td>' + resultBadge + '</td>'
+        + '</tr>';
+    }).join('')
+    + '</tbody></table></div>';
 }
 
 // ── subscriptions لا تحتوي على user_email/full_name فعلياً — نجيبهم من profiles ──
@@ -8108,10 +8247,12 @@ async function apApproveDivisionSub(id) {
       .eq('id', id);
     if (error) throw error;
     _showToast ? _showToast('✅ تم تفعيل/تجديد الاشتراك لمدة 30 يوم', 'success') : null;
+    logAudit('approve_subscription', 'subscription', id, null, null, 'success', { end_date: end.toISOString() });
     window._subStatusCache = {}; // مسح الكاش المحلي حتى تنعكس الحالة فوراً للطالب
     apLoadDivisionSubs();
     apLoadDashboard();
   } catch(err) {
+    logAudit('approve_subscription', 'subscription', id, null, null, 'failure', { error: err.message });
     _showToast ? _showToast('❌ خطأ: ' + err.message, 'error') : alert('خطأ: ' + err.message);
   }
 }
@@ -8128,8 +8269,10 @@ async function apCancelDivisionSub(id) {
     if (error) throw error;
     window._subStatusCache = {};
     _showToast ? _showToast('🚫 تم رفض/إلغاء الطلب', 'success') : null;
+    logAudit('reject_subscription', 'subscription', id, null, null, 'success', { reason: reason });
     apLoadDivisionSubs();
   } catch(err) {
+    logAudit('reject_subscription', 'subscription', id, null, null, 'failure', { error: err.message });
     _showToast ? _showToast('❌ خطأ: ' + err.message, 'error') : alert('خطأ: ' + err.message);
   }
 }
@@ -8587,6 +8730,10 @@ async function umSaveEdit() {
   msgEl.style.color = '#0a3d62';
   msgEl.textContent = '⏳ جاري الحفظ...';
 
+  // نلتقط الدور القديم قبل الحفظ عشان نسجّله في الـ Audit Log (تغيير role حساس جداً)
+  var _prevUser = (_umCache || []).find(function(u){ return u.id === userId; });
+  var _prevRole = _prevUser ? _prevUser.role : null;
+
   try {
     var updates = {
       full_name:           name || null,
@@ -8605,6 +8752,8 @@ async function umSaveEdit() {
 
     msgEl.style.color = '#17a589';
     msgEl.textContent = '✅ تم الحفظ بنجاح!';
+    logAudit(_prevRole !== role ? 'change_user_role' : 'update_user', 'user', userId, name || userId, null, 'success',
+      { previous_role: _prevRole, new_role: role, subscription_status: subStatus });
 
     // تحديث الكاش المحلي
     var idx = _umCache.findIndex(function(u){ return u.id === userId; });
@@ -8617,6 +8766,7 @@ async function umSaveEdit() {
   } catch(err) {
     msgEl.style.color = '#e74c3c';
     msgEl.textContent = '❌ ' + (err.message || 'حدث خطأ');
+    logAudit('change_user_role', 'user', userId, name || userId, null, 'failure', { error: err.message });
   }
 }
 
@@ -9013,6 +9163,7 @@ async function smSave() {
       : await window.supabase.from('site_sections').insert(payload);
     if (res.error) throw res.error;
     msgEl.style.color = '#17a589'; msgEl.textContent = '✅ تم الحفظ بنجاح';
+    logAudit(id ? 'update_section' : 'create_section', 'section', id || null, title, targetScopeId, 'success');
     if (window._dataCache) { window._dataCache.sections = {}; window._dataCache._pending = {}; }
     setTimeout(function() {
       smCloseEdit();
@@ -9020,6 +9171,7 @@ async function smSave() {
     }, 500);
   } catch(err) {
     msgEl.style.color = '#e74c3c'; msgEl.textContent = '❌ خطأ: ' + err.message;
+    logAudit(id ? 'update_section' : 'create_section', 'section', id || null, title, targetScopeId, 'failure', { error: err.message });
   }
 }
 
@@ -9040,8 +9192,10 @@ async function smDelete(id) {
     if (error) throw error;
     if (window._dataCache) { window._dataCache.sections = {}; window._dataCache._pending = {}; }
     _showToast ? _showToast('✅ تم الحذف', 'success') : null;
+    logAudit('delete_section', 'section', id, s.title, id, 'success');
     smLoad(_smCurrentParentId());
   } catch(err) {
+    logAudit('delete_section', 'section', id, s.title, id, 'failure', { error: err.message });
     _showToast ? _showToast('❌ خطأ: ' + err.message, 'error') : alert(err.message);
   }
 }
@@ -11936,6 +12090,163 @@ CREATE POLICY "ads_admin_write" ON site_ads FOR ALL    USING (is_admin());
   return sql;
 };
 console.log('%c[RLS] اكتب printFullRLS() في الـ Console لعرض + نسخ كامل SQL الإصلاح', 'color:#e74c3c;font-weight:bold;font-size:13px');
+
+// ════════════════════════════════════════════════════════════════
+// printAuditAndScopeSQL — SQL إضافي (شغّله مرة واحدة بعد printFullRLS):
+//  1) جدول audit_log + دالة تسجيل آمنة (log_audit_event) لا يمكن تزويرها
+//  2) جدول section_admins (النظام الجديد متعدد-الشعب) + سياساته
+//  3) تحديث is_branch_admin_of() ليتحقق من كِلا المصدرين: profiles.managed_section_id
+//     (القديم) و section_admins (الجديد) — بدل الاعتماد على الأول فقط
+// ════════════════════════════════════════════════════════════════
+window.printAuditAndScopeSQL = function() {
+  var sql = `
+-- ================================================================
+-- AUDIT LOG + SECTION_ADMINS (multi-branch) — شغّله بعد printFullRLS()
+-- Supabase Dashboard → SQL Editor → New Query → Paste → Run
+-- ================================================================
+
+-- ────────────────────────────────────────────────────────────────
+-- 1) section_admins — يدعم أكثر من أدمن/أكثر من شعبة لكل مستخدم
+--    (الواجهة تقرأ منه بالفعل عبر _loadBranchAdminScope — هذا الجدول
+--     كان ناقصاً من قاعدة البيانات، وهذا يكمّله دون كسر النظام القديم)
+-- ────────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS section_admins (
+  id          BIGSERIAL PRIMARY KEY,
+  user_id     UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  section_id  BIGINT NOT NULL REFERENCES site_sections(id) ON DELETE CASCADE,
+  role        TEXT NOT NULL DEFAULT 'admin' CHECK (role IN ('admin')),
+  is_active   BOOLEAN NOT NULL DEFAULT true,
+  created_at  TIMESTAMPTZ DEFAULT NOW(),
+  created_by  UUID REFERENCES auth.users(id),
+  UNIQUE (user_id, section_id)
+);
+CREATE INDEX IF NOT EXISTS idx_section_admins_user    ON section_admins(user_id);
+CREATE INDEX IF NOT EXISTS idx_section_admins_section ON section_admins(section_id);
+
+ALTER TABLE section_admins ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "section_admins_super_all"  ON section_admins;
+DROP POLICY IF EXISTS "section_admins_self_read"  ON section_admins;
+-- سوبر أدمن فقط يقدر يعيّن/يزيل أدمن شعبة عبر هذا الجدول
+CREATE POLICY "section_admins_super_all" ON section_admins FOR ALL USING (is_admin()) WITH CHECK (is_admin());
+-- كل أدمن شعبة يقدر يقرأ صف نفسه فقط (يحتاجه لمعرفة كل الشعب المُسندة له)
+CREATE POLICY "section_admins_self_read" ON section_admins FOR SELECT USING (user_id = auth.uid());
+
+-- ────────────────────────────────────────────────────────────────
+-- 2) تحديث is_branch_admin_of() — الآن يتحقق من المصدرين معاً:
+--    profiles.managed_section_id (القديم) + section_admins (الجديد)
+-- ────────────────────────────────────────────────────────────────
+CREATE OR REPLACE FUNCTION is_branch_admin_of(target_id BIGINT)
+RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER
+AS $$
+  WITH RECURSIVE ancestors AS (
+    SELECT id, parent_id FROM site_sections WHERE id = target_id
+    UNION ALL
+    SELECT s.id, s.parent_id FROM site_sections s
+    JOIN ancestors a ON s.id = a.parent_id
+  )
+  SELECT EXISTS (
+    SELECT 1 FROM profiles p
+    WHERE p.id = auth.uid()
+      AND p.role = 'branch_admin'
+      AND p.managed_section_id IN (SELECT id FROM ancestors)
+  ) OR EXISTS (
+    SELECT 1 FROM section_admins sa
+    WHERE sa.user_id = auth.uid()
+      AND sa.is_active = true
+      AND sa.role = 'admin'
+      AND sa.section_id IN (SELECT id FROM ancestors)
+  );
+$$;
+
+-- ────────────────────────────────────────────────────────────────
+-- 3) audit_log — سجل غير قابل للتعديل. لا توجد أي سياسة INSERT/UPDATE/DELETE
+--    للعملاء؛ الإدراج الوحيد المسموح هو عبر الدالة log_audit_event()
+--    (SECURITY DEFINER) التي تحدد actor_id من الجلسة نفسها ولا يمكن تزويرها.
+-- ────────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS audit_log (
+  id           BIGSERIAL PRIMARY KEY,
+  actor_id     UUID REFERENCES auth.users(id),
+  actor_name   TEXT,
+  actor_role   TEXT,
+  action       TEXT NOT NULL,
+  entity_type  TEXT NOT NULL,
+  entity_id    TEXT,
+  entity_name  TEXT,
+  branch_id    BIGINT REFERENCES site_sections(id),
+  branch_name  TEXT,
+  result       TEXT NOT NULL DEFAULT 'success' CHECK (result IN ('success','failure')),
+  details      JSONB,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_audit_log_created  ON audit_log(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_log_branch   ON audit_log(branch_id);
+CREATE INDEX IF NOT EXISTS idx_audit_log_actor    ON audit_log(actor_id);
+
+ALTER TABLE audit_log ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "audit_log_super_read"  ON audit_log;
+DROP POLICY IF EXISTS "audit_log_branch_read" ON audit_log;
+-- سوبر أدمن يرى كل السجل
+CREATE POLICY "audit_log_super_read" ON audit_log FOR SELECT USING (is_admin());
+-- أدمن الشعبة يرى فقط السجلات التابعة لشعبته (أو بلا شعبة محددة وهو الفاعل نفسه)
+CREATE POLICY "audit_log_branch_read" ON audit_log FOR SELECT
+  USING (branch_id IS NOT NULL AND is_branch_admin_of(branch_id));
+-- ملاحظة: عمداً لا توجد أي سياسة INSERT/UPDATE/DELETE هنا — أي محاولة كتابة
+-- مباشرة من العميل على هذا الجدول تُرفض تلقائياً بواسطة RLS. الكتابة الوحيدة
+-- الممكنة هي عبر الدالة أدناه، التي تعمل بصلاحيات مالك القاعدة (SECURITY DEFINER)
+-- وتتجاوز RLS بأمان لأنها تستخدم auth.uid() من الجلسة، لا قيمة يرسلها العميل.
+
+CREATE OR REPLACE FUNCTION log_audit_event(
+  p_action       TEXT,
+  p_entity_type  TEXT,
+  p_entity_id    TEXT DEFAULT NULL,
+  p_entity_name  TEXT DEFAULT NULL,
+  p_branch_id    BIGINT DEFAULT NULL,
+  p_result       TEXT DEFAULT 'success',
+  p_details      JSONB DEFAULT NULL
+) RETURNS void
+LANGUAGE plpgsql SECURITY DEFINER
+AS $$
+DECLARE
+  v_name        TEXT;
+  v_role        TEXT;
+  v_branch_name TEXT;
+BEGIN
+  IF auth.uid() IS NULL THEN
+    RAISE EXCEPTION 'must be authenticated to log an audit event';
+  END IF;
+
+  SELECT full_name, role INTO v_name, v_role FROM profiles WHERE id = auth.uid();
+
+  IF p_branch_id IS NOT NULL THEN
+    SELECT title INTO v_branch_name FROM site_sections WHERE id = p_branch_id;
+  END IF;
+
+  INSERT INTO audit_log (actor_id, actor_name, actor_role, action, entity_type, entity_id, entity_name, branch_id, branch_name, result, details)
+  VALUES (auth.uid(), COALESCE(v_name, '—'), COALESCE(v_role, 'user'), p_action, p_entity_type, p_entity_id, p_entity_name, p_branch_id, v_branch_name, COALESCE(p_result, 'success'), p_details);
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION log_audit_event TO authenticated;
+
+-- ================================================================
+-- تحقق من التطبيق:
+-- ================================================================
+-- SELECT * FROM pg_policies WHERE tablename IN ('audit_log','section_admins') ORDER BY tablename, cmd;
+-- SELECT * FROM audit_log ORDER BY created_at DESC LIMIT 20;
+`;
+  console.group('%c🧾 AUDIT LOG + SECTION_ADMINS SQL — شغّله بعد printFullRLS()', 'color:#8e44ad;font-size:1.1em;font-weight:bold');
+  console.log('%cافتح: Supabase Dashboard → SQL Editor → New Query → الصق الكود → Run', 'color:#17a589;font-weight:bold');
+  console.log(sql);
+  console.groupEnd();
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(sql).then(function() {
+      console.log('%c✅ تم نسخ الـ SQL للـ clipboard!', 'color:#17a589;font-weight:bold');
+    }).catch(function(){});
+  }
+  return sql;
+};
+console.log('%c[Audit] اكتب printAuditAndScopeSQL() في الـ Console لعرض + نسخ SQL سجل العمليات', 'color:#8e44ad;font-weight:bold;font-size:13px');
 
 // printCoursesMigration — إضافة عمود type لتمييز "الدورات" فقط (Additive, بدون أي حذف)
 window.printCoursesMigration = function() {
