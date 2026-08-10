@@ -1802,8 +1802,11 @@ a, button, [onclick], .dept-card, .resource-item, .link-card, .lc-btn, .btn-ente
 }
 
 /* ===== MOBILE BREADCRUMB FIX ===== */
+/* ✅ FIX: كانت display:none تخفي الـ breadcrumb بالكامل على الموبايل —
+   بدل الإخفاء، نعتمد على overflow-x:auto الموجودة أصلاً في .breadcrumb
+   (سطر 231) عشان يتمرّر أفقياً بدل ما يختفي */
 @media(max-width: 480px) {
-  .breadcrumb { display: none; }
+  .breadcrumb { max-width: calc(100vw - 90px); font-size: .68rem; gap: 4px; }
   .topnav .logo div:first-child { display: none; }
   .topnav .logo { font-size: 1rem; }
 }
@@ -1892,6 +1895,26 @@ a, button, [onclick], .dept-card, .resource-item, .link-card, .lc-btn, .btn-ente
   .um-btn { font-size: .65rem; padding: 4px 8px; }
 }
 
+/* ✅ FIXED: عمود/خلية البريد الإلكتروني — يظهر كامل ومقروء بدون تكسير حرف حرف،
+   حتى داخل الجداول اللي بتفرض word-break على كل الخلايا على الموبايل (.ap-table).
+   الإيميل يفضل LTR دايمًا حتى لو باقي الواجهة عربي RTL، ولو الجدول أضيق من الإيميل
+   بيسمحله يعمل تمرير أفقي (.ap-table-wrap / .um-table-wrap عندهم overflow-x:auto بالفعل)
+   بدل ما يتقطع أو يتكسر. */
+.ap-email-cell,
+.um-user-email {
+  direction: ltr !important;
+  unicode-bidi: plaintext !important;
+  white-space: nowrap !important;
+  word-break: normal !important;
+  overflow-wrap: normal !important;
+  text-align: left !important;
+  cursor: pointer;
+}
+.ap-email-cell:hover, .um-user-email:hover { text-decoration: underline dotted; }
+@media(max-width: 600px) {
+  .ap-table th, .ap-table td.ap-email-cell { white-space: nowrap !important; word-break: normal !important; }
+}
+
 /* ✅ FIXED: مؤشر تحميل أفضل على الموبايل */
 .loading {
   min-height: 120px;
@@ -1943,7 +1966,7 @@ html, body {
   .chatgpt-login-btn { padding: 6px 10px; font-size: 11px; gap: 4px; }
   .user-email { max-width: 80px; font-size: 10px; }
   .logout-btn { padding: 5px 9px; font-size: 11px; }
-  .breadcrumb { display: none; }
+  /* ✅ FIX: كانت هنا نسخة ثانية من display:none تلغي أي تعديل سابق — أُزيلت */
 }
 
 /* ── Cards Mobile ── */
@@ -2310,6 +2333,7 @@ body.sm-open {
 
 <!-- TOP NAV -->
 <nav class="topnav">
+  <button class="ms-hamburger" id="ms-hamburger-btn" onclick="msOpenSidebar()" aria-label="فتح القائمة" title="القائمة">☰</button>
   <div class="logo" onclick="goHome()">
     <span class="icon">🏥</span>
     <div>
@@ -2319,13 +2343,175 @@ body.sm-open {
   </div>
   <div class="breadcrumb" id="breadcrumb"></div>
   <div style="display:flex;align-items:center;gap:8px;">
-    <button id="courses-nav-btn" onclick="openCoursesPage()" title="الدورات" aria-label="الدورات" style="background:transparent;border:none;color:inherit;cursor:pointer;font-size:.85rem;font-weight:700;opacity:.85;padding:4px 8px;display:flex;align-items:center;gap:4px;">📚 الدورات</button>
     <button id="dark-mode-btn" onclick="toggleDarkMode()" title="الوضع الليلي" aria-label="تبديل الوضع الليلي">🌙</button>
-    <div id="user-box">
+    <button class="ms-bell-btn" id="ms-bell-btn" onclick="msNotificationsPlaceholder()" aria-label="الإشعارات" title="الإشعارات">🔔</button>
+    <div id="user-box" style="display:none;">
       <button class="chatgpt-login-btn" onclick="loginWithGoogle()">🔐 دخول</button>
     </div>
   </div>
 </nav>
+
+<!-- ==================== QUICK NAV BAR — الرئيسية / مساعدة / دخول / تسجيل جديد / القائمة ==================== -->
+<nav class="quick-nav" id="quick-nav" aria-label="التنقل السريع">
+  <button class="qn-item" onclick="goHome()"><span class="qn-icon">🏠</span><span class="qn-label">الرئيسية</span></button>
+  <button class="qn-item" onclick="qnOpenHelp()"><span class="qn-icon">💬</span><span class="qn-label">مساعدة</span></button>
+  <button class="qn-item" id="qn-login-btn" onclick="loginWithGoogle()"><span class="qn-icon">⏻</span><span class="qn-label">دخول</span></button>
+  <button class="qn-item" id="qn-register-btn" onclick="qnRegister()"><span class="qn-icon">👤➕</span><span class="qn-label">تسجيل جديد</span></button>
+  <button class="qn-item" onclick="msOpenSidebar()"><span class="qn-icon">☰</span><span class="qn-label">القائمة</span></button>
+</nav>
+
+<!-- Help popover: WhatsApp / Telegram -->
+<div id="qn-help-overlay" onclick="qnCloseHelp()"></div>
+<div id="qn-help-sheet" role="dialog" aria-label="تواصل معنا" aria-hidden="true">
+  <div class="qn-help-head">
+    <strong>تواصل معنا</strong>
+    <button class="qn-help-close" onclick="qnCloseHelp()" aria-label="إغلاق">✕</button>
+  </div>
+  <a class="qn-help-option qn-help-wa" href="https://wa.me/201147908978" target="_blank" rel="noopener">
+    <span class="qn-help-icon">💬</span>
+    <div><div class="qn-help-title">WhatsApp</div><div class="qn-help-sub">تواصل معنا مباشرة على واتساب</div></div>
+  </a>
+  <a class="qn-help-option qn-help-tg" href="https://t.me/+201147908978" target="_blank" rel="noopener">
+    <span class="qn-help-icon">✈️</span>
+    <div><div class="qn-help-title">Telegram</div><div class="qn-help-sub">تواصل معنا على تليجرام</div></div>
+  </a>
+</div>
+
+<style>
+.quick-nav {
+  display: flex;
+  align-items: stretch;
+  justify-content: space-around;
+  background: linear-gradient(135deg, var(--primary, #0a3d62), var(--secondary, #1a5276));
+  position: sticky;
+  top: 64px;
+  z-index: 998;
+  box-shadow: 0 2px 10px rgba(0,0,0,.12);
+  padding: 4px 2px;
+}
+@media (max-width: 600px) {
+  .quick-nav { top: 56px; }
+}
+.qn-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  background: transparent;
+  border: none;
+  color: #fff;
+  cursor: pointer;
+  padding: 6px 2px;
+  border-radius: 10px;
+  font-family: inherit;
+  min-width: 0;
+}
+.qn-item:hover, .qn-item:active { background: rgba(255,255,255,.14); }
+.qn-icon { font-size: 1.15rem; line-height: 1; }
+.qn-label { font-size: .62rem; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; opacity: .95; }
+@media (max-width: 480px) {
+  .qn-icon { font-size: 1.05rem; }
+  .qn-label { font-size: .58rem; }
+  .qn-item { padding: 5px 1px; }
+}
+
+#qn-help-overlay {
+  position: fixed; inset: 0; background: rgba(8,16,28,.55);
+  z-index: 2400; opacity: 0; pointer-events: none; transition: opacity .2s ease;
+}
+#qn-help-overlay.open { opacity: 1; pointer-events: auto; }
+#qn-help-sheet {
+  position: fixed; left: 50%; top: 50%;
+  transform: translate(-50%, -50%) scale(.94);
+  width: min(90vw, 360px);
+  background: var(--bg-card, #fff);
+  color: var(--text-main, var(--text));
+  border-radius: 18px;
+  box-shadow: 0 24px 60px rgba(0,0,0,.3);
+  z-index: 2401;
+  opacity: 0; pointer-events: none;
+  transition: opacity .2s ease, transform .2s ease;
+  overflow: hidden;
+}
+#qn-help-sheet.open { opacity: 1; pointer-events: auto; transform: translate(-50%, -50%) scale(1); }
+.qn-help-head { display: flex; align-items: center; justify-content: space-between; padding: 16px 18px; border-bottom: 1px solid rgba(0,0,0,.08); font-size: 1rem; }
+.qn-help-close { background: transparent; border: none; font-size: 1.1rem; cursor: pointer; color: inherit; opacity: .7; }
+.qn-help-option { display: flex; align-items: center; gap: 12px; padding: 14px 18px; text-decoration: none; color: inherit; border-bottom: 1px solid rgba(0,0,0,.06); }
+.qn-help-option:last-child { border-bottom: none; }
+.qn-help-option:hover { background: rgba(10,61,98,.06); }
+.qn-help-icon { font-size: 1.6rem; flex-shrink: 0; }
+.qn-help-title { font-weight: 800; font-size: .92rem; }
+.qn-help-sub { font-size: .74rem; opacity: .65; margin-top: 2px; }
+[data-theme="dark"] .qn-help-head, [data-theme="dark"] .qn-help-option { border-color: rgba(255,255,255,.08); }
+[data-theme="dark"] .qn-help-option:hover { background: rgba(255,255,255,.06); }
+</style>
+
+<script>
+window.qnOpenHelp = function() {
+  document.getElementById('qn-help-overlay').classList.add('open');
+  var sheet = document.getElementById('qn-help-sheet');
+  sheet.classList.add('open');
+  sheet.setAttribute('aria-hidden', 'false');
+};
+window.qnCloseHelp = function() {
+  document.getElementById('qn-help-overlay').classList.remove('open');
+  var sheet = document.getElementById('qn-help-sheet');
+  sheet.classList.remove('open');
+  sheet.setAttribute('aria-hidden', 'true');
+};
+document.addEventListener('keydown', function(ev) {
+  if (ev.key === 'Escape' || ev.key === 'Esc') window.qnCloseHelp();
+});
+// "تسجيل جديد" — المنصة تعتمد على Google OAuth فقط، فإنشاء الحساب يتم تلقائيًا
+// بنفس تسجيل الدخول بجوجل (لا يوجد فورم تسجيل منفصل في نظام الـ Auth الحالي).
+window.qnRegister = function() {
+  if (typeof _showToast === 'function') {
+    _showToast('التسجيل يتم تلقائيًا بحساب Google — اختر حسابك للمتابعة', 'info');
+  }
+  if (typeof loginWithGoogle === 'function') loginWithGoogle();
+};
+// إخفاء زرار "دخول"/"تسجيل جديد" من الشريط لما المستخدم يكون مسجّل بالفعل
+(function() {
+  var _origSync = window._syncMobileSidebarUser;
+  window._syncMobileSidebarUser = function(user, isAdmin, isSuperAdmin, isBranchAdmin) {
+    if (typeof _origSync === 'function') _origSync(user, isAdmin, isSuperAdmin, isBranchAdmin);
+    var loginBtn = document.getElementById('qn-login-btn');
+    var registerBtn = document.getElementById('qn-register-btn');
+    if (loginBtn) loginBtn.style.display = user ? 'none' : '';
+    if (registerBtn) registerBtn.style.display = user ? 'none' : '';
+  };
+})();
+</script>
+
+<!-- ==================== MOBILE SIDEBAR (Phase 2 — UI فقط، بدون تعديل Auth/DB) ==================== -->
+<div id="ms-sidebar-overlay" onclick="msCloseSidebar()"></div>
+<aside id="ms-sidebar" role="dialog" aria-label="القائمة الرئيسية" aria-hidden="true">
+  <div class="ms-sidebar-head">
+    <strong>القائمة</strong>
+    <button class="ms-sidebar-close" onclick="msCloseSidebar()" aria-label="إغلاق القائمة" title="إغلاق">✕</button>
+  </div>
+  <div class="ms-sidebar-profile" id="ms-sidebar-profile">
+    <button class="ms-sidebar-login-btn" onclick="loginWithGoogle()">👤 تسجيل الدخول</button>
+  </div>
+  <nav class="ms-sidebar-nav" id="ms-sidebar-nav">
+    <button class="ms-nav-item" data-nav="home" onclick="msNavigate('home')"><span class="ms-nav-icon">🏠</span> الرئيسية</button>
+    <button class="ms-nav-item" data-nav="courses" onclick="msNavigate('courses')"><span class="ms-nav-icon">📚</span> الدورات</button>
+    <button class="ms-nav-item" data-nav="stages" onclick="msNavigate('stages')"><span class="ms-nav-icon">🎓</span> الفرق الدراسية</button>
+    <button class="ms-nav-item" data-nav="branches" onclick="msNavigate('branches')"><span class="ms-nav-icon">🏥</span> الشعب</button>
+    <button class="ms-nav-item" data-nav="subjects" onclick="msNavigate('subjects')"><span class="ms-nav-icon">📖</span> المواد</button>
+    <button class="ms-nav-item" data-nav="paths" onclick="msNavigate('paths')"><span class="ms-nav-icon">🗺️</span> مساراتي</button>
+    <button class="ms-nav-item" data-nav="chat" onclick="msNavigate('chat')"><span class="ms-nav-icon">💬</span> المحادثات</button>
+    <button class="ms-nav-item" data-nav="notifications" onclick="msNavigate('notifications')"><span class="ms-nav-icon">🔔</span> الإشعارات</button>
+    <div class="ms-nav-sep" id="ms-nav-sep-admin" hidden></div>
+    <button class="ms-nav-item" data-nav="admin" id="ms-nav-admin" onclick="msNavigate('admin')" hidden><span class="ms-nav-icon">🛡️</span> <span id="ms-nav-admin-label">لوحة التحكم</span></button>
+    <button class="ms-nav-item" data-nav="settings" onclick="msNavigate('settings')"><span class="ms-nav-icon">⚙️</span> الإعدادات</button>
+  </nav>
+  <div class="ms-sidebar-footer" id="ms-sidebar-footer" hidden>
+    <button class="ms-nav-item ms-logout" onclick="msNavigate('logout')"><span class="ms-nav-icon">🚪</span> تسجيل الخروج</button>
+  </div>
+</aside>
 
 <!-- ==================== PAGE: HOME ==================== -->
 <div id="page-home" class="page active">
@@ -5345,6 +5531,7 @@ async function _renderUserBox(user, role) {
     document.body.classList.remove('is-admin');
     document.body.classList.remove('content-protected'); // المحتوى مجاني للجميع
     box.innerHTML = '<button class="chatgpt-login-btn" onclick="loginWithGoogle()">🔐 دخول</button>';
+    if (typeof window._syncMobileSidebarUser === 'function') window._syncMobileSidebarUser(null, false, false, false);
     return;
   }
   // role يأتي من profiles.role في Supabase — ليس من HTML
@@ -5360,8 +5547,6 @@ async function _renderUserBox(user, role) {
   window._isBranchAdmin = isBranchAdmin;
   window._isSectionAdmin = isBranchAdmin; // اسم بديل مطابق، للتوافق مع تسمية section_admins
   window._currentUserRole = role || 'user';
-  console.log('[SECTION-ADMIN-DEBUG] _renderUserBox: _isAdminUser=', window._isAdminUser,
-    '| _isBranchAdmin=', window._isBranchAdmin, '| _currentUserRole=', window._currentUserRole);
   if (isAdmin) {
     document.body.classList.add('is-admin');
     document.body.classList.remove('content-protected');
@@ -5383,9 +5568,6 @@ async function _renderUserBox(user, role) {
       if (isBranchAdmin) { await _loadBranchAdminScope(user.id); }
       adminLoadSections();
       _applyBranchAdminPanelGating();
-      var _adminBtn = box.querySelector('button[onclick="toggleAdminPanel()"]');
-      console.log('[SECTION-ADMIN-DEBUG] _renderUserBox: هل Admin button تم إنشاؤه؟', !!_adminBtn,
-        '| هل هو hidden؟', _adminBtn ? (_adminBtn.offsetParent === null || getComputedStyle(_adminBtn).display === 'none') : 'N/A');
     })();
   } else {
     box.innerHTML =
@@ -5394,6 +5576,7 @@ async function _renderUserBox(user, role) {
       + '<button class="logout-btn" onclick="logoutUser(this)">خروج</button>'
       + '</div>';
   }
+  if (typeof window._syncMobileSidebarUser === 'function') window._syncMobileSidebarUser(user, isAdmin, isSuperAdmin, isBranchAdmin);
 }
 
 // ── fetchUserRole: جلب الـ role من profiles ──────────────────
@@ -5421,24 +5604,15 @@ async function _resolveAdminStatus(userId) {
   var isLegacyBranchAdmin = (role === 'branch_admin');
   var hasSectionAdminRows = false;
   if (!isSuperAdmin && window.supabase && userId) {
-    console.log('[SECTION-ADMIN-DEBUG] _resolveAdminStatus: قبل query → جدول: section_admins | فلتر: user_id=' + userId + ', is_active=true, role=admin');
     try {
       var saCheck = await window.supabase
         .from('section_admins')
         .select('id', { count: 'exact', head: true })
         .eq('user_id', userId).eq('is_active', true).eq('role', 'admin');
-      console.log('[SECTION-ADMIN-DEBUG] _resolveAdminStatus: بعد query → error:', saCheck.error, '| count:', saCheck.count);
       hasSectionAdminRows = !saCheck.error && (saCheck.count || 0) > 0;
-    } catch(e) { console.warn('[section_admins] check failed:', e && e.message); console.log('[SECTION-ADMIN-DEBUG] _resolveAdminStatus: query section_admins استثناء:', e && e.message); }
+    } catch(e) { console.warn('[section_admins] check failed:', e && e.message); }
   }
   var isBranchAdmin = isLegacyBranchAdmin || hasSectionAdminRows;
-  console.log('[SECTION-ADMIN-DEBUG] _resolveAdminStatus(' + userId + ') نتيجة:', {
-    role: role,
-    isSuperAdmin: isSuperAdmin,
-    isLegacyBranchAdmin: isLegacyBranchAdmin,
-    hasSectionAdminRows: hasSectionAdminRows,
-    isBranchAdmin: isBranchAdmin
-  });
   // isSectionAdmin: اسم بديل مطابق تمامًا لـ isBranchAdmin — نفس القيمة، فقط للتوافق
   // مع أي كود جديد يتوقع هذا الاسم تحديدًا (المصطلح الرسمي الآن هو "Section Admin")
   return {
@@ -5482,25 +5656,19 @@ async function _computeSectionSubtree(rootId) {
 
 // يجلب كل الشعب المُسندة لهذا الأدمن (من profiles.managed_section_id القديم + section_admins الجديد)
 async function _loadBranchAdminScope(userId) {
-  console.log('[SECTION-ADMIN-DEBUG] _loadBranchAdminScope: بدأت التنفيذ | user.id:', userId);
   window._branchAdminSectionIds = [];
   window._branchAdminPerms = null;
   window._branchAdminRows = [];
   window._branchAdminRoots = [];
-  if (!window.supabase || !userId) {
-    console.log('[SECTION-ADMIN-DEBUG] _loadBranchAdminScope: توقفت مبكراً — supabase أو userId غير موجود');
-    return;
-  }
+  if (!window.supabase || !userId) return;
   try {
     var roots = []; // { id, title }
 
     // 1) النظام القديم — لسه بيشتغل بدون أي تغيير عشان الأدمنز المُعيّنين بيه أصلاً
-    console.log('[SECTION-ADMIN-DEBUG] _loadBranchAdminScope: قبل query → جدول: profiles | فلتر: id=' + userId);
     var profRes = await window.supabase
       .from('profiles')
       .select('managed_section_id, site_sections:managed_section_id(id, title)')
       .eq('id', userId).maybeSingle();
-    console.log('[SECTION-ADMIN-DEBUG] _loadBranchAdminScope: بعد query profiles → error:', profRes.error, '| data:', profRes.data);
     if (!profRes.error && profRes.data && profRes.data.managed_section_id) {
       roots.push({
         id: profRes.data.managed_section_id,
@@ -5510,13 +5678,10 @@ async function _loadBranchAdminScope(userId) {
 
     // 2) النظام الجديد — section_admins هو المصدر الصحيح الآن لتعيين أدمن الشعبة،
     //    ويدعم أكثر من شعبة لنفس المستخدم (صف لكل شعبة)
-    console.log('[SECTION-ADMIN-DEBUG] _loadBranchAdminScope: قبل query → جدول: section_admins | فلتر: user_id=' + userId + ', is_active=true, role=admin');
     var saRes = await window.supabase
       .from('section_admins')
       .select('section_id, role, is_active, site_sections:section_id(id, title)')
       .eq('user_id', userId).eq('is_active', true).eq('role', 'admin');
-    console.log('[SECTION-ADMIN-DEBUG] _loadBranchAdminScope: بعد query section_admins → error:', saRes.error,
-      '| عدد rows:', (saRes.data || []).length, '| rows:', saRes.data);
     if (!saRes.error && Array.isArray(saRes.data)) {
       saRes.data.forEach(function(row) {
         if (!row.section_id) return;
@@ -5529,22 +5694,13 @@ async function _loadBranchAdminScope(userId) {
     }
 
     window._branchAdminRoots = roots;
-    console.log('[SECTION-ADMIN-DEBUG] _loadBranchAdminScope: _branchAdminRoots =', roots);
-    if (!roots.length) {
-      console.log('[SECTION-ADMIN-DEBUG] _loadBranchAdminScope: لا توجد أي شعبة مُسندة (roots فارغة) — توقفت هنا');
-      return;
-    }
+    if (!roots.length) return;
 
     // لو عنده أكثر من شعبة، يفضل نفس اختياره السابق لو لسه صالح، وإلا أول شعبة في القائمة
     var activeId = (window._branchAdminActiveRoot && roots.some(function(r) { return r.id === window._branchAdminActiveRoot; }))
       ? window._branchAdminActiveRoot : roots[0].id;
     await window._selectBranchAdminRoot(activeId);
-    console.log('[SECTION-ADMIN-DEBUG] _loadBranchAdminScope: انتهت | _branchAdminSectionIds:', window._branchAdminSectionIds,
-      '| _branchAdminRoots:', window._branchAdminRoots, '| activeSectionId:', window._activeSectionId);
-  } catch(e) {
-    console.warn('[BranchAdmin] خطأ:', e.message);
-    console.log('[SECTION-ADMIN-DEBUG] _loadBranchAdminScope: استثناء:', e && e.message);
-  }
+  } catch(e) { console.warn('[BranchAdmin] خطأ:', e.message); }
 }
 
 // ── يبدّل الشعبة المعروضة حالياً في لوحة أدمن الشعبة (لمن يدير أكثر من شعبة) ──
@@ -5620,14 +5776,10 @@ window.checkUser = async function() {
     }
 
     if (session && session.user) {
-      console.log('[SECTION-ADMIN-DEBUG] onAuthStateChange: session موجودة؟', true,
-        '| user.id:', session.user.id, '| user.email:', session.user.email, '| event:', event);
       // ── Admin Middleware: جلب الـ role من قاعدة البيانات ──
       var role = await _fetchUserRole(session.user.id);
-      console.log('[SECTION-ADMIN-DEBUG] onAuthStateChange: role من profiles =', role);
       _renderUserBox(session.user, role);
     } else {
-      console.log('[SECTION-ADMIN-DEBUG] onAuthStateChange: session موجودة؟', false, '| event:', event);
       _renderUserBox(null, null);
     }
 
@@ -5680,10 +5832,6 @@ window.checkUser = async function() {
     return;
   }
 
-  console.log('[SECTION-ADMIN-DEBUG] checkUser: session موجودة؟', !!session,
-    '| user.id:', session && session.user ? session.user.id : null,
-    '| user.email:', session && session.user ? session.user.email : null);
-
   if (session && session.user && session.user.email) {
     var isBanned = await _isBanned(session.user.email);
     if (isBanned) {
@@ -5696,7 +5844,6 @@ window.checkUser = async function() {
 
   if (session && session.user) {
     var role = await _fetchUserRole(session.user.id);
-    console.log('[SECTION-ADMIN-DEBUG] checkUser: role من profiles =', role);
     _renderUserBox(session.user, role);
   } else {
     _renderUserBox(null, null);
@@ -7356,24 +7503,16 @@ function apSwitchTab(tab) {
 
 // ── لوحة إحصائيات مقيَّدة بشعبة أدمن الشعبة فقط (تقرأ من site_sections + section_content + subscriptions) ──
 async function _apLoadBranchDashboard() {
-  console.log('[SECTION-ADMIN-DEBUG] _apLoadBranchDashboard: تم استدعاؤها | activeSectionId=', window._activeSectionId,
-    '| section scope (_branchAdminSectionIds)=', window._branchAdminSectionIds,
-    '| _branchAdminRoots=', window._branchAdminRoots);
   var heading = document.querySelector('#ap-panel-dashboard .ap-section-heading');
   var branchTitle = (window._branchAdminRows[0] && window._branchAdminRows[0].site_sections && window._branchAdminRows[0].site_sections.title) || 'شعبتك';
   if (heading) heading.textContent = '📊 إحصائيات شعبة "' + branchTitle + '" فقط';
   var scope = window._branchAdminSectionIds || [];
   if (!scope.length) { scope = [-1]; }
-  console.log('[SECTION-ADMIN-DEBUG] _apLoadBranchDashboard: IDs التي سيتم الاستعلام عنها =', scope);
   try {
-    console.log('[SECTION-ADMIN-DEBUG] _apLoadBranchDashboard: قبل query → جدول: section_content | فلتر: section_id IN', scope);
-    console.log('[SECTION-ADMIN-DEBUG] _apLoadBranchDashboard: قبل query → جدول: subscriptions | فلتر: section_id IN', scope);
     var [contentRes, subsRes] = await Promise.all([
       window.supabase.from('section_content').select('id', { count: 'exact', head: true }).in('section_id', scope),
       window.supabase.from('subscriptions').select('id, payment_status').in('section_id', scope)
     ]);
-    console.log('[SECTION-ADMIN-DEBUG] _apLoadBranchDashboard: بعد query section_content → error:', contentRes.error, '| count:', contentRes.count);
-    console.log('[SECTION-ADMIN-DEBUG] _apLoadBranchDashboard: بعد query subscriptions → error:', subsRes.error, '| data count:', (subsRes.data || []).length);
     var allSubs = subsRes.data || [];
     _apSetStat('ap-stat-users',   scope.length);       // عدد أقسام الشعبة (فصول/مواد)
     _apSetStat('ap-stat-pending', allSubs.filter(function(s){ return s.payment_status === 'pending'; }).length);
@@ -7385,11 +7524,7 @@ async function _apLoadBranchDashboard() {
     // بدّل تسمية بطاقة "المستخدمين" لتناسب أدمن الشعبة
     var lbl = document.querySelector('#ap-stat-users')?.nextElementSibling;
     if (lbl) lbl.textContent = 'أقسام الشعبة';
-  } catch(e) {
-    console.warn('[BranchDashboard] error:', e.message);
-    console.log('[SECTION-ADMIN-DEBUG] _apLoadBranchDashboard: استثناء:', e && e.message);
-  }
-  console.log('[SECTION-ADMIN-DEBUG] FLOW COMPLETE');
+  } catch(e) { console.warn('[BranchDashboard] error:', e.message); }
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -7483,7 +7618,7 @@ async function baLoadList() {
           return '<tr>'
             + '<td>' + _apEsc(s.title) + '</td>'
             + '<td>' + _apEsc(adm.full_name || '—') + '</td>'
-            + '<td style="direction:ltr;font-size:.72rem;">' + _apEsc(adm.email || '—') + '</td>'
+            + '<td class="ap-email-cell" style="font-size:.72rem;">' + _apEsc(adm.email || '—') + '</td>'
             + '<td><span class="ap-badge admin" style="background:#eafaf1;color:#17a589;">✅ فعال</span></td>'
             + '<td style="white-space:nowrap;">'
               + '<button class="ap-btn ap-btn-primary" style="margin-left:4px;" onclick="baOpenAssignModal(' + s.id + ', \'' + titleEsc + '\', \'change\')">🔄 تغيير</button>'
@@ -7573,7 +7708,7 @@ async function baSearchUsers(q) {
       return '<div class="ba-user-result" style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;border:1px solid #eee;border-radius:8px;margin-bottom:6px;cursor:pointer;" '
         + 'onclick=\'baSelectUser(' + JSON.stringify(u.id) + ', ' + JSON.stringify(u.email || "") + ', ' + JSON.stringify(u.full_name || "") + ')\'>'
         + '<div><div style="font-weight:700;font-size:.82rem;">' + _apEsc(u.full_name || 'بدون اسم') + already + '</div>'
-        + '<div style="font-size:.7rem;color:#888;direction:ltr;text-align:right;">' + _apEsc(u.email || '') + ' · #' + short + '</div></div>'
+        + '<div class="ap-email-cell" style="font-size:.7rem;color:#888;">' + _apEsc(u.email || '') + ' · #' + short + '</div></div>'
         + '<button class="ap-btn ap-btn-ghost" style="padding:4px 10px;font-size:.72rem;">اختيار</button></div>';
     }).join('');
   } catch(err) {
@@ -7685,7 +7820,6 @@ async function _apGetProfilesMap(userIds) {
 // DASHBOARD TAB
 // ────────────────────────────────────────────────────────────────
 async function apLoadDashboard() {
-  console.log('[SECTION-ADMIN-DEBUG] apLoadDashboard: تم استدعاؤها | _isBranchAdmin=', window._isBranchAdmin);
   if (!window.supabase) return;
   // ── أدمن الشعبة: إحصائيات شعبته فقط، وليس إحصائيات الموقع كله ──
   if (window._isBranchAdmin) { return _apLoadBranchDashboard(); }
@@ -7749,7 +7883,7 @@ async function apLoadDashboard() {
       + recent.map(function(s) {
         var prof = profMap[s.user_id] || {};
         return '<tr><td>' + _apEsc(prof.full_name || '—') + '</td>'
-          + '<td style="direction:ltr;text-align:right;">' + _apEsc(prof.email || '—') + '</td>'
+          + '<td class="ap-email-cell">' + _apEsc(prof.email || '—') + '</td>'
           + '<td>' + (statusLabels[s.payment_status] || s.payment_status) + '</td>'
           + '<td>' + _apDate(s.created_at) + '</td></tr>';
       }).join('')
@@ -7791,7 +7925,7 @@ async function apLoadRequests() {
         var prof = profMap[r.user_id] || {};
         return '<tr>'
           + '<td>' + _apEsc(prof.full_name || '—') + '</td>'
-          + '<td style="direction:ltr;font-size:.72rem;">' + _apEsc(prof.email || '—') + '</td>'
+          + '<td class="ap-email-cell" style="font-size:.72rem;">' + _apEsc(prof.email || '—') + '</td>'
           + '<td>' + _apEsc(r.specialty || '—') + '</td>'
           + '<td><span class="ap-badge pending">' + (r.subscription_type === 'yearly' ? '📅 سنوي' : '📆 شهري') + '</span></td>'
           + '<td>' + _apDate(r.requested_at) + '</td>'
@@ -7852,7 +7986,7 @@ async function apLoadSubscriptions() {
         var prof = profMap[s.user_id] || {};
         return '<tr>'
           + '<td>' + _apEsc(prof.full_name || '—') + '</td>'
-          + '<td style="direction:ltr;font-size:.72rem;">' + _apEsc(prof.email || '—') + '</td>'
+          + '<td class="ap-email-cell" style="font-size:.72rem;">' + _apEsc(prof.email || '—') + '</td>'
           + '<td>' + (statusMap[s.payment_status] || s.payment_status) + '</td>'
           + '<td>' + (s.subscription_type === 'yearly' ? '📅 سنوي' : '📆 شهري') + '</td>'
           + '<td>' + _apDate(s.end_date) + '</td>'
@@ -7949,7 +8083,7 @@ async function apLoadDivisionSubs() {
         var reasonRow = (r.payment_status === 'cancelled' && r.reject_reason)
           ? '<div style="font-size:.68rem;color:#e74c3c;margin-top:4px;">سبب الرفض: ' + _apEsc(r.reject_reason) + '</div>' : '';
         return '<tr>'
-          + '<td style="direction:ltr;font-size:.72rem;">' + _apEsc(prof.email || r.user_id) + '</td>'
+          + '<td class="ap-email-cell" style="font-size:.72rem;">' + _apEsc(prof.email || r.user_id) + '</td>'
           + '<td>' + _apEsc(secTitle) + '</td>'
           + '<td>' + _divSubStatusLabel(r) + reasonRow + '</td>'
           + '<td>' + receiptCell + '</td>'
@@ -8075,7 +8209,7 @@ async function apLoadPayments() {
           actions += '<span style="color:#aaa;font-size:.72rem;">تمت المراجعة</span>';
         }
         return '<tr>'
-          + '<td style="direction:ltr;font-size:.72rem;">' + _apEsc(prof.email || r.user_id) + '</td>'
+          + '<td class="ap-email-cell" style="font-size:.72rem;">' + _apEsc(prof.email || r.user_id) + '</td>'
           + '<td>' + _apEsc(label) + '</td>'
           + '<td>' + _apEsc(price) + '</td>'
           + '<td>' + _apEsc(method) + '</td>'
@@ -8150,7 +8284,7 @@ function _apRenderUsers(profiles, bannedEmails) {
       var isBanned = bannedEmails.has((u.email || '').toLowerCase());
       var isAdmin  = (u.role === 'admin'); // من profiles.role — لا مقارنة بريد
       return '<tr>'
-        + '<td style="direction:ltr;font-size:.72rem;">' + _apEsc(u.email || '—') + '</td>'
+        + '<td class="ap-email-cell" style="font-size:.72rem;">' + _apEsc(u.email || '—') + '</td>'
         + '<td>' + _apEsc(u.full_name || '—') + '</td>'
         + '<td>' + (subMap[u.subscription_status] || u.subscription_status || '—') + '</td>'
         + '<td>'
@@ -10862,45 +10996,34 @@ window.requireAdmin = async function(silent) {
 window.requireBranchAccess = async function(sectionId, silent) {
   if (!window.supabase) {
     if (!silent) _secAlert('النظام غير جاهز');
-    console.log('[SECTION-ADMIN-DEBUG] requireBranchAccess: supabase غير جاهز → رفض');
     return { ok: false };
   }
   var sessionRes = await window.supabase.auth.getSession();
   var session    = sessionRes && sessionRes.data && sessionRes.data.session;
   if (!session || !session.user) {
     if (!silent) _secAlert('يجب تسجيل الدخول أولاً');
-    console.log('[SECTION-ADMIN-DEBUG] requireBranchAccess: لا يوجد session → رفض | requested sectionId:', sectionId);
     return { ok: false };
   }
   var status = await _resolveAdminStatus(session.user.id);
-  console.log('[SECTION-ADMIN-DEBUG] requireBranchAccess: isSuperAdmin=', status.isSuperAdmin,
-    '| isBranchAdmin=', status.isBranchAdmin, '| requested sectionId=', sectionId,
-    '| _branchAdminSectionIds=', window._branchAdminSectionIds);
   if (status.isSuperAdmin) {
-    console.log('[SECTION-ADMIN-DEBUG] requireBranchAccess: النتيجة النهائية = ok (Super Admin)');
     return { ok: true, user: session.user, role: status.role, isSuperAdmin: true, isBranchAdmin: false, isSectionAdmin: false };
   }
   if (status.isBranchAdmin) {
     // تأكد من تحميل نطاق شعبته/شعبه (لو لسه ما اتحملش) — من المصدرين معاً
     if (!Array.isArray(window._branchAdminSectionIds) || !window._branchAdminSectionIds.length) {
-      console.log('[SECTION-ADMIN-DEBUG] requireBranchAccess: _branchAdminSectionIds فارغة → استدعاء _loadBranchAdminScope الآن');
       await _loadBranchAdminScope(session.user.id);
     }
     var scope = window._branchAdminSectionIds || [];
     var sid = (sectionId === null || sectionId === undefined || sectionId === '') ? null : Number(sectionId);
-    console.log('[SECTION-ADMIN-DEBUG] requireBranchAccess: scope بعد التحميل =', scope, '| sid=', sid);
     if (sid === null || scope.indexOf(sid) > -1) {
-      console.log('[SECTION-ADMIN-DEBUG] requireBranchAccess: النتيجة النهائية = ok (Branch/Section Admin)');
       return { ok: true, user: session.user, role: status.role, isSuperAdmin: false, isBranchAdmin: true, isSectionAdmin: true };
     }
     if (!silent) _secAlert('⛔ هذا القسم خارج نطاق شعبتك');
     console.warn('[SECURITY] Section admin tried to access out-of-scope section:', sid, session.user.email);
-    console.log('[SECTION-ADMIN-DEBUG] requireBranchAccess: النتيجة النهائية = رفض | السبب: sectionId خارج نطاق scope');
     return { ok: false };
   }
   if (!silent) _secAlert('⛔ ليس لديك صلاحية الوصول لهذه العملية');
   console.warn('[SECURITY] Unauthorized admin action attempt by:', session.user.email);
-  console.log('[SECTION-ADMIN-DEBUG] requireBranchAccess: النتيجة النهائية = رفض | السبب: ليس Super Admin ولا Branch/Section Admin');
   return { ok: false };
 };
 
@@ -10947,11 +11070,8 @@ window.unbanUser = async function(email) {
 // حماية toggleAdminPanel — يفتح لـ Super Admin أو Branch Admin (كل واحد يشوف نطاقه)
 var _origToggleAdmin = window.toggleAdminPanel;
 window.toggleAdminPanel = async function() {
-  console.log('[SECTION-ADMIN-DEBUG] toggleAdminPanel: تم استدعاء الدالة',
-    '| _isAdminUser=', window._isAdminUser, '| _isBranchAdmin=', window._isBranchAdmin);
   var check = await requireBranchAccess(null, true);
   if (!check.ok) {
-    console.log('[SECTION-ADMIN-DEBUG] toggleAdminPanel: رُفض الوصول عبر requireBranchAccess');
     _secAlert('⛔ صلاحيات الأدمن مطلوبة');
     return;
   }
@@ -10999,10 +11119,8 @@ _apFunctions.forEach(function(fnName) {
 var _origApLoadDashboard = window.apLoadDashboard;
 if (typeof _origApLoadDashboard === 'function') {
   window.apLoadDashboard = async function() {
-    console.log('[SECTION-ADMIN-DEBUG] apLoadDashboard (wrapper): تم استدعاؤها');
     var check = await requireBranchAccess(null, true);
     if (!check.ok) {
-      console.log('[SECTION-ADMIN-DEBUG] apLoadDashboard (wrapper): رُفض عبر requireBranchAccess — لن يتم تحميل البيانات');
       var el = document.getElementById('ap-recent-activity');
       if (el) el.innerHTML = '<div class="ap-empty" style="color:#e74c3c;">⛔ غير مصرح</div>';
       return;
@@ -13663,5 +13781,337 @@ self.addEventListener('fetch', function(e) {
   #whatsapp-float::after { display: none; }
 }
 </style>
+
+<!-- ============================================================ -->
+<!-- PHASE 2 — MOBILE HEADER + HAMBURGER SIDEBAR (UI فقط)          -->
+<!-- لا تعديل على: Auth / Supabase schema / Chat / Notifications   -->
+<!-- كل شيء هنا إضافي، ولا يحذف أو يعدّل أي عنصر أو دالة موجودة    -->
+<!-- ============================================================ -->
+<style>
+:root {
+  --z-header: 1000;
+  --z-overlay: 2000;
+  --z-sidebar: 2100;
+  --z-modal: 3000;
+}
+
+/* Hamburger + Bell — ظاهرين دلوقتي على كل الشاشات (Desktop + Mobile) */
+.ms-hamburger, .ms-bell-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: rgba(255,255,255,.14);
+  color: #fff;
+  border-radius: 10px;
+  cursor: pointer;
+  touch-action: manipulation;
+  flex-shrink: 0;
+}
+.ms-hamburger { width: 40px; height: 40px; min-width: 40px; font-size: 1.25rem; }
+.ms-bell-btn { width: 38px; height: 38px; font-size: 1.05rem; position: relative; }
+.ms-hamburger:hover, .ms-bell-btn:hover { background: rgba(255,255,255,.24); transform: scale(1.05); transition: background .2s ease, transform .2s ease; }
+
+/* Overlay */
+#ms-sidebar-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(8,16,28,.55);
+  z-index: var(--z-overlay);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .25s ease;
+}
+#ms-sidebar-overlay.open { opacity: 1; pointer-events: auto; }
+
+/* Sidebar — يفتح من اليمين (الموقع RTL) */
+#ms-sidebar {
+  position: fixed;
+  top: 0;
+  right: -320px;
+  width: min(82vw, 300px);
+  max-width: 300px;
+  height: 100vh;
+  height: 100dvh;
+  background: var(--bg-card, #fff);
+  color: var(--text-main, var(--text));
+  z-index: var(--z-sidebar);
+  box-shadow: -12px 0 40px rgba(0,0,0,.25);
+  transition: right .28s ease, visibility 0s linear .28s;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+  box-sizing: border-box;
+  visibility: hidden;
+  pointer-events: none;
+}
+#ms-sidebar.open {
+  right: 0;
+  visibility: visible;
+  pointer-events: auto;
+  transition: right .28s ease, visibility 0s linear 0s;
+}
+#ms-sidebar * { box-sizing: border-box; max-width: 100%; overflow-wrap: anywhere; }
+
+.ms-sidebar-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 16px 12px;
+  background: linear-gradient(135deg, var(--primary) 0%, #1a5276 60%, #154360 100%);
+  color: #fff;
+  flex-shrink: 0;
+}
+.ms-sidebar-close {
+  width: 34px; height: 34px;
+  border: none; border-radius: 8px;
+  background: rgba(255,255,255,.16);
+  color: #fff; font-size: 1.05rem; cursor: pointer;
+  touch-action: manipulation;
+}
+
+.ms-sidebar-profile {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  border-bottom: 1px solid rgba(0,0,0,.06);
+  flex-shrink: 0;
+}
+[data-theme="dark"] .ms-sidebar-profile { border-bottom-color: rgba(255,255,255,.08); }
+.ms-sidebar-avatar {
+  width: 42px; height: 42px; border-radius: 50%;
+  background: linear-gradient(135deg, var(--primary), var(--teal));
+  color: #fff; display: flex; align-items: center; justify-content: center;
+  font-size: 1.1rem; font-weight: 900; flex-shrink: 0; overflow: hidden;
+}
+.ms-sidebar-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.ms-sidebar-userinfo { min-width: 0; overflow: hidden; flex: 1; }
+.ms-sidebar-username { font-weight: 800; font-size: .9rem; }
+.ms-sidebar-useremail { font-size: .72rem; color: var(--text-muted, #7a8a9a); direction: ltr; text-align: right; }
+.ms-sidebar-login-btn {
+  width: 100%; text-align: center; padding: 10px; border-radius: 10px;
+  background: var(--primary); color: #fff; border: none; font-weight: 800;
+  cursor: pointer; font-family: inherit; font-size: .85rem; touch-action: manipulation;
+}
+
+.ms-sidebar-nav {
+  flex: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 8px 0;
+}
+.ms-nav-item {
+  display: flex; align-items: center; gap: 10px;
+  width: 100%; padding: 12px 18px; border: none; background: transparent;
+  color: var(--text-main, var(--text)); font-family: inherit; font-size: .88rem; font-weight: 700;
+  cursor: pointer; text-align: right; touch-action: manipulation;
+  min-height: 44px;
+}
+.ms-nav-item .ms-nav-icon { font-size: 1.05rem; width: 22px; text-align: center; flex-shrink: 0; }
+.ms-nav-item:hover, .ms-nav-item:focus-visible { background: rgba(10,61,98,.06); }
+[data-theme="dark"] .ms-nav-item:hover, [data-theme="dark"] .ms-nav-item:focus-visible { background: rgba(255,255,255,.06); }
+.ms-nav-item.active { background: linear-gradient(90deg, rgba(10,61,98,.1), transparent); color: var(--primary); border-right: 3px solid var(--primary); padding-right: 15px; }
+[data-theme="dark"] .ms-nav-item.active { color: #6fd7c4; border-right-color: var(--teal); }
+.ms-nav-sep { height: 1px; background: rgba(0,0,0,.08); margin: 8px 12px; }
+[data-theme="dark"] .ms-nav-sep { background: rgba(255,255,255,.08); }
+.ms-nav-item[hidden] { display: none !important; }
+
+.ms-sidebar-footer {
+  padding: 10px 16px;
+  border-top: 1px solid rgba(0,0,0,.06);
+  flex-shrink: 0;
+}
+[data-theme="dark"] .ms-sidebar-footer { border-top-color: rgba(255,255,255,.08); }
+.ms-nav-item.ms-logout { color: var(--accent); }
+
+/* الـbreadcrumb نفسه ولا إخفاؤه لم يتغيرا — بس بقى محتاج مساحة إضافية دايمًا (مش بس موبايل)
+   عشان الهامبرجر + الجرس بقوا ظاهرين على كل الشاشات */
+.breadcrumb { max-width: calc(100vw - 280px) !important; }
+
+@media (max-width: 768px) {
+  .breadcrumb { max-width: calc(100vw - 235px) !important; }
+}
+@media (max-width: 480px) {
+  .breadcrumb { max-width: calc(100vw - 205px) !important; }
+}
+
+/* Desktop — سايدبار أعرض وأشيك شوية بدل عرض الموبايل الضيق */
+@media (min-width: 769px) {
+  #ms-sidebar { width: 340px; max-width: 340px; }
+  .ms-sidebar-avatar { width: 46px; height: 46px; font-size: 1.2rem; }
+  .ms-nav-item { font-size: .92rem; padding: 13px 20px; }
+}
+</style>
+
+<!-- ==================== MOBILE SIDEBAR MARKUP + LOGIC ==================== -->
+<script>
+(function() {
+  function els() {
+    return {
+      sidebarEl: document.getElementById('ms-sidebar'),
+      overlayEl: document.getElementById('ms-sidebar-overlay')
+    };
+  }
+
+  window.msOpenSidebar = function() {
+    var e = els();
+    if (!e.sidebarEl || !e.overlayEl) return;
+    e.sidebarEl.classList.add('open');
+    e.overlayEl.classList.add('open');
+    e.sidebarEl.setAttribute('aria-hidden', 'false');
+    document.body.style.overflow = 'hidden';
+    _msRefreshActiveFromPage();
+  };
+
+  window.msCloseSidebar = function() {
+    var e = els();
+    if (!e.sidebarEl || !e.overlayEl) return;
+    e.sidebarEl.classList.remove('open');
+    e.overlayEl.classList.remove('open');
+    e.sidebarEl.setAttribute('aria-hidden', 'true');
+    document.body.style.overflow = '';
+  };
+
+  document.addEventListener('keydown', function(ev) {
+    if (ev.key === 'Escape' || ev.key === 'Esc') window.msCloseSidebar();
+  });
+
+  function _msSetActive(key) {
+    document.querySelectorAll('#ms-sidebar-nav .ms-nav-item').forEach(function(btn) {
+      btn.classList.toggle('active', key && btn.getAttribute('data-nav') === key);
+    });
+  }
+
+  // تخمين "أفضل جهد" للصفحة الحالية عند فتح القائمة — بدون أي تعديل على نظام الصفحات (showPage) الحالي
+  function _msRefreshActiveFromPage() {
+    var activePage = document.querySelector('.page.active');
+    if (!activePage) { _msSetActive(null); return; }
+    var map = { 'page-home': 'home', 'page-courses': 'courses' };
+    _msSetActive(map[activePage.id] || null);
+  }
+
+  window.msNavigate = function(key) {
+    _msSetActive(key);
+    switch (key) {
+      case 'home':
+        if (typeof goHome === 'function') goHome();
+        break;
+      case 'courses':
+        if (typeof openCoursesPage === 'function') openCoursesPage();
+        break;
+      case 'stages':
+      case 'branches':
+      case 'subjects':
+        // لا توجد صفحات منفصلة للفرق/الشعب/المواد في المشروع الحالي — كلها ضمن قسم
+        // الاختيار في الرئيسية (site_sections)، فبنرجع للرئيسية ونمرر لنفس القسم
+        if (typeof goHome === 'function') goHome();
+        setTimeout(function() {
+          var target = document.getElementById('dynamic-home-sections');
+          if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }, 150);
+        break;
+      case 'paths':
+        // لا توجد بعد صفحة "مساراتي" للطالب (فقط لوحة إدارة المسارات الخاصة بالأدمن) —
+        // ملحوظة واجهة فقط بدون أي تعديل على الباك اند في هذه المرحلة
+        if (typeof _showToast === 'function') _showToast('صفحة "مساراتي" هتُضاف في مرحلة قادمة', 'info');
+        break;
+      case 'chat':
+        if (typeof _showToast === 'function') _showToast('ادخل شعبتك من الرئيسية لفتح محادثة الشعبة', 'info');
+        break;
+      case 'notifications':
+        window.msNotificationsPlaceholder();
+        break;
+      case 'admin':
+        if (typeof toggleAdminPanel === 'function') toggleAdminPanel();
+        break;
+      case 'settings':
+        if (typeof toggleDarkMode === 'function') toggleDarkMode();
+        break;
+      case 'logout':
+        var logoutBtn = document.querySelector('#user-box .logout-btn');
+        if (logoutBtn) logoutBtn.click();
+        else if (typeof logoutUser === 'function') logoutUser();
+        break;
+    }
+    window.msCloseSidebar();
+  };
+
+  window.msNotificationsPlaceholder = function() {
+    if (typeof _showToast === 'function') _showToast('لا توجد إشعارات جديدة', 'info');
+  };
+
+  // ── مزامنة بروفايل المستخدم + إظهار/إخفاء "لوحة التحكم" — بتُستدعى من _renderUserBox
+  //    بعد ما تتحدد حالة الدخول والصلاحيات، بدون أي تعديل على منطق الـAuth نفسه ──
+  window._syncMobileSidebarUser = function(user, isAdmin, isSuperAdmin) {
+    var profileBox = document.getElementById('ms-sidebar-profile');
+    var footerBox  = document.getElementById('ms-sidebar-footer');
+    var adminBtn   = document.getElementById('ms-nav-admin');
+    var adminSep   = document.getElementById('ms-nav-sep-admin');
+    var adminLabel = document.getElementById('ms-nav-admin-label');
+    if (!profileBox) return;
+
+    if (!user) {
+      profileBox.innerHTML = '<button class="ms-sidebar-login-btn" onclick="loginWithGoogle()">👤 تسجيل الدخول</button>';
+      if (footerBox) footerBox.hidden = true;
+      if (adminBtn) adminBtn.hidden = true;
+      if (adminSep) adminSep.hidden = true;
+      return;
+    }
+
+    var initial = (user.email || '؟').trim().charAt(0).toUpperCase();
+    var meta = user.user_metadata || {};
+    var name = meta.full_name || meta.name || user.email || 'مستخدم';
+    var avatarUrl = meta.avatar_url || meta.picture || '';
+    profileBox.innerHTML =
+      '<div class="ms-sidebar-avatar">' + (avatarUrl ? '<img src="' + avatarUrl + '" alt="">' : initial) + '</div>' +
+      '<div class="ms-sidebar-userinfo">' +
+        '<div class="ms-sidebar-username">' + name + '</div>' +
+        '<div class="ms-sidebar-useremail">' + (user.email || '') + '</div>' +
+      '</div>';
+    if (footerBox) footerBox.hidden = false;
+
+    if (adminBtn) {
+      adminBtn.hidden = !isAdmin;
+      if (adminLabel) adminLabel.textContent = isSuperAdmin ? 'لوحة التحكم' : 'لوحة تحكم الشعبة';
+    }
+    if (adminSep) adminSep.hidden = !isAdmin;
+  };
+})();
+
+// ── نسخ البريد الإلكتروني بالضغط عليه في جداول لوحة الإدارة (event delegation —
+//    إضافي بالكامل، مش محتاج تعديل أي كود بيرسم الجداول) ──
+document.addEventListener('click', function(ev) {
+  var cell = ev.target.closest('.ap-email-cell, .um-user-email');
+  if (!cell) return;
+  var raw = cell.textContent || '';
+  var email = (raw.split('·')[0] || raw).trim(); // نتجاهل أي لاحقة زي " · #123"
+  if (!email || email === '—') return;
+  var done = function() { if (typeof _showToast === 'function') _showToast('✅ تم نسخ البريد: ' + email, 'success'); };
+  var fail = function() { if (typeof _showToast === 'function') _showToast('تعذّر نسخ البريد', 'error'); };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(email).then(done).catch(function() {
+      _qnFallbackCopy(email, done, fail);
+    });
+  } else {
+    _qnFallbackCopy(email, done, fail);
+  }
+});
+function _qnFallbackCopy(text, done, fail) {
+  try {
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    done();
+  } catch (e) { fail(); }
+}
+</script>
 </body>
 </html>
