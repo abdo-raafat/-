@@ -6667,6 +6667,9 @@ window.checkBanStatus = async function(email) {
         <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:16px;">
           <div class="ap-section-heading" style="margin:0;border:none;padding:0;">🎓 إدارة الاشتراكات</div>
           <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <select class="ap-select" id="ds-sel-grade" style="width:auto;padding:7px 10px;" onchange="dsOnGradeChange()"><option value="">كل الفرق</option></select>
+            <select class="ap-select" id="ds-sel-term" style="width:auto;padding:7px 10px;" onchange="dsOnTermChange()" disabled><option value="">كل الترمات</option></select>
+            <select class="ap-select" id="ds-sel-branch" style="width:auto;padding:7px 10px;" onchange="dsOnBranchChange()" disabled><option value="">كل الشعب</option></select>
             <input class="ap-input" id="ap-divsub-search" type="text" placeholder="🔍 بحث بالبريد..." style="width:auto;min-width:160px;padding:7px 10px;" oninput="apLoadDivisionSubs()">
             <select class="ap-select" id="ap-divsub-filter" style="width:auto;padding:7px 10px;" onchange="apLoadDivisionSubs()">
               <option value="">كل الحالات</option>
@@ -7177,15 +7180,32 @@ window.checkBanStatus = async function(email) {
       <div class="ap-tab-panel" id="ap-panel-branchadmins" role="tabpanel">
         <div class="ap-section-heading" style="margin:0 0 10px;border:none;padding:0;">👑 إدارة أدمن الشعب</div>
         <div style="font-size:.76rem;color:#888;margin-bottom:14px;">
-          هذه الشاشة فقط لسوبر أدمن. عيّن حساب Google موجود بالفعل في المستخدمين (لازم يكون سجّل دخول مرة واحدة
-          على الأقل) ليصبح "أدمن شعبة" مسؤول عن شعبة واحدة فقط. الأدمن هيدير كل حاجة في شعبته (مواد، فصول،
-          طلبات اشتراك، طلبات دفع، إيصالات). تقدر تغيّره أو تزيله في أي وقت من نفس الشاشة — إزالته لا تحذف
-          حسابه ولا اشتراكاته، فقط تُلغي صلاحية إدارة الشعبة.
+          هذه الشاشة فقط لسوبر أدمن. اختر الفرقة ثم الترم ثم الشعبة تحديداً — الأدمن يُعيَّن دائماً على مستوى
+          الشعبة فقط، وليس على فرقة أو ترم بالكامل، حتى لو تكرر اسم الشعبة بين الترمين (كل شعبة لها ID مستقل
+          ويمكن أن يكون لها أدمن مختلف). عيّن حساباً موجوداً بالفعل (سجّل دخول مرة واحدة على الأقل) ليدير هذه
+          الشعبة فقط، ويمكن لنفس الشخص أن يدير أكثر من شعبة إذا عيّنته على كل منها من هنا. تقدر تغيّر الأدمن أو
+          تزيله في أي وقت — إزالته لا تحذف حسابه ولا اشتراكاته ولا رسائله ولا ملفه الشخصي، فقط تُلغي صلاحية
+          إدارة هذه الشعبة تحديداً.
+        </div>
+        <!-- اختيار الفرقة ← الترم ← الشعبة (site_sections عبر parent_id) — أدمن الشعبة يُعيَّن على مستوى الشعبة فقط -->
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;">
+          <div style="flex:1;min-width:150px;">
+            <label class="ap-label">الفرقة</label>
+            <select class="ap-select" id="ba-sel-grade" onchange="baOnGradeChange()"><option value="">— اختر الفرقة —</option></select>
+          </div>
+          <div style="flex:1;min-width:150px;">
+            <label class="ap-label">الترم</label>
+            <select class="ap-select" id="ba-sel-term" onchange="baOnTermChange()" disabled><option value="">— اختر الترم —</option></select>
+          </div>
+          <div style="flex:1;min-width:150px;">
+            <label class="ap-label">الشعبة</label>
+            <select class="ap-select" id="ba-sel-branch" onchange="baOnBranchChange()" disabled><option value="">— اختر الشعبة —</option></select>
+          </div>
         </div>
         <div id="ba-table-wrap">
-          <div id="ba-list-body"><div class="ap-empty">جاري التحميل...</div></div>
+          <div id="ba-list-body"><div class="ap-empty">اختر الفرقة ثم الترم ثم الشعبة لإدارة أدمن الشعبة.</div></div>
         </div>
-        <button onclick="baLoadList()" class="ap-btn ap-btn-ghost" style="margin-top:10px;">🔄 تحديث القائمة</button>
+        <button onclick="baRefreshCurrent()" class="ap-btn ap-btn-ghost" style="margin-top:10px;">🔄 تحديث القائمة</button>
       </div>
       <!-- End Branch Admins Tab -->
 
@@ -7689,7 +7709,7 @@ function apSwitchTab(tab) {
   else if (tab === 'auditlog') apLoadAuditLog();
   else if (tab === 'requests') apLoadRequests();
   else if (tab === 'subscriptions') apLoadSubscriptions();
-  else if (tab === 'divsubs')  apLoadDivisionSubs();
+  else if (tab === 'divsubs')  { dsLoadGrades(); apLoadDivisionSubs(); }
   else if (tab === 'payments') apLoadPayments();
   else if (tab === 'sectionsmgmt') {
     // ── أدمن الشعبة: يدخل مباشرة على شعبته فقط، مش على جذر كل الشعب ──
@@ -7715,7 +7735,7 @@ function apSwitchTab(tab) {
   else if (tab === 'messages') apLoadMessages();
   else if (tab === 'content')  { /* already managed by adminTab */ }
   else if (tab === 'sectionchat') apLoadSectionChatTab();
-  else if (tab === 'branchadmins') { baLoadList(); }
+  else if (tab === 'branchadmins') { baLoadGrades(); }
 }
 
 // ── لوحة إحصائيات مقيَّدة بشعبة أدمن الشعبة فقط (تقرأ من site_sections + section_content + subscriptions) ──
@@ -7788,72 +7808,148 @@ async function apLoadSectionChatTab() {
 // (لا يوجد جدول section_admins منفصل — هذا هو النظام الموجود بالفعل في المشروع
 //  وتم التوسّع فيه هنا بدل بناء نظام صلاحيات مواز يتعارض معه)
 // ════════════════════════════════════════════════════════════════
-window._baSectionsCache = [];      // كل "الشعب" الرئيسية (site_sections بدون parent_id)
-window._baAdminsBySection = {};    // section_id -> { id, email, full_name }
+// الهيكل: الفرقة (site_sections بدون parent_id) ← الترم (أبناء الفرقة) ← الشعبة (أبناء الترم)
+// أدمن الشعبة يُعيَّن دائماً على مستوى "الشعبة" (المستوى الثالث) فقط — أبداً على فرقة أو ترم كاملين.
+// المصدر الوحيد للكتابة الآن هو جدول section_admins (يدعم أكثر من أدمن مستقل لكل شعبة، وأدمن واحد
+// لأكثر من شعبة). profiles.managed_section_id يبقى للقراءة فقط للتوافق مع أي كود قديم (انظر
+// _loadBranchAdminScope) ولا يُكتب فيه من هذه الشاشة إطلاقاً.
+window._baGrades = [];
+window._baTerms = [];
+window._baBranches = [];
+window._baSelectedGradeId = null;
+window._baSelectedTermId = null;
+window._baSelectedBranchId = null;
+window._baAdminsForBranch = [];    // صفوف section_admins الفعّالة للشعبة المختارة حالياً (تدعم أكثر من أدمن)
 window._baSelectedUser = null;     // المستخدم المختار حالياً داخل مودال التعيين/التغيير
 window._baModalCtx = null;         // { sectionId, sectionTitle, mode: 'assign'|'change' }
-window._baRemoveCtx = null;        // { profileId, name, sectionTitle }
+window._baRemoveCtx = null;        // { adminRowId, userId, name, sectionTitle }
 var _baSearchTimer = null;
 
-// ── جلب الشعب الرئيسية + الأدمن الحالي لكل شعبة ثم رسم الجدول المطلوب ──
-async function baLoadList() {
-  var el = document.getElementById('ba-list-body');
-  if (!el || !window.supabase) return;
-  el.innerHTML = '<div class="ap-loading"><div class="spinner"></div> جاري التحميل...</div>';
-  _apWatchLoading('ba-list-body', 'baLoadList()');
+async function baLoadGrades() {
+  var sel = document.getElementById('ba-sel-grade');
+  if (!sel || !window.supabase) return;
+  sel.innerHTML = '<option value="">— جاري التحميل —</option>';
   try {
-    var { data: sections, error: secErr } = await window.supabase
-      .from('site_sections').select('id, title, parent_id')
-      .is('parent_id', null).order('display_order');
-    if (secErr) throw secErr;
-    window._baSectionsCache = sections || [];
+    var { data, error } = await window.supabase.from('site_sections')
+      .select('id, title').is('parent_id', null).order('display_order');
+    if (error) throw error;
+    window._baGrades = data || [];
+    sel.innerHTML = '<option value="">— اختر الفرقة —</option>' +
+      window._baGrades.map(function(g){ return '<option value="' + g.id + '">' + _apEsc(g.title) + '</option>'; }).join('');
+  } catch(err) {
+    sel.innerHTML = '<option value="">تعذّر التحميل</option>';
+  }
+  document.getElementById('ba-sel-term').disabled = true;
+  document.getElementById('ba-sel-branch').disabled = true;
+  document.getElementById('ba-list-body').innerHTML = '<div class="ap-empty">اختر الفرقة ثم الترم ثم الشعبة لإدارة أدمن الشعبة.</div>';
+}
 
-    var { data: admins, error: admErr } = await window.supabase
-      .from('profiles')
-      .select('id, email, full_name, managed_section_id')
-      .eq('role', 'branch_admin')
-      .not('managed_section_id', 'is', null);
-    if (admErr) throw admErr;
+async function baOnGradeChange() {
+  window._baSelectedGradeId = document.getElementById('ba-sel-grade').value || null;
+  window._baSelectedTermId = null; window._baSelectedBranchId = null;
+  var termSel = document.getElementById('ba-sel-term');
+  var branchSel = document.getElementById('ba-sel-branch');
+  branchSel.innerHTML = '<option value="">— اختر الشعبة —</option>'; branchSel.disabled = true;
+  document.getElementById('ba-list-body').innerHTML = '<div class="ap-empty">اختر الترم ثم الشعبة.</div>';
+  if (!window._baSelectedGradeId) { termSel.innerHTML = '<option value="">— اختر الترم —</option>'; termSel.disabled = true; return; }
+  termSel.disabled = false;
+  termSel.innerHTML = '<option value="">— جاري التحميل —</option>';
+  try {
+    var { data, error } = await window.supabase.from('site_sections')
+      .select('id, title').eq('parent_id', window._baSelectedGradeId).order('display_order');
+    if (error) throw error;
+    window._baTerms = data || [];
+    termSel.innerHTML = '<option value="">— اختر الترم —</option>' +
+      window._baTerms.map(function(t){ return '<option value="' + t.id + '">' + _apEsc(t.title) + '</option>'; }).join('');
+  } catch(err) { termSel.innerHTML = '<option value="">تعذّر التحميل</option>'; }
+}
 
-    var bySection = {};
-    (admins || []).forEach(function(a) {
-      // لو فيه أكثر من صف بنفس القسم (حالة غير متوقعة)، ناخد أول واحد فقط للعرض
-      if (!bySection[a.managed_section_id]) bySection[a.managed_section_id] = a;
-    });
-    window._baAdminsBySection = bySection;
+async function baOnTermChange() {
+  window._baSelectedTermId = document.getElementById('ba-sel-term').value || null;
+  window._baSelectedBranchId = null;
+  var branchSel = document.getElementById('ba-sel-branch');
+  document.getElementById('ba-list-body').innerHTML = '<div class="ap-empty">اختر الشعبة.</div>';
+  if (!window._baSelectedTermId) { branchSel.innerHTML = '<option value="">— اختر الشعبة —</option>'; branchSel.disabled = true; return; }
+  branchSel.disabled = false;
+  branchSel.innerHTML = '<option value="">— جاري التحميل —</option>';
+  try {
+    var { data, error } = await window.supabase.from('site_sections')
+      .select('id, title').eq('parent_id', window._baSelectedTermId).order('display_order');
+    if (error) throw error;
+    window._baBranches = data || [];
+    branchSel.innerHTML = '<option value="">— اختر الشعبة —</option>' +
+      window._baBranches.map(function(b){ return '<option value="' + b.id + '">' + _apEsc(b.title) + '</option>'; }).join('');
+  } catch(err) { branchSel.innerHTML = '<option value="">تعذّر التحميل</option>'; }
+}
 
-    if (!window._baSectionsCache.length) {
-      el.innerHTML = '<div class="ap-empty">لا توجد شعب رئيسية بعد (site_sections بدون parent_id)</div>';
+function baOnBranchChange() {
+  window._baSelectedBranchId = document.getElementById('ba-sel-branch').value || null;
+  if (!window._baSelectedBranchId) {
+    document.getElementById('ba-list-body').innerHTML = '<div class="ap-empty">اختر الشعبة.</div>';
+    return;
+  }
+  baLoadBranchAdmins();
+}
+
+function baRefreshCurrent() {
+  if (window._baSelectedBranchId) baLoadBranchAdmins(); else baLoadGrades();
+}
+
+function _baBreadcrumb() {
+  var g = (window._baGrades || []).find(function(x){ return String(x.id) === String(window._baSelectedGradeId); });
+  var t = (window._baTerms  || []).find(function(x){ return String(x.id) === String(window._baSelectedTermId); });
+  var b = (window._baBranches || []).find(function(x){ return String(x.id) === String(window._baSelectedBranchId); });
+  return [g && g.title, t && t.title, b && b.title].filter(Boolean).join(' ﹥ ');
+}
+
+// ── يعرض كل أدمن الشعبة المختارة (من section_admins فقط — المصدر الحقيقي الآن) ──
+// ملاحظة: عادةً أدمن واحد فعّال لكل شعبة، لكن الجدول لا يمنع تقنياً أكثر من أدمن فعّال
+// لنفس الشعبة إن احتاج سوبر أدمن ذلك؛ التعيين من هنا يستبدل تلقائياً أي أدمن فعّال سابق.
+async function baLoadBranchAdmins() {
+  var el = document.getElementById('ba-list-body');
+  var branchId = window._baSelectedBranchId;
+  if (!el || !window.supabase || !branchId) return;
+  el.innerHTML = '<div class="ap-loading"><div class="spinner"></div> جاري التحميل...</div>';
+  _apWatchLoading('ba-list-body', 'baLoadBranchAdmins()');
+  try {
+    var { data, error } = await window.supabase
+      .from('section_admins')
+      .select('id, user_id, is_active, role, profiles:user_id(id, email, full_name)')
+      .eq('section_id', branchId).eq('is_active', true).eq('role', 'admin');
+    if (error) throw error;
+    window._baAdminsForBranch = data || [];
+    var crumb = _baBreadcrumb();
+
+    if (!window._baAdminsForBranch.length) {
+      el.innerHTML = '<div class="ap-table-wrap"><table class="ap-table"><thead><tr>'
+        + '<th>الشعبة</th><th>الأدمن الحالي</th><th>الحالة</th><th>الإجراءات</th></tr></thead><tbody><tr>'
+        + '<td>' + _apEsc(crumb) + '</td>'
+        + '<td style="color:#b0b8c1;">لا يوجد</td>'
+        + '<td><span class="ap-badge user">🚫 بدون أدمن</span></td>'
+        + '<td><button class="ap-btn ap-btn-success" onclick="baOpenAssignModal(' + branchId + ', \'' + _apEsc(crumb).replace(/'/g,"\\'") + '\', \'assign\')">➕ تعيين</button></td>'
+        + '</tr></tbody></table></div>';
       return;
     }
 
-    el.innerHTML = '<div class="ap-table-wrap"><table class="ap-table"><thead><tr>' +
-      '<th>الشعبة</th><th>الأدمن الحالي</th><th>البريد الإلكتروني</th><th>الحالة</th><th>الإجراءات</th>' +
-      '</tr></thead><tbody>' +
-      window._baSectionsCache.map(function(s) {
-        var adm = bySection[s.id];
-        var titleEsc = _apEsc(s.title).replace(/'/g, "\\'");
-        if (adm) {
-          return '<tr>'
-            + '<td>' + _apEsc(s.title) + '</td>'
-            + '<td>' + _apEsc(adm.full_name || '—') + '</td>'
-            + '<td class="ap-email-cell" style="font-size:.72rem;">' + _apEsc(adm.email || '—') + '</td>'
-            + '<td><span class="ap-badge admin" style="background:#eafaf1;color:#17a589;">✅ فعال</span></td>'
-            + '<td style="white-space:nowrap;">'
-              + '<button class="ap-btn ap-btn-primary" style="margin-left:4px;" onclick="baOpenAssignModal(' + s.id + ', \'' + titleEsc + '\', \'change\')">🔄 تغيير</button>'
-              + '<button class="ap-btn ap-btn-danger" onclick="baOpenRemoveConfirm(\'' + adm.id + '\', \'' + _apEsc(adm.full_name || adm.email || 'الأدمن').replace(/'/g,"\\'") + '\', \'' + titleEsc + '\')">❌ إزالة</button>'
-            + '</td></tr>';
-        }
+    el.innerHTML = '<div class="ap-table-wrap"><table class="ap-table"><thead><tr>'
+      + '<th>الشعبة</th><th>الأدمن الحالي</th><th>البريد الإلكتروني</th><th>الحالة</th><th>الإجراءات</th>'
+      + '</tr></thead><tbody>' +
+      window._baAdminsForBranch.map(function(row) {
+        var p = row.profiles || {};
+        var crumbEsc = _apEsc(crumb).replace(/'/g, "\\'");
         return '<tr>'
-          + '<td>' + _apEsc(s.title) + '</td>'
-          + '<td style="color:#b0b8c1;">لا يوجد</td>'
-          + '<td style="color:#b0b8c1;">—</td>'
-          + '<td><span class="ap-badge user">🚫 بدون أدمن</span></td>'
-          + '<td><button class="ap-btn ap-btn-success" onclick="baOpenAssignModal(' + s.id + ', \'' + titleEsc + '\', \'assign\')">➕ تعيين</button></td>'
-          + '</tr>';
+          + '<td>' + _apEsc(crumb) + '</td>'
+          + '<td>' + _apEsc(p.full_name || '—') + '</td>'
+          + '<td class="ap-email-cell" style="font-size:.72rem;">' + _apEsc(p.email || '—') + '</td>'
+          + '<td><span class="ap-badge admin" style="background:#eafaf1;color:#17a589;">🟢 نشط</span></td>'
+          + '<td style="white-space:nowrap;">'
+            + '<button class="ap-btn ap-btn-primary" style="margin-left:4px;" onclick="baOpenAssignModal(' + branchId + ', \'' + crumbEsc + '\', \'change\')">🔄 تعديل</button>'
+            + '<button class="ap-btn ap-btn-danger" onclick="baOpenRemoveConfirm(' + row.id + ', \'' + (p.id || row.user_id) + '\', \'' + _apEsc(p.full_name || p.email || 'الأدمن').replace(/'/g,"\\'") + '\', \'' + crumbEsc + '\')">❌ إزالة</button>'
+          + '</td></tr>';
       }).join('') + '</tbody></table></div>';
   } catch(err) {
-    el.innerHTML = '<div class="ap-empty" style="color:#e74c3c;">❌ ' + _apEsc(err.message) + '</div>';
+    el.innerHTML = '<div class="ap-empty" style="color:#e74c3c;">❌ ' + _apEsc(err.message)
+      + '<br><span style="font-size:.7rem;color:#888;">إن كان الجدول section_admins غير موجود بعد، شغّل printAuditAndScopeSQL() في الـ Console.</span></div>';
   }
 }
 
@@ -7878,11 +7974,12 @@ function baOpenAssignModal(sectionId, sectionTitle, mode) {
   confirmBtn.disabled = true;
   confirmBtn.textContent = mode === 'change' ? '✅ تأكيد التغيير' : '✅ تعيين الأدمن';
 
-  var currentAdmin = window._baAdminsBySection[sectionId];
+  var currentRow = (window._baAdminsForBranch || [])[0];
+  var currentAdmin = currentRow ? currentRow.profiles : null;
   if (mode === 'change' && currentAdmin) {
     curBox.style.display = '';
     curBox.innerHTML = '👤 الأدمن الحالي: <b>' + _apEsc(currentAdmin.full_name || currentAdmin.email) + '</b> ('
-      + _apEsc(currentAdmin.email || '') + ')<br>اختر حساب Google آخر أدناه لاستبداله.';
+      + _apEsc(currentAdmin.email || '') + ')<br>اختر مستخدماً آخر أدناه لاستبداله فوراً.';
   } else {
     curBox.style.display = 'none';
   }
@@ -7956,32 +8053,32 @@ async function baConfirmAssign() {
   var confirmBtn = document.getElementById('ba-confirm-btn');
   confirmBtn.disabled = true;
   try {
-    // 1) اجلب أي أدمن حالي آخر لنفس الشعبة (لمنع التكرار — أدمن واحد فقط لكل شعبة)
-    var { data: existing, error: exErr } = await window.supabase
-      .from('profiles').select('id, email, full_name')
-      .eq('role', 'branch_admin').eq('managed_section_id', ctx.sectionId);
-    if (exErr) throw exErr;
-    var oldAdmins = (existing || []).filter(function(p) { return p.id !== user.id; });
-
-    // 2) عيّن المستخدم الجديد أولاً (الخطوة الحرجة — لو فشلت، لا شيء تغيّر)
-    var { error: upErr } = await window.supabase.from('profiles')
-      .update({ managed_section_id: ctx.sectionId, role: 'branch_admin' })
-      .eq('id', user.id);
+    // section_admins هو المصدر الوحيد الآن للكتابة. UNIQUE(user_id, section_id) في الجدول
+    // يعني upsert آمن: لو المستخدم كان أدمن غير فعّال لنفس الشعبة من قبل، يُعاد تفعيله فقط.
+    // 1) عيّن/فعّل الأدمن الجديد لهذه الشعبة تحديداً (لا فرقة ولا ترم بالكامل)
+    var { error: upErr } = await window.supabase.from('section_admins')
+      .upsert({ user_id: user.id, section_id: ctx.sectionId, role: 'admin', is_active: true },
+              { onConflict: 'user_id,section_id' });
     if (upErr) throw upErr;
 
-    // 3) بعد نجاح التعيين، أزل أي أدمن قديم لنفس الشعبة (منع تكرار الربط)
+    // 2) عطّل أي أدمن آخر (غير هذا المستخدم) كان فعّالاً على نفس الشعبة — بحيث الأدمن
+    //    القديم يفقد الصلاحية فوراً، دون حذف حسابه أو أي بيانات تخصه (فقط is_active=false)
+    var { data: others, error: othErr } = await window.supabase
+      .from('section_admins').select('id, user_id, profiles:user_id(email)')
+      .eq('section_id', ctx.sectionId).eq('is_active', true).eq('role', 'admin')
+      .neq('user_id', user.id);
+    if (othErr) throw othErr;
     var cleanupWarning = '';
-    for (var i = 0; i < oldAdmins.length; i++) {
-      var { error: clErr } = await window.supabase.from('profiles')
-        .update({ managed_section_id: null, role: 'user' })
-        .eq('id', oldAdmins[i].id);
-      if (clErr) cleanupWarning = ' (تنبيه: تعذّرت إزالة الأدمن القديم "' + (oldAdmins[i].email || '') + '" تلقائيًا — راجعه يدويًا)';
+    for (var i = 0; i < (others || []).length; i++) {
+      var { error: clErr } = await window.supabase.from('section_admins')
+        .update({ is_active: false }).eq('id', others[i].id);
+      if (clErr) cleanupWarning = ' (تنبيه: تعذّرت إزالة الأدمن القديم تلقائيًا — راجعه يدويًا)';
     }
 
     _showToast ? _showToast('✅ تم تعيين الأدمن بنجاح' + cleanupWarning, cleanupWarning ? 'warning' : 'success') : null;
-    logAudit('assign_branch_admin', 'branch_admin', user.id, (user.full_name || user.email || user.id), ctx.sectionId, 'success', { section_title: ctx.sectionTitle, replaced: oldAdmins.map(function(a){return a.email;}) });
+    logAudit('assign_branch_admin', 'branch_admin', user.id, (user.full_name || user.email || user.id), ctx.sectionId, 'success', { section_title: ctx.sectionTitle, replaced_count: (others || []).length });
     baCloseAssignModal();
-    baLoadList();
+    baLoadBranchAdmins();
   } catch(err) {
     msgEl.style.color = '#e74c3c';
     msgEl.textContent = '❌ خطأ: ' + err.message;
@@ -7991,8 +8088,8 @@ async function baConfirmAssign() {
 }
 
 // ── مودال تأكيد الإزالة (نص واضح بالاسم والشعبة، وليس confirm() المتصفح) ──
-function baOpenRemoveConfirm(profileId, name, sectionTitle) {
-  window._baRemoveCtx = { profileId: profileId, name: name, sectionTitle: sectionTitle };
+function baOpenRemoveConfirm(adminRowId, userId, name, sectionTitle) {
+  window._baRemoveCtx = { adminRowId: adminRowId, userId: userId, name: name, sectionTitle: sectionTitle };
   document.getElementById('ba-remove-text').textContent =
     'هل أنت متأكد من إزالة ' + name + ' من إدارة شعبة "' + sectionTitle + '"؟';
   document.getElementById('ba-remove-overlay').style.display = 'flex';
@@ -8009,17 +8106,17 @@ async function baDoRemove() {
   var btn = document.getElementById('ba-remove-confirm-btn');
   btn.disabled = true; btn.textContent = '⏳ جاري الإزالة...';
   try {
-    // فقط نزيل علاقة الإدارة (role + managed_section_id) — لا نحذف الحساب ولا الاشتراكات ولا الرسائل
-    var { error } = await window.supabase.from('profiles')
-      .update({ managed_section_id: null, role: 'user' })
-      .eq('id', ctx.profileId);
+    // فقط نُعطّل صف section_admins (is_active=false) — لا نحذف الصف، ولا الحساب،
+    // ولا الاشتراكات، ولا الرسائل، ولا الملف الشخصي. علاقة الإدارة فقط تُلغى.
+    var { error } = await window.supabase.from('section_admins')
+      .update({ is_active: false }).eq('id', ctx.adminRowId);
     if (error) throw error;
     _showToast ? _showToast('✅ تم إزالة صلاحية إدارة الشعبة (الحساب باقٍ كما هو)', 'success') : null;
-    logAudit('remove_branch_admin', 'branch_admin', ctx.profileId, ctx.name, null, 'success', { section_title: ctx.sectionTitle });
+    logAudit('remove_branch_admin', 'branch_admin', ctx.userId, ctx.name, window._baSelectedBranchId, 'success', { section_title: ctx.sectionTitle });
     baCloseRemoveModal();
-    baLoadList();
+    baLoadBranchAdmins();
   } catch(err) {
-    logAudit('remove_branch_admin', 'branch_admin', ctx.profileId, ctx.name, null, 'failure', { error: err.message });
+    logAudit('remove_branch_admin', 'branch_admin', ctx.userId, ctx.name, window._baSelectedBranchId, 'failure', { error: err.message });
     _showToast ? _showToast('❌ خطأ: ' + err.message, 'error') : alert(err.message);
   } finally {
     btn.disabled = false; btn.textContent = '❌ نعم، إزالة';
@@ -8320,6 +8417,49 @@ function _divSubStatusLabel(row) {
   return _apEsc(row.payment_status);
 }
 
+// ── فلتر الفرقة/الترم/الشعبة لتاب "إدارة الاشتراكات" (سوبر أدمن فقط — أدمن الشعبة مقيَّد تلقائياً) ──
+window._dsSelectedBranchId = null;
+async function dsLoadGrades() {
+  var wrap = document.getElementById('ds-sel-grade');
+  if (!wrap) return;
+  // أدمن الشعبة أصلاً مقيَّد بشعبته عبر RLS + window._branchAdminSectionIds — لا داعي لهذا الفلتر له
+  if (window._isBranchAdmin) {
+    ['ds-sel-grade','ds-sel-term','ds-sel-branch'].forEach(function(id){ var e = document.getElementById(id); if (e) e.style.display = 'none'; });
+    return;
+  }
+  try {
+    var { data, error } = await window.supabase.from('site_sections').select('id, title').is('parent_id', null).order('display_order');
+    if (error) throw error;
+    wrap.innerHTML = '<option value="">كل الفرق</option>' + (data || []).map(function(g){ return '<option value="' + g.id + '">' + _apEsc(g.title) + '</option>'; }).join('');
+  } catch(e) {}
+}
+async function dsOnGradeChange() {
+  var gradeId = document.getElementById('ds-sel-grade').value || '';
+  var termSel = document.getElementById('ds-sel-term');
+  var branchSel = document.getElementById('ds-sel-branch');
+  branchSel.innerHTML = '<option value="">كل الشعب</option>'; branchSel.disabled = true;
+  window._dsSelectedBranchId = null;
+  if (!gradeId) { termSel.innerHTML = '<option value="">كل الترمات</option>'; termSel.disabled = true; apLoadDivisionSubs(); return; }
+  termSel.disabled = false;
+  var { data } = await window.supabase.from('site_sections').select('id, title').eq('parent_id', gradeId).order('display_order');
+  termSel.innerHTML = '<option value="">كل الترمات</option>' + (data || []).map(function(t){ return '<option value="' + t.id + '">' + _apEsc(t.title) + '</option>'; }).join('');
+  apLoadDivisionSubs();
+}
+async function dsOnTermChange() {
+  var termId = document.getElementById('ds-sel-term').value || '';
+  var branchSel = document.getElementById('ds-sel-branch');
+  window._dsSelectedBranchId = null;
+  if (!termId) { branchSel.innerHTML = '<option value="">كل الشعب</option>'; branchSel.disabled = true; apLoadDivisionSubs(); return; }
+  branchSel.disabled = false;
+  var { data } = await window.supabase.from('site_sections').select('id, title').eq('parent_id', termId).order('display_order');
+  branchSel.innerHTML = '<option value="">كل الشعب</option>' + (data || []).map(function(b){ return '<option value="' + b.id + '">' + _apEsc(b.title) + '</option>'; }).join('');
+  apLoadDivisionSubs();
+}
+function dsOnBranchChange() {
+  window._dsSelectedBranchId = document.getElementById('ds-sel-branch').value || null;
+  apLoadDivisionSubs();
+}
+
 async function apLoadDivisionSubs() {
   var el = document.getElementById('ap-divsubs-body');
   if (!el || !window.supabase) return;
@@ -8340,6 +8480,9 @@ async function apLoadDivisionSubs() {
     if (window._isBranchAdmin) {
       var scope = window._branchAdminSectionIds || [];
       query = query.in('section_id', scope.length ? scope : [-1]);
+    } else if (window._dsSelectedBranchId) {
+      // سوبر أدمن اختار شعبة محددة عبر فلتر الفرقة/الترم/الشعبة — الاشتراك مربوط بالشعبة فقط (id مطابق تماماً، وليس subtree)
+      query = query.eq('section_id', window._dsSelectedBranchId);
     }
     if (filterVal === 'expired') {
       query = query.eq('payment_status', 'active').lt('end_date', new Date().toISOString());
