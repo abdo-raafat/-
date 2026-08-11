@@ -8846,8 +8846,11 @@ async function apLoadDivisionSubs() {
           : '<span style="color:#b0b8c1;font-size:.72rem;">— لا يوجد</span>';
         var reasonRow = (r.payment_status === 'cancelled' && r.reject_reason)
           ? '<div style="font-size:.68rem;color:#e74c3c;margin-top:4px;">سبب الرفض: ' + _apEsc(r.reject_reason) + '</div>' : '';
+        var emailCell = prof.full_name
+          ? '<div style="font-weight:600;font-size:.78rem;margin-bottom:2px;">' + _apEsc(prof.full_name) + '</div><div class="ap-email-cell" style="font-size:.72rem;">' + _apEsc(prof.email || r.user_id) + '</div>'
+          : '<div class="ap-email-cell" style="font-size:.72rem;">' + _apEsc(prof.email || r.user_id) + '</div>';
         return '<tr>'
-          + '<td class="ap-email-cell" style="font-size:.72rem;">' + _apEsc(prof.email || r.user_id) + '</td>'
+          + '<td style="max-width:210px;">' + emailCell + '</td>'
           + '<td>' + _apEsc(secTitle) + '</td>'
           + '<td>' + _divSubStatusLabel(r) + reasonRow + '</td>'
           + '<td>' + receiptCell + '</td>'
