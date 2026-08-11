@@ -3037,9 +3037,53 @@ function _saveCacheToSession() {
 // ✅ (تحديث): قللنا المهلة لـ 8 ثوانٍ — الـ 15 ثانية كانت بتخلي أي تعليق حقيقي
 // يحس المستخدم إنه "معلّق تمامًا" قبل ما يظهر أي خطأ. 8 ثوانٍ كافية للموبايل
 // البطيء ومعاها الـ Retry التلقائي (3 محاولات) بيغطي انقطاع الشبكة المؤقت.
-var _FETCH_TIMEOUT_MS = 8000;
+// ✅ FIX (Button/Action Audit — متابعة): كانت 8000ms × 3 محاولات + backoff ≈ 26
+// ثانية "معلّقة فعلياً" على شاشة "جاري التحميل من قاعدة البيانات..." في أي شبكة
+// بطيئة حقيقية (وليس فقط منقطعة) — بالضبط الأعراض المُبلَّغ عنها في الصورة.
+// تقليلها إلى 6000ms × 2 محاولات يجعل أقصى انتظار ~13 ثانية بدل 26، وهذا التغيير
+// مركزي: يُطبَّق تلقائياً على كل مكان يستخدم _fetchWithRetry (فتح أي قسم/فصل/ملف).
+var _FETCH_TIMEOUT_MS = 6000;
 // ✅ عدد محاولات Retry التلقائية
-var _MAX_RETRIES = 3;
+var _MAX_RETRIES = 2;
+
+// ✅ FIX: نقطة استدعاء آمنة موحّدة لإعادة تحميل قسم — تُستخدم بدل بناء
+// onclick="...window.__sectionData_${sec.id}..." يدويًا كنص. البناء اليدوي كان
+// ينكسر لأي id من نوع UUID (يحتوي على "-") لأن "window.__sectionData_a1b2-c3"
+// كـ JS حرفي يُفسَّر كطرح متغيرات غير موجودة (a1b2 - c3) بدل اسم خاصية واحد.
+// هذه الدالة تستخدم الوصول الآمن بالقوس [] دائماً، فتعمل مع UUID والأرقام معاً.
+function _apRetrySectionById(id) {
+  var sec = window['__sectionData_' + id];
+  if (!sec) { if (typeof _showToast === 'function') _showToast('تعذر إيجاد بيانات القسم، أعد فتحه من القائمة', 'error'); return; }
+  delete window._dataCache.sections[_cacheKey('sec', id)];
+  delete window._dataCache.resources[_cacheKey('res', id)];
+  delete window._dataCache.content[_cacheKey('content', id)];
+  _renderDynamicSectionPage(sec);
+}
+window._apRetrySectionById = _apRetrySectionById;
+
+// ✅ FIX (Button/Action Audit — متابعة): نفس مشكلة "window.__sectionData_${id}"
+// كنص onclick موجودة أيضًا في أزرار "ادخل" على كل كارت قسم/فصل (buildSectionCard
+// و buildSubSectionCard) — لو الـ id يحتوي حرف غير صالح لاسم خاصية JS، الضغط على
+// الزر كان يفشل بصمت تام (خطأ JS داخل onclick لا يظهر للمستخدم أي رد فعل، فيبدو
+// الزر "معلّق"). هذه نقطة استدعاء واحدة آمنة تستخدم الوصول بالقوس [] دائمًا
+// (يعمل مع أي id) بدل البناء اليدوي غير الآمن، وتعطي رسالة واضحة بدل الفشل الصامت
+// لو بيانات الكارت لسه مش جاهزة (سباق نادر بين الرسم والتسجيل).
+function _apOpenSectionCard(id) {
+  try {
+    var sec = window['__sectionData_' + id];
+    var action = window['__sectionAction_' + id];
+    if (!sec || typeof action !== 'function') {
+      console.warn('[_apOpenSectionCard] بيانات/إجراء القسم غير جاهزين بعد — id=', id);
+      if (typeof _showToast === 'function') _showToast('⏳ لحظة وحاول مرة أخرى', 'warning');
+      return;
+    }
+    action(sec);
+  } catch (err) {
+    console.error('[_apOpenSectionCard] خطأ عند فتح القسم id=' + id + ':', err);
+    if (typeof _showToast === 'function') _showToast('❌ تعذر فتح القسم، حاول مرة أخرى', 'error');
+  }
+}
+window._apOpenSectionCard = _apOpenSectionCard;
 
 function _cacheKey(prefix, id) {
   return prefix + ':' + (id === null || id === undefined ? 'null' : String(id));
@@ -3377,7 +3421,7 @@ function buildSectionCard(sec) {
   };
   const tagsHtml = (display.tags || []).map(t => `<span class="tag">${t}</span>`).join('');
   return `
-    <div class="dept-card" onclick="window.__sectionAction_${sec.id}(window.__sectionData_${sec.id})" data-section-id="${sec.id}">
+    <div class="dept-card" onclick="_apOpenSectionCard('${String(sec.id).replace(/[^a-zA-Z0-9-]/g,'')}')" data-section-id="${sec.id}">
       <div class="card-top" style="background:${display.color}">
         <span class="card-icon">${display.icon}</span>
         <div class="card-title">${sec.title}</div>
@@ -3407,7 +3451,7 @@ function buildSubSectionCard(sec, locked) {
     </div>`;
   }
   return `
-    <div class="dept-card" onclick="window.__sectionAction_${sec.id}(window.__sectionData_${sec.id})" data-section-id="${sec.id}">
+    <div class="dept-card" onclick="_apOpenSectionCard('${String(sec.id).replace(/[^a-zA-Z0-9-]/g,'')}')" data-section-id="${sec.id}">
       <div class="card-top" style="background:${color}">
         <span class="card-icon">${icon}</span>
         <div class="card-title">${sec.title}</div>
@@ -3588,6 +3632,16 @@ function _registerSectionHandlers(sections) {
  */
 async function _renderDynamicSectionPage(sec) {
   window._currentDynamicSec = sec; // حفظ للتحديث التلقائي
+  // ✅ FIX (Button/Action Audit — متابعة): كل استدعاء لهذه الدالة (فتح جديد أو
+  // إعادة محاولة) ياخد رقم جيل (generation) جديد. لو المستخدم فتح القسم، الشبكة
+  // بطيئة، ظهر زر "إعادة المحاولة" من _apWatchLoading، والمستخدم ضغط "إعادة
+  // المحاولة" (فبدأ استدعاء جديد لهذه الدالة) — الاستدعاء القديم البطيء ممكن يرجع
+  // متأخرًا ويكتب فوق النتيجة الجديدة (أو فوق شاشة الخطأ) بصمت ويسبب وميض/تشويش.
+  // الحارس أدناه (`myGen !== window._dynSecGen`) يمنع أي استدعاء قديم من الكتابة
+  // على الشاشة بعد ما بقى غير حالي.
+  var myGen = (window._dynSecGen = (window._dynSecGen || 0) + 1);
+  function _stillCurrent() { return myGen === window._dynSecGen; }
+
   document.getElementById('dynamic-section-title').textContent = sec.title;
   document.getElementById('dynamic-section-sub').textContent = sec.subtitle || '';
 
@@ -3600,7 +3654,7 @@ async function _renderDynamicSectionPage(sec) {
   // بدل معطوبة تمامًا) ممكن الانتظار الكلي يطول جداً وحاسس المستخدم إن الموقع
   // "معلّق". الحارس ده (نفس نمط _apWatchLoading في لوحة التحكم) بيضمن إنه مهما
   // حصل، بعد 20 ثانية تظهر رسالة واضحة + زر "إعادة المحاولة" بدل ما تفضل شاشة فاضية.
-  _apWatchLoading('dynamic-section-grid', '_renderDynamicSectionPage(window.__sectionData_' + sec.id + ')', 12000);
+  _apWatchLoading('dynamic-section-grid', '_apRetrySectionById(' + JSON.stringify(String(sec.id)) + ')', 12000);
   // ✅ امسح الـ resources container دايما عند التحميل
   var resourcesEl = document.getElementById('dynamic-section-resources-container');
   if (resourcesEl) resourcesEl.innerHTML = '';
@@ -3618,12 +3672,14 @@ async function _renderDynamicSectionPage(sec) {
   if (window.checkSectionAccess && sec && sec.id) {
     try {
       gate = await window.checkSectionAccess(sec.id);
+      if (!_stillCurrent()) return; // ✅ استُبدل هذا الاستدعاء باستدعاء أحدث — لا نكمل الكتابة على الشاشة
       if (gate) { window._lastGateSec = sec; window.__currentChapterGate = gate; }
     } catch(gateErr) {
       console.error('[DB LOAD ERROR][_renderDynamicSectionPage:checkSectionAccess]', gateErr && gateErr.message, gateErr);
       gate = null; // fail-open — لا نعطّل عرض القسم بسبب فشل فحص الاشتراك
     }
   }
+  if (!_stillCurrent()) return;
 
   // ── زر دخول محادثة الشعبة — يظهر فقط على صفحة الشعبة نفسها ولمن يملك صلاحية ──
   var chatEntryEl = document.getElementById('dynamic-section-chat-entry');
@@ -3642,6 +3698,7 @@ async function _renderDynamicSectionPage(sec) {
       loadSections(sec.id),
       loadSectionResources(sec.id)
     ]);
+    if (!_stillCurrent()) return; // ✅ استُبدل بطلب أحدث أثناء الانتظار — تجاهل هذه النتيجة المتأخرة
 
     // عرض الموارد (مقفولة إذا كانت الشعبة محجوبة)
     if (resourcesEl) {
@@ -3654,6 +3711,7 @@ async function _renderDynamicSectionPage(sec) {
         loadSectionContent(sec.id),
         loadSectionResources(sec.id)
       ]);
+      if (!_stillCurrent()) return; // ✅ نفس الحماية بعد الانتظار الثاني
       const gridEl = document.getElementById('dynamic-section-grid');
 
       if (content.length > 0 || leafResources.length > 0) {
@@ -3676,7 +3734,7 @@ async function _renderDynamicSectionPage(sec) {
             <div style="font-size:2.5rem;margin-bottom:12px">🚧</div>
             <p style="margin-bottom:8px;font-size:1rem">هذا القسم قيد الإعداد — سيتم إضافة المحتوى قريباً</p>
             <p style="font-size:.78rem;color:#bbb;margin-bottom:16px">إذا كنت تتوقع ظهور محتوى، تحقق من Console للتشخيص</p>
-            <button onclick="sessionStorage.removeItem('_sbDataCache_v2');window._dataCache.sections={};window._dataCache.content={};window._dataCache.resources={};window._dataCache._pending={};_renderDynamicSectionPage(window.__sectionData_${sec.id});"
+            <button onclick="sessionStorage.removeItem('_sbDataCache_v2');window._dataCache.sections={};window._dataCache.content={};window._dataCache.resources={};window._dataCache._pending={};_apRetrySectionById('${String(sec.id).replace(/[^a-zA-Z0-9-]/g,'')}');"
               style="background:linear-gradient(135deg,var(--primary),var(--teal));color:#fff;border:none;border-radius:10px;padding:10px 20px;font-family:var(--font);font-size:.85rem;font-weight:700;cursor:pointer;box-shadow:0 3px 10px rgba(10,61,98,0.25)">
               🔄 إعادة المحاولة
             </button>
@@ -3693,6 +3751,7 @@ async function _renderDynamicSectionPage(sec) {
     if (gate) gridHtml += window._renderSubscriptionGateHTML(gate);
     document.getElementById('dynamic-section-grid').innerHTML = gridHtml;
   } catch(err) {
+    if (!_stillCurrent()) return; // ✅ استُبدل بطلب أحدث — لا نعرض خطأ لطلب قديم
     console.error('[_renderDynamicSectionPage] خطأ:', err.message);
     // ✅ زر إعادة المحاولة عند الفشل
     var gridEl = document.getElementById('dynamic-section-grid');
