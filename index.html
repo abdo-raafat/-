@@ -3096,6 +3096,26 @@ function _apRescueStuckSpinners() {
 window.addEventListener('error', function() { _apRescueStuckSpinners(); });
 window.addEventListener('unhandledrejection', function() { _apRescueStuckSpinners(); });
 
+// ════════════════════════════════════════════════════════════════
+// ✅ FIX (Button/Action Audit) — القسم 19: Global Action Error Handler
+// ────────────────────────────────────────────────────────────────
+// _apRescueStuckSpinners أعلاه يعالج الشاشات التي تعرض Spinner. لكن كثير من
+// الأزرار (اشتراك، موافقة/رفض طلب، حظر مستخدم...) لا تعرض Spinner أصلاً —
+// لو فشل الطلب داخلها بدون try/catch، كان المستخدم لا يرى أي شيء إطلاقاً
+// (فشل صامت). هذا المراقب العام يضيف تغذية راجعة موحّدة لأي خطأ/Promise غير
+// معالَج في أي مكان بالصفحة، بدل أن يفشل كل زر بصمت كامل — بدون كسر الصفحة.
+window.addEventListener('error', function(e) {
+  if (typeof _showToast === 'function') {
+    _showToast('❌ حدث خطأ غير متوقع، برجاء إعادة المحاولة', 'error');
+  }
+});
+window.addEventListener('unhandledrejection', function(e) {
+  console.error('[Global Action Error]', e.reason && (e.reason.message || e.reason));
+  if (typeof _showToast === 'function') {
+    _showToast('❌ تعذر إتمام العملية، برجاء إعادة المحاولة', 'error');
+  }
+});
+
 async function _fetchWithTimeout(promiseFn, timeoutMs) {
   return Promise.race([
     promiseFn(),
@@ -5676,6 +5696,30 @@ const ResourceViewer = (function() {
   }
 
   function close() {
+    // ✅ FIX (Button/Action Audit): كان يُزال الـ overlay من الـ DOM مباشرة بدون
+    // إيقاف الفيديو/الصوت أولاً — على بعض المتصفحات (خصوصاً الموبايل) يظل
+    // الصوت يعمل في الخلفية للحظات بعد الإغلاق. الآن نوقفه وننظّف المصدر
+    // صراحة قبل الإزالة، تماماً كما هو مطلوب لأي Modal يحتوي وسائط.
+    try {
+      const video = document.getElementById('rv-video-el');
+      if (video) {
+        video.pause();
+        video.removeAttribute('src');
+        while (video.firstChild) video.removeChild(video.firstChild);
+        video.load();
+      }
+      const audio = document.getElementById('rv-audio-el');
+      if (audio) {
+        audio.pause();
+        audio.removeAttribute('src');
+        while (audio.firstChild) audio.removeChild(audio.firstChild);
+        audio.load();
+      }
+      const iframe = document.getElementById('rv-embed-iframe');
+      if (iframe) iframe.src = 'about:blank';
+    } catch (e) {
+      console.warn('[ResourceViewer] تنظيف الوسائط عند الإغلاق:', e);
+    }
     const el = document.getElementById('rv-overlay');
     if (el) el.remove();
     document.body.style.overflow = '';
@@ -5771,51 +5815,81 @@ const ResourceViewer = (function() {
  * ✅ PDF تُفتح في NativePDFViewer
  * ✅ فيديو / صور تُفتح في ResourceViewer
  */
-function openResource(url, title, resourceType) {
-  if (!url) return;
-
-  var rt = (resourceType || '').toLowerCase();
-
-  // ── الروابط الخارجية (link): افتح في تبويب جديد مباشرةً ──
-  if (rt === 'link' || rt === 'external_link') {
-    var extA = document.createElement('a');
-    extA.href = url;
-    extA.target = '_blank';
-    extA.rel = 'noopener noreferrer';
-    document.body.appendChild(extA);
-    extA.click();
-    document.body.removeChild(extA);
+// ✅ FIX (Button/Action Audit): نقطة دخول مركزية واحدة لكل أنواع الموارد
+// (PDF / Video / Audio / Image / File / External Link)، بدل كود متفرّق.
+// تضمن الآن: منع الفتح المزدوج (double-click)، try/catch/finally حول أي عملية
+// غير متزامنة (مثل انتظار رابط PDF الموقّع)، ورسالة خطأ واضحة بدل ترك الزر معلّقاً.
+window._resourceOpenBusy = false;
+async function openResource(url, title, resourceType) {
+  if (!url) {
+    if (typeof _showToast === 'function') _showToast('رابط الملف غير متوفر', 'error');
     return;
   }
 
-  // ── HTML embed: عرض داخل iframe ──
-  if (rt === 'html') {
-    ResourceViewer.open(url, title, 'html');
-    return;
+  // ── منع الفتح المزدوج: لو في عملية فتح شغّالة بالفعل، تجاهل الضغطة الجديدة ──
+  if (window._resourceOpenBusy) return;
+  window._resourceOpenBusy = true;
+  // شبكة أمان: حتى لو حدث خطأ غير متوقع (استثناء لم يُلتقط لأي سبب)، لا يبقى
+  // القفل مُفعّلاً للأبد ويمنع كل الأزرار بعدها — يُفك تلقائياً كحد أقصى.
+  var _unlockSafety = setTimeout(function() { window._resourceOpenBusy = false; }, 15000);
+
+  try {
+    var rt = (resourceType || '').toLowerCase();
+
+    // ── الروابط الخارجية (link): افتح في تبويب جديد مباشرةً ──
+    if (rt === 'link' || rt === 'external_link') {
+      var extA = document.createElement('a');
+      extA.href = url;
+      extA.target = '_blank';
+      extA.rel = 'noopener noreferrer';
+      document.body.appendChild(extA);
+      extA.click();
+      document.body.removeChild(extA);
+      return;
+    }
+
+    // ── HTML embed: عرض داخل iframe ──
+    if (rt === 'html') {
+      ResourceViewer.open(url, title, 'html');
+      return;
+    }
+
+    // ── PDF ──
+    if (rt === 'pdf' || /\.pdf($|\?)/i.test(url)) {
+      // ✅ الآن ننتظر (await) فعلياً بدل fire-and-forget: هذا ما كان يجعل الزر
+      // "لا يستجيب" أثناء انتظار رابط PDF الموقّع من Supabase — المستخدم كان
+      // يضغط أكثر من مرة ظنّاً أن الزر لا يعمل. الآن القفل أعلاه يمنع الفتح
+      // المزدوج، والـ toast يعطي تغذية راجعة فورية بدل الصمت التام.
+      if (typeof _showToast === 'function') _showToast('⏳ جاري فتح الملف...', 'info');
+      await NativePDFViewer.open(url, title);
+      return;
+    }
+
+    // ── روابط اجتماعية / خارجية (فيسبوك، واتساب، تيليجرام، ...) ──
+    // لو مش PDF أو فيديو أو صورة — افتحها مباشرة
+    var lower = url.toLowerCase().split('?')[0];
+    var isMedia = (
+      /\.(mp4|webm|ogg|mov|avi|mkv|mp3|wav|aac|flac|m4a|jpe?g|png|webp|gif|svg|bmp)$/.test(lower) ||
+      /youtube\.com|youtu\.be|vimeo\.com|dailymotion\.com/.test(url) ||
+      /drive\.google\.com|cloudinary\.com/.test(url)
+    );
+
+    if (!isMedia) {
+      ResourceViewer.open(url, title, 'html');
+      return;
+    }
+
+    // ── ميديا: استخدام ResourceViewer ──
+    ResourceViewer.open(url, title, resourceType);
+
+  } catch (error) {
+    console.error('[openResource] تعذر فتح المورد:', error);
+    if (typeof _showToast === 'function') _showToast('❌ تعذر فتح المورد، حاول مرة أخرى', 'error');
+  } finally {
+    // ✅ يُفك القفل دائماً — نجاح أو فشل — فلا يبقى أي زر "عرض" في حالة تعليق.
+    clearTimeout(_unlockSafety);
+    window._resourceOpenBusy = false;
   }
-
-  // ── PDF ──
-  if (rt === 'pdf' || /\.pdf($|\?)/i.test(url)) {
-    NativePDFViewer.open(url, title);
-    return;
-  }
-
-  // ── روابط اجتماعية / خارجية (فيسبوك، واتساب، تيليجرام، ...) ──
-  // لو مش PDF أو فيديو أو صورة — افتحها مباشرة
-  var lower = url.toLowerCase().split('?')[0];
-  var isMedia = (
-    /\.(mp4|webm|ogg|mov|avi|mkv|mp3|wav|aac|flac|m4a|jpe?g|png|webp|gif|svg|bmp)$/.test(lower) ||
-    /youtube\.com|youtu\.be|vimeo\.com|dailymotion\.com/.test(url) ||
-    /drive\.google\.com|cloudinary\.com/.test(url)
-  );
-
-  if (!isMedia) {
-    ResourceViewer.open(url, title, 'html');
-    return;
-  }
-
-  // ── ميديا: استخدام ResourceViewer ──
-  ResourceViewer.open(url, title, resourceType);
 }
 
 </script>
@@ -11168,12 +11242,15 @@ var NativePDFViewer = (function() {
   // باقي دوال الملف (render/_showOpenError/زووم/بحث...) أصبحت غير مستخدمة من
   // هذا المسار لكنها لم تُحذف (قاعدة: لا حذف لأي كود غير مطلوب حذفه صراحة).
   async function open(url, title) {
-    if (!url) return;
+    if (!url) throw new Error('رابط PDF غير موجود');
     var finalUrl = url;
-    try { finalUrl = await _getSignedPdfUrl(url); } catch(e) {}
+    try { finalUrl = await _getSignedPdfUrl(url); } catch(e) { console.warn('[PDFjs] فشل توقيع الرابط، سيُستخدم الرابط الأصلي:', e && e.message); }
     if (!finalUrl || !/^https?:\/\//i.test(finalUrl)) {
       console.warn('[PDFjs] رابط PDF غير صالح:', url);
-      return;
+      // ✅ FIX: كان يفشل بصمت (return فقط) فيرى المستخدم toast "جاري الفتح..."
+      // ثم لا شيء يحدث إطلاقاً ولا رسالة خطأ. الآن يرمي استثناءً واضحاً يلتقطه
+      // openResource() ويحوّله لرسالة خطأ فعلية للمستخدم.
+      throw new Error('رابط الملف غير صالح');
     }
     // ✅ FIX: نستخدم window._origWindowOpen (المرجع الأصلي المحفوظ قبل اعتراض
     // window.open في "INTERNAL VIEWER SYSTEM") بدل window.open المُعترَض.
