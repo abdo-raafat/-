@@ -3429,7 +3429,7 @@ async function renderSiteAds() {
       var inner =
         '<div style="border-radius:16px;overflow:hidden;box-shadow:0 6px 22px rgba(10,61,98,.15);margin-bottom:12px;position:relative;background:linear-gradient(135deg,#0a3d62,#17a589);">'
         + (a.image_url
-            ? '<img src="' + _apEsc(a.image_url) + '" alt="' + _apEsc(a.title || 'إعلان') + '" style="width:100%;max-height:220px;object-fit:cover;display:block;">'
+            ? '<img src="' + _apEsc(a.image_url) + '" alt="' + _apEsc(a.title || 'إعلان') + '" loading="lazy" decoding="async" style="width:100%;max-height:220px;object-fit:cover;display:block;">'
             : '<div style="padding:22px 18px;color:#fff;font-weight:800;text-align:center;">' + _apEsc(a.title || 'إعلان') + '</div>')
         + '</div>';
       return a.link_url
@@ -6992,7 +6992,7 @@ window.checkBanStatus = async function(email) {
             <select class="ap-select" id="ds-sel-grade" style="width:auto;padding:7px 10px;" onchange="dsOnGradeChange()"><option value="">كل الفرق</option></select>
             <select class="ap-select" id="ds-sel-term" style="width:auto;padding:7px 10px;" onchange="dsOnTermChange()" disabled><option value="">كل الترمات</option></select>
             <select class="ap-select" id="ds-sel-branch" style="width:auto;padding:7px 10px;" onchange="dsOnBranchChange()" disabled><option value="">كل الشعب</option></select>
-            <input class="ap-input" id="ap-divsub-search" type="text" placeholder="🔍 بحث بالبريد..." style="width:auto;min-width:160px;padding:7px 10px;" oninput="apLoadDivisionSubs()">
+            <input class="ap-input" id="ap-divsub-search" type="text" placeholder="🔍 بحث بالبريد..." style="width:auto;min-width:160px;padding:7px 10px;" oninput="apLoadDivisionSubsDebounced()">
             <select class="ap-select" id="ap-divsub-filter" style="width:auto;padding:7px 10px;" onchange="apLoadDivisionSubs()">
               <option value="">كل الحالات</option>
               <option value="pending">⏳ معلق</option>
@@ -7018,7 +7018,7 @@ window.checkBanStatus = async function(email) {
         <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:16px;">
           <div class="ap-section-heading" style="margin:0;border:none;padding:0;">💳 طلبات الدفع (لها إيصال مرفوع)</div>
           <div style="display:flex;gap:8px;flex-wrap:wrap;">
-            <input class="ap-input" id="ap-pay-search" type="text" placeholder="🔍 بحث بالبريد..." style="width:auto;min-width:160px;padding:7px 10px;" oninput="apLoadPayments()">
+            <input class="ap-input" id="ap-pay-search" type="text" placeholder="🔍 بحث بالبريد..." style="width:auto;min-width:160px;padding:7px 10px;" oninput="apLoadPaymentsDebounced()">
             <select class="ap-select" id="ap-pay-filter" style="width:auto;padding:7px 10px;" onchange="apLoadPayments()">
               <option value="pending">⏳ بانتظار المراجعة</option>
               <option value="active">✅ مقبولة</option>
@@ -7215,7 +7215,7 @@ window.checkBanStatus = async function(email) {
         <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;align-items:flex-end;">
           <div style="flex:2;min-width:180px;">
             <label class="ap-label">البحث بالاسم أو البريد</label>
-            <input class="ap-input" id="um-search" type="text" placeholder="🔍 ابحث عن مستخدم..." oninput="umApplyFilters()">
+            <input class="ap-input" id="um-search" type="text" placeholder="🔍 ابحث عن مستخدم..." oninput="umApplyFiltersDebounced()">
           </div>
           <div style="min-width:130px;">
             <label class="ap-label">Role</label>
@@ -7318,7 +7318,7 @@ window.checkBanStatus = async function(email) {
           <button class="ap-btn ap-btn-ghost" onclick="apLoadUsers()">🔄 تحديث</button>
         </div>
         <div class="ap-field" style="margin-bottom:14px;">
-          <input class="ap-input" id="ap-users-search" type="text" placeholder="🔍 بحث بالبريد الإلكتروني أو الاسم..." oninput="apFilterUsers()">
+          <input class="ap-input" id="ap-users-search" type="text" placeholder="🔍 بحث بالبريد الإلكتروني أو الاسم..." oninput="apFilterUsersDebounced()">
         </div>
         <div id="ap-users-body">
           <div class="ap-loading"><div class="spinner"></div> جاري التحميل...</div>
@@ -8790,6 +8790,25 @@ function dsOnBranchChange() {
   apLoadDivisionSubs();
 }
 
+// ✅ PERF: debounce عام — يُستخدم لمنع إرسال query مع كل حرف في مربعات البحث المتصلة بالخادم
+function _apGenericDebounce(fn, ms) {
+  var t;
+  return function() {
+    var args = arguments, ctx = this;
+    clearTimeout(t);
+    t = setTimeout(function() { fn.apply(ctx, args); }, ms || 300);
+  };
+}
+// هذان مربعا البحث الوحيدان اللذان كانا يستدعيان query حقيقية من Supabase مع كل حرف
+// (oninput مباشرة على الدالة) — بقية مربعات البحث في اللوحة إما تُصفّي بيانات محمّلة
+// مسبقًا في الذاكرة (لا query) أو لديها بالفعل debounce خاص بها (مثل apQuickSearch).
+var apLoadDivisionSubsDebounced = _apGenericDebounce(function(){ apLoadDivisionSubs(); }, 350);
+var apLoadPaymentsDebounced     = _apGenericDebounce(function(){ apLoadPayments(); }, 350);
+// ✅ PERF: هذان لا يستدعيان Supabase (تصفية في الذاكرة فقط) لكن debounce خفيف يمنع
+// إعادة رسم الجدول بالكامل مع كل حرف على الأجهزة الضعيفة كلما كبرت قائمة المستخدمين
+var apFilterUsersDebounced  = _apGenericDebounce(function(){ apFilterUsers(); }, 200);
+var umApplyFiltersDebounced = _apGenericDebounce(function(){ umApplyFilters(); }, 200);
+
 async function apLoadDivisionSubs() {
   var el = document.getElementById('ap-divsubs-body');
   if (!el || !window.supabase) return;
@@ -9017,37 +9036,81 @@ async function apPaymentDecision(subId, kind, userId, approve) {
 }
 
 // ────────────────────────────────────────────────────────────────
-// USERS TAB
+// USERS TAB — Server-side pagination + Server-side search (Aug 2026)
+// ✅ FIX: كان بيحمّل profiles كاملة على المتصفح دفعة واحدة (بدون LIMIT/OFFSET)
+// ثم يفلتر/يبحث محلياً في الجافاسكريبت — ده بيبقى بطيء جداً وغير قابل للتوسع
+// مع زيادة عدد المستخدمين. الحل: كل صفحة بتتجاب من السيرفر عبر .range()،
+// والبحث بيتنفذ داخل قاعدة البيانات عبر .ilike()/.or() بدل التحميل الكامل.
 // ────────────────────────────────────────────────────────────────
-var _apUsersCache = [];
+var _apUsersPage     = 1;
+var _apUsersPerPage  = 15;
+var _apUsersTotal    = 0;
+var _apUsersRows     = [];   // فقط صفوف الصفحة الحالية المعروضة (وليس كل المستخدمين)
+var _apUsersLoadSeq  = 0;    // يمنع Race Condition لو المستخدم كتب/غيّر بسرعة قبل رجوع نتيجة أقدم
 
 async function apLoadUsers() {
+  _apUsersPage = 1;
+  await _apFetchUsersPage();
+}
+
+// ── الاستعلام الفعلي من السيرفر: صفحة واحدة فقط + بحث + عدّ إجمالي ──
+async function _apFetchUsersPage() {
   var el = document.getElementById('ap-users-body');
   if (!el || !window.supabase) return;
   el.innerHTML = '<div class="ap-loading"><div class="spinner"></div> جاري التحميل...</div>';
   _apWatchLoading('ap-users-body', 'apLoadUsers()');
+  var mySeq = ++_apUsersLoadSeq;
   try {
-    var [profilesRes, bannedRes] = await Promise.all([
-      window.supabase.from('profiles').select('*').order('updated_at', { ascending: false }),
-      window.supabase.from('banned_users').select('email'),
-    ]);
-    if (profilesRes.error) throw profilesRes.error;
-    var profiles = profilesRes.data || [];
-    var bannedEmails = new Set((bannedRes.data || []).map(function(b){ return b.email; }));
-    _apUsersCache = profiles;
+    var search = (document.getElementById('ap-users-search').value || '').trim();
+    var from = (_apUsersPage - 1) * _apUsersPerPage;
+    var to   = from + _apUsersPerPage - 1;
+
+    var q = window.supabase.from('profiles')
+      .select('id, email, full_name, role, subscription_status', { count: 'exact' });
+    if (search) {
+      // نهرب % و , عشان مايتكسرش استعلام or() الخاص بـ PostgREST
+      var esc = search.replace(/[%,]/g, '\\$&');
+      q = q.or('email.ilike.%' + esc + '%,full_name.ilike.%' + esc + '%');
+    }
+    q = q.order('updated_at', { ascending: false }).range(from, to);
+
+    var { data, error, count } = await q;
+    if (mySeq !== _apUsersLoadSeq) return; // فيه طلب أحدث اتبعت بعد ده، نتجاهل هذا الرد المتأخر
+    if (error) throw error;
+
+    var profiles = data || [];
+    _apUsersTotal = count || 0;
+
+    // نجيب حالة الحظر فقط لبريدات هذه الصفحة (وليس كل جدول banned_users بالكامل هنا،
+    // بحد أقصى _apUsersPerPage قيمة — استعلام صغير وسريع)
+    var emails = profiles.map(function(p){ return p.email; }).filter(Boolean);
+    var bannedEmails = new Set();
+    if (emails.length) {
+      var bannedRes = await window.supabase.from('banned_users').select('email').in('email', emails);
+      if (mySeq !== _apUsersLoadSeq) return;
+      (bannedRes.data || []).forEach(function(b){ bannedEmails.add((b.email || '').toLowerCase()); });
+    }
+
+    _apUsersRows = profiles;
     _apRenderUsers(profiles, bannedEmails);
   } catch(err) {
+    if (mySeq !== _apUsersLoadSeq) return;
     el.innerHTML = '<div class="ap-empty" style="color:#e74c3c;">❌ ' + _apEsc(err.message) + '</div>';
   }
 }
 
+// ── يُستدعى من input البحث (بعد الـ debounce) — بحث سيرفري حقيقي، يرجع لأول صفحة ──
 function apFilterUsers() {
-  var q = (document.getElementById('ap-users-search').value || '').toLowerCase();
-  if (!q) { apLoadUsers(); return; }
-  var filtered = _apUsersCache.filter(function(u) {
-    return (u.email || '').toLowerCase().includes(q) || (u.full_name || '').toLowerCase().includes(q);
-  });
-  _apRenderUsers(filtered, new Set());
+  _apUsersPage = 1;
+  _apFetchUsersPage();
+}
+
+function apChangeUsersPage(page) {
+  if (page < 1) return;
+  _apUsersPage = page;
+  _apFetchUsersPage();
+  var el = document.getElementById('ap-users-body');
+  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 function _apRenderUsers(profiles, bannedEmails) {
@@ -9058,7 +9121,7 @@ function _apRenderUsers(profiles, bannedEmails) {
     return;
   }
   var subMap = { none:'—', pending:'⏳ معلق', active:'✅ نشط', expired:'❌ منتهي', cancelled:'🚫 ملغي' };
-  el.innerHTML = '<div class="ap-table-wrap"><table class="ap-table"><thead><tr>'
+  var tableHtml = '<div class="ap-table-wrap"><table class="ap-table"><thead><tr>'
     + '<th>البريد</th><th>الاسم</th><th>الاشتراك</th><th>حالة الحساب</th><th>إجراء</th>'
     + '</tr></thead><tbody>'
     + profiles.map(function(u) {
@@ -9078,6 +9141,22 @@ function _apRenderUsers(profiles, bannedEmails) {
         + '</td></tr>';
     }).join('')
     + '</tbody></table></div>';
+
+  // Pagination (نفس تصميم/كلاسات جدول User Management للتناسق البصري)
+  var total = _apUsersTotal;
+  var pages = Math.max(1, Math.ceil(total / _apUsersPerPage));
+  var pag = '<div class="um-pagination">'
+    + '<span>' + total + ' مستخدم — صفحة ' + _apUsersPage + ' من ' + pages + '</span>'
+    + '<div class="um-page-btns">'
+    + '<button class="um-page-btn" onclick="apChangeUsersPage(' + (_apUsersPage-1) + ')" ' + (_apUsersPage<=1?'disabled':'') + '>◀ السابق</button>';
+  var pfrom = Math.max(1, _apUsersPage-2), pto = Math.min(pages, _apUsersPage+2);
+  for (var p = pfrom; p <= pto; p++) {
+    pag += '<button class="um-page-btn' + (p===_apUsersPage?' active':'') + '" onclick="apChangeUsersPage('+p+')">' + p + '</button>';
+  }
+  pag += '<button class="um-page-btn" onclick="apChangeUsersPage(' + (_apUsersPage+1) + ')" ' + (_apUsersPage>=pages?'disabled':'') + '>التالي ▶</button>'
+    + '</div></div>';
+
+  el.innerHTML = tableHtml + pag;
 }
 
 async function apBanUser() {
@@ -9090,93 +9169,86 @@ async function apBanUser() {
   document.getElementById('ap-ban-email').value  = '';
   document.getElementById('ap-ban-reason').value = '';
   if (msgEl) { msgEl.style.color='#17a589'; msgEl.textContent='✅ تم الحظر بنجاح'; setTimeout(function(){ msgEl.textContent=''; }, 3000); }
-  apLoadUsers();
+  _apFetchUsersPage(); // نبقى في نفس الصفحة/البحث الحاليين بدل الرجوع لأول صفحة
 }
 
 async function apBanUserDirect(email) {
   var reason = prompt('سبب الحظر (اختياري):') || '';
   await window.banUser(email, reason);
-  apLoadUsers();
+  _apFetchUsersPage();
 }
 
 async function apUnbanUserDirect(email) {
   await window.unbanUser(email);
-  apLoadUsers();
+  _apFetchUsersPage();
 }
 
 // ────────────────────────────────────────────────────────────────
-// USER MANAGEMENT SYSTEM v1 — نظام إدارة المستخدمين الشامل
+// USER MANAGEMENT SYSTEM v2 — Server-side pagination + Server-side
+// search + Server-side sorting (Aug 2026)
 // يعتمد على جدول profiles + banned_users + subscriptions
+//
+// ✅ FIX: النسخة القديمة كانت تحمّل *كل* صفوف profiles (وبنفس القدر من
+// banned_users و subscriptions) دفعة واحدة على المتصفح، ثم تعمل بحث/فلترة/
+// ترتيب/تقسيم صفحات بالكامل في الجافاسكريبت. هذا غير قابل للتوسع (كل زيادة
+// في عدد المستخدمين = تحميل أبطأ حتى لو الأدمن هيشوف 15 صف بس).
+//
+// الحل: كل شيء بيتم داخل قاعدة البيانات:
+//   • البحث  → .ilike() / .or() على السيرفر
+//   • الترتيب → .order() على السيرفر
+//   • الصفحات → .range() على السيرفر (Supabase/PostgREST LIMIT+OFFSET)
+//   • الإحصائيات (الإجمالي/الأدمن/النشط/المعلق) → استعلامات count منفصلة
+//     وخفيفة (head:true) لا تُحمّل أي صفوف فعلية.
+//   • banned_users يبقى استثناء: نحمّله كاملاً لأنه غالباً جدول صغير جداً
+//     (عدد المحظورين لا يقارن بعدد كل المستخدمين)، وده اللي بيسمح لنا نفلتر
+//     بحالة "محظور/نشط" على مستوى السيرفر عبر .in()/.not.in() على البريد.
 // ────────────────────────────────────────────────────────────────
 
-var _umCache = [];          // كاش كل المستخدمين
-var _umBannedEmails = new Set();
-var _umPage    = 1;
-var _umPerPage = 15;
-var _umFiltered = [];
+var _umPage           = 1;
+var _umPerPage         = 15;
+var _umTotal           = 0;
+var _umPageRows        = [];        // فقط صفوف الصفحة الحالية المعروضة (مش كل المستخدمين)
+var _umBannedEmailsAll = new Set(); // جدول banned_users صغير — نحمّله كاملاً كمرجع للفلترة والعرض
+var _umBannedInfoMap   = new Map();
+var _umLoadSeq         = 0;         // يمنع Race Condition لو الأدمن غيّر الفلتر/البحث بسرعة
 
-// ── تحميل البيانات ──────────────────────────────────────────────
-async function umLoadUsers() {
-  var el = document.getElementById('um-users-body');
-  if (!el || !window.supabase) return;
-  el.innerHTML = '<div class="ap-loading"><div class="spinner"></div> جاري تحميل المستخدمين...</div>';
-  _apWatchLoading('um-users-body', 'umLoadUsers()');
-  _umPage = 1;
+// ── تحميل قائمة البريدات المحظورة (جدول مستقل صغير، منفصل عن حجم profiles) ──
+async function _umRefreshBannedSet() {
   try {
-    var [profRes, bannedRes, subsRes] = await Promise.all([
-      window.supabase.from('profiles').select('*').order('updated_at', { ascending: false }),
-      window.supabase.from('banned_users').select('email, reason, banned_at'),
-      window.supabase.from('subscriptions').select('user_id, payment_status, subscription_type, end_date').order('created_at', { ascending: false }),
-    ]);
-    if (profRes.error) throw profRes.error;
-
-    var profiles  = profRes.data  || [];
-    var banned    = bannedRes.data || [];
-    var subs      = subsRes.data  || [];
-
-    // بناء Map الحظر
-    _umBannedEmails = new Map();
-    banned.forEach(function(b) {
-      _umBannedEmails.set((b.email || '').toLowerCase(), b);
+    var { data, error } = await window.supabase.from('banned_users').select('email, reason, banned_at');
+    if (error) throw error;
+    _umBannedEmailsAll = new Set();
+    _umBannedInfoMap   = new Map();
+    (data || []).forEach(function(b) {
+      var key = (b.email || '').toLowerCase();
+      _umBannedEmailsAll.add(key);
+      _umBannedInfoMap.set(key, b);
     });
-
-    // بناء Map الاشتراكات (آخر اشتراك لكل user_id)
-    var subsMap = {};
-    subs.forEach(function(s) {
-      if (!subsMap[s.user_id]) subsMap[s.user_id] = s;
-    });
-
-    // دمج البيانات
-    _umCache = profiles.map(function(p) {
-      var sub = subsMap[p.id] || null;
-      var isBanned = _umBannedEmails.has((p.email || '').toLowerCase());
-      return Object.assign({}, p, {
-        _sub: sub,
-        _isBanned: isBanned,
-        _banInfo: _umBannedEmails.get((p.email || '').toLowerCase()) || null,
-      });
-    });
-
-    // إحصائيات
-    _umRenderStats(_umCache, banned.length);
-
-    // عرض
-    _umFiltered = _umCache.slice();
-    _umRenderTable();
-
-  } catch(err) {
-    el.innerHTML = '<div class="ap-empty" style="color:#e74c3c;">❌ ' + _apEsc(err.message) + '</div>';
+  } catch(e) {
+    console.warn('[UM] تعذر تحميل قائمة المحظورين:', e && e.message);
   }
 }
 
-// ── إحصائيات ───────────────────────────────────────────────────
-function _umRenderStats(profiles, bannedCount) {
-  var total    = profiles.length;
-  var admins   = profiles.filter(function(u){ return u.role === 'admin'; }).length;
-  var students = total - admins;
-  var active   = profiles.filter(function(u){ return u.subscription_status === 'active'; }).length;
-  var pending  = profiles.filter(function(u){ return u.subscription_status === 'pending'; }).length;
+// ── إحصائيات عامة عبر COUNT من السيرفر مباشرة (بدون تحميل أي صفوف فعلية) ──
+async function _umLoadStats() {
+  try {
+    var [totalRes, adminRes, activeRes, pendingRes] = await Promise.all([
+      window.supabase.from('profiles').select('id', { count: 'exact', head: true }),
+      window.supabase.from('profiles').select('id', { count: 'exact', head: true }).eq('role', 'admin'),
+      window.supabase.from('profiles').select('id', { count: 'exact', head: true }).eq('subscription_status', 'active'),
+      window.supabase.from('profiles').select('id', { count: 'exact', head: true }).eq('subscription_status', 'pending'),
+    ]);
+    var total   = totalRes.count   || 0;
+    var admins  = adminRes.count   || 0;
+    var active  = activeRes.count  || 0;
+    var pending = pendingRes.count || 0;
+    _umRenderStatsRaw(total, Math.max(0, total - admins), admins, active, pending, _umBannedEmailsAll.size);
+  } catch(e) {
+    console.warn('[UM] تعذر تحميل الإحصائيات:', e && e.message);
+  }
+}
 
+function _umRenderStatsRaw(total, students, admins, active, pending, bannedCount) {
   function _s(id, val) {
     var el = document.getElementById(id);
     if (el) {
@@ -9186,7 +9258,7 @@ function _umRenderStats(profiles, bannedCount) {
       setTimeout(function(){ el.style.transform = 'scale(1)'; }, 300);
     }
   }
-  _s('um-stat-total',   total);
+  _s('um-stat-total',    total);
   _s('um-stat-students', students);
   _s('um-stat-admins',   admins);
   _s('um-stat-active',   active);
@@ -9194,59 +9266,122 @@ function _umRenderStats(profiles, bannedCount) {
   _s('um-stat-banned',   bannedCount);
 }
 
-// ── الفلتر والبحث ───────────────────────────────────────────────
-function umApplyFilters() {
-  var q      = ((document.getElementById('um-search') || {}).value || '').toLowerCase().trim();
+// ── بناء استعلام profiles حسب البحث/الفلاتر الحالية في الصفحة ──
+function _umBuildQuery() {
+  var q = window.supabase.from('profiles')
+    .select('id, email, full_name, role, subscription_status, subscription_end, updated_at, created_at', { count: 'exact' });
+
+  var search = ((document.getElementById('um-search') || {}).value || '').trim();
   var role   = ((document.getElementById('um-filter-role') || {}).value   || '');
   var subSt  = ((document.getElementById('um-filter-sub')  || {}).value   || '');
   var status = ((document.getElementById('um-filter-status') || {}).value || '');
 
-  _umFiltered = _umCache.filter(function(u) {
-    if (q) {
-      var inEmail = (u.email || '').toLowerCase().includes(q);
-      var inName  = (u.full_name || '').toLowerCase().includes(q);
-      if (!inEmail && !inName) return false;
+  if (search) {
+    // نهرب % و , عشان مايتكسرش استعلام or() الخاص بـ PostgREST
+    var esc = search.replace(/[%,]/g, '\\$&');
+    q = q.or('email.ilike.%' + esc + '%,full_name.ilike.%' + esc + '%');
+  }
+  if (role) q = q.eq('role', role);
+  if (subSt) {
+    if (subSt === 'none') q = q.or('subscription_status.is.null,subscription_status.eq.none');
+    else q = q.eq('subscription_status', subSt);
+  }
+  // حالة الحظر: بما أن profiles نفسها ما فيهاش عمود is_banned، نستخدم قائمة
+  // البريدات المحظورة (جدول صغير محمّل بالكامل مسبقاً) كفلتر IN/NOT-IN على السيرفر
+  if (status === 'banned' || status === 'active') {
+    var emails = Array.from(_umBannedEmailsAll);
+    if (status === 'banned') {
+      if (emails.length === 0) q = q.eq('id', '00000000-0000-0000-0000-000000000000'); // لا يوجد محظورون → نتيجة فارغة
+      else q = q.in('email', emails);
+    } else if (emails.length > 0) {
+      var list = '(' + emails.map(function(e){ return '"' + e.replace(/"/g, '\\"') + '"'; }).join(',') + ')';
+      q = q.not('email', 'in', list);
     }
-    if (role && (u.role || 'user') !== role) return false;
-    if (subSt) {
-      var st = u.subscription_status || 'none';
-      if (st !== subSt) return false;
-    }
-    if (status === 'banned'  && !u._isBanned) return false;
-    if (status === 'active'  &&  u._isBanned) return false;
-    return true;
-  });
-
-  var sortVal = ((document.getElementById('um-sort') || {}).value || 'updated_desc');
-  _umFiltered.sort(function(a, b) {
-    if (sortVal === 'name_asc')  return (a.full_name || a.email || '').localeCompare(b.full_name || b.email || '', 'ar');
-    if (sortVal === 'email_asc') return (a.email || '').localeCompare(b.email || '');
-    if (sortVal === 'sub_end_asc') {
-      var ea = a.subscription_end ? new Date(a.subscription_end).getTime() : (a._sub && a._sub.end_date ? new Date(a._sub.end_date).getTime() : Infinity);
-      var eb = b.subscription_end ? new Date(b.subscription_end).getTime() : (b._sub && b._sub.end_date ? new Date(b._sub.end_date).getTime() : Infinity);
-      return ea - eb;
-    }
-    // default: الأحدث تحديثاً
-    return new Date(b.updated_at || b.created_at || 0) - new Date(a.updated_at || a.created_at || 0);
-  });
-
-  _umPage = 1;
-  _umRenderTable();
+  }
+  return q;
 }
 
-// ── رسم الجدول مع Pagination ────────────────────────────────────
+function _umApplySort(q) {
+  var sortVal = ((document.getElementById('um-sort') || {}).value || 'updated_desc');
+  if (sortVal === 'name_asc')    return q.order('full_name', { ascending: true, nullsFirst: false });
+  if (sortVal === 'email_asc')   return q.order('email', { ascending: true });
+  if (sortVal === 'sub_end_asc') return q.order('subscription_end', { ascending: true, nullsFirst: false });
+  return q.order('updated_at', { ascending: false }); // default: الأحدث تحديثاً
+}
+
+// ── الاستعلام الفعلي: صفحة واحدة فقط من السيرفر حسب الفلتر/البحث/الترتيب الحاليين ──
+async function _umFetchPage() {
+  var el = document.getElementById('um-users-body');
+  if (!el || !window.supabase) return;
+  el.innerHTML = '<div class="ap-loading"><div class="spinner"></div> جاري التحميل...</div>';
+  _apWatchLoading('um-users-body', 'umLoadUsers()');
+  var mySeq = ++_umLoadSeq;
+  try {
+    var from = (_umPage - 1) * _umPerPage;
+    var to   = from + _umPerPage - 1;
+    var q = _umApplySort(_umBuildQuery()).range(from, to);
+
+    var { data, error, count } = await q;
+    if (mySeq !== _umLoadSeq) return; // فيه طلب أحدث اتبعت بعد ده، نتجاهل هذا الرد المتأخر
+    if (error) throw error;
+
+    var profiles = data || [];
+    _umTotal = count || 0;
+
+    // نجيب الاشتراكات فقط لليوزرز الظاهرين في هذه الصفحة (بحد أقصى _umPerPage صف)
+    // بدل تحميل جدول subscriptions بالكامل كما كان يحدث سابقاً
+    var ids = profiles.map(function(p){ return p.id; }).filter(Boolean);
+    var subsMap = {};
+    if (ids.length) {
+      var subsRes = await window.supabase.from('subscriptions')
+        .select('user_id, payment_status, subscription_type, end_date')
+        .in('user_id', ids)
+        .order('created_at', { ascending: false });
+      if (mySeq !== _umLoadSeq) return;
+      (subsRes.data || []).forEach(function(s){ if (!subsMap[s.user_id]) subsMap[s.user_id] = s; });
+    }
+
+    _umPageRows = profiles.map(function(p) {
+      var key = (p.email || '').toLowerCase();
+      return Object.assign({}, p, {
+        _sub: subsMap[p.id] || null,
+        _isBanned: _umBannedEmailsAll.has(key),
+        _banInfo: _umBannedInfoMap.get(key) || null,
+      });
+    });
+
+    _umRenderTable();
+  } catch(err) {
+    if (mySeq !== _umLoadSeq) return;
+    el.innerHTML = '<div class="ap-empty" style="color:#e74c3c;">❌ ' + _apEsc(err.message) + '</div>';
+  }
+}
+
+// ── تحميل كامل (يُستدعى عند فتح التبويب أو زر "🔄 تحديث") ──────
+async function umLoadUsers() {
+  _umPage = 1;
+  await _umRefreshBannedSet();
+  _umLoadStats();      // مستقلة عن جلب الصفحة، لا داعي لانتظارها لعرض الجدول
+  await _umFetchPage();
+}
+
+// ── يُستدعى من البحث/الفلاتر/الترتيب — استعلام سيرفري حقيقي، يرجع لأول صفحة ──
+function umApplyFilters() {
+  _umPage = 1;
+  _umFetchPage();
+}
+
+// ── رسم جدول الصفحة الحالية (البيانات جاية جاهزة كصفحة واحدة من السيرفر) ──
 function _umRenderTable() {
   var el = document.getElementById('um-users-body');
   if (!el) return;
-  if (!_umFiltered || _umFiltered.length === 0) {
+  if (!_umPageRows || _umPageRows.length === 0) {
     el.innerHTML = '<div class="ap-empty"><div class="ap-empty-icon">🔍</div>لا يوجد مستخدمون يطابقون البحث</div>';
     return;
   }
-  var total = _umFiltered.length;
-  var pages = Math.ceil(total / _umPerPage);
-  _umPage = Math.max(1, Math.min(_umPage, pages));
-  var start = (_umPage - 1) * _umPerPage;
-  var pageData = _umFiltered.slice(start, start + _umPerPage);
+  var total = _umTotal;
+  var pages = Math.max(1, Math.ceil(total / _umPerPage));
+  var pageData = _umPageRows;
 
   var subLabels = {
     none: '<span class="um-badge um-badge-none">— لا يوجد</span>',
@@ -9312,8 +9447,8 @@ function _umRenderTable() {
     + '<div class="um-page-btns">'
     + '<button class="um-page-btn" onclick="umChangePage(' + (_umPage-1) + ')" ' + (_umPage<=1?'disabled':'') + '>◀ السابق</button>';
   // أرقام الصفحات
-  var from = Math.max(1, _umPage-2), to = Math.min(pages, _umPage+2);
-  for (var p = from; p <= to; p++) {
+  var pfrom = Math.max(1, _umPage-2), pto = Math.min(pages, _umPage+2);
+  for (var p = pfrom; p <= pto; p++) {
     pag += '<button class="um-page-btn' + (p===_umPage?' active':'') + '" onclick="umChangePage('+p+')">' + p + '</button>';
   }
   pag += '<button class="um-page-btn" onclick="umChangePage(' + (_umPage+1) + ')" ' + (_umPage>=pages?'disabled':'') + '>التالي ▶</button>'
@@ -9323,15 +9458,16 @@ function _umRenderTable() {
 }
 
 function umChangePage(page) {
+  if (page < 1) return;
   _umPage = page;
-  _umRenderTable();
+  _umFetchPage();
   var el = document.getElementById('um-users-body');
   if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 // ── Modal التعديل ───────────────────────────────────────────────
 function umOpenEdit(userId) {
-  var user = _umCache.find(function(u){ return u.id === userId; });
+  var user = _umPageRows.find(function(u){ return u.id === userId; });
   if (!user) return;
 
   document.getElementById('um-edit-user-id').value  = user.id;
@@ -9370,7 +9506,7 @@ async function umSaveEdit() {
   msgEl.textContent = '⏳ جاري الحفظ...';
 
   // نلتقط الدور القديم قبل الحفظ عشان نسجّله في الـ Audit Log (تغيير role حساس جداً)
-  var _prevUser = (_umCache || []).find(function(u){ return u.id === userId; });
+  var _prevUser = (_umPageRows || []).find(function(u){ return u.id === userId; });
   var _prevRole = _prevUser ? _prevUser.role : null;
 
   try {
@@ -9394,12 +9530,9 @@ async function umSaveEdit() {
     logAudit(_prevRole !== role ? 'change_user_role' : 'update_user', 'user', userId, name || userId, null, 'success',
       { previous_role: _prevRole, new_role: role, subscription_status: subStatus });
 
-    // تحديث الكاش المحلي
-    var idx = _umCache.findIndex(function(u){ return u.id === userId; });
-    if (idx !== -1) Object.assign(_umCache[idx], updates);
-    _umFiltered = _umCache.slice();
-    umApplyFilters();
-    _umRenderStats(_umCache, _umBannedEmails.size);
+    // نعيد جلب نفس الصفحة الحالية من السيرفر (بدل تعديل كاش محلي كان يحوي كل المستخدمين)
+    await _umFetchPage();
+    _umLoadStats();
 
     setTimeout(umCloseEdit, 1200);
   } catch(err) {
@@ -9434,11 +9567,8 @@ async function umActivateSub(userId, email) {
       requested_at:      new Date().toISOString(),
     }], { onConflict: 'user_id' });
 
-    // تحديث الكاش
-    var u = _umCache.find(function(x){ return x.id === userId; });
-    if (u) { u.subscription_status = 'active'; u.subscription_end = endDate.toISOString(); }
-    umApplyFilters();
-    _umRenderStats(_umCache, _umBannedEmails.size);
+    await _umFetchPage();
+    _umLoadStats();
     _umShowToast('✅ تم تفعيل الاشتراك بنجاح', 'success');
   } catch(err) {
     _umShowToast('❌ ' + (err.message || 'حدث خطأ'), 'error');
@@ -9458,10 +9588,8 @@ async function umDeactivateSub(userId, email) {
     await window.supabase.from('subscriptions').update({ payment_status: 'cancelled' })
       .eq('user_id', userId).eq('payment_status', 'active');
 
-    var u = _umCache.find(function(x){ return x.id === userId; });
-    if (u) u.subscription_status = 'cancelled';
-    umApplyFilters();
-    _umRenderStats(_umCache, _umBannedEmails.size);
+    await _umFetchPage();
+    _umLoadStats();
     _umShowToast('🚫 تم إلغاء الاشتراك', 'warning');
   } catch(err) {
     _umShowToast('❌ ' + (err.message || 'حدث خطأ'), 'error');
@@ -9475,14 +9603,9 @@ async function umBanUser(email) {
   if (reason === null) return; // ضغط Cancel
   try {
     await window.banUser(email, reason);
-    var u = _umCache.find(function(x){ return (x.email||'').toLowerCase() === email.toLowerCase(); });
-    if (u) {
-      u._isBanned = true;
-      u._banInfo = { email: email, reason: reason, banned_at: new Date().toISOString() };
-      _umBannedEmails.set(email.toLowerCase(), u._banInfo);
-    }
-    umApplyFilters();
-    _umRenderStats(_umCache, _umBannedEmails.size);
+    await _umRefreshBannedSet();
+    await _umFetchPage();
+    _umLoadStats();
     _umShowToast('🔒 تم حظر المستخدم', 'warning');
   } catch(err) {
     _umShowToast('❌ ' + (err.message || 'حدث خطأ'), 'error');
@@ -9495,11 +9618,9 @@ async function umUnbanUser(email) {
   if (!confirm('رفع الحظر عن: ' + email + '؟')) return;
   try {
     await window.unbanUser(email);
-    var u = _umCache.find(function(x){ return (x.email||'').toLowerCase() === email.toLowerCase(); });
-    if (u) { u._isBanned = false; u._banInfo = null; }
-    _umBannedEmails.delete(email.toLowerCase());
-    umApplyFilters();
-    _umRenderStats(_umCache, _umBannedEmails.size);
+    await _umRefreshBannedSet();
+    await _umFetchPage();
+    _umLoadStats();
     _umShowToast('🔓 تم رفع الحظر', 'success');
   } catch(err) {
     _umShowToast('❌ ' + (err.message || 'حدث خطأ'), 'error');
@@ -10212,7 +10333,7 @@ async function adLoad() {
         var period = (a.start_date ? _apDate(a.start_date) : 'بلا بداية') + ' → ' + (a.end_date ? _apDate(a.end_date) : 'بلا نهاية');
         return '<tr>'
           + '<td><div style="display:flex;align-items:center;gap:8px;">'
-          + (a.image_url ? '<img src="' + _apEsc(a.image_url) + '" style="width:44px;height:44px;object-fit:cover;border-radius:8px;">' : '<span style="font-size:1.4rem;">📢</span>')
+          + (a.image_url ? '<img src="' + _apEsc(a.image_url) + '" width="44" height="44" loading="lazy" decoding="async" style="width:44px;height:44px;object-fit:cover;border-radius:8px;">' : '<span style="font-size:1.4rem;">📢</span>')
           + '<span style="font-weight:700;">' + _apEsc(a.title) + '</span></div></td>'
           + '<td style="font-size:.72rem;color:#888;">' + period + '</td>'
           + '<td>' + statusBadge + '</td>'
@@ -12016,37 +12137,47 @@ function _applyBranchAdminPanelRestrictions() {
 
   function _startSessionWatch() {
     if (_sessionCheckInterval) return;
-    _sessionCheckInterval = setInterval(async function() {
-      if (!window.supabase) return;
-      var res  = await window.supabase.auth.getSession();
-      var sess = res && res.data && res.data.session;
-      if (!sess) {
-        // انتهت الجلسة — أزل صلاحيات الأدمن فوراً
-        if (window._isAdminUser) {
-          window._isAdminUser = false;
-          window._currentUserRole = null;
-          document.body.classList.remove('is-admin');
-          var panel = document.getElementById('admin-panel');
-          if (panel) panel.classList.remove('ap-open');
-        }
-        return;
-      }
-      // تحقق من صلاحيات الأدمن بشكل دوري (كل 5 دقائق) — نفس منطق _resolveAdminStatus
-      // ✅ (Aug 2026): كان هذا الفحص يقارن بـ role==='admin' بس، فكان بيسحب صلاحيات
-      // أي أدمن شعبة (branch_admin أو section_admins) تلقائياً كل 5 دقائق حتى لو
-      // صلاحيته سليمة فعلياً — دلوقتي بيستخدم نفس مصدر الحقيقة الموحّد
-      var status = await _resolveAdminStatus(sess.user.id);
-      if (!status.isAdmin && window._isAdminUser) {
-        // سُحبت صلاحيات الأدمن من قاعدة البيانات
+    _sessionCheckInterval = setInterval(_sessionCheckOnce, 5 * 60 * 1000); // كل 5 دقائق
+    // ✅ PERF (تكملة نقطة #25 Page Visibility): لما التاب يرجع ظاهر بعد ما كان مخفي،
+    // اعمل فحصاً فورياً بدل انتظار الـ 5 دقائق التالية — يحافظ على نفس سرعة الاستجابة الأمنية
+    document.addEventListener('visibilitychange', function() {
+      if (!document.hidden) _sessionCheckOnce();
+    });
+  }
+
+  async function _sessionCheckOnce() {
+    // ✅ PERF: لا داعي لاستهلاك بطارية/بيانات الموبايل بفحص كل 5 دقائق والتاب غير ظاهر أصلاً —
+    // الفحص يُستأنف فورًا عند العودة للتاب (visibilitychange أعلاه)، فلا تأثير أمني حقيقي
+    if (document.hidden) return;
+    if (!window.supabase) return;
+    var res  = await window.supabase.auth.getSession();
+    var sess = res && res.data && res.data.session;
+    if (!sess) {
+      // انتهت الجلسة — أزل صلاحيات الأدمن فوراً
+      if (window._isAdminUser) {
         window._isAdminUser = false;
-        window._currentUserRole = status.role;
+        window._currentUserRole = null;
         document.body.classList.remove('is-admin');
-        document.body.classList.add('content-protected');
         var panel = document.getElementById('admin-panel');
         if (panel) panel.classList.remove('ap-open');
-        _secAlert('تم سحب صلاحياتك الإدارية');
       }
-    }, 5 * 60 * 1000); // كل 5 دقائق
+      return;
+    }
+    // تحقق من صلاحيات الأدمن بشكل دوري (كل 5 دقائق) — نفس منطق _resolveAdminStatus
+    // ✅ (Aug 2026): كان هذا الفحص يقارن بـ role==='admin' بس، فكان بيسحب صلاحيات
+    // أي أدمن شعبة (branch_admin أو section_admins) تلقائياً كل 5 دقائق حتى لو
+    // صلاحيته سليمة فعلياً — دلوقتي بيستخدم نفس مصدر الحقيقة الموحّد
+    var status = await _resolveAdminStatus(sess.user.id);
+    if (!status.isAdmin && window._isAdminUser) {
+      // سُحبت صلاحيات الأدمن من قاعدة البيانات
+      window._isAdminUser = false;
+      window._currentUserRole = status.role;
+      document.body.classList.remove('is-admin');
+      document.body.classList.add('content-protected');
+      var panel = document.getElementById('admin-panel');
+      if (panel) panel.classList.remove('ap-open');
+      _secAlert('تم سحب صلاحياتك الإدارية');
+    }
   }
 
   // ابدأ المراقبة عند تحميل الصفحة
@@ -14417,6 +14548,23 @@ self.addEventListener('fetch', function(e) {
   var _chatChannel  = null;   // realtime channel
   var _chatPollTimer = null;  // fallback polling لو تعطّل الـ realtime
   var _chatProfilesCache = {};
+  // ✅ PERF: pagination — لا نحمّل كل تاريخ المحادثة؛ آخر 50 رسالة فقط ثم "تحميل أقدم" عند الحاجة
+  var _CHAT_PAGE_SIZE = 50;
+  var _chatLoadedMessages = [];   // الرسائل المحمّلة حالياً بترتيب زمني تصاعدي
+  var _chatHasMoreOlder = false;  // هل يُحتمل وجود رسائل أقدم لم تُحمَّل؟
+  var _chatLoadingOlder = false;  // ✅ PERF: يمنع تكرار طلب "تحميل أقدم" أثناء تنفيذ طلب سابق
+  var _chatScrollListenerAttached = false;
+
+  // ✅ PERF: مستمع scroll واحد فقط طوال عمر الصفحة (لا يُعاد إضافته كل مرة يُفتح فيها الشات)
+  function _chatAttachScrollListener() {
+    if (_chatScrollListenerAttached) return;
+    var bodyEl = document.getElementById('chat-body');
+    if (!bodyEl) return;
+    bodyEl.addEventListener('scroll', function() {
+      if (bodyEl.scrollTop < 60) _chatLoadOlderMessages();
+    }, { passive: true });
+    _chatScrollListenerAttached = true;
+  }
 
   // ── زر "دخول محادثة الشعبة" — يُستدعى من _renderDynamicSectionPage عند الأهلية ──
   window._renderChatEntryButtonHTML = function(anchor) {
@@ -14443,6 +14591,7 @@ self.addEventListener('fetch', function(e) {
     var bodyEl = document.getElementById('chat-body');
     bodyEl.innerHTML = '<div class="chat-loading"><div class="spinner"></div> جاري تحميل المحادثة...</div>';
     document.getElementById('chat-send-btn').disabled = true;
+    _chatAttachScrollListener();
 
     var db = window.supabase;
     if (!db) { bodyEl.innerHTML = '<div class="chat-empty">تعذّر الاتصال بالخادم، حاول مجدداً.</div>'; return; }
@@ -14481,37 +14630,89 @@ self.addEventListener('fetch', function(e) {
     _chatRoom = null;
   };
 
-  // ── تحميل الرسائل + جلب أسماء المرسلين من profiles (لا نثق بـ user_name المخزّن وحده) ──
+  // ── تحميل آخر صفحة من الرسائل فقط (✅ PERF: كان يجلب كل تاريخ المحادثة بلا حد أقصى) ──
+  // + جلب أسماء المرسلين من profiles (لا نثق بـ user_name المخزّن وحده)
   async function _chatLoadMessages() {
     var db = window.supabase;
     var bodyEl = document.getElementById('chat-body');
     try {
-      var msgRes = await db.from('chat_messages').select('*').eq('room_id', _chatRoom.id).order('created_at', { ascending: true });
+      // آخر 50 رسالة فقط (الأحدث أولاً في الاستعلام، ثم نعكسها للترتيب الزمني الطبيعي)
+      var msgRes = await db.from('chat_messages')
+        .select('id, room_id, user_id, user_name, message, created_at')
+        .eq('room_id', _chatRoom.id)
+        .order('created_at', { ascending: false })
+        .limit(_CHAT_PAGE_SIZE);
       if (msgRes.error) { bodyEl.innerHTML = '<div class="chat-empty">' + _chatFriendlyError() + '</div>'; return; }
-      var rows = msgRes.data || [];
+      var rows = (msgRes.data || []).slice().reverse();
+      _chatHasMoreOlder = rows.length === _CHAT_PAGE_SIZE; // لو رجع صفحة كاملة، غالبًا فيه أقدم
+      _chatLoadedMessages = rows;
 
-      var uids = Array.from(new Set(rows.map(function(r){ return r.user_id; }).filter(Boolean)));
-      var missing = uids.filter(function(id){ return !_chatProfilesCache[id]; });
-      if (missing.length) {
-        var profRes = await db.from('profiles').select('id, full_name, email, role').in('id', missing);
-        (profRes.data || []).forEach(function(p){ _chatProfilesCache[p.id] = p; });
-      }
-
-      _chatRenderMessages(rows);
+      await _chatFetchMissingProfiles(rows);
+      _chatRenderMessages(rows, { scrollToBottom: true });
     } catch(e) {
       console.error('[CHAT] loadMessages error:', e && e.message);
       bodyEl.innerHTML = '<div class="chat-empty">' + _chatFriendlyError() + '</div>';
     }
   }
 
-  function _chatRenderMessages(rows) {
+  // ── عند التمرير لأعلى: تحميل الرسائل الأقدم فقط (صفحة تالية) بدل تحميل كل التاريخ ──
+  async function _chatLoadOlderMessages() {
+    if (_chatLoadingOlder || !_chatHasMoreOlder || !_chatRoom || !_chatLoadedMessages.length) return;
+    _chatLoadingOlder = true;
+    var db = window.supabase;
+    var bodyEl = document.getElementById('chat-body');
+    var prevScrollHeight = bodyEl.scrollHeight;
+    try {
+      var oldestCreatedAt = _chatLoadedMessages[0].created_at;
+      var res = await db.from('chat_messages')
+        .select('id, room_id, user_id, user_name, message, created_at')
+        .eq('room_id', _chatRoom.id)
+        .lt('created_at', oldestCreatedAt)
+        .order('created_at', { ascending: false })
+        .limit(_CHAT_PAGE_SIZE);
+      if (res.error) throw res.error;
+      var older = (res.data || []).slice().reverse();
+      _chatHasMoreOlder = older.length === _CHAT_PAGE_SIZE;
+      if (older.length) {
+        await _chatFetchMissingProfiles(older);
+        _chatLoadedMessages = older.concat(_chatLoadedMessages);
+        _chatRenderMessages(_chatLoadedMessages, { preserveScrollFrom: prevScrollHeight });
+      }
+    } catch(e) {
+      console.error('[CHAT] loadOlder error:', e && e.message);
+    } finally {
+      _chatLoadingOlder = false;
+    }
+  }
+
+  window._chatLoadOlderMessages = _chatLoadOlderMessages;
+
+  async function _chatFetchMissingProfiles(rows) {
+    var db = window.supabase;
+    var uids = Array.from(new Set(rows.map(function(r){ return r.user_id; }).filter(Boolean)));
+    var missing = uids.filter(function(id){ return !_chatProfilesCache[id]; });
+    if (!missing.length) return;
+    var profRes = await db.from('profiles').select('id, full_name, email, role').in('id', missing);
+    (profRes.data || []).forEach(function(p){ _chatProfilesCache[p.id] = p; });
+  }
+
+  function _chatRenderMessages(rows, opts) {
+    opts = opts || {};
     var bodyEl = document.getElementById('chat-body');
     if (!rows.length) {
       bodyEl.innerHTML = '<div class="chat-empty">لا توجد رسائل بعد — كن أول من يكتب 👋</div>';
       return;
     }
-    bodyEl.innerHTML = rows.map(_chatRenderOneMessage).join('');
-    bodyEl.scrollTop = bodyEl.scrollHeight;
+    var olderHtml = _chatHasMoreOlder
+      ? '<div style="text-align:center;padding:4px 0 10px;"><button type="button" class="ap-btn ap-btn-ghost" style="font-size:.72rem;" onclick="_chatLoadOlderMessages()">⬆️ تحميل رسائل أقدم</button></div>'
+      : '';
+    bodyEl.innerHTML = olderHtml + rows.map(_chatRenderOneMessage).join('');
+    if (opts.preserveScrollFrom != null) {
+      // حافظ على موضع النظر الحالي بدل القفز لأعلى/أسفل بعد إضافة رسائل أقدم فوق القائمة
+      bodyEl.scrollTop = bodyEl.scrollHeight - opts.preserveScrollFrom;
+    } else {
+      bodyEl.scrollTop = bodyEl.scrollHeight;
+    }
   }
 
   function _chatRenderOneMessage(m) {
@@ -14963,7 +15164,7 @@ self.addEventListener('fetch', function(e) {
     var name = meta.full_name || meta.name || user.email || 'مستخدم';
     var avatarUrl = meta.avatar_url || meta.picture || '';
     profileBox.innerHTML =
-      '<div class="ms-sidebar-avatar">' + (avatarUrl ? '<img src="' + avatarUrl + '" alt="">' : initial) + '</div>' +
+      '<div class="ms-sidebar-avatar">' + (avatarUrl ? '<img src="' + avatarUrl + '" alt="" decoding="async">' : initial) + '</div>' +
       '<div class="ms-sidebar-userinfo">' +
         '<div class="ms-sidebar-username">' + name + '</div>' +
         '<div class="ms-sidebar-useremail">' + (user.email || '') + '</div>' +
