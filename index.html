@@ -3037,44 +3037,8 @@ function _apRescueStuckSpinners() {
       + '</div>';
   });
 }
-// ══════════════════════════════════════════════════════
-// 🔍 TEMP DEBUG (Aug 2026) — [RESCUE-DEBUG] — يُزال بعد إيجاد السبب
-// الهدف الوحيد: تسجيل الـ uncaught error / unhandled rejection الحقيقي
-// قبل ما _apRescueStuckSpinners() يمسح الشاشة. لا تغيير في أي منطق آخر.
-// ══════════════════════════════════════════════════════
-function _rescueDebugSanitizedLocation() {
-  try {
-    var href = window.location.href.replace(/([#&?](?:access_token|refresh_token)=)[^&]+/gi, '$1[REDACTED]');
-    var hash = window.location.hash.replace(/((?:^|[#&])(?:access_token|refresh_token)=)[^&]+/gi, '$1[REDACTED]');
-    console.error('[RESCUE-DEBUG] LOCATION', {
-      href: href,
-      pathname: window.location.pathname,
-      hash: hash
-    });
-  } catch(e) {}
-}
-window.addEventListener('error', function(event) {
-  console.error('[RESCUE-DEBUG] WINDOW ERROR', {
-    message: event.message,
-    filename: event.filename,
-    lineno: event.lineno,
-    colno: event.colno,
-    error: event.error,
-    stack: event.error ? event.error.stack : null
-  });
-  _rescueDebugSanitizedLocation();
-  _apRescueStuckSpinners();
-});
-window.addEventListener('unhandledrejection', function(event) {
-  console.error('[RESCUE-DEBUG] UNHANDLED REJECTION', {
-    reason: event.reason,
-    stack: event.reason && event.reason.stack
-      ? event.reason.stack
-      : null
-  });
-  _rescueDebugSanitizedLocation();
-  _apRescueStuckSpinners();
-});
+window.addEventListener('error', function() { _apRescueStuckSpinners(); });
+window.addEventListener('unhandledrejection', function() { _apRescueStuckSpinners(); });
 
 async function _fetchWithTimeout(promiseFn, timeoutMs) {
   return Promise.race([
@@ -10844,171 +10808,23 @@ var NativePDFViewer = (function() {
   }
 
   // ==================== فتح الملف ====================
+  // ==================== فتح الملف ====================
+  // ✅ FIX (Aug 2026): PDF لم يعد يُفتح داخل الـ Viewer الداخلي للموقع إطلاقاً.
+  // بدلاً من بناء الـ overlay/canvas ورسم الصفحات بـ pdf.js، الدالة الآن تكتفي
+  // بحل رابط الملف (نفس _getSignedPdfUrl المستخدمة سابقاً — صلاحيات الوصول
+  // والـ RLS والتوقيع الزمني للرابط لم تتغيّر إطلاقاً) ثم تفتحه في تبويب جديد
+  // ليعرضه عارض المتصفح الأصلي مباشرة. لا Rendering ولا canvas ولا pdf.js هنا.
+  // باقي دوال الملف (render/_showOpenError/زووم/بحث...) أصبحت غير مستخدمة من
+  // هذا المسار لكنها لم تُحذف (قاعدة: لا حذف لأي كود غير مطلوب حذفه صراحة).
   async function open(url, title) {
     if (!url) return;
-    close();
-
     var finalUrl = url;
     try { finalUrl = await _getSignedPdfUrl(url); } catch(e) {}
-
-    document.body.style.overflow = 'hidden';
-    document.body.classList.add('rv-open');
-
-    var isAdmin = window._isAdminUser === true;
-
-    var savedPageTheme = '';
-    try { savedPageTheme = localStorage.getItem('pdfv_page_theme') || ''; } catch(e) {}
-    var pagesDark = savedPageTheme === 'dark';
-
-    var ol = document.createElement('div');
-    ol.id = 'native-pdf-overlay';
-    ol.innerHTML =
-      '<div id="native-pdf-modal"' + (pagesDark ? ' class="pdfv-pages-dark"' : '') + '>' +
-        '<div id="native-pdf-header">' +
-          '<span style="font-size:1.2rem;flex-shrink:0">📄</span>' +
-          '<span id="native-pdf-title">' + _esc(title || 'PDF') + '</span>' +
-          (isAdmin
-            ? '<button id="native-pdf-newtab" title="فتح في نافذة جديدة" ' +
-              'style="background:rgba(255,255,255,.18);border:none;border-radius:8px;color:#fff;' +
-              'padding:6px 10px;cursor:pointer;font-size:.78rem;font-family:inherit;margin-left:6px;" ' +
-              'onclick="window.open(\'' + finalUrl.replace(/'/g,'%27') + '\',\'_blank\')">↗️</button>' +
-              '<button id="native-pdf-dl" title="تحميل" ' +
-              'style="background:rgba(255,255,255,.18);border:none;border-radius:8px;color:#fff;' +
-              'padding:6px 12px;cursor:pointer;font-size:.78rem;font-family:inherit;margin-left:6px;" ' +
-              'onclick="(function(){var a=document.createElement(\'a\');a.href=\'' + finalUrl.replace(/'/g,'%27') + '\';' +
-              'a.setAttribute(\'download\',\'\');document.body.appendChild(a);a.click();document.body.removeChild(a);})()">' +
-              '⬇️ تحميل</button>'
-            : '') +
-          '<button id="native-pdf-close" title="إغلاق">✕</button>' +
-        '</div>' +
-        '<div class="pdfv-toolbar">' +
-          '<div class="pdfv-toolbar-group">' +
-            '<button class="pdfv-btn" id="pdfv-prev" title="الصفحة السابقة">‹</button>' +
-            '<input class="pdfv-page-input" id="pdfv-page-num" type="text" inputmode="numeric" value="1">' +
-            '<span class="pdfv-page-total" id="pdfv-page-total">/ –</span>' +
-            '<button class="pdfv-btn" id="pdfv-next" title="الصفحة التالية">›</button>' +
-          '</div>' +
-          '<div class="pdfv-toolbar-group">' +
-            '<button class="pdfv-btn" id="pdfv-zoom-out" title="تصغير">−</button>' +
-            '<span class="pdfv-zoom-pct" id="pdfv-zoom-pct">100%</span>' +
-            '<button class="pdfv-btn" id="pdfv-zoom-in" title="تكبير">+</button>' +
-          '</div>' +
-          '<button class="pdfv-btn" id="pdfv-search-toggle" title="بحث">🔍</button>' +
-          '<button class="pdfv-btn" id="pdfv-theme-toggle" title="وضع الصفحات الداكن">' + (pagesDark ? '☀️' : '🌗') + '</button>' +
-          '<div class="pdfv-spacer"></div>' +
-          '<button class="pdfv-btn" id="pdfv-fullscreen" title="ملء الشاشة">⛶</button>' +
-        '</div>' +
-        '<div class="pdfv-search-bar" id="pdfv-search-bar">' +
-          '<input class="pdfv-search-input" id="pdfv-search-input" type="text" placeholder="ابحث داخل الملف...">' +
-          '<span class="pdfv-search-count" id="pdfv-search-count"></span>' +
-          '<button class="pdfv-btn" id="pdfv-search-prev" title="السابق">↑</button>' +
-          '<button class="pdfv-btn" id="pdfv-search-next" title="التالي">↓</button>' +
-          '<button class="pdfv-btn" id="pdfv-search-close" title="إغلاق البحث">✕</button>' +
-        '</div>' +
-        '<div id="native-pdf-pdfjs-wrapper"></div>' +
-      '</div>';
-
-    ol._keyHandler = function(e) {
-      if (e.key === 'Escape') {
-        var bar = document.getElementById('pdfv-search-bar');
-        if (bar && bar.classList.contains('active')) { _closeSearch(); return; }
-        NativePDFViewer.close();
-      }
-    };
-    document.addEventListener('keydown', ol._keyHandler);
-    ol.addEventListener('click', function(e) { if (e.target === ol) NativePDFViewer.close(); });
-    document.body.appendChild(ol);
-    _overlayEl = ol;
-
-    document.getElementById('native-pdf-close').onclick = close;
-    document.getElementById('pdfv-prev').onclick = function() { _goToPage((S ? S.currentPage : 1) - 1); };
-    document.getElementById('pdfv-next').onclick = function() { _goToPage((S ? S.currentPage : 1) + 1); };
-    document.getElementById('pdfv-page-num').addEventListener('change', function() { _goToPage(parseInt(this.value, 10)); });
-    document.getElementById('pdfv-page-num').addEventListener('keydown', function(e) { if (e.key === 'Enter') { _goToPage(parseInt(this.value, 10)); this.blur(); } });
-    document.getElementById('pdfv-zoom-in').onclick = function() { _setZoom((S ? S.zoom : 1) + 0.25); };
-    document.getElementById('pdfv-zoom-out').onclick = function() { _setZoom((S ? S.zoom : 1) - 0.25); };
-    document.getElementById('pdfv-fullscreen').onclick = _toggleFullscreen;
-    document.getElementById('pdfv-theme-toggle').onclick = _togglePageTheme;
-    document.getElementById('pdfv-search-toggle').onclick = _openSearch;
-    document.getElementById('pdfv-search-close').onclick = _closeSearch;
-    document.getElementById('pdfv-search-prev').onclick = function() { _searchStep(-1); };
-    document.getElementById('pdfv-search-next').onclick = function() { _searchStep(1); };
-    var searchInput = document.getElementById('pdfv-search-input');
-    var _searchDebounce = null;
-    searchInput.addEventListener('input', function() {
-      clearTimeout(_searchDebounce);
-      var q = this.value;
-      _searchDebounce = setTimeout(function() { _runSearch(q); }, 350);
-    });
-    searchInput.addEventListener('keydown', function(e) {
-      if (e.key === 'Enter') { e.preventDefault(); _searchStep(e.shiftKey ? -1 : 1); }
-    });
-
-    var wrapper = document.getElementById('native-pdf-pdfjs-wrapper');
-    wrapper.innerHTML =
-      '<div class="pdfv-page-loading" style="min-height:60vh"><div class="pdfv-spin"></div>جاري فتح الملف...</div>';
-
-    try {
-      // ✅ حماية من URL غير صالح (فارغ/بدون بروتوكول صحيح) قبل محاولة الجلب
-      if (!finalUrl || !/^https?:\/\//i.test(finalUrl)) {
-        var invalidErr = new Error('invalid-url');
-        invalidErr.name = 'InvalidUrlException';
-        throw invalidErr;
-      }
-
-      var lib = await _loadPdfJs();
-      if (!lib) throw new Error('pdfjs-not-loaded');
-
-      // ملاحظة الأداء: disableAutoFetch يمنع تحميل الملف كاملاً مقدماً —
-      // الصفحات تُطلب (Range requests) فقط عند الحاجة الفعلية إليها.
-      var loadingTask = lib.getDocument({
-        url: finalUrl,
-        cMapUrl: PDFJS_BASE + 'cmaps/',
-        cMapPacked: true,
-        standardFontDataUrl: PDFJS_BASE + 'standard_fonts/',
-        disableAutoFetch: true,
-        disableStream: false,
-        rangeChunkSize: 1 << 16
-      });
-
-      var pdf = await loadingTask.promise;
-
-      S = {
-        pdf: pdf,
-        lib: lib,
-        wrapper: wrapper,
-        numPages: pdf.numPages,
-        currentPage: 1,
-        zoom: 1,
-        baseAspect: null,          // height/width لصفحة 1 (لتقدير ارتفاع الحاويات قبل الرسم)
-        pageEls: {},               // pageNum -> { container, canvas, highlightLayer, rendered, renderTask, textContent }
-        observer: null,
-        renderedSet: new Set(),
-        pagesDark: pagesDark,
-        search: { query: '', matches: [], index: -1, building: false }
-      };
-
-      document.getElementById('pdfv-page-total').textContent = '/ ' + pdf.numPages;
-      _updateZoomLabel();
-
-      var firstPage = await pdf.getPage(1);
-      var vp1 = firstPage.getViewport({ scale: 1 });
-      S.baseAspect = vp1.height / vp1.width;
-
-      wrapper.innerHTML = '';
-      _buildPlaceholders();
-      _setupObserver();
-      _setupScrollPageTracking();
-      _setupResizeRelayout();
-      _setupPinchZoom();
-
-      // فعّل التمرير باللمس بسلاسة على الموبايل
-      wrapper.style.webkitOverflowScrolling = 'touch';
-
-    } catch(e) {
-      console.warn('[PDFjs] تعذّر فتح الملف:', e && e.message);
-      _showOpenError(e, url);
+    if (!finalUrl || !/^https?:\/\//i.test(finalUrl)) {
+      console.warn('[PDFjs] رابط PDF غير صالح:', url);
+      return;
     }
+    window.open(finalUrl, '_blank', 'noopener,noreferrer');
   }
 
   // ==================== رسالة فشل موحّدة (URL غير صالح / منتهي / تعذّر الجلب / ملف مفقود) ====================
