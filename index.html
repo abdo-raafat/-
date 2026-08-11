@@ -7246,7 +7246,7 @@ window.checkBanStatus = async function(email) {
           <div style="min-width:150px;">
             <label class="ap-label">الترتيب</label>
             <select class="ap-select" id="um-sort" onchange="umApplyFilters()">
-              <option value="updated_desc">الأحدث تحديثاً</option>
+              <option value="updated_desc">الأحدث انضمامًا</option>
               <option value="name_asc">الاسم (أ-ي)</option>
               <option value="email_asc">البريد (أ-ي)</option>
               <option value="sub_end_asc">أقرب انتهاء اشتراك</option>
@@ -9072,7 +9072,9 @@ async function _apFetchUsersPage() {
       var esc = search.replace(/[%,]/g, '\\$&');
       q = q.or('email.ilike.%' + esc + '%,full_name.ilike.%' + esc + '%');
     }
-    q = q.order('updated_at', { ascending: false }).range(from, to);
+    // ✅ FIX: العمود profiles.updated_at غير موجود فعلياً في الجدول — كان هذا يكسر
+    // الاستعلام بالكامل (PostgREST يرفض .order() على عمود غير موجود). استُبدل بـ created_at.
+    q = q.order('created_at', { ascending: false }).range(from, to);
 
     var { data, error, count } = await q;
     if (mySeq !== _apUsersLoadSeq) return; // فيه طلب أحدث اتبعت بعد ده، نتجاهل هذا الرد المتأخر
@@ -9269,7 +9271,8 @@ function _umRenderStatsRaw(total, students, admins, active, pending, bannedCount
 // ── بناء استعلام profiles حسب البحث/الفلاتر الحالية في الصفحة ──
 function _umBuildQuery() {
   var q = window.supabase.from('profiles')
-    .select('id, email, full_name, role, subscription_status, subscription_end, updated_at, created_at', { count: 'exact' });
+    // ✅ FIX: أُزيل updated_at من الـselect لأن هذا العمود غير موجود في profiles
+    .select('id, email, full_name, role, subscription_status, subscription_end, created_at', { count: 'exact' });
 
   var search = ((document.getElementById('um-search') || {}).value || '').trim();
   var role   = ((document.getElementById('um-filter-role') || {}).value   || '');
@@ -9306,7 +9309,8 @@ function _umApplySort(q) {
   if (sortVal === 'name_asc')    return q.order('full_name', { ascending: true, nullsFirst: false });
   if (sortVal === 'email_asc')   return q.order('email', { ascending: true });
   if (sortVal === 'sub_end_asc') return q.order('subscription_end', { ascending: true, nullsFirst: false });
-  return q.order('updated_at', { ascending: false }); // default: الأحدث تحديثاً
+  // ✅ FIX: كان الترتيب الافتراضي على updated_at (عمود غير موجود) — استُبدل بـ created_at
+  return q.order('created_at', { ascending: false }); // default: الأحدث انضمامًا
 }
 
 // ── الاستعلام الفعلي: صفحة واحدة فقط من السيرفر حسب الفلتر/البحث/الترتيب الحاليين ──
@@ -9515,7 +9519,7 @@ async function umSaveEdit() {
       role:                role,
       subscription_status: subStatus,
       subscription_end:    subEnd ? new Date(subEnd).toISOString() : null,
-      updated_at:          new Date().toISOString(),
+      // ✅ FIX: أُزيل updated_at (عمود غير موجود في profiles) — كان يفشل الحفظ بالكامل
     };
 
     var { error } = await window.supabase
@@ -9552,7 +9556,7 @@ async function umActivateSub(userId, email) {
       subscription_status: 'active',
       subscription_type:   'yearly',
       subscription_end:    endDate.toISOString(),
-      updated_at:          new Date().toISOString(),
+      // ✅ FIX: أُزيل updated_at (عمود غير موجود في profiles)
     }).eq('id', userId);
     if (error) throw error;
 
@@ -9581,7 +9585,7 @@ async function umDeactivateSub(userId, email) {
   try {
     var { error } = await window.supabase.from('profiles').update({
       subscription_status: 'cancelled',
-      updated_at:          new Date().toISOString(),
+      // ✅ FIX: أُزيل updated_at (عمود غير موجود في profiles)
     }).eq('id', userId);
     if (error) throw error;
 
@@ -11171,7 +11175,13 @@ var NativePDFViewer = (function() {
       console.warn('[PDFjs] رابط PDF غير صالح:', url);
       return;
     }
-    window.open(finalUrl, '_blank', 'noopener,noreferrer');
+    // ✅ FIX: نستخدم window._origWindowOpen (المرجع الأصلي المحفوظ قبل اعتراض
+    // window.open في "INTERNAL VIEWER SYSTEM") بدل window.open المُعترَض.
+    // السبب: window.open المُعترَض كان يلتقط هذا الاستدعاء نفسه ويعيد توجيهه إلى
+    // openResource(url,'pdf') من جديد → التي تستدعي NativePDFViewer.open() من
+    // جديد → التي تستدعي window.open() من جديد → حلقة لا نهائية تجمّد المتصفح
+    // (هذا سبب تجمّد الصفحة عند فتح ملفات PDF تحديداً).
+    (window._origWindowOpen || window.open)(finalUrl, '_blank', 'noopener,noreferrer');
   }
 
   // ==================== رسالة فشل موحّدة (URL غير صالح / منتهي / تعذّر الجلب / ملف مفقود) ====================
