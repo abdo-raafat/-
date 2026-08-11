@@ -110,6 +110,41 @@ _boot(0, 'page script parsing started');
 // Promise يحل عند جهوزية Supabase
 // ── _supabaseLibReady: يُحلّ بـ UMD lib { createClient }
 // ── _supabaseClientReady: يُحلّ بالـ CLIENT الجاهز (فيه .from)
+// ══════════════════════════════════════════════════════
+// [AUTH-DEBUG] مؤقت — يسجّل فقط أسماء الـ parameters الراجعة من Google/Supabase
+// في أول لحظة ممكنة (قبل ما أي كود يستهلك الـ hash/query). القيم الحساسة
+// (access_token / refresh_token / code) تُستبدل بـ [REDACTED]. آمن للحذف لاحقاً.
+// ══════════════════════════════════════════════════════
+(function _authDebugLogIncomingUrl() {
+  try {
+    var SENSITIVE = ['access_token', 'refresh_token', 'code', 'provider_token', 'provider_refresh_token'];
+    var hashStr = (window.location.hash || '').replace(/^#/, '');
+    var searchStr = (window.location.search || '').replace(/^\?/, '');
+    function summarize(paramStr) {
+      if (!paramStr) return null;
+      var out = {};
+      var params = new URLSearchParams(paramStr);
+      params.forEach(function(value, key) {
+        out[key] = SENSITIVE.indexOf(key) !== -1 ? '[REDACTED]' : value;
+      });
+      return Object.keys(out).length ? out : null;
+    }
+    var hashParams = summarize(hashStr);
+    var queryParams = summarize(searchStr);
+    console.log('[AUTH-DEBUG] Page load — location.origin+pathname:', window.location.origin + window.location.pathname);
+    console.log('[AUTH-DEBUG] URL hash params (sanitized):', hashParams);
+    console.log('[AUTH-DEBUG] URL query params (sanitized):', queryParams);
+    if (queryParams && queryParams.error) {
+      console.warn('[AUTH-DEBUG] ⚠️ OAuth returned an error in query string:', queryParams.error, queryParams.error_description || '');
+    }
+    if (hashParams && hashParams.error) {
+      console.warn('[AUTH-DEBUG] ⚠️ OAuth returned an error in hash:', hashParams.error, hashParams.error_description || '');
+    }
+  } catch (e) {
+    console.warn('[AUTH-DEBUG] URL param logging failed:', e && e.message);
+  }
+})();
+
 var _sbLibResolve;
 window._supabaseReady = new Promise(function(resolve) { _sbLibResolve = resolve; });
 
@@ -2780,6 +2815,7 @@ window._supabaseReady.then(function(lib) {
     window._sbClientResolve && window._sbClientResolve(window._db);
     _boot(6, '_sbClientResolve fired — client is now globally available');
     console.log("✅ Supabase Client جاهز");
+    console.log('[AUTH-DEBUG] Supabase client created — url:', _supabaseUrl, '| storageKey: benisuef_auth | detectSessionInUrl: true | flowType: (not set explicitly → SDK default = implicit)');
   } catch(initErr) {
     console.error("❌ فشل إنشاء Supabase client:", initErr.message);
     _boot('5-FATAL', 'createClient() threw: ' + initErr.message);
@@ -5641,7 +5677,7 @@ window.loginWithGoogle = async function() {
   // redirectTo: الـ URL الحالي بدقة (يعمل على GitHub Pages, localhost, إلخ)
   var redirectTo = window.location.origin + window.location.pathname;
   if (!redirectTo.endsWith('/') && !redirectTo.endsWith('.html')) redirectTo += '/';
-  console.log('[AUTH] loginWithGoogle → redirectTo:', redirectTo);
+  console.log('[AUTH-DEBUG] loginWithGoogle → redirectTo passed to signInWithOAuth:', redirectTo);
   try {
     const { error } = await db.auth.signInWithOAuth({
       provider: 'google',
@@ -5651,6 +5687,7 @@ window.loginWithGoogle = async function() {
         queryParams: { access_type: 'offline', prompt: 'consent' }
       }
     });
+    console.log('[AUTH-DEBUG] signInWithOAuth() call returned, error:', error ? error.message : null);
     if (error) {
       console.error('[AUTH] Google OAuth error:', error.message);
       _showToast ? _showToast('خطأ: ' + error.message, 'error') : alert('خطأ في تسجيل الدخول: ' + error.message);
@@ -5741,8 +5778,9 @@ function _checkAndApplySubscription(userId) {
 }
 
 async function _renderUserBox(user, role) {
+  console.log('[AUTH-DEBUG] _renderUserBox called — user:', user ? (user.id + ' / ' + user.email) : null, '| role:', role);
   const box = document.getElementById('user-box');
-  if (!box) return;
+  if (!box) { console.warn('[AUTH-DEBUG] _renderUserBox: #user-box element NOT found in DOM — cannot render'); return; }
   if (!user) {
     window._isAdminUser = false;
     window._isBranchAdmin = false;
@@ -5754,6 +5792,7 @@ async function _renderUserBox(user, role) {
     document.body.classList.remove('content-protected'); // المحتوى مجاني للجميع
     box.innerHTML = '<button class="chatgpt-login-btn" onclick="loginWithGoogle()">🔐 دخول</button>';
     if (typeof window._syncMobileSidebarUser === 'function') window._syncMobileSidebarUser(null, false, false, false);
+    console.log('[AUTH-DEBUG] _renderUserBox: rendered GUEST state (login button)');
     return;
   }
   // role يأتي من profiles.role في Supabase — ليس من HTML
@@ -5761,6 +5800,7 @@ async function _renderUserBox(user, role) {
   // أدمن الشعبة المُعيّن عن طريق section_admins (بدون profiles.role='branch_admin')
   // يظهر له الأدمن بردو، مش بس اللي معيّن بالطريقة القديمة
   var status = (role === 'admin') ? { isSuperAdmin: true, isBranchAdmin: false, isAdmin: true } : await _resolveAdminStatus(user.id);
+  console.log('[AUTH-DEBUG] _renderUserBox: resolved admin status:', status);
   const isSuperAdmin  = status.isSuperAdmin;
   const isBranchAdmin = status.isBranchAdmin;
   const isAdmin = isSuperAdmin || isBranchAdmin; // كلاهما يرى واجهة الأدمن، لكن بصلاحيات مختلفة تماماً من القاعدة
@@ -5799,6 +5839,7 @@ async function _renderUserBox(user, role) {
       + '</div>';
   }
   if (typeof window._syncMobileSidebarUser === 'function') window._syncMobileSidebarUser(user, isAdmin, isSuperAdmin, isBranchAdmin);
+  console.log('[AUTH-DEBUG] _renderUserBox: rendered LOGGED-IN state — box.innerHTML length:', box.innerHTML.length, '| isAdmin:', isAdmin);
 }
 
 // ── fetchUserRole: جلب الـ role من profiles ──────────────────
@@ -6038,6 +6079,9 @@ window.checkUser = async function() {
   // ============================================================
   window.supabase.auth.onAuthStateChange(async function(event, session) {
 
+    // [AUTH-DEBUG] لا نطبع أي Token — فقط اسم الحدث ووجود/عدم وجود session
+    console.log('[AUTH-DEBUG] onAuthStateChange fired — event:', event, '| session present:', !!session);
+
     // [BAN CHECK] عند أي حدث يحمل session
     if (session && session.user && session.user.email) {
       var isBanned = await _isBanned(session.user.email);
@@ -6050,8 +6094,10 @@ window.checkUser = async function() {
     }
 
     if (session && session.user) {
+      console.log('[AUTH-DEBUG] onAuthStateChange session.user →', 'id:', session.user.id, '| email:', session.user.email);
       // ── Admin Middleware: جلب الـ role من قاعدة البيانات ──
       var role = await _fetchUserRole(session.user.id);
+      console.log('[AUTH-DEBUG] _fetchUserRole resolved role:', role);
       _renderUserBox(session.user, role);
       // ✅ مزامنة بريد الحساب في profiles (مرة واحدة فقط لو كان ناقصاً — راجع _ensureProfileEmailSynced)
       if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') {
@@ -6093,19 +6139,23 @@ window.checkUser = async function() {
   // نفرض Guest مؤقت على الواجهة ثم نصلّحه لاحقاً.
   var _isOAuthCallback = /[#&]access_token=|[?&#]code=/.test(window.location.href);
   var _sessionTimeoutMs = _isOAuthCallback ? 25000 : 12000;
+  console.log('[AUTH-DEBUG] checkUser: _isOAuthCallback:', _isOAuthCallback, '| timeout:', _sessionTimeoutMs, 'ms');
   var session = null;
   try {
     var sessionRes = await _fetchWithTimeout(function() {
       return window.supabase.auth.getSession();
     }, _sessionTimeoutMs);
     session = sessionRes && sessionRes.data && sessionRes.data.session;
+    console.log('[AUTH-DEBUG] checkUser: getSession() resolved — session:', session ? 'PRESENT' : 'null', session ? ('| user.id: ' + session.user.id + ' | user.email: ' + session.user.email) : '');
   } catch (e) {
     if (_isOAuthCallback) {
       // مفيش Guest مؤقت هنا — الـ session لسه بتتأسّس؛ onAuthStateChange هو اللي هيتكفّل بالنتيجة
       console.warn('[AUTH] checkUser: getSession OAuth timeout — في انتظار onAuthStateChange بدل Guest فوري:', e && e.message);
+      console.log('[AUTH-DEBUG] checkUser: getSession() threw/timed out during OAuth callback — error:', e && e.message);
       return;
     }
     console.warn('[AUTH] checkUser: getSession timeout/error — معاملة كـ Guest:', e && e.message);
+    console.log('[AUTH-DEBUG] checkUser: getSession() threw/timed out (non-OAuth) — error:', e && e.message);
     _renderUserBox(null, null);
     return;
   }
