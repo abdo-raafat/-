@@ -2833,6 +2833,23 @@ window._supabaseReady.then(function(lib) {
   // ── Pre-warm cache: حمّل الـ root sections فوراً (بدون انتظار) ──
   // هذا يضمن أن أول click يكون فورياً من الـ cache
   loadSections(null).catch(function(e) { console.warn('[prefetch] root sections:', e); });
+
+  // ════════════════════════════════════════════════════════════════
+  // ✅ [URL ROUTING] استعادة المكان عند: رابط مباشر لقسم، Refresh، أو إغلاق/فتح
+  // المتصفح من جديد. لا تُلغي renderHomeSections أعلاه — الصفحة الرئيسية تُحمَّل
+  // دائمًا في الخلفية (كاش جاهز)، وهذا الجزء فقط يبدّل العرض لو الرابط يشير لقسم،
+  // أو (لو الرابط بدون قسم) يستخدم آخر قسم محفوظ محليًا كـ fallback فقط.
+  // ════════════════════════════════════════════════════════════════
+  (function _apBootRouteRestore() {
+    var m = /^#\/section\/([^\/?#]+)/.exec(window.location.hash || '');
+    if (m) {
+      _apRestoreSectionPath(decodeURIComponent(m[1]), true);
+      return;
+    }
+    var lastId = null;
+    try { lastId = localStorage.getItem('bsm_last_section_id'); } catch (e) {}
+    if (lastId) { _apRestoreSectionPath(lastId, true); }
+  })();
 });
 
 // ==================== STATE ====================
@@ -2883,6 +2900,7 @@ function showPage(id) {
 function goHome() {
   state.navigationStack = [];
   showPage('page-home');
+  _apSetUrlHome();
 }
 
 // الرجوع خطوة واحدة للخلف
@@ -2893,6 +2911,7 @@ function navigateBack() {
   if (state.navigationStack.length === 0) { goHome(); return; }
   const prev = state.navigationStack[state.navigationStack.length - 1];
   prev.restore();
+  if (prev.id !== undefined && prev.id !== null) _apSetUrlForSection(prev.id);
 }
 
 // الانتقال المباشر لأي خطوة في الـ breadcrumb
@@ -2902,6 +2921,7 @@ function navigateTo(index) {
   state.navigationStack = state.navigationStack.slice(0, index + 1);
   const step = state.navigationStack[index];
   step.restore();
+  if (step.id !== undefined && step.id !== null) _apSetUrlForSection(step.id);
 }
 
 // بناء الـ breadcrumb من الـ stack
@@ -3313,8 +3333,12 @@ const SECTION_DISPLAY_MAP = {
   'الفرقة الثانية':       { icon:'📗', color:'linear-gradient(135deg,#6c3483,#1a5276)', tags:['16 شعبة متخصصة','مواد متقدمة'],                 btnLabel:'ادخل الفرقة الثانية ←',action: (sec) => openDynamicSection(sec) },
   'ما بعد الفرقة الثانية':{ icon:'🏆', color:'linear-gradient(135deg,#7d3200,#d4ac0d)', tags:['تكليف حكومي','توظيف','تطوير مهني'],             btnLabel:'ادخل القسم ←',         action: (sec) => openDynamicSection(sec) },
   'روابط وجروبات مهمة':   { icon:'🔗', color:'linear-gradient(135deg,#154360,#2471a3)', tags:['واتساب','تيليجرام','لينكات رسمية'],              btnLabel:'ادخل القسم ←',         action: (sec) => {
-    state.navigationStack.push({ label: 'روابط وجروبات مهمة', restore: () => showPage('page-links') });
+    // ✅ busy guard بسيط: لو الصفحة دي أصلاً هي آخر خطوة، تجاهل الضغطات الزيادة بدل تكرار الـ stack
+    var top = state.navigationStack[state.navigationStack.length - 1];
+    if (top && top.id === sec.id) { showPage('page-links'); return; }
+    state.navigationStack.push({ id: sec.id, label: 'روابط وجروبات مهمة', restore: () => showPage('page-links') });
     showPage('page-links');
+    _apSetUrlForSection(sec.id);
   } },
   'كورس الإنجليزي':       { icon:'🇬🇧', color:'linear-gradient(135deg,#1a3a5c,#c0392b)', tags:['إنجليزي طبي','مصطلحات','محادثة'],             btnLabel:'ادخل الكورس ←',        action: (sec) => openDynamicSection(sec) },
   'كورس ICDL':            { icon:'💻', color:'linear-gradient(135deg,#0e3d6e,#0097b2)', tags:['ويندوز','أوفيس','إنترنت'],                      btnLabel:'ادخل الكورس ←',        action: (sec) => openDynamicSection(sec) },
@@ -3701,30 +3725,164 @@ async function _renderDynamicSectionPage(sec) {
 })();
 window._apNavBusyIds = window._apNavBusyIds || {};
 
+// ════════════════════════════════════════════════════════════════
+// ✅ [URL ROUTING] — يمثّل مكان المستخدم الحالي في الرابط (#/section/<id>)
+// إضافة صرفة فوق نظام navigationStack الموجود، لا تستبدله ولا تغيّر منطقه.
+// ────────────────────────────────────────────────────────────────
+function _apSetUrlForSection(id, replace) {
+  if (id === undefined || id === null) return;
+  try {
+    var hash = '#/section/' + id;
+    if (window.location.hash === hash) return;
+    if (replace) history.replaceState({ apSection: id }, '', hash);
+    else history.pushState({ apSection: id }, '', hash);
+  } catch (e) {}
+}
+function _apSetUrlHome(replace) {
+  try {
+    var cur = window.location.hash;
+    if (cur === '' || cur === '#' || cur === '#/') { if (!replace) return; }
+    if (replace) history.replaceState({ apHome: true }, '', '#/');
+    else history.pushState({ apHome: true }, '', '#/');
+  } catch (e) {}
+}
+// last_section_id فقط (رقم/UUID بسيط) — ممنوع تخزين محتوى أو tokens هنا
+function _apSaveLastSectionLocal(id) {
+  try { if (id !== undefined && id !== null) localStorage.setItem('bsm_last_section_id', String(id)); } catch (e) {}
+}
+
 /**
- * openDynamicSection — يُضاف للـ stack ويُفتح القسم
+ * _apFetchSectionById — يجلب صف قسم واحد بالـ id مباشرة (للروابط المباشرة/الاستعادة)
+ * يستخدم الكاش الموجود في window.__sectionData_<id> أولاً، ولا يكرر أي نظام cache جديد
+ */
+async function _apFetchSectionById(id) {
+  var numId = toValidId(id);
+  if (numId === null) return null;
+  var cached = window['__sectionData_' + numId];
+  if (cached) return cached;
+  var db = await _waitForSupabase();
+  if (!db) return null;
+  try {
+    var res = await db.from('site_sections').select('*').eq('id', numId).maybeSingle();
+    if (res.error || !res.data) return null;
+    window['__sectionData_' + numId] = res.data;
+    var dm = SECTION_DISPLAY_MAP[res.data.title];
+    window['__sectionAction_' + numId] = (dm && dm.action) || ((s) => openDynamicSubSection(s));
+    return res.data;
+  } catch (e) { return null; }
+}
+
+/**
+ * _apRestoreSectionPath — يعيد بناء نفس مكان المستخدم (والـ breadcrumb أعلاه)
+ * انطلاقًا من section id فقط: يمشي لأعلى عبر parent_id لإعادة بناء المسار،
+ * ثم يفتح القسم النهائي بنفس منطق فتح أي كارت عادي (يستفيد من نفس الـ cache).
+ * urlMode: 'replace' عند أول تحميل للصفحة، false/undefined عند popstate (الرابط تغيّر بالفعل)
+ */
+async function _apRestoreSectionPath(id, urlMode) {
+  window._apNavLoaderShow();
+  try {
+    var target = await _apFetchSectionById(id);
+    if (!target) { goHome(); return; }
+
+    var chain = [target];
+    var cursor = target, guardCount = 0;
+    while (cursor && cursor.parent_id && guardCount < 12) {
+      var parent = await _apFetchSectionById(cursor.parent_id);
+      if (!parent) break;
+      chain.unshift(parent);
+      cursor = parent;
+      guardCount++;
+    }
+
+    document.querySelectorAll('.page').forEach(function(p) { p.classList.remove('active'); });
+    state.navigationStack = [];
+    for (var i = 0; i < chain.length - 1; i++) {
+      (function(anc) {
+        var ancCopy = Object.assign({}, anc);
+        state.navigationStack.push({ id: anc.id, label: anc.title, restore: () => _renderDynamicSectionPage(ancCopy) });
+      })(chain[i]);
+    }
+
+    window._lastOpenSectionId = target.id;
+    _apSaveLastSectionLocal(target.id);
+    var targetCopy = Object.assign({}, target);
+    var children = await loadSections(target.id);
+    if (children.length > 0) {
+      state.navigationStack.push({ id: target.id, label: target.title, restore: () => _renderDynamicSectionPage(targetCopy) });
+      await _renderDynamicSectionPage(target);
+    } else {
+      state.navigationStack.push({ id: target.id, label: target.title, restore: async () => { await _openContentPage(targetCopy); } });
+      await _openContentPage(target);
+    }
+    if (urlMode) _apSetUrlForSection(target.id, true);
+  } catch (e) {
+    console.warn('[AUTH-DEBUG][route] _apRestoreSectionPath failed:', e && e.message);
+    goHome();
+  } finally {
+    window._apNavLoaderHide();
+  }
+}
+
+/**
+ * openDynamicSection — يُضاف للـ stack ويُفتح القسم (نقطة دخول محمية بـ busy guard حقيقي)
  */
 async function openDynamicSection(sec) {
   if (!sec || !sec.id) { alert('قريباً'); return; }
   const numId = toValidId(sec.id);
   if (numId === null) { alert('قريباً'); return; }
+  // ✅ busy guard حقيقي — لو نفس القسم قيد الفتح بالفعل، أي ضغطة إضافية تُتجاهل فورًا
+  // (بدون setTimeout وبدون debounce) — لا تنفيذ متكرر مهما كان عدد الضغطات
+  if (window._apNavBusyIds[sec.id]) return;
+  window._apNavBusyIds[sec.id] = true;
+  try {
+    await _apDoOpenDynamicSection(sec);
+  } finally {
+    delete window._apNavBusyIds[sec.id];
+  }
+}
 
+/**
+ * _apDoOpenDynamicSection — التنفيذ الفعلي بدون فحص الـ guard (يُستخدم داخليًا من
+ * openDynamicSubSection بعد ما تكون هي نفسها ضبطت الـ guard لنفس الـ id، لتفادي
+ * أن يمنع openDynamicSection نفسه من التنفيذ)
+ */
+async function _apDoOpenDynamicSection(sec) {
   window._apNavLoaderShow();
   try {
     // ── فحص الاشتراك (إن وُجد) يتم داخل _renderDynamicSectionPage نفسها،
     // بحيث يظل «الفصل الأول» مفتوحاً دائماً وباقي الفصول تظهر مقفولة ──
     const secCopy = { ...sec }; // نسخة ثابتة
     state.navigationStack.push({
+      id: sec.id,
       label: sec.title,
       restore: () => _renderDynamicSectionPage(secCopy),
     });
 
     window._lastOpenSectionId = sec.id;
+    _apSaveLastSectionLocal(sec.id);
+    _apSetUrlForSection(sec.id);
     await _renderDynamicSectionPage(sec);
   } finally {
     window._apNavLoaderHide();
   }
 }
+
+// ════════════════════════════════════════════════════════════════
+// ✅ [URL ROUTING] Back/Forward في المتصفح — يقرأ #/section/<id> ويستعيد نفس المكان
+// إضافة منفصلة عن الهاندلر القديم الخاص بإغلاق ResourceViewer (أسفل الملف) —
+// لا تستبدله، فقط نتجنّب التعارض معه بتخطي هذا الهاندلر لو المودال مفتوح
+// (نفس الشرط المستخدم هناك بالظبط) حتى لا يتزاحم الاثنان على نفس الحدث.
+// ════════════════════════════════════════════════════════════════
+window.addEventListener('popstate', function() {
+  if (document.getElementById('rv-overlay')) return; // الهاندلر القديم يتكفّل بهذه الحالة
+  var m = /^#\/section\/([^\/?#]+)/.exec(window.location.hash || '');
+  if (m) {
+    _apRestoreSectionPath(decodeURIComponent(m[1]), false);
+  } else {
+    state.navigationStack = [];
+    showPage('page-home');
+  }
+});
 
 /**
  * openCoursesPage / renderCoursesPage — صفحة "📚 الدورات"
@@ -3787,7 +3945,10 @@ async function openDynamicSubSection(sec) {
 
     if (children.length > 0) {
       // له أبناء → افتحه كقسم ديناميكي (البيانات محفوظة في الـ cache)
-      await openDynamicSection(sec);
+      // ✅ نستخدم التنفيذ الداخلي مباشرة (بدون فحص guard تاني) لأن الـ guard
+      // لنفس sec.id مضبوط بالفعل فوق — استدعاء openDynamicSection نفسها هنا
+      // كان سيجعلها تمنع نفسها من العمل (نفس id مشغول بالفعل)
+      await _apDoOpenDynamicSection(sec);
       return;
     }
 
@@ -3801,12 +3962,16 @@ async function openDynamicSubSection(sec) {
 
     // أضف للـ stack مع restore يُعيد رسم صفحة content
     state.navigationStack.push({
+      id: sec.id,
       label: sec.title,
       restore: async () => {
         await _openContentPage(secCopy);
       },
     });
 
+    window._lastOpenSectionId = sec.id;
+    _apSaveLastSectionLocal(sec.id);
+    _apSetUrlForSection(sec.id);
     await _openContentPage(sec, content, resources);
   } finally {
     delete window._apNavBusyIds[sec.id];
