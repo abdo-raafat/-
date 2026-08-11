@@ -3037,8 +3037,44 @@ function _apRescueStuckSpinners() {
       + '</div>';
   });
 }
-window.addEventListener('error', function() { _apRescueStuckSpinners(); });
-window.addEventListener('unhandledrejection', function() { _apRescueStuckSpinners(); });
+// ══════════════════════════════════════════════════════
+// 🔍 TEMP DEBUG (Aug 2026) — [RESCUE-DEBUG] — يُزال بعد إيجاد السبب
+// الهدف الوحيد: تسجيل الـ uncaught error / unhandled rejection الحقيقي
+// قبل ما _apRescueStuckSpinners() يمسح الشاشة. لا تغيير في أي منطق آخر.
+// ══════════════════════════════════════════════════════
+function _rescueDebugSanitizedLocation() {
+  try {
+    var href = window.location.href.replace(/([#&?](?:access_token|refresh_token)=)[^&]+/gi, '$1[REDACTED]');
+    var hash = window.location.hash.replace(/((?:^|[#&])(?:access_token|refresh_token)=)[^&]+/gi, '$1[REDACTED]');
+    console.error('[RESCUE-DEBUG] LOCATION', {
+      href: href,
+      pathname: window.location.pathname,
+      hash: hash
+    });
+  } catch(e) {}
+}
+window.addEventListener('error', function(event) {
+  console.error('[RESCUE-DEBUG] WINDOW ERROR', {
+    message: event.message,
+    filename: event.filename,
+    lineno: event.lineno,
+    colno: event.colno,
+    error: event.error,
+    stack: event.error ? event.error.stack : null
+  });
+  _rescueDebugSanitizedLocation();
+  _apRescueStuckSpinners();
+});
+window.addEventListener('unhandledrejection', function(event) {
+  console.error('[RESCUE-DEBUG] UNHANDLED REJECTION', {
+    reason: event.reason,
+    stack: event.reason && event.reason.stack
+      ? event.reason.stack
+      : null
+  });
+  _rescueDebugSanitizedLocation();
+  _apRescueStuckSpinners();
+});
 
 async function _fetchWithTimeout(promiseFn, timeoutMs) {
   return Promise.race([
