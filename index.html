@@ -8234,12 +8234,20 @@ async function baLoadBranchAdmins() {
   el.innerHTML = '<div class="ap-loading"><div class="spinner"></div> جاري التحميل...</div>';
   _apWatchLoading('ba-list-body', 'baLoadBranchAdmins()');
   try {
-    var { data, error } = await window.supabase
+    // ── section_admins.user_id يشير إلى auth.users(id)، وليس profiles(id)، فلا توجد
+    //    علاقة FK مباشرة في schema cache بين الجدولين (لهذا nested select كان يفشل
+    //    بخطأ "Could not find a relationship..."). الحل: استعلامان مستقلان + ربط
+    //    بـ Map في الجافاسكريبت، بدل الاعتماد على embed غير موجود. ──
+    var { data: adminRows, error } = await window.supabase
       .from('section_admins')
-      .select('id, user_id, is_active, role, profiles:user_id(id, email, full_name)')
+      .select('id, user_id, is_active, role')
       .eq('section_id', branchId).eq('is_active', true).eq('role', 'admin');
     if (error) throw error;
-    window._baAdminsForBranch = data || [];
+    var _baUserIds = Array.from(new Set((adminRows || []).map(function(r){ return r.user_id; }).filter(Boolean)));
+    var _baProfMap = await _apGetProfilesMap(_baUserIds); // استعلام واحد مجمّع (in()) — لا N+1
+    window._baAdminsForBranch = (adminRows || []).map(function(r) {
+      return { id: r.id, user_id: r.user_id, is_active: r.is_active, role: r.role, profiles: _baProfMap[r.user_id] || null };
+    });
     var crumb = _baBreadcrumb();
 
     if (!window._baAdminsForBranch.length) {
@@ -8386,7 +8394,7 @@ async function baConfirmAssign() {
     // 2) عطّل أي أدمن آخر (غير هذا المستخدم) كان فعّالاً على نفس الشعبة — بحيث الأدمن
     //    القديم يفقد الصلاحية فوراً، دون حذف حسابه أو أي بيانات تخصه (فقط is_active=false)
     var { data: others, error: othErr } = await window.supabase
-      .from('section_admins').select('id, user_id, profiles:user_id(email)')
+      .from('section_admins').select('id, user_id')
       .eq('section_id', ctx.sectionId).eq('is_active', true).eq('role', 'admin')
       .neq('user_id', user.id);
     if (othErr) throw othErr;
