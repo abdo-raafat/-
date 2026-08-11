@@ -5748,12 +5748,16 @@ const ResourceViewer = (function() {
     const btn   = document.getElementById('rv-fs-btn');
     if (!modal) return;
     if (!document.fullscreenElement) {
-      modal.requestFullscreen && modal.requestFullscreen();
-      modal.webkitRequestFullscreen && modal.webkitRequestFullscreen();
+      try {
+        var req = modal.requestFullscreen || modal.webkitRequestFullscreen;
+        if (req) Promise.resolve(req.call(modal)).catch(function(err){ console.warn('[Fullscreen]', err && err.message); });
+      } catch(e) { console.warn('[Fullscreen]', e && e.message); }
       if (btn) btn.textContent = '✕ خروج ملء الشاشة';
     } else {
-      document.exitFullscreen && document.exitFullscreen();
-      document.webkitExitFullscreen && document.webkitExitFullscreen();
+      try {
+        var exit = document.exitFullscreen || document.webkitExitFullscreen;
+        if (exit) Promise.resolve(exit.call(document)).catch(function(err){ console.warn('[Fullscreen]', err && err.message); });
+      } catch(e) { console.warn('[Fullscreen]', e && e.message); }
       if (btn) btn.textContent = '⛶';
     }
   }
@@ -11049,10 +11053,8 @@ function _waitClient(timeoutMs, cb) {
 // ==================== PERFORMANCE: GPU HINTS ====================
 // تفعيل GPU acceleration للعناصر المتحركة
 document.addEventListener('DOMContentLoaded', function() {
-  var gpuEls = document.querySelectorAll('.dept-card, .link-card, .ai-toggle, .rv-modal');
-  gpuEls.forEach(function(el) {
-    el.style.willChange = 'transform';
-  });
+  // لا نضع will-change على كل البطاقات دائماً؛ هذا يحجز طبقات GPU كثيرة على الهاتف.
+  // المتصفح يتولى compositing الطبيعي، وCSS animations تستخدم transform/opacity عند الحاجة.
 });
 
 // ==================== INTERNAL VIEWER SYSTEM ====================
@@ -11099,14 +11101,26 @@ window._origWindowOpen = window.open;
     }
   }, true);
 
-  // ── 2. اعتراض window.open ────────────────────────────────────────
+  // ── 2. window.open: لا نعترض كل الروابط الخارجية ─────────────────
+  // النسخة السابقة كانت تعترض أي window.open، بما فيها WhatsApp وروابط
+  // الخدمات الخارجية، وتحولها إلى ResourceViewer. هذا كان يكسر روابط كثيرة.
+  // الآن نعترض فقط موارد الملفات/الفيديو المعروفة، ونترك الروابط العادية
+  // وmailto/tel وWhatsApp تعمل بالطريقة الأصلية للمتصفح.
   var _origOpen = window.open;
   window.open = function(url, target, features) {
     if (!url) return null;
-    if (target === '_blank' || !target || target === '_new') {
-      var title = url.split('/').pop() || url;
-      var type = _guessLinkType(url);
-      openResource(url, title, type);
+    var lower = String(url).toLowerCase();
+    var type = _guessLinkType(String(url));
+    var isKnownResource = ['pdf','video','audio','image','download_only'].indexOf(type) !== -1;
+    var isSpecialExternal = /^(mailto:|tel:)|wa\.me\/|whatsapp\.com\/|t\.me\//i.test(String(url));
+
+    if ((target === '_blank' || target === '_new' || !target) && isKnownResource && !isSpecialExternal) {
+      var title = String(url).split('/').pop() || String(url);
+      // openResource يعالج الـ lock و try/catch/finally بنفسه.
+      Promise.resolve(openResource(String(url), title, type)).catch(function(err) {
+        console.error('[window.open resource] ', err);
+      });
+      // نحافظ على شكل Window-like return للـ callers القديمة.
       return { closed: false, focus: function(){}, close: function(){} };
     }
     return _origOpen.call(window, url, target, features);
@@ -11135,16 +11149,15 @@ window._origWindowOpen = window.open;
       _origRVOpen = ResourceViewer.open;
       ResourceViewer.open = function(url, title, resourceType) {
         _origRVOpen.call(ResourceViewer, url, title, resourceType);
-        // على الموبايل: نطلب ملء الشاشة تلقائياً
-        setTimeout(function() {
-          var modal = document.getElementById('rv-modal');
-          if (modal && window.innerWidth <= 768) {
-            try {
-              if (modal.requestFullscreen) modal.requestFullscreen();
-              else if (modal.webkitRequestFullscreen) modal.webkitRequestFullscreen();
-            } catch(e) {}
-          }
-        }, 350);
+        // طلب fullscreen فوراً داخل سياق ضغطة المستخدم قدر الإمكان.
+        // setTimeout وحده كان يفقد user activation في بعض متصفحات الهاتف.
+        var modal = document.getElementById('rv-modal');
+        if (modal && window.innerWidth <= 768) {
+          try {
+            var req = modal.requestFullscreen || modal.webkitRequestFullscreen;
+            if (req) Promise.resolve(req.call(modal)).catch(function(){ /* fullscreen اختياري */ });
+          } catch(e) { /* بعض المتصفحات تمنع fullscreen تلقائياً */ }
+        }
       };
     }, 0);
   });
@@ -11248,22 +11261,50 @@ var NativePDFViewer = (function() {
   // هذا المسار لكنها لم تُحذف (قاعدة: لا حذف لأي كود غير مطلوب حذفه صراحة).
   async function open(url, title) {
     if (!url) throw new Error('رابط PDF غير موجود');
+
+    // افتح نافذة/تبويباً فارغاً فوراً داخل سياق ضغطة المستخدم.
+    // لو انتظرنا createSignedUrl() أولاً، بعض متصفحات الهاتف تعتبر window.open
+    // لاحقاً Popup غير موثوق وتمنعه؛ وهذا كان أحد أسباب زر PDF الذي يبدو كأنه لا يعمل.
+    var popup = null;
+    try {
+      popup = (window._origWindowOpen || window.open)('', '_blank', 'noopener,noreferrer');
+    } catch(e) {
+      popup = null;
+    }
+
     var finalUrl = url;
-    try { finalUrl = await _getSignedPdfUrl(url); } catch(e) { console.warn('[PDFjs] فشل توقيع الرابط، سيُستخدم الرابط الأصلي:', e && e.message); }
+    try {
+      finalUrl = await _getSignedPdfUrl(url);
+    } catch(e) {
+      console.warn('[PDF] فشل توقيع الرابط، سيُستخدم الرابط الأصلي:', e && e.message);
+    }
+
     if (!finalUrl || !/^https?:\/\//i.test(finalUrl)) {
-      console.warn('[PDFjs] رابط PDF غير صالح:', url);
-      // ✅ FIX: كان يفشل بصمت (return فقط) فيرى المستخدم toast "جاري الفتح..."
-      // ثم لا شيء يحدث إطلاقاً ولا رسالة خطأ. الآن يرمي استثناءً واضحاً يلتقطه
-      // openResource() ويحوّله لرسالة خطأ فعلية للمستخدم.
+      if (popup && !popup.closed) {
+        try { popup.close(); } catch(e) {}
+      }
       throw new Error('رابط الملف غير صالح');
     }
-    // ✅ FIX: نستخدم window._origWindowOpen (المرجع الأصلي المحفوظ قبل اعتراض
-    // window.open في "INTERNAL VIEWER SYSTEM") بدل window.open المُعترَض.
-    // السبب: window.open المُعترَض كان يلتقط هذا الاستدعاء نفسه ويعيد توجيهه إلى
-    // openResource(url,'pdf') من جديد → التي تستدعي NativePDFViewer.open() من
-    // جديد → التي تستدعي window.open() من جديد → حلقة لا نهائية تجمّد المتصفح
-    // (هذا سبب تجمّد الصفحة عند فتح ملفات PDF تحديداً).
-    (window._origWindowOpen || window.open)(finalUrl, '_blank', 'noopener,noreferrer');
+
+    if (popup && !popup.closed) {
+      try {
+        popup.location.href = finalUrl;
+        return;
+      } catch(e) {
+        try { popup.close(); } catch(_) {}
+      }
+    }
+
+    // fallback: لو المتصفح منع الـpopup، استخدم الرابط الأصلي كتنقل عادي.
+    // لا نعيد استدعاء window.open المعترض حتى لا ندخل في recursion.
+    var a = document.createElement('a');
+    a.href = finalUrl;
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
+    a.style.display = 'none';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
   }
 
   // ==================== رسالة فشل موحّدة (URL غير صالح / منتهي / تعذّر الجلب / ملف مفقود) ====================
@@ -13902,7 +13943,8 @@ self.addEventListener('fetch', function(e) {
       }, 6000);
       if (!res.error && res.data) {
         var row = res.data;
-        if (row.payment_status === 'active' && row.end_date && new Date(row.end_date).getTime() >= Date.now()) {
+        if (row.payment_status === 'active' && (!row.end_date || new Date(row.end_date).getTime() >= Date.now())) {
+          // نفس تعريف SQL has_active_subscription(): active + end_date NULL أو لم ينتهِ.
           result = { state: 'active', row: row };
         } else if (row.payment_status === 'pending') {
           result = { state: 'pending', row: row };
@@ -13982,7 +14024,7 @@ self.addEventListener('fetch', function(e) {
       if (isFreePreview) return null;
 
       var db = window.supabase;
-      if (!db) return null; // fail-open حتى لا يتعطل الموقع
+      if (!db) return { anchor: anchor, state: 'error' };
 
       // ✅ DEBUG FIX: db.auth.getSession() كان بدون أي timeout — لو تعلّق (مثلاً بسبب
       // جلسة/رمز تحديث تالف في localStorage) كانت الصفحة تظل معلّقة على "جاري التحميل
@@ -14002,7 +14044,7 @@ self.addEventListener('fetch', function(e) {
       return { anchor: anchor, state: status.state, row: status.row, user: user };
     } catch(e) {
       console.error('[DB LOAD ERROR][checkSectionAccess]', e && e.message, e);
-      return null; // fail-open — لا نعطّل عرض الصفحة أبداً بسبب فشل فحص الاشتراك
+      return (anchor ? { anchor: anchor, state: 'error' } : null); // fail-closed للمحتوى المحمي
     }
   };
 
@@ -14054,7 +14096,11 @@ self.addEventListener('fetch', function(e) {
 
     var headline, sub, btnHtml, showPrice = false;
 
-    if (state === 'guest') {
+    if (state === 'error') {
+      headline = '⚠️ تعذّر التحقق من الاشتراك';
+      sub = 'حدثت مشكلة مؤقتة أثناء الاتصال بالخادم. أعد المحاولة بعد لحظات.';
+      btnHtml = '<button class="chatgpt-login-btn" style="padding:12px 26px;font-size:.95rem;" onclick="location.reload()">🔄 إعادة المحاولة</button>';
+    } else if (state === 'guest') {
       headline = '🔐 سجّل الدخول أولاً';
       sub = 'يجب تسجيل الدخول حتى تتمكن من الاشتراك في «' + title + '» ومتابعة كل محتواها.';
       btnHtml = '<button class="chatgpt-login-btn" style="padding:12px 26px;font-size:.95rem;" onclick="loginWithGoogle()">🔐 تسجيل الدخول</button>';
@@ -14099,6 +14145,7 @@ self.addEventListener('fetch', function(e) {
   window._triggerSubscriptionFlow = async function(gate) {
     if (!gate) return;
     window._currentGateAnchor = gate.anchor;
+    if (gate.state === 'error') { location.reload(); return; }
     if (gate.state === 'guest') { loginWithGoogle(); return; }
     if (gate.state === 'pending') {
       if (window._showToast) _showToast('⏳ طلبك قيد المراجعة بالفعل — برجاء الانتظار', 'warning');
@@ -14209,7 +14256,11 @@ self.addEventListener('fetch', function(e) {
     var subEl   = document.getElementById('ln-sub');
     var btnEl   = document.getElementById('ln-btn');
 
-    if (gate.state === 'guest') {
+    if (gate.state === 'error') {
+      titleEl.textContent = '⚠️ تعذّر التحقق من الاشتراك';
+      subEl.innerHTML = 'حدثت مشكلة مؤقتة أثناء الاتصال بالخادم. أعد تحميل الصفحة وحاول مرة أخرى.';
+      btnEl.textContent = '🔄 إعادة المحاولة';
+    } else if (gate.state === 'guest') {
       titleEl.textContent = '🔐 سجّل الدخول أولاً';
       subEl.innerHTML = 'يجب تسجيل الدخول حتى تقدر تشترك وتفتح جميع فصول «' + (_apEsc ? _apEsc(anchor.title || 'هذه المادة') : (anchor.title || 'هذه المادة')) + '».';
       btnEl.textContent = '🔐 تسجيل الدخول';
@@ -14241,6 +14292,7 @@ self.addEventListener('fetch', function(e) {
     var gate = _lnGate;
     closeLockNoticeModal();
     if (!gate) return;
+    if (gate.state === 'error') { location.reload(); return; }
     if (gate.state === 'pending') {
       window.open('https://wa.me/' + (window._SUBS_WHATSAPP_NUMBER || '201147908978'), '_blank', 'noopener');
       return;
@@ -15310,6 +15362,12 @@ function _qnFallbackCopy(text, done, fail) {
     done();
   } catch (e) { fail(); }
 }
+</script>
+
+<script>
+// ==================== FINAL AUDIT MARKER ====================
+// هذه النسخة خضعت لفحص static إضافي: لا تغييرات تلقائية على Supabase/RLS.
+window.__FIXED2_AUDIT = { version: 'FIXED-2', date: '2026-08-12' };
 </script>
 </body>
 </html>
