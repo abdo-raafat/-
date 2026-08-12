@@ -3464,13 +3464,93 @@ async function renderSiteAds() {
 window.renderSiteAds = renderSiteAds;
 
 // ==================== HOME: RENDER DYNAMIC SECTIONS ====================
+
+// ✅ PERF (Aug 2026): تخزين دائم في localStorage (بلا انتهاء صلاحية قصير، على
+// عكس sessionStorage اللي بيتمسح كل ما التاب يتقفل) — الهدف الوحيد منه: رسم
+// الأقسام على الشاشة فورًا (0 ثانية انتظار شبكة) من آخر نسخة معروفة، بينما
+// التحميل الحقيقي من Supabase شغّال في الخلفية بصمت ويحدّث الشاشة لو البيانات
+// اتغيّرت. مفيش أي بيانات حساسة بتتخزن هنا (نفس بيانات site_sections العامة
+// المعروضة للجميع أصلاً). أول زيارة على الإطلاق (مفيش cache قديم) هتستنى
+// الشبكة زي الأول بالظبط — مفيش حل سحري لده، لكن كل زيارة بعدها هتبقى فورية.
+var _HOME_LS_KEY = '_homeSectionsCache_v1';
+
+function _loadHomeSectionsFromLocalStorage() {
+  try {
+    var raw = localStorage.getItem(_HOME_LS_KEY);
+    if (!raw) return null;
+    var parsed = JSON.parse(raw);
+    if (!parsed || !Array.isArray(parsed.sections) || !parsed.sections.length) return null;
+    return parsed.sections;
+  } catch(e) { return null; }
+}
+
+function _saveHomeSectionsToLocalStorage(sections) {
+  try {
+    if (!sections || !sections.length) return;
+    localStorage.setItem(_HOME_LS_KEY, JSON.stringify({ sections: sections, _savedAt: Date.now() }));
+  } catch(e) { /* quota exceeded or unavailable — تجاهل بأمان */ }
+}
+
+// يبني HTML الأقسام ويرسمها على الشاشة — مُستخرجة كدالة منفصلة عشان تُستدعى
+// مرتين: مرة فورية من الـ cache القديم (إن وُجد)، ومرة تانية بالبيانات الطازجة
+// لما توصل من الشبكة، بدون تكرار أي منطق.
+function _paintHomeSections(sections) {
+  _registerSectionHandlers(sections);
+  // تجميع بـ type أو category — الجدول الحقيقي بيستخدم type: main/year/course/resource/books/department
+  const TYPE_GROUP_MAP = {
+    'main':       'المراحل الدراسية',
+    'year':       'المراحل الدراسية',
+    'course':     'خدمات وموارد إضافية',
+    'resource':   'خدمات وموارد إضافية',
+    'books':      'خدمات وموارد إضافية',
+    'department': 'خدمات وموارد إضافية',
+  };
+  const grouped = {};
+  sections.forEach(sec => {
+    const cat = sec.category || TYPE_GROUP_MAP[sec.type] || 'أخرى';
+    if (!grouped[cat]) grouped[cat] = [];
+    grouped[cat].push(sec);
+  });
+  const rowIcons = { 'المراحل الدراسية':'📚', 'خدمات وموارد إضافية':'🌐', 'أخرى':'📌' };
+  // ترتيب المجموعات: المراحل الدراسية أولاً
+  const groupOrder = ['المراحل الدراسية', 'خدمات وموارد إضافية', 'أخرى'];
+  const sortedGroups = Object.keys(grouped).sort((a, b) => {
+    const ai = groupOrder.indexOf(a), bi = groupOrder.indexOf(b);
+    return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+  });
+  let html = '';
+  for (const cat of sortedGroups) {
+    const items = grouped[cat];
+    html += `
+    <div class="home-section-label">
+      <span class="home-section-icon">${rowIcons[cat] || '📌'}</span>
+      <span>${cat}</span>
+    </div>
+    <div class="cards-grid home-cards-grid">${items.map(sec => buildSectionCard(sec)).join('')}</div>`;
+  }
+  document.getElementById('dynamic-home-sections').innerHTML = html;
+}
+
 async function renderHomeSections() {
   _boot(8, 'renderHomeSections() entered');
+
+  // ✅ PERF: رسم فوري (0 ثانية) من آخر نسخة محفوظة محليًا إن وُجدت، بينما
+  // التحميل الحقيقي من الشبكة مستمر في الخلفية بالأسفل بدون ما يوقف المستخدم.
+  var _instantSections = _loadHomeSectionsFromLocalStorage();
+  var _paintedInstantly = false;
+  if (_instantSections && _instantSections.length) {
+    try {
+      _paintHomeSections(_instantSections);
+      _paintedInstantly = true;
+      _boot('INSTANT', 'painted ' + _instantSections.length + ' cached sections instantly from localStorage');
+    } catch(e) { _paintedInstantly = false; }
+  }
+
   // ✅ FIXED: زيادة timeout لـ 20 ثانية على الموبايل
   var _loadingTimeout = setTimeout(function() {
     var el = document.getElementById('dynamic-home-sections');
     _boot('8-TIMEOUT', '20s timeout fired — el found=' + !!el + ', has .spinner=' + !!(el && el.querySelector('.spinner')));
-    if (el && el.querySelector('.spinner')) {
+    if (el && el.querySelector('.spinner') && !_paintedInstantly) {
       console.warn('[renderHomeSections] timeout — عرض الـ fallback');
       renderHomeFallback();
     }
@@ -3483,49 +3563,23 @@ async function renderHomeSections() {
 
     if (!sections || sections.length === 0) {
       console.warn('[Supabase] لا توجد بيانات في site_sections — تأكد من RLS policy');
+      // ✅ لو كنا رسمنا نسخة قديمة من الـ cache بنجاح، سيبها ظاهرة زي ما هي
+      // بدل ما نمسحها بـ fallback مؤقت بسبب فشل عابر في الشبكة فقط.
+      if (_paintedInstantly) { _boot('13-EMPTY-KEEP-CACHE', 'network empty/failed — keeping instant-painted cache as-is'); return; }
       _boot('13-EMPTY', 'sections empty — calling renderHomeFallback()');
       renderHomeFallback();
       return;
     }
-    _registerSectionHandlers(sections);
-    // تجميع بـ type أو category — الجدول الحقيقي بيستخدم type: main/year/course/resource/books/department
-    const TYPE_GROUP_MAP = {
-      'main':       'المراحل الدراسية',
-      'year':       'المراحل الدراسية',
-      'course':     'خدمات وموارد إضافية',
-      'resource':   'خدمات وموارد إضافية',
-      'books':      'خدمات وموارد إضافية',
-      'department': 'خدمات وموارد إضافية',
-    };
-    const grouped = {};
-    sections.forEach(sec => {
-      const cat = sec.category || TYPE_GROUP_MAP[sec.type] || 'أخرى';
-      if (!grouped[cat]) grouped[cat] = [];
-      grouped[cat].push(sec);
-    });
-    const rowIcons = { 'المراحل الدراسية':'📚', 'خدمات وموارد إضافية':'🌐', 'أخرى':'📌' };
-    // ترتيب المجموعات: المراحل الدراسية أولاً
-    const groupOrder = ['المراحل الدراسية', 'خدمات وموارد إضافية', 'أخرى'];
-    const sortedGroups = Object.keys(grouped).sort((a, b) => {
-      const ai = groupOrder.indexOf(a), bi = groupOrder.indexOf(b);
-      return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
-    });
-    let html = '';
-    for (const cat of sortedGroups) {
-      const items = grouped[cat];
-      html += `
-      <div class="home-section-label">
-        <span class="home-section-icon">${rowIcons[cat] || '📌'}</span>
-        <span>${cat}</span>
-      </div>
-      <div class="cards-grid home-cards-grid">${items.map(sec => buildSectionCard(sec)).join('')}</div>`;
-    }
-    document.getElementById('dynamic-home-sections').innerHTML = html;
+    _paintHomeSections(sections);
+    _saveHomeSectionsToLocalStorage(sections);
     _boot(14, 'renderHomeSections DONE — HTML inserted, ' + sections.length + ' sections rendered');
   } catch(err) {
     clearTimeout(_loadingTimeout);
     console.error('[renderHomeSections] خطأ غير متوقع:', err.message);
     _boot('CATCH', 'renderHomeSections threw: ' + (err && err.message));
+    // ✅ لو كان فيه رسم فوري من الـ cache قبل كدا، سيبه ظاهر بدل ما نمسحه
+    // بشاشة خطأ بسبب فشل تحديث خلفي فقط — المستخدم أصلاً شايف محتوى صحيح.
+    if (_paintedInstantly) { return; }
     // ✅ عرض زر إعادة المحاولة عند الخطأ
     var el = document.getElementById('dynamic-home-sections');
     if (el) {
@@ -8098,6 +8152,13 @@ function _applyBranchAdminPanelGating() {
   var isSuper  = window._isSuperAdmin === true;
   var isBranch = window._isBranchAdmin === true;
 
+  // ⏸️ TEMP (Aug 2026, بطلب المستخدم): تابا "إدارة المسارات" و"سجل العمليات" مخفيان
+  // مؤقتًا لأن جدولي learning_paths و audit_log غير موجودين بعد في قاعدة البيانات
+  // (كانا يسببان 404). الكود والمنطق الأصلي لكل التابين سليم تمامًا ولم يُحذف أي
+  // شيء — فقط الإظهار مُعطَّل مؤقتًا. لإعادة تفعيلهم لاحقًا: امسح الكتلة اللي في
+  // آخر الدالة دي (ابحث عن _TEMP_HIDE_PATHS_AUDIT) بعد إنشاء الجدولين.
+  var _TEMP_HIDE_PATHS_AUDIT = true;
+
   // تاب "أدمن الشعب" لسوبر أدمن فقط
   var baTab = document.getElementById('ap-tab-branchadmins');
   if (baTab) baTab.style.display = isSuper ? '' : 'none';
@@ -8139,6 +8200,15 @@ function _applyBranchAdminPanelGating() {
     var el = document.getElementById(id); return el && el.style.display !== 'none';
   });
   if (firstVisible) apSwitchTab(firstVisible.replace('ap-tab-',''));
+
+  // ⏸️ TEMP: تجاوز أخير يخفي التابين بغض النظر عن الفرع اللي اتنفذ فوق (سوبر
+  // أدمن أو أدمن شعبة) — راجع الشرح في أول الدالة.
+  if (_TEMP_HIDE_PATHS_AUDIT) {
+    ['ap-tab-paths', 'ap-tab-auditlog'].forEach(function(id) {
+      var el = document.getElementById(id);
+      if (el) el.style.display = 'none';
+    });
+  }
 }
 
 // ── apSwitchTab ─────────────────────────────────────────────────
