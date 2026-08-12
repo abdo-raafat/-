@@ -14728,6 +14728,21 @@ self.addEventListener('fetch', function(e) {
 @media (max-width: 480px) {
   .chat-modal { height: 100vh; max-height: 100vh; border-radius: 0; max-width: 100%; }
 }
+
+/* ============================================================ */
+/* Direct Messaging (Phase 3) — يعيد استخدام نفس متغيرات ونظام   */
+/* ألوان/مودال محادثة الشعبة أعلاه (.chat-overlay/.chat-modal...) */
+/* بدون أي تعديل على القيم الحالية، فقط عناصر إضافية جديدة.       */
+/* ============================================================ */
+.dm-conv-row {
+  display: flex; flex-direction: column; gap: 3px; padding: 12px 14px;
+  border-radius: 14px; background: #fff; border: 1px solid #e3edf7;
+  margin-bottom: 8px; cursor: pointer; transition: filter .15s ease;
+}
+.dm-conv-row:hover { filter: brightness(.98); }
+.dm-conv-row.dm-unread { border-color: var(--primary); background: #f2f8ff; }
+.dm-conv-name { font-weight: 800; font-size: .86rem; color: #243342; display:flex; align-items:center; gap:6px; }
+.dm-conv-preview { font-size: .74rem; color: #8ea0b3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 </style>
 
 <div id="payment-modal-overlay" class="pm-overlay" onclick="if(event.target===this) closePaymentModal()">
@@ -15235,6 +15250,523 @@ self.addEventListener('fetch', function(e) {
 })();
 </script>
 
+<!-- ============================================================ -->
+<!-- DIRECT MESSAGING (Phase 3) — يعتمد بالكامل على chat_rooms /   -->
+<!-- chat_messages / chat_room_participants الموجودين بالفعل +    -->
+<!-- get_or_create_direct_room() / can_access_direct_room() /      -->
+<!-- mark_room_read() و الـRLS الحالية عليها. لا يوجد أي جدول أو    -->
+<!-- نظام Messaging موازٍ هنا — نفس نمط محادثة الشعبة (chat-modal)  -->
+<!-- بالضبط، فقط عناصر DOM جديدة ومنفصلة (dm-*) حتى لا يتعارض مع    -->
+<!-- محادثة الشعبة عند فتح الاثنين في نفس الجلسة.                   -->
+<!-- الأمان الفعلي دائماً من RLS/الدوال على قاعدة البيانات، وليس     -->
+<!-- من أي فحص هنا في الـFront-end.                                 -->
+<!-- ============================================================ -->
+
+<!-- قائمة المحادثات المباشرة -->
+<div id="dm-list-modal-overlay" class="chat-overlay" onclick="if(event.target===this) closeDirectMessagesList()">
+  <div class="chat-modal" role="dialog" aria-modal="true" aria-labelledby="dm-list-header-title">
+    <div class="chat-header">
+      <div class="chat-header-title" id="dm-list-header-title">✉️ <span>الرسائل المباشرة</span></div>
+      <button class="chat-close" onclick="closeDirectMessagesList()" aria-label="إغلاق">✕</button>
+    </div>
+    <div class="chat-body" id="dm-list-body">
+      <div class="chat-loading"><div class="spinner"></div> جاري تحميل المحادثات...</div>
+    </div>
+    <div class="chat-footer" id="dm-list-footer" style="justify-content:center;">
+      <button type="button" class="ap-btn ap-btn-primary" id="dm-new-conv-btn" onclick="_dmOpenNewConversationPicker()" style="width:100%;">✚ بدء محادثة جديدة</button>
+    </div>
+  </div>
+</div>
+
+<!-- اختيار مستخدم لبدء محادثة جديدة معه (Super Admin / Branch Admin فقط) -->
+<div id="dm-picker-modal-overlay" class="chat-overlay" onclick="if(event.target===this) _dmClosePicker()">
+  <div class="chat-modal" role="dialog" aria-modal="true" aria-labelledby="dm-picker-header-title">
+    <div class="chat-header">
+      <div class="chat-header-title" id="dm-picker-header-title">🔎 <span>اختر مستخدمًا لمراسلته</span></div>
+      <button class="chat-close" onclick="_dmClosePicker()" aria-label="إغلاق">✕</button>
+    </div>
+    <div class="chat-body" id="dm-picker-body" style="display:block;">
+      <input type="text" id="dm-picker-search" class="chat-input" style="width:100%;box-sizing:border-box;margin-bottom:10px;display:none;" placeholder="ابحث بالاسم أو البريد..." oninput="_dmPickerSearchDebounced()">
+      <div id="dm-picker-results"></div>
+    </div>
+  </div>
+</div>
+
+<!-- نافذة المحادثة المباشرة نفسها -->
+<div id="dm-chat-modal-overlay" class="chat-overlay" onclick="if(event.target===this) closeDirectChat()">
+  <div class="chat-modal" role="dialog" aria-modal="true" aria-labelledby="dm-chat-header-title">
+    <div class="chat-header">
+      <button class="chat-close" onclick="_dmBackToList()" aria-label="رجوع للمحادثات" title="رجوع للمحادثات">→</button>
+      <div class="chat-header-title" id="dm-chat-header-title">✉️ <span id="dm-chat-header-name">محادثة</span></div>
+      <button class="chat-close" onclick="closeDirectChat()" aria-label="إغلاق">✕</button>
+    </div>
+    <div class="chat-body" id="dm-chat-body">
+      <div class="chat-loading"><div class="spinner"></div> جاري تحميل المحادثة...</div>
+    </div>
+    <div class="chat-footer">
+      <textarea id="dm-chat-input" class="chat-input" rows="1" placeholder="اكتب رسالتك هنا..." onkeydown="_dmHandleKeydown(event)"></textarea>
+      <button class="chat-send-btn" id="dm-chat-send-btn" onclick="_dmSend()" aria-label="إرسال">➤</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function() {
+  var _dmMe          = null;   // المستخدم الحالي (auth)
+  var _dmRoom        = null;   // صف chat_rooms الحالي (Direct)
+  var _dmChannel     = null;   // realtime channel للغرفة المفتوحة حالياً
+  var _dmPollTimer   = null;   // fallback polling لو تعطّل الـ realtime
+  var _DM_PAGE_SIZE  = 50;
+  var _dmLoadedMessages = [];
+  var _dmHasMoreOlder   = false;
+  var _dmLoadingOlder   = false;
+  var _dmScrollListenerAttached = false;
+
+  function _dmAttachScrollListener() {
+    if (_dmScrollListenerAttached) return;
+    var bodyEl = document.getElementById('dm-chat-body');
+    if (!bodyEl) return;
+    bodyEl.addEventListener('scroll', function() {
+      if (bodyEl.scrollTop < 60) _dmLoadOlderMessages();
+    }, { passive: true });
+    _dmScrollListenerAttached = true;
+  }
+
+  function _dmEsc(s) { return _apEsc ? _apEsc(s) : String(s == null ? '' : s).replace(/[&<>"']/g, function(c){
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+  }); }
+  function _dmAttrEsc(s) { return _dmEsc(s).replace(/'/g, "\\'"); }
+
+  function _dmFriendlyError() {
+    // ✅ لا نعرض أبداً رسائل تقنية (RLS/PostgREST/SQL) — رسالة عربية مفهومة فقط
+    return '🔒 غير مسموح بهذه المحادثة حالياً، أو تعذّر الوصول إليها. تواصل معنا عبر واتساب لو استمرت المشكلة.';
+  }
+
+  // ── آخر رسالة لكل غرفة من مجموعة غرف (لعرضها كمعاينة في قائمة المحادثات، ──
+  // ولاستخدام user_name المخزّن كـ fallback لاسم الطرف الآخر لو تعذّر جلب profile) ──
+  async function _dmGetLastMessages(roomIds) {
+    var db = window.supabase;
+    var out = {};
+    if (!roomIds.length) return out;
+    try {
+      var res = await db.from('chat_messages')
+        .select('room_id, user_id, user_name, message, created_at')
+        .in('room_id', roomIds)
+        .order('created_at', { ascending: false })
+        .limit(300);
+      if (res.error) return out;
+      (res.data || []).forEach(function(m) { if (!out[m.room_id]) out[m.room_id] = m; });
+    } catch(e) {}
+    return out;
+  }
+
+  // ════════════════════════════════════════════════════════════
+  // قائمة المحادثات — مبنية على chat_room_participants (كل صفوفي
+  // فيها = كل الغرف المباشرة التي أنا طرف فيها؛ محادثة الشعبة لا
+  // تستخدم هذا الجدول إطلاقًا فلا داعي لفلترة room_type يدويًا).
+  // ════════════════════════════════════════════════════════════
+  window.openDirectMessagesList = async function() {
+    document.getElementById('dm-chat-modal-overlay').classList.remove('chat-open');
+    document.getElementById('dm-picker-modal-overlay').classList.remove('chat-open');
+    document.getElementById('dm-list-modal-overlay').classList.add('chat-open');
+    document.body.style.overflow = 'hidden';
+    var bodyEl = document.getElementById('dm-list-body');
+    var newBtn = document.getElementById('dm-new-conv-btn');
+    bodyEl.innerHTML = '<div class="chat-loading"><div class="spinner"></div> جاري تحميل المحادثات...</div>';
+    if (newBtn) newBtn.style.display = 'none';
+
+    var db = window.supabase;
+    if (!db) { bodyEl.innerHTML = '<div class="chat-empty">تعذّر الاتصال بالخادم، حاول مجدداً.</div>'; return; }
+
+    try {
+      var sessionRes = await db.auth.getSession();
+      _dmMe = sessionRes && sessionRes.data && sessionRes.data.session && sessionRes.data.session.user;
+      if (!_dmMe) { bodyEl.innerHTML = '<div class="chat-empty">🔐 يجب تسجيل الدخول أولاً لعرض رسائلك.</div>'; return; }
+      if (newBtn) newBtn.style.display = '';
+
+      var partRes = await db.from('chat_room_participants').select('room_id, last_read_at').eq('user_id', _dmMe.id);
+      if (partRes.error) throw partRes.error;
+      var myRows = partRes.data || [];
+      if (!myRows.length) { bodyEl.innerHTML = '<div class="chat-empty">لا توجد محادثات مباشرة بعد.</div>'; return; }
+
+      var roomIds = myRows.map(function(r) { return r.room_id; });
+      var myReadMap = {};
+      myRows.forEach(function(r) { myReadMap[r.room_id] = r.last_read_at; });
+
+      var roomsRes = await db.from('chat_rooms').select('id, room_name, created_at').in('id', roomIds);
+      if (roomsRes.error) throw roomsRes.error;
+      var rooms = roomsRes.data || [];
+
+      var othersRes = await db.from('chat_room_participants').select('room_id, user_id')
+        .in('room_id', roomIds).neq('user_id', _dmMe.id);
+      var otherByRoom = {};
+      (othersRes.data || []).forEach(function(r) { otherByRoom[r.room_id] = r.user_id; });
+
+      var otherIds = Array.from(new Set(Object.keys(otherByRoom).map(function(k){ return otherByRoom[k]; }).filter(Boolean)));
+      var profMap = await _apGetProfilesMap(otherIds);
+      var lastMsgs = await _dmGetLastMessages(roomIds);
+
+      rooms.sort(function(a, b) {
+        var la = lastMsgs[a.id] ? new Date(lastMsgs[a.id].created_at).getTime() : new Date(a.created_at).getTime();
+        var lb = lastMsgs[b.id] ? new Date(lastMsgs[b.id].created_at).getTime() : new Date(b.created_at).getTime();
+        return lb - la;
+      });
+
+      bodyEl.innerHTML = rooms.map(function(room) {
+        var otherId  = otherByRoom[room.id];
+        var prof     = otherId ? profMap[otherId] : null;
+        var lastMsg  = lastMsgs[room.id];
+        // ── لو تعذّر جلب profile الطرف الآخر (RLS تمنع قراءة profiles لغير صاحبه/الأدمن
+        // العام)، نستخدم آخر user_name مخزَّن على رسالة من نفس الطرف كـ fallback، وإلا
+        // فتصنيف عام مبني على نموذج الصلاحيات نفسه (مستخدم عادي لا يراسل مباشرة إلا
+        // أدمن شعبة، فأي غرفة له فيها لا بد أن تكون مع أدمن شعبة) ──
+        var displayName;
+        if (prof && (prof.full_name || prof.email)) {
+          displayName = prof.full_name || prof.email;
+        } else if (lastMsg && lastMsg.user_id === otherId && lastMsg.user_name) {
+          displayName = lastMsg.user_name;
+        } else if (window._isBranchAdmin || (window._isAdminUser && !window._isBranchAdmin)) {
+          displayName = 'مستخدم';
+        } else {
+          displayName = '🛡️ أدمن الشعبة';
+        }
+        var preview = lastMsg ? _dmEsc((lastMsg.message || '').slice(0, 60)) : 'لا توجد رسائل بعد';
+        var unread = !!(lastMsg && lastMsg.user_id !== _dmMe.id &&
+          (!myReadMap[room.id] || new Date(lastMsg.created_at) > new Date(myReadMap[room.id])));
+
+        return '<div class="dm-conv-row' + (unread ? ' dm-unread' : '') + '" onclick="openDirectChat(' +
+          (otherId ? ("'" + otherId + "'") : 'null') + ', \'' + _dmAttrEsc(displayName) + '\', ' + room.id + ')">' +
+          '<div class="dm-conv-name">' + _dmEsc(displayName) + (unread ? ' <span class="chat-msg-admin-badge" style="background:#e74c3c;color:#fff;">جديد</span>' : '') + '</div>' +
+          '<div class="dm-conv-preview">' + preview + '</div>' +
+        '</div>';
+      }).join('') || '<div class="chat-empty">لا توجد محادثات مباشرة بعد.</div>';
+    } catch(e) {
+      console.error('[DM] list error:', e && e.message);
+      bodyEl.innerHTML = '<div class="chat-empty">' + _dmFriendlyError() + '</div>';
+    }
+  };
+
+  window.closeDirectMessagesList = function() {
+    document.getElementById('dm-list-modal-overlay').classList.remove('chat-open');
+    document.body.style.overflow = '';
+  };
+
+  // ════════════════════════════════════════════════════════════
+  // بدء محادثة جديدة — Super Admin: بحث عام في profiles (RLS تسمح
+  // له بقراءة الكل عبر is_admin()). Branch Admin: المشتركون النشطون
+  // في نطاق شعبته (subscriptions.section_id ضمن window._branchAdminSectionIds)
+  // بنفس النمط المستخدم فعليًا في لوحة تحكم الأدمن لعرض المشتركين.
+  // مستخدم عادي: لا تتوفر له حاليًا قناة اكتشاف آمنة لمعرّف أدمن شعبته من
+  // الـFront-end (RLS الحالية على profiles/section_admins لا تكشف ذلك لغير
+  // الأدمن العام) — سيبقى بإمكانه الرد على أي محادثة يبدأها أدمن الشعبة معه.
+  // ════════════════════════════════════════════════════════════
+  window._dmOpenNewConversationPicker = async function() {
+    document.getElementById('dm-list-modal-overlay').classList.remove('chat-open');
+    document.getElementById('dm-picker-modal-overlay').classList.add('chat-open');
+    document.body.style.overflow = 'hidden';
+    var searchBox  = document.getElementById('dm-picker-search');
+    var resultsEl  = document.getElementById('dm-picker-results');
+    searchBox.value = '';
+
+    if (window._isBranchAdmin) {
+      searchBox.style.display = 'none';
+      resultsEl.innerHTML = '<div class="chat-loading"><div class="spinner"></div> جاري تحميل المشتركين...</div>';
+      await _dmLoadBranchAdminCandidates();
+    } else if (window._isAdminUser) {
+      searchBox.style.display = '';
+      resultsEl.innerHTML = '<div class="chat-empty">اكتب اسمًا أو بريدًا للبحث...</div>';
+    } else {
+      searchBox.style.display = 'none';
+      resultsEl.innerHTML = '<div class="chat-empty">هذه الميزة متاحة حاليًا فقط عندما يبدأ أدمن الشعبة المحادثة معك — بعدها تقدر ترد عليه من هنا في أي وقت. لتواصل مباشر الآن، راسلنا عبر واتساب.</div>';
+    }
+  };
+
+  window._dmClosePicker = function() {
+    document.getElementById('dm-picker-modal-overlay').classList.remove('chat-open');
+    document.body.style.overflow = '';
+  };
+
+  async function _dmLoadBranchAdminCandidates() {
+    var db = window.supabase;
+    var resultsEl = document.getElementById('dm-picker-results');
+    try {
+      var scope = window._branchAdminSectionIds || [];
+      if (!scope.length) { resultsEl.innerHTML = '<div class="chat-empty">لا يوجد نطاق شعبة مُعيَّن لك بعد.</div>'; return; }
+      var subsRes = await db.from('subscriptions').select('user_id, payment_status, end_date')
+        .in('section_id', scope).eq('payment_status', 'active');
+      if (subsRes.error) throw subsRes.error;
+      var nowMs = Date.now();
+      var activeIds = Array.from(new Set((subsRes.data || [])
+        .filter(function(s) { return !s.end_date || new Date(s.end_date).getTime() >= nowMs; })
+        .map(function(s) { return s.user_id; })
+        .filter(Boolean)));
+      if (!activeIds.length) { resultsEl.innerHTML = '<div class="chat-empty">لا يوجد مشتركون نشطون في شعبتك حاليًا.</div>'; return; }
+      var profMap = await _apGetProfilesMap(activeIds);
+      resultsEl.innerHTML = activeIds.map(function(uid) {
+        var prof  = profMap[uid] || {};
+        var label = prof.full_name || prof.email || uid;
+        return '<div class="dm-conv-row" onclick="openDirectChat(\'' + uid + '\', \'' + _dmAttrEsc(label) + '\')">' +
+          '<div class="dm-conv-name">👤 ' + _dmEsc(label) + '</div>' +
+        '</div>';
+      }).join('');
+    } catch(e) {
+      console.error('[DM] candidates error:', e && e.message);
+      resultsEl.innerHTML = '<div class="chat-empty">' + _dmFriendlyError() + '</div>';
+    }
+  }
+
+  async function _dmSearchUsers() {
+    var db = window.supabase;
+    var resultsEl = document.getElementById('dm-picker-results');
+    var q = (document.getElementById('dm-picker-search').value || '').trim();
+    if (!q) { resultsEl.innerHTML = '<div class="chat-empty">اكتب اسمًا أو بريدًا للبحث...</div>'; return; }
+    resultsEl.innerHTML = '<div class="chat-loading"><div class="spinner"></div> جاري البحث...</div>';
+    try {
+      var esc = q.replace(/[%,]/g, '\\$&');
+      var res = await db.from('profiles').select('id, email, full_name, role')
+        .or('email.ilike.%' + esc + '%,full_name.ilike.%' + esc + '%').limit(15);
+      if (res.error) throw res.error;
+      var rows = (res.data || []).filter(function(p) { return !_dmMe || p.id !== _dmMe.id; });
+      if (!rows.length) { resultsEl.innerHTML = '<div class="chat-empty">لا توجد نتائج مطابقة.</div>'; return; }
+      resultsEl.innerHTML = rows.map(function(p) {
+        var label = p.full_name || p.email || p.id;
+        var adminBadge = (p.role === 'admin' || p.role === 'branch_admin')
+          ? ' <span class="chat-msg-admin-badge">🛡️ أدمن</span>' : '';
+        return '<div class="dm-conv-row" onclick="openDirectChat(\'' + p.id + '\', \'' + _dmAttrEsc(label) + '\')">' +
+          '<div class="dm-conv-name">👤 ' + _dmEsc(label) + adminBadge + '</div>' +
+          '<div class="dm-conv-preview">' + _dmEsc(p.email || '') + '</div>' +
+        '</div>';
+      }).join('');
+    } catch(e) {
+      console.error('[DM] search error:', e && e.message);
+      resultsEl.innerHTML = '<div class="chat-empty">' + _dmFriendlyError() + '</div>';
+    }
+  }
+  window._dmPickerSearchDebounced = (typeof _apGenericDebounce === 'function')
+    ? _apGenericDebounce(_dmSearchUsers, 350)
+    : _dmSearchUsers;
+
+  // ════════════════════════════════════════════════════════════
+  // فتح محادثة مباشرة — إنشاء/استرجاع الغرفة عبر get_or_create_direct_room()
+  // (الأمان الحقيقي/فحص الصلاحيات داخل الدالة نفسها على قاعدة البيانات).
+  // ════════════════════════════════════════════════════════════
+  window.openDirectChat = async function(otherUserId, displayNameHint, knownRoomId) {
+    document.getElementById('dm-list-modal-overlay').classList.remove('chat-open');
+    document.getElementById('dm-picker-modal-overlay').classList.remove('chat-open');
+    document.getElementById('dm-chat-modal-overlay').classList.add('chat-open');
+    document.body.style.overflow = 'hidden';
+    document.getElementById('dm-chat-header-name').textContent = displayNameHint || 'محادثة';
+    var bodyEl = document.getElementById('dm-chat-body');
+    bodyEl.innerHTML = '<div class="chat-loading"><div class="spinner"></div> جاري تحميل المحادثة...</div>';
+    document.getElementById('dm-chat-send-btn').disabled = true;
+    _dmAttachScrollListener();
+
+    var db = window.supabase;
+    if (!db) { bodyEl.innerHTML = '<div class="chat-empty">تعذّر الاتصال بالخادم، حاول مجدداً.</div>'; return; }
+
+    try {
+      var sessionRes = await db.auth.getSession();
+      _dmMe = sessionRes && sessionRes.data && sessionRes.data.session && sessionRes.data.session.user;
+      if (!_dmMe) { bodyEl.innerHTML = '<div class="chat-empty">🔐 يجب تسجيل الدخول أولاً لدخول المحادثة.</div>'; return; }
+      if (!otherUserId && !knownRoomId) { bodyEl.innerHTML = '<div class="chat-empty">تعذّر تحديد المستخدم المطلوب مراسلته.</div>'; return; }
+
+      var room;
+      if (otherUserId) {
+        var roomRes = await db.rpc('get_or_create_direct_room', { p_other_user_id: otherUserId });
+        if (roomRes.error || !roomRes.data) {
+          console.error('[DM] get_or_create_direct_room error:', roomRes.error && roomRes.error.message);
+          bodyEl.innerHTML = '<div class="chat-empty">' + _dmFriendlyError() + '</div>';
+          return;
+        }
+        room = roomRes.data;
+      } else {
+        room = { id: knownRoomId };
+      }
+      _dmRoom = room;
+
+      await _dmLoadMessages();
+      document.getElementById('dm-chat-send-btn').disabled = false;
+      _dmStartRealtime();
+      // تعليم الغرفة كمقروءة — لا نوقف تحميل المحادثة لو فشل هذا النداء لأي سبب
+      try { await db.rpc('mark_room_read', { p_room_id: _dmRoom.id }); } catch(e) {}
+    } catch(e) {
+      console.error('[DM] openDirectChat error:', e && e.message);
+      bodyEl.innerHTML = '<div class="chat-empty">' + _dmFriendlyError() + '</div>';
+    }
+  };
+
+  // إغلاق كامل (زر ✕ أو الضغط خارج المودال) — يوقف الـRealtime ولا يعيد فتح القائمة
+  window.closeDirectChat = function() {
+    document.getElementById('dm-chat-modal-overlay').classList.remove('chat-open');
+    document.body.style.overflow = '';
+    _dmStopRealtime();
+    _dmRoom = null;
+  };
+
+  // زر "→" رجوع لقائمة المحادثات — نفس إيقاف الـRealtime، لكن نعيد فتح القائمة
+  window._dmBackToList = function() {
+    _dmStopRealtime();
+    _dmRoom = null;
+    document.getElementById('dm-chat-modal-overlay').classList.remove('chat-open');
+    window.openDirectMessagesList();
+  };
+
+  async function _dmLoadMessages() {
+    var db = window.supabase;
+    var bodyEl = document.getElementById('dm-chat-body');
+    try {
+      var msgRes = await db.from('chat_messages')
+        .select('id, room_id, user_id, user_name, message, created_at')
+        .eq('room_id', _dmRoom.id)
+        .order('created_at', { ascending: false })
+        .limit(_DM_PAGE_SIZE);
+      if (msgRes.error) { bodyEl.innerHTML = '<div class="chat-empty">' + _dmFriendlyError() + '</div>'; return; }
+      var rows = (msgRes.data || []).slice().reverse();
+      _dmHasMoreOlder = rows.length === _DM_PAGE_SIZE;
+      _dmLoadedMessages = rows;
+      _dmRenderMessages(rows, { scrollToBottom: true });
+    } catch(e) {
+      console.error('[DM] loadMessages error:', e && e.message);
+      bodyEl.innerHTML = '<div class="chat-empty">' + _dmFriendlyError() + '</div>';
+    }
+  }
+
+  async function _dmLoadOlderMessages() {
+    if (_dmLoadingOlder || !_dmHasMoreOlder || !_dmRoom || !_dmLoadedMessages.length) return;
+    _dmLoadingOlder = true;
+    var db = window.supabase;
+    var bodyEl = document.getElementById('dm-chat-body');
+    var prevScrollHeight = bodyEl.scrollHeight;
+    try {
+      var oldestCreatedAt = _dmLoadedMessages[0].created_at;
+      var res = await db.from('chat_messages')
+        .select('id, room_id, user_id, user_name, message, created_at')
+        .eq('room_id', _dmRoom.id)
+        .lt('created_at', oldestCreatedAt)
+        .order('created_at', { ascending: false })
+        .limit(_DM_PAGE_SIZE);
+      if (res.error) throw res.error;
+      var older = (res.data || []).slice().reverse();
+      _dmHasMoreOlder = older.length === _DM_PAGE_SIZE;
+      if (older.length) {
+        _dmLoadedMessages = older.concat(_dmLoadedMessages);
+        _dmRenderMessages(_dmLoadedMessages, { preserveScrollFrom: prevScrollHeight });
+      }
+    } catch(e) {
+      console.error('[DM] loadOlder error:', e && e.message);
+    } finally {
+      _dmLoadingOlder = false;
+    }
+  }
+  window._dmLoadOlderMessages = _dmLoadOlderMessages;
+
+  function _dmRenderMessages(rows, opts) {
+    opts = opts || {};
+    var bodyEl = document.getElementById('dm-chat-body');
+    if (!rows.length) {
+      bodyEl.innerHTML = '<div class="chat-empty">لا توجد رسائل بعد — ابدأ المحادثة 👋</div>';
+      return;
+    }
+    var olderHtml = _dmHasMoreOlder
+      ? '<div style="text-align:center;padding:4px 0 10px;"><button type="button" class="ap-btn ap-btn-ghost" style="font-size:.72rem;" onclick="_dmLoadOlderMessages()">⬆️ تحميل رسائل أقدم</button></div>'
+      : '';
+    bodyEl.innerHTML = olderHtml + rows.map(_dmRenderOneMessage).join('');
+    if (opts.preserveScrollFrom != null) {
+      bodyEl.scrollTop = bodyEl.scrollHeight - opts.preserveScrollFrom;
+    } else {
+      bodyEl.scrollTop = bodyEl.scrollHeight;
+    }
+  }
+
+  // ✅ الاعتماد فقط على chat_messages.user_name (مضبوط من السيرفر عبر نفس الـTrigger
+  // الخاص بمحادثة الشعبة) بدل قراءة profiles — لأن RLS الحالية على profiles تسمح
+  // لكل مستخدم بقراءة صفه فقط (auth.uid()=id) أو is_admin() (سوبر أدمن فقط)، فلا
+  // يمكن لأدمن شعبة ولا لمستخدم عادي قراءة اسم الطرف الآخر من profiles مباشرة.
+  function _dmRenderOneMessage(m) {
+    var mine = _dmMe && m.user_id === _dmMe.id;
+    var displayName = m.user_name || 'مستخدم';
+    var timeStr = '';
+    try { timeStr = new Date(m.created_at).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }); } catch(e) {}
+    return '' +
+      '<div class="chat-msg-row ' + (mine ? 'mine' : 'theirs') + '">' +
+        '<div class="chat-msg-bubble">' + _dmEsc(m.message) + '</div>' +
+        '<div class="chat-msg-meta">' +
+          (mine ? '' : '<span>' + _dmEsc(displayName) + '</span>') +
+          '<span>' + timeStr + '</span>' +
+        '</div>' +
+      '</div>';
+  }
+
+  window._dmHandleKeydown = function(ev) {
+    if (ev.key === 'Enter' && !ev.shiftKey) { ev.preventDefault(); _dmSend(); }
+  };
+
+  window._dmSend = async function() {
+    var input = document.getElementById('dm-chat-input');
+    var text = (input.value || '').trim();
+    if (!text || !_dmRoom || !window.supabase) return;
+    var btn = document.getElementById('dm-chat-send-btn');
+    btn.disabled = true;
+    try {
+      var res = await window.supabase.from('chat_messages').insert([{
+        room_id: _dmRoom.id,
+        message: text,
+        user_id: _dmMe ? _dmMe.id : null,   // ✅ يُعاد ضبطه دائماً من السيرفر عبر Trigger
+        user_name: ''                        // ✅ يُعاد ضبطه دائماً من profiles عبر Trigger
+      }]);
+      if (res.error) {
+        console.error('[DM] send error:', res.error.message);
+        if (window._showToast) _showToast(_dmFriendlyError(), 'error');
+        return;
+      }
+      input.value = '';
+      await _dmLoadMessages();
+    } catch(e) {
+      console.error('[DM] send exception:', e && e.message);
+      if (window._showToast) _showToast(_dmFriendlyError(), 'error');
+    } finally {
+      btn.disabled = false;
+    }
+  };
+
+  // ── Realtime: قناة واحدة فقط للغرفة الحالية، تُغلق قبل فتح أي قناة جديدة ──
+  function _dmStartRealtime() {
+    _dmStopRealtime(); // ✅ يضمن عدم بقاء أي قناة قديمة مفتوحة قبل الاشتراك في الجديدة
+    var db = window.supabase;
+    if (!db || !_dmRoom) return;
+    try {
+      _dmChannel = db.channel('dm-room-' + _dmRoom.id)
+        .on('postgres_changes', {
+          event: '*', schema: 'public', table: 'chat_messages',
+          filter: 'room_id=eq.' + _dmRoom.id
+        }, function() { _dmLoadMessages(); })
+        .subscribe();
+    } catch(e) {
+      console.warn('[DM] realtime unavailable, falling back to polling:', e && e.message);
+    }
+    // fallback خفيف حتى لو الـrealtime شغّال — يضمن عدم بقاء المحادثة "معلّقة" لو انقطع
+    _dmPollTimer = setInterval(function() {
+      if (_dmRoom && document.getElementById('dm-chat-modal-overlay').classList.contains('chat-open')) {
+        _dmLoadMessages();
+      }
+    }, 6000);
+  }
+
+  function _dmStopRealtime() {
+    if (_dmChannel && window.supabase) {
+      try { window.supabase.removeChannel(_dmChannel); } catch(e) {}
+      _dmChannel = null;
+    }
+    if (_dmPollTimer) { clearInterval(_dmPollTimer); _dmPollTimer = null; }
+  }
+
+  // ✅ يُستدعى من _cleanupRealtimeChannels() المركزية الموجودة بالفعل من Phase 1
+  // (هي بالفعل تستدعي window._closeDirectChatRealtime لو كانت معرَّفة — لم نلمس
+  // تلك الدالة إطلاقًا، فقط عرّفنا هذه الدالة التي كانت تنتظرها).
+  window._closeDirectChatRealtime = function() { _dmStopRealtime(); };
+})();
+</script>
+
 <!-- ==================== WHATSAPP FLOATING BUTTON ==================== -->
 <a id="whatsapp-float"
    href="https://wa.me/201147908978"
@@ -15527,7 +16059,11 @@ self.addEventListener('fetch', function(e) {
         if (typeof _showToast === 'function') _showToast('صفحة "مساراتي" هتُضاف في مرحلة قادمة', 'info');
         break;
       case 'chat':
-        if (typeof _showToast === 'function') _showToast('ادخل شعبتك من الرئيسية لفتح محادثة الشعبة', 'info');
+        // ✅ (Phase 3): كان مجرد رسالة توضيحية بدون أي فتح فعلي — الآن يفتح قائمة
+        // الرسائل المباشرة الفعلية لو كانت متاحة، مع نفس الرسالة الاحتياطية القديمة
+        // كـ fallback لو تعذّر ذلك لأي سبب (مثلاً الصفحة لم تُحمَّل هذا الجزء بعد).
+        if (typeof window.openDirectMessagesList === 'function') window.openDirectMessagesList();
+        else if (typeof _showToast === 'function') _showToast('ادخل شعبتك من الرئيسية لفتح محادثة الشعبة', 'info');
         break;
       case 'notifications':
         window.msNotificationsPlaceholder();
