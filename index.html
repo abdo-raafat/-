@@ -6019,6 +6019,30 @@ window.logoutUser = async function(btnEl) {
   // ── ينظّف حالة الواجهة محلياً ويرجع المستخدم إلى Guest فوراً ──
   // (لا نلمس نظام تخزين الجلسة الخاص بـ Supabase نفسه — فقط الكاشات المحلية
   // الخاصة بحالة هذا المستخدم داخل الصفحة الحالية)
+  // ════════════════════════════════════════════════════════════════
+  // ✅ FIX (Phase 1 نقطة 3 — Aug 2026): نقطة تنظيف مركزية واحدة تُغلق كل
+  // Realtime channel فتحه النظام، بدل الاعتماد على تفكيك كل channel من مكانه
+  // بشكل منفصل (سهل نسيان واحد منها مستقبلاً مع محادثات/إشعارات جديدة).
+  // تُستدعى من هنا (كل مسارات Logout تمر عبر _finishAsGuest) وأيضاً من حدث
+  // SIGNED_OUT كشبكة أمان مضاعفة.
+  // ════════════════════════════════════════════════════════════════
+  async function _cleanupRealtimeChannels() {
+    console.log('[AUTH-DEBUG] _cleanupRealtimeChannels: إغلاق جميع Realtime channels عند تسجيل الخروج');
+    try { if (typeof _teardownOwnAdminStatusRealtime === 'function') _teardownOwnAdminStatusRealtime(); } catch(e) {}
+    try { if (typeof window._closeSectionChatRealtime === 'function') window._closeSectionChatRealtime(); } catch(e) {}
+    try { if (typeof window._closeDirectChatRealtime === 'function') window._closeDirectChatRealtime(); } catch(e) {}
+    try { if (typeof window._closeNotificationsRealtime === 'function') window._closeNotificationsRealtime(); } catch(e) {}
+    // شبكة أمان أخيرة: Supabase JS v2 يتتبع داخلياً كل channel مفتوح بغض النظر
+    // عن متغيراتنا الخاصة — removeAllChannels() يضمن عدم بقاء أي اشتراك ناسي
+    // نفكّه صراحة أعلاه (بما فيها channels المحادثات/الإشعارات المستقبلية).
+    try {
+      if (window.supabase && typeof window.supabase.removeAllChannels === 'function') {
+        await window.supabase.removeAllChannels();
+      }
+    } catch(e) { console.warn('[AUTH] removeAllChannels فشل:', e && e.message); }
+  }
+  window._cleanupRealtimeChannels = _cleanupRealtimeChannels;
+
   function _finishAsGuest() {
     try {
       window._subStatusCache = {};      // كاش حالة الاشتراك (خاص بالمستخدم القديم)
@@ -6027,8 +6051,8 @@ window.logoutUser = async function(btnEl) {
       window._branchAdminRows = [];
       window._currentAuthUser = null;
       ++window._authRenderSeq; // يُبطل أي نتيجة مُعلَّقة من نداء auth سابق كانت لسه بتنتظر الشبكة
-      if (typeof _teardownOwnAdminStatusRealtime === 'function') _teardownOwnAdminStatusRealtime();
     } catch(e) {}
+    _cleanupRealtimeChannels();
     try {
       // أغلق لوحة الأدمن لو كانت مفتوحة أثناء تسجيل الخروج
       var panel = document.getElementById('admin-panel');
@@ -6498,6 +6522,12 @@ window.checkUser = async function() {
 
     // كل نداء لهذا الـ handler يمثل "أحدث حالة معروفة" — ياخد رقم تسلسل جديد فورًا
     var _authSeq = ++window._authRenderSeq;
+
+    // ✅ شبكة أمان: حتى لو المستخدم خرج من مسار غير logoutUser (مثلاً انتهاء الجلسة
+    // من تبويب آخر)، SIGNED_OUT هنا يضمن نفس التنظيف المركزي لكل الـ Realtime channels
+    if (event === 'SIGNED_OUT' && typeof window._cleanupRealtimeChannels === 'function') {
+      window._cleanupRealtimeChannels();
+    }
 
     // [BAN CHECK] عند أي حدث يحمل session
     if (session && session.user && session.user.email) {
@@ -15198,6 +15228,10 @@ self.addEventListener('fetch', function(e) {
     }
     if (_chatPollTimer) { clearInterval(_chatPollTimer); _chatPollTimer = null; }
   }
+
+  // ✅ يُستدعى من _cleanupRealtimeChannels() المركزية عند Logout — نفس منطق
+  // _chatStopRealtime تمامًا، بدون أي تغيير في سلوك محادثة الشعبة نفسها.
+  window._closeSectionChatRealtime = function() { _chatStopRealtime(); };
 })();
 </script>
 
