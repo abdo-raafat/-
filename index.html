@@ -6025,6 +6025,9 @@ window.logoutUser = async function(btnEl) {
       window._branchAdminSectionIds = [];
       window._branchAdminPerms = null;
       window._branchAdminRows = [];
+      window._currentAuthUser = null;
+      ++window._authRenderSeq; // يُبطل أي نتيجة مُعلَّقة من نداء auth سابق كانت لسه بتنتظر الشبكة
+      if (typeof _teardownOwnAdminStatusRealtime === 'function') _teardownOwnAdminStatusRealtime();
     } catch(e) {}
     try {
       // أغلق لوحة الأدمن لو كانت مفتوحة أثناء تسجيل الخروج
@@ -6089,6 +6092,78 @@ function _checkAndApplySubscription(userId) {
   return Promise.resolve(true);
 }
 
+// ════════════════════════════════════════════════════════════════
+// ✅ FIX (Phase 1 — Aug 2026): كان فيه مصدرين مستقلين بيستدعوا
+// _fetchUserRole() + _renderUserBox() بالتوازي عند فتح الصفحة:
+//   1) onAuthStateChange('INITIAL_SESSION' وغيرها)
+//   2) checkUser() نفسها عبر getSession() في نهاية الدالة
+// الاتنين بيعملوا await على استعلام شبكة (profiles.role) بشكل مستقل، فأيهما
+// يرجع النتيجة "الأخيرة" فعليًا (مش اللي بدأ أخيرًا) هو اللي بيكسب ويكتب على
+// window._isSuperAdmin. على الموبايل والكمبيوتر التوقيت بيختلف حسب سرعة
+// الشبكة/الجهاز، فكان يحصل أحيانًا إن نتيجة قديمة/بطيئة توصل بعد نتيجة حديثة
+// وتمسحها — وده بالظبط سبب "تاب أدمن الشعب يظهر على الموبايل ومش ظاهر على
+// الكمبيوتر لنفس الحساب" رغم إن الكود نفسه مطابق 100% في الاتنين.
+// الحل: عداد تسلسل (sequence) — كل نداء بياخد رقم عند بدايته، ولو رجعت نتيجته
+// بعد ما نداء أحدث منه كان قد بدأ، نتجاهلها فورًا بدل ما نكتب فوق النتيجة
+// الأحدث. النتيجة النهائية المعروضة دائمًا هي نتيجة آخر نداء بدأ، بغض النظر
+// عن ترتيب وصول الردود من الشبكة.
+// ════════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════════
+// ✅ FIX (Phase 1 — Aug 2026): تعيين/تعديل/إلغاء Branch Admin مباشرة من
+// Supabase (section_admins) أو تغيير profiles.role كان محتاج Logout/Login
+// يدوي عشان ينعكس في الموقع، لأن _resolveAdminStatus/_loadBranchAdminScope
+// كانوا بيتنفذوا فقط عند أحداث Auth (تسجيل دخول/تحميل صفحة) ومفيش أي مصدر
+// تاني بيعيد تشغيلهم. الحل: اشتراك Realtime على صف المستخدم نفسه في
+// section_admins وprofiles، وأي تغيير عليه يعيد تحليل حالة الأدمن ويعيد رسم
+// الواجهة فورًا (نفس مسار _renderUserBox العادي بالظبط، فيشمل تلقائياً
+// _loadBranchAdminScope و_applyBranchAdminPanelGating) — بدون أي حاجة لإعادة
+// تسجيل الدخول.
+// ════════════════════════════════════════════════════════════════
+window._ownAdminRealtimeChannel = null;
+window._ownAdminRealtimeUserId  = null;
+window._currentAuthUser = null;
+
+function _setupOwnAdminStatusRealtime(userId) {
+  if (!window.supabase || !userId) return;
+  if (window._ownAdminRealtimeChannel && window._ownAdminRealtimeUserId === userId) return; // شغّالة بالفعل لنفس المستخدم
+  _teardownOwnAdminStatusRealtime();
+  try {
+    window._ownAdminRealtimeChannel = window.supabase
+      .channel('own-admin-status-' + userId)
+      .on('postgres_changes',
+        { event: '*', schema: 'public', table: 'section_admins', filter: 'user_id=eq.' + userId },
+        function(payload) { console.log('[AUTH-DEBUG] realtime section_admins change for own user:', payload && payload.eventType); _reresolveOwnAdminStatus(userId, 'section_admins'); })
+      .on('postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'profiles', filter: 'id=eq.' + userId },
+        function(payload) { console.log('[AUTH-DEBUG] realtime profiles change for own user'); _reresolveOwnAdminStatus(userId, 'profiles'); })
+      .subscribe(function(status) { console.log('[AUTH-DEBUG] own-admin-status realtime channel status:', status); });
+    window._ownAdminRealtimeUserId = userId;
+  } catch(e) { console.warn('[AUTH] own-admin-status realtime subscribe failed:', e && e.message); }
+}
+
+function _teardownOwnAdminStatusRealtime() {
+  try { if (window._ownAdminRealtimeChannel && window.supabase) window.supabase.removeChannel(window._ownAdminRealtimeChannel); } catch(e) {}
+  window._ownAdminRealtimeChannel = null;
+  window._ownAdminRealtimeUserId  = null;
+}
+
+async function _reresolveOwnAdminStatus(userId, source) {
+  if (!window._currentAuthUser || window._currentAuthUser.id !== userId) return; // المستخدم بدّل جلسة بالفعل — تجاهل
+  console.log('[AUTH-DEBUG] _reresolveOwnAdminStatus من', source, '— إعادة تحليل صلاحيات الأدمن بدون Logout/Login');
+  var mySeq = ++window._authRenderSeq;
+  var role = await _fetchUserRole(userId);
+  _renderUserBoxGuarded(window._currentAuthUser, role, mySeq);
+}
+
+window._authRenderSeq = 0;
+function _renderUserBoxGuarded(user, role, mySeq) {
+  if (mySeq !== window._authRenderSeq) {
+    console.log('[AUTH-DEBUG] _renderUserBoxGuarded: تجاهل نتيجة قديمة (seq', mySeq, '≠ current', window._authRenderSeq, ') — تم استبدالها بنداء أحدث');
+    return;
+  }
+  _renderUserBox(user, role);
+}
+
 async function _renderUserBox(user, role) {
   console.log('[AUTH-DEBUG] _renderUserBox called — user:', user ? (user.id + ' / ' + user.email) : null, '| role:', role);
   const box = document.getElementById('user-box');
@@ -6100,6 +6175,8 @@ async function _renderUserBox(user, role) {
     window._branchAdminSectionIds = [];
     window._branchAdminPerms = null;
     window._branchAdminRoots = [];
+    window._currentAuthUser = null;
+    _teardownOwnAdminStatusRealtime();
     document.body.classList.remove('is-admin');
     document.body.classList.remove('content-protected'); // المحتوى مجاني للجميع
     box.innerHTML = '<button class="chatgpt-login-btn" onclick="loginWithGoogle()">🔐 دخول</button>';
@@ -6107,6 +6184,8 @@ async function _renderUserBox(user, role) {
     console.log('[AUTH-DEBUG] _renderUserBox: rendered GUEST state (login button)');
     return;
   }
+  window._currentAuthUser = user;
+  _setupOwnAdminStatusRealtime(user.id); // ✅ يستقبل تغييرات section_admins/profiles.role لهذا المستخدم بدون Logout/Login
   // role يأتي من profiles.role في Supabase — ليس من HTML
   // ✅ (Aug 2026): بنستخدم _resolveAdminStatus بدل الاعتماد على role وحده، عشان
   // أدمن الشعبة المُعيّن عن طريق section_admins (بدون profiles.role='branch_admin')
@@ -6417,12 +6496,15 @@ window.checkUser = async function() {
     // [AUTH-DEBUG] لا نطبع أي Token — فقط اسم الحدث ووجود/عدم وجود session
     console.log('[AUTH-DEBUG] onAuthStateChange fired — event:', event, '| session present:', !!session);
 
+    // كل نداء لهذا الـ handler يمثل "أحدث حالة معروفة" — ياخد رقم تسلسل جديد فورًا
+    var _authSeq = ++window._authRenderSeq;
+
     // [BAN CHECK] عند أي حدث يحمل session
     if (session && session.user && session.user.email) {
       var isBanned = await _isBanned(session.user.email);
       if (isBanned) {
         await window.supabase.auth.signOut();
-        _renderUserBox(null, null);
+        _renderUserBoxGuarded(null, null, _authSeq);
         _showBanMessage(isBanned.reason);
         return;
       }
@@ -6433,13 +6515,13 @@ window.checkUser = async function() {
       // ── Admin Middleware: جلب الـ role من قاعدة البيانات ──
       var role = await _fetchUserRole(session.user.id);
       console.log('[AUTH-DEBUG] _fetchUserRole resolved role:', role);
-      _renderUserBox(session.user, role);
+      _renderUserBoxGuarded(session.user, role, _authSeq);
       // ✅ مزامنة بريد الحساب في profiles (مرة واحدة فقط لو كان ناقصاً — راجع _ensureProfileEmailSynced)
       if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') {
         _ensureProfileEmailSynced(session.user);
       }
     } else {
-      _renderUserBox(null, null);
+      _renderUserBoxGuarded(null, null, _authSeq);
     }
 
     // استعادة آخر صفحة بعد Google OAuth redirect
@@ -6495,11 +6577,13 @@ window.checkUser = async function() {
     return;
   }
 
+  var _authSeqCU = ++window._authRenderSeq;
+
   if (session && session.user && session.user.email) {
     var isBanned = await _isBanned(session.user.email);
     if (isBanned) {
       await window.supabase.auth.signOut();
-      _renderUserBox(null, null);
+      _renderUserBoxGuarded(null, null, _authSeqCU);
       _showBanMessage(isBanned.reason);
       return;
     }
@@ -6507,9 +6591,9 @@ window.checkUser = async function() {
 
   if (session && session.user) {
     var role = await _fetchUserRole(session.user.id);
-    _renderUserBox(session.user, role);
+    _renderUserBoxGuarded(session.user, role, _authSeqCU);
   } else {
-    _renderUserBox(null, null);
+    _renderUserBoxGuarded(null, null, _authSeqCU);
   }
 };
 
