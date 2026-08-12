@@ -6220,7 +6220,10 @@ async function _loadBranchAdminScope(userId) {
     if (!profRes.error && profRes.data && profRes.data.managed_section_id) {
       roots.push({
         id: profRes.data.managed_section_id,
-        title: (profRes.data.site_sections && profRes.data.site_sections.title) || ('#' + profRes.data.managed_section_id)
+        title: (profRes.data.site_sections && profRes.data.site_sections.title) || ('#' + profRes.data.managed_section_id),
+        // النظام القديم managed_section_id مفيش فيه عمود صلاحيات أصلاً — نفس السلوك
+        // القديم بالظبط: كل الصلاحيات مفعّلة، عشان مانكسرش أي أدمن مُعيّن بالطريقة القديمة.
+        permissions: null
       });
     }
 
@@ -6228,7 +6231,7 @@ async function _loadBranchAdminScope(userId) {
     //    ويدعم أكثر من شعبة لنفس المستخدم (صف لكل شعبة)
     var saRes = await window.supabase
       .from('section_admins')
-      .select('section_id, role, is_active, site_sections:section_id(id, title)')
+      .select('section_id, role, is_active, permissions, site_sections:section_id(id, title)')
       .eq('user_id', userId).eq('is_active', true).eq('role', 'admin');
     if (!saRes.error && Array.isArray(saRes.data)) {
       saRes.data.forEach(function(row) {
@@ -6236,7 +6239,9 @@ async function _loadBranchAdminScope(userId) {
         if (roots.some(function(r) { return r.id === row.section_id; })) return; // إزالة تكرار لو موجود بالفعل من المصدر القديم
         roots.push({
           id: row.section_id,
-          title: (row.site_sections && row.site_sections.title) || ('#' + row.section_id)
+          title: (row.site_sections && row.site_sections.title) || ('#' + row.section_id),
+          // ✅ الصلاحيات الحقيقية القادمة من قاعدة البيانات فعلاً
+          permissions: row.permissions || null
         });
       });
     }
@@ -6257,17 +6262,35 @@ window._selectBranchAdminRoot = async function(rootId) {
   window._branchAdminActiveRoot = rootId;
   var rootMeta = window._branchAdminRoots.find(function(r) { return r.id === rootId; });
   window._branchAdminRows = [{ branch_section_id: rootId, site_sections: { title: rootMeta && rootMeta.title } }];
-  // أدمن الشعبة له كل الصلاحيات على شعبته المُسندة له (مفيش داعي لجدول صلاحيات منفصل)
+  // ✅ FIX (Permissions Audit): الصلاحيات كانت hardcoded كـ true دايمًا في الـ JS
+  // (فرونت إند)، وده بالظبط النوع اللي المستخدم عنده الزرار ظاهر بس السيرفر ممكن
+  // يرفضه أو العكس. دلوقتي بنقرأها فعليًا من section_admins.permissions (اللي
+  // جبناها في _refreshBranchAdminRoots أعلاه). لو null (أدمن قديم بنظام
+  // managed_section_id أو صف قديم قبل إضافة العمود) → كل الصلاحيات true زي
+  // بالظبط السلوك القديم، عشان محدش ينكسر فجأة. can_manage_chats موجودة هنا
+  // للتوافق مع كود قديم بيقرأها بنفس الاسم القديم.
+  var _dbPerms = (rootMeta && rootMeta.permissions) || {};
   window._branchAdminPerms = {
-    can_manage_materials: true, can_manage_chapters: true,
-    can_manage_subscriptions: true, can_manage_payments: true,
-    can_manage_chats: true, can_view_stats: true
+    can_manage_materials:        _dbPerms.can_manage_materials        !== undefined ? _dbPerms.can_manage_materials        : true,
+    can_manage_chapters:         _dbPerms.can_manage_chapters         !== undefined ? _dbPerms.can_manage_chapters         : true,
+    can_manage_subscriptions:    _dbPerms.can_manage_subscriptions    !== undefined ? _dbPerms.can_manage_subscriptions    : true,
+    can_manage_payments:         _dbPerms.can_manage_payments         !== undefined ? _dbPerms.can_manage_payments         : true,
+    can_view_stats:              _dbPerms.can_view_stats              !== undefined ? _dbPerms.can_view_stats              : true,
+    can_manage_section_chat:     _dbPerms.can_manage_section_chat     !== undefined ? _dbPerms.can_manage_section_chat     : true,
+    can_delete_section_messages: _dbPerms.can_delete_section_messages !== undefined ? _dbPerms.can_delete_section_messages : true,
+    // اسم قديم متوافق — بعض الكود الحالي بيقرأه بالاسم ده تحديداً
+    can_manage_chats:            _dbPerms.can_manage_section_chat     !== undefined ? _dbPerms.can_manage_section_chat     : true
   };
   window._branchAdminSectionIds = await _computeSectionSubtree(rootId);
   // أسماء بديلة مطابقة تمامًا (sectionIds/activeSectionId) — للتوافق مع تسمية section_admins
   window._sectionAdminSectionIds = window._branchAdminSectionIds;
   window._activeSectionId = rootId;
   if (typeof _renderBranchAdminSwitcher === 'function') _renderBranchAdminSwitcher();
+  // ✅ FIX: كانت _applyBranchAdminPanelGating() تُستدعى مرة واحدة فقط عند تسجيل
+  // الدخول (لأول شعبة فقط) ولا تُعاد أبداً عند تبديل الشعبة هنا — فلو أدمن يدير أكثر
+  // من شعبة بصلاحيات مختلفة، كانت تبويبات اللوحة (ومنها Dashboard) تبقى على حالة
+  // الشعبة الأولى القديمة بدل صلاحيات الشعبة المختارة فعلياً الآن.
+  if (typeof _applyBranchAdminPanelGating === 'function') _applyBranchAdminPanelGating();
   if (window._isBranchAdmin && typeof apLoadDashboard === 'function' && document.getElementById('admin-panel') &&
       document.getElementById('admin-panel').classList.contains('ap-open')) {
     apLoadDashboard();
@@ -7676,6 +7699,21 @@ window.checkBanStatus = async function(email) {
 
           <div id="ba-selected-user-box" style="display:none;background:#eefaf3;border:1px solid #a8e6c1;border-radius:10px;padding:10px 12px;margin:10px 0;font-size:.8rem;"></div>
 
+          <!-- ✅ صلاحيات حقيقية تُحفظ في section_admins.permissions وتُقرأ من قاعدة
+               البيانات فعلاً (مش JS ثابت) — كلها مفعّلة افتراضياً = نفس السلوك القديم. -->
+          <div class="ap-field" style="margin-top:4px;">
+            <label class="ap-label">🔐 صلاحيات هذا الأدمن</label>
+            <div id="ba-perm-checks" style="display:grid;grid-template-columns:1fr 1fr;gap:6px 10px;font-size:.78rem;">
+              <label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" data-perm="can_view_stats" checked> عرض الإحصائيات</label>
+              <label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" data-perm="can_manage_materials" checked> إدارة المواد</label>
+              <label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" data-perm="can_manage_chapters" checked> إدارة المحتوى</label>
+              <label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" data-perm="can_manage_subscriptions" checked> إدارة الاشتراكات</label>
+              <label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" data-perm="can_manage_payments" checked> إدارة المدفوعات</label>
+              <label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" data-perm="can_manage_section_chat" checked> إدارة محادثة الشعبة</label>
+              <label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" data-perm="can_delete_section_messages" checked> حذف رسائل الشعبة</label>
+            </div>
+          </div>
+
           <button id="ba-confirm-btn" onclick="baConfirmAssign()" class="ap-btn ap-btn-primary" style="width:100%;justify-content:center;padding:11px;margin-top:6px;" disabled>✅ تعيين الأدمن</button>
           <div id="ba-assign-msg" style="margin-top:8px;font-size:.8rem;text-align:center;min-height:18px;"></div>
         </div>
@@ -8333,13 +8371,13 @@ async function baLoadBranchAdmins() {
     //    بـ Map في الجافاسكريبت، بدل الاعتماد على embed غير موجود. ──
     var { data: adminRows, error } = await window.supabase
       .from('section_admins')
-      .select('id, user_id, is_active, role')
+      .select('id, user_id, is_active, role, permissions')
       .eq('section_id', branchId).eq('is_active', true).eq('role', 'admin');
     if (error) throw error;
     var _baUserIds = Array.from(new Set((adminRows || []).map(function(r){ return r.user_id; }).filter(Boolean)));
     var _baProfMap = await _apGetProfilesMap(_baUserIds); // استعلام واحد مجمّع (in()) — لا N+1
     window._baAdminsForBranch = (adminRows || []).map(function(r) {
-      return { id: r.id, user_id: r.user_id, is_active: r.is_active, role: r.role, profiles: _baProfMap[r.user_id] || null };
+      return { id: r.id, user_id: r.user_id, is_active: r.is_active, role: r.role, permissions: r.permissions || null, profiles: _baProfMap[r.user_id] || null };
     });
     var crumb = _baBreadcrumb();
 
@@ -8406,6 +8444,19 @@ function baOpenAssignModal(sectionId, sectionTitle, mode) {
   } else {
     curBox.style.display = 'none';
   }
+
+  // ✅ FIX: المودال كان لا يُعيد ضبط checkboxes الصلاحيات إطلاقاً عند فتحه — فكانت
+  // تحتفظ بحالتها من آخر مرة فُتح فيها المودال لأدمن آخر تماماً. النتيجة: لو Super
+  // Admin عطّل مثلاً "عرض الإحصائيات" لأدمن سابق، ثم فتح المودال لأدمن آخر بدون تغيير
+  // شيء، كان يُحفظ can_view_stats:false لهذا الأدمن الجديد بالخطأ الصامت — وهو سبب
+  // اختفاء زر Dashboard له لاحقاً رغم إنه من المفترض يكون متاحاً بالكامل.
+  // الآن: عند "تعديل" (change) نعرض الصلاحيات الفعلية المحفوظة لهذا الأدمن تحديداً،
+  // وعند "تعيين" (assign) جديد نبدأ بكل الصلاحيات مفعّلة (نفس افتراضي القاعدة).
+  var _baModalPerms = (mode === 'change' && currentRow && currentRow.permissions) ? currentRow.permissions : {};
+  document.querySelectorAll('#ba-perm-checks input[data-perm]').forEach(function(cb) {
+    var key = cb.getAttribute('data-perm');
+    cb.checked = _baModalPerms[key] !== undefined ? !!_baModalPerms[key] : true;
+  });
 
   overlay.style.display = 'flex';
   setTimeout(function(){ searchInput.focus(); }, 50);
@@ -8476,11 +8527,18 @@ async function baConfirmAssign() {
   var confirmBtn = document.getElementById('ba-confirm-btn');
   confirmBtn.disabled = true;
   try {
+    // ✅ اجمع الصلاحيات الفعلية المُختارة من الـ checkboxes بدل الاعتماد على
+    // الافتراضي الكامل فقط — لو الـ Super Admin عطّل صلاحية، لازم تتحفظ.
+    var _baPerms = {};
+    document.querySelectorAll('#ba-perm-checks input[data-perm]').forEach(function(cb) {
+      _baPerms[cb.getAttribute('data-perm')] = !!cb.checked;
+    });
+
     // section_admins هو المصدر الوحيد الآن للكتابة. UNIQUE(user_id, section_id) في الجدول
     // يعني upsert آمن: لو المستخدم كان أدمن غير فعّال لنفس الشعبة من قبل، يُعاد تفعيله فقط.
     // 1) عيّن/فعّل الأدمن الجديد لهذه الشعبة تحديداً (لا فرقة ولا ترم بالكامل)
     var { error: upErr } = await window.supabase.from('section_admins')
-      .upsert({ user_id: user.id, section_id: ctx.sectionId, role: 'admin', is_active: true },
+      .upsert({ user_id: user.id, section_id: ctx.sectionId, role: 'admin', is_active: true, permissions: _baPerms },
               { onConflict: 'user_id,section_id' });
     if (upErr) throw upErr;
 
