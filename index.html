@@ -5443,7 +5443,12 @@ const ResourceViewer = (function() {
 
       case 'pdf':
         // PDF.js internal viewer — no iframe, fully embedded
-        setTimeout(function() { NativePDFViewer.open(url, title); }, 50);
+        setTimeout(function() {
+          Promise.resolve(NativePDFViewer.open(url, title)).catch(function(err) {
+            console.error('[ResourceViewer pdf] تعذر فتح الملف:', err);
+            if (typeof _showToast === 'function') _showToast('❌ تعذر فتح ملف PDF، حاول مرة أخرى', 'error');
+          });
+        }, 50);
         return `<div class="rv-loading" id="rv-loading-indicator"><div class="spinner-lg"></div><p>جاري فتح الملف...</p></div>`;
 
       case 'video_direct':
@@ -5490,7 +5495,12 @@ const ResourceViewer = (function() {
       case 'gdrive_pdf': {
         // Google Drive PDF — open via PDF.js
         const directUrl = toEmbedUrl(url, 'gdrive_pdf');
-        setTimeout(function() { NativePDFViewer.open(directUrl, title); }, 50);
+        setTimeout(function() {
+          Promise.resolve(NativePDFViewer.open(directUrl, title)).catch(function(err) {
+            console.error('[ResourceViewer gdrive_pdf] تعذر فتح الملف:', err);
+            if (typeof _showToast === 'function') _showToast('❌ تعذر فتح ملف PDF، حاول مرة أخرى', 'error');
+          });
+        }, 50);
         return `<div class="rv-loading" id="rv-loading-indicator"><div class="spinner-lg"></div><p>جاري فتح الملف...</p></div>`;
       }
 
@@ -11265,9 +11275,15 @@ var NativePDFViewer = (function() {
     // افتح نافذة/تبويباً فارغاً فوراً داخل سياق ضغطة المستخدم.
     // لو انتظرنا createSignedUrl() أولاً، بعض متصفحات الهاتف تعتبر window.open
     // لاحقاً Popup غير موثوق وتمنعه؛ وهذا كان أحد أسباب زر PDF الذي يبدو كأنه لا يعمل.
+    // ⚠️ FIX: لازم عدم استخدام 'noopener' هنا — المواصفة تفرض إن window.open()
+    // يرجّع null دايماً لو استخدمنا noopener، يعني مفيش أي مرجع (handle) نقدر
+    // نوجّهه لاحقاً للرابط النهائي، فالتاب بيفضل فاضي للأبد. ده بالظبط سبب
+    // ظهور "تاب فاضي" على Chrome Android بينما شغّال على الكمبيوتر (المتصفحات
+    // على الديسكتوب أكثر تساهلاً). لازم نمسك مرجع حقيقي للنافذة عشان نقدر
+    // نغيّر .location.href بتاعها بعد ما نجيب الرابط الموقّع.
     var popup = null;
     try {
-      popup = (window._origWindowOpen || window.open)('', '_blank', 'noopener,noreferrer');
+      popup = (window._origWindowOpen || window.open)('', '_blank');
     } catch(e) {
       popup = null;
     }
@@ -11289,6 +11305,9 @@ var NativePDFViewer = (function() {
     if (popup && !popup.closed) {
       try {
         popup.location.href = finalUrl;
+        // نقطع صلة opener الآن بعد ما خلّصنا التوجيه (حماية إضافية ضد
+        // tabnabbing) — لو فشلت مش مشكلة، الملف يكون فتح بالفعل.
+        try { popup.opener = null; } catch(_e) {}
         return;
       } catch(e) {
         try { popup.close(); } catch(_) {}
