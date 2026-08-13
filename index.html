@@ -2875,9 +2875,16 @@ function toValidId(value) {
 }
 
 function showLoading(containerId) {
-  const el = document.getElementById(containerId);
-  if (el) el.innerHTML = `<div class="loading"><div class="spinner"></div> جاري التحميل من قاعدة البيانات...</div>`;
+  // ✅ (بناءً على طلب المستخدم): لا تظهر أي شاشة/رسالة "جاري التحميل من قاعدة
+  // البيانات..." نهائياً. نُبقي محتوى الحاوية كما هو (الصفحة السابقة تبقى ظاهرة)
+  // لحين وصول البيانات الجديدة فتستبدله مباشرة — بدون أي حالة وسيطة مرئية.
+  // هذا التغيير يُلغي تلقائياً أيضاً رسالة "التحميل استغرق وقتاً أطول من
+  // المعتاد" (_apWatchLoading) لأنها تعتمد على وجود عنصر .loading/.ap-loading
+  // داخل الحاوية، ولن يعود يوجد لأننا لم نعد نضيفه هنا.
+  // شريط التحميل الرفيع أعلى الصفحة (_apNavLoaderShow/_apNavLoaderHide) يبقى
+  // هو المؤشر الوحيد على أن هناك تحميلاً جارياً في الخلفية.
 }
+
 
 function showError(containerId, msg) {
   const el = document.getElementById(containerId);
