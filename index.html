@@ -5513,7 +5513,7 @@ const ResourceViewer = (function() {
             playsinline
             preload="metadata"
             id="rv-video-el"
-            controlsList="nodownload noplaybackrate nofullscreen"
+            controlsList="nodownload noplaybackrate"
             disablePictureInPicture
             disableRemotePlayback
             oncontextmenu="return false"
@@ -6185,10 +6185,21 @@ function _renderUserBoxGuarded(user, role, mySeq) {
     console.log('[AUTH-DEBUG] _renderUserBoxGuarded: تجاهل نتيجة قديمة (seq', mySeq, '≠ current', window._authRenderSeq, ') — تم استبدالها بنداء أحدث');
     return;
   }
-  _renderUserBox(user, role);
+  _renderUserBox(user, role, mySeq);
 }
 
-async function _renderUserBox(user, role) {
+// ✅ FIX (Aug 2026 — Desktop/Mobile admin tabs mismatch): mySeq هنا اختياري
+// (النداءات المباشرة القديمة _renderUserBox(null, null) بدون seq تفضل تشتغل
+// زي ما هي — بنعتبرها دايمًا "أحدث حالة" لأنها guest reset صريح). المهم إن أي
+// نداء بيوصله mySeq فعلي (من _renderUserBoxGuarded) لازم يتأكد إنه لسه "أحدث
+// حالة معروفة" قبل ما يلمس window._isSuperAdmin/_isBranchAdmin/_branchAdminSectionIds
+// أو يستدعي _applyBranchAdminPanelGating() — الجزء الداخلي (async IIFE) ده
+// كان بدون أي حماية، فلو اتنين _renderUserBox اشتغلوا بالتوازي (مثلاً
+// INITIAL_SESSION + checkUser()'s getSession() المباشر — نفس السيناريو اللي
+// طلبت مراجعته بالظبط)، أبطأهم في إنهاء الشبكة (يختلف حسب سرعة/زمن استجابة
+// الجهاز والشبكة — ده اللي كان بيفرق بين Desktop وMobile لنفس الحساب) كان
+// يكتب فوق حالة صحيحة أحدث بنتيجة قديمة، فتختفي تابات زي "إدارة أدمن الشعب".
+async function _renderUserBox(user, role, mySeq) {
   console.log('[AUTH-DEBUG] _renderUserBox called — user:', user ? (user.id + ' / ' + user.email) : null, '| role:', role);
   const box = document.getElementById('user-box');
   if (!box) { console.warn('[AUTH-DEBUG] _renderUserBox: #user-box element NOT found in DOM — cannot render'); return; }
@@ -6243,8 +6254,17 @@ async function _renderUserBox(user, role) {
       + '</div>';
     (async function() {
       if (isBranchAdmin) { await _loadBranchAdminScope(user.id); }
+      // ✅ حماية إضافية: لو ظهر auth event أحدث (seq جديد) أثناء انتظار
+      // _loadBranchAdminScope فوق، هذا التمرير بقى قديم — نوقف هنا ولا نلمس
+      // adminLoadSections()/_applyBranchAdminPanelGating() ولا أي DOM، حتى لا
+      // تكتب حالة قديمة فوق حالة أحدث خلصت (أو لسه شغالة) لنفس المستخدم.
+      if (mySeq !== undefined && mySeq !== window._authRenderSeq) {
+        console.log('[AUTH-DEBUG] _renderUserBox: تجاهل تطبيق admin gating من تمرير قديم (seq', mySeq, '≠ current', window._authRenderSeq, ')');
+        return;
+      }
       adminLoadSections();
       _applyBranchAdminPanelGating();
+      console.log('[PERF] admin scope ready', performance.now().toFixed(0) + 'ms');
     })();
   } else {
     box.innerHTML =
@@ -6498,6 +6518,9 @@ function _renderBranchAdminSwitcher() {
 }
 
 window.checkUser = async function() {
+  // ✅ [PERF] DEBUG timing logs مؤقتة (بطلب المستخدم) — لتحديد بالضبط أين يضيع
+  // الوقت في مسار تسجيل الدخول. لا تغيّر أي منطق، فقط console.log إضافي.
+  console.log('[PERF] auth start', performance.now().toFixed(0) + 'ms');
   // انتظر CLIENT الجاهز (فيه .auth)
   if (!window.supabase || typeof window.supabase.auth === 'undefined') {
     var rp = window._supabaseClientReady || window._supabaseReady;
@@ -6594,6 +6617,7 @@ window.checkUser = async function() {
     }, _sessionTimeoutMs);
     session = sessionRes && sessionRes.data && sessionRes.data.session;
     console.log('[AUTH-DEBUG] checkUser: getSession() resolved — session:', session ? 'PRESENT' : 'null', session ? ('| user.id: ' + session.user.id + ' | user.email: ' + session.user.email) : '');
+    console.log('[PERF] session ready', performance.now().toFixed(0) + 'ms');
   } catch (e) {
     if (_isOAuthCallback) {
       // مفيش Guest مؤقت هنا — الـ session لسه بتتأسّس؛ onAuthStateChange هو اللي هيتكفّل بالنتيجة
@@ -6604,6 +6628,23 @@ window.checkUser = async function() {
     console.warn('[AUTH] checkUser: getSession timeout/error — معاملة كـ Guest:', e && e.message);
     console.log('[AUTH-DEBUG] checkUser: getSession() threw/timed out (non-OAuth) — error:', e && e.message);
     _renderUserBox(null, null);
+    return;
+  }
+
+  // ✅ FIX (Aug 2026 — سرعة تسجيل الدخول): onAuthStateChange (المُسجَّل فوق في
+  // نفس الدالة) يُطلق INITIAL_SESSION تلقائيًا لنفس الـsession بمجرد جاهزية
+  // الـclient، ويعمل هو نفسه _fetchUserRole() + render كاملَين. لو كان هذا
+  // المسار المباشر قد وصل هنا *بعد* ما INITIAL_SESSION خلص بالفعل بنجاح لنفس
+  // المستخدم (الحالة الشائعة على شبكة سريعة)، فكنا بنكرر نفس استعلام الدور
+  // (profiles.role) مرة تانية بالتوازي من غير أي فايدة — تأخير إضافي حقيقي
+  // بيتضاعف مع كل صفحة/كل مستخدم. نتجاهل التكرار فقط لو نفس المستخدم بالظبط
+  // خلص رندره فعليًا؛ في أي حالة تانية (لسه محدث حاجة، أو مستخدم مختلف، أو
+  // INITIAL_SESSION لسه مخلصش) نكمل بنفس المسار الأصلي بدون أي تغيير — فـ
+  // شبكة الأمان (timeout) والسلوك fail-safe يفضلوا زي ما هما تمامًا.
+  if (session && session.user && window._currentAuthUser &&
+      window._currentAuthUser.id === session.user.id &&
+      window._authRenderSeq > 0) {
+    console.log('[AUTH-DEBUG] checkUser: تجاهل تكرار fetchUserRole/render — INITIAL_SESSION خلص بالفعل لنفس المستخدم');
     return;
   }
 
@@ -6621,11 +6662,20 @@ window.checkUser = async function() {
 
   if (session && session.user) {
     var role = await _fetchUserRole(session.user.id);
+    console.log('[PERF] role ready', performance.now().toFixed(0) + 'ms');
     _renderUserBoxGuarded(session.user, role, _authSeqCU);
   } else {
     _renderUserBoxGuarded(null, null, _authSeqCU);
   }
 };
+
+// ✅ [PERF] DEBUG timing log مؤقت إضافي — يسجّل فقط لحظة ما المتصفح خلص تحميل
+// الصفحة الأساسية (بدون أي علاقة بالـ Auth، عشان نقارن: هل الصفحة أصلاً بطيئة
+// في التحميل، ولا بس إحساس التعليق سببه الـ Auth؟). إضافة مستمع جديد فقط —
+// لا يمسّ أي مستمع موجود.
+window.addEventListener('load', function() {
+  console.log('[PERF] page interactive', performance.now().toFixed(0) + 'ms');
+});
 
 // ══════════════════════════════════════════════════════
 // تشغيل checkUser بعد جهوزية Supabase — كل المتصفحات
@@ -11789,7 +11839,18 @@ var NativePDFViewer = (function() {
   async function _renderPage(n) {
     if (!S || !S.pageEls[n]) return;
     var entry = S.pageEls[n];
-    if (entry.rendered || entry.renderTask) return;
+    // ✅ FIX (تحديدات/تظليل نتائج البحث في الملفات لا تظهر أحياناً): لو الصفحة
+    // خلصت رسم بالفعل، مفيش داعي نعمل حاجة. لكن لو فيه رسم شغّال بالفعل (مثلاً
+    // بدأ من التمرير التلقائي lazy-render في نفس لحظة قفز البحث لنفس الصفحة)،
+    // كانت هذه الدالة بترجع undefined فورًا بدل ما ترجع الـ renderTask الجاري —
+    // فـ _showCurrentMatch() كان بيعمل await على undefined (بيمر فورًا) ويستدعي
+    // _applyHighlightsForPage() *قبل* ما entry.rendered/highlightLayer/textContent
+    // تتحدد فعليًا، فتتجاهل الدالة الرسم بصمت بدون أي خطأ ظاهر — والنتيجة إن
+    // مربعات التظليل الصفراء لا تظهر رغم إن البحث لقى النتيجة. الحل: نرجّع نفس
+    // الـ Promise الجاري (entry.renderTask) بدل undefined عشان أي مستدعٍ فعليًا
+    // ينتظر اكتمال الرسم قبل ما يكمل.
+    if (entry.rendered) return;
+    if (entry.renderTask) return entry.renderTask;
 
     entry.renderTask = (async function() {
       try {
