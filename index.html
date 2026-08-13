@@ -15196,6 +15196,10 @@ self.addEventListener('fetch', function(e) {
 <!-- الموجودين بالفعل + get_or_create_chat_room() و RLS الحالية.       -->
 <!-- الأمان الفعلي دائماً من RLS/الـ Trigger على قاعدة البيانات، وليس   -->
 <!-- من أي فحص هنا في الـ Frontend.                                    -->
+<!-- ملاحظة (Phase 5): إرفاق الملفات (📎) مفعّل هنا بنفس أسلوب DM        -->
+<!-- بالضبط — نفس Bucket الخاص chat-attachments ونفس جدول               -->
+<!-- message_attachments ونفس مسار {room_id}/uuid-filename، بدون أي     -->
+<!-- Bucket/Policy/جدول جديد. الوصول عبر Signed URLs مؤقتة فقط.          -->
 <!-- ============================================================ -->
 <div id="chat-modal-overlay" class="chat-overlay" onclick="if(event.target===this) closeSectionChat()">
   <div class="chat-modal" role="dialog" aria-modal="true" aria-labelledby="chat-header-title">
@@ -15206,7 +15210,10 @@ self.addEventListener('fetch', function(e) {
     <div class="chat-body" id="chat-body">
       <div class="chat-loading"><div class="spinner"></div> جاري تحميل المحادثة...</div>
     </div>
+    <div id="chat-att-pending-wrap"></div>
     <div class="chat-footer">
+      <button type="button" class="dm2-attach-btn" id="chat-attach-btn" onclick="_chatAttachClick()" aria-label="إرفاق ملف" title="إرفاق ملف">📎</button>
+      <input type="file" id="chat-file-input" style="display:none" onchange="_chatFileSelected(event)">
       <textarea id="chat-input" class="chat-input" rows="1" placeholder="اكتب رسالتك هنا..." onkeydown="_chatHandleKeydown(event)"></textarea>
       <button class="chat-send-btn" id="chat-send-btn" onclick="_chatSend()" aria-label="إرسال">➤</button>
     </div>
@@ -15228,6 +15235,57 @@ self.addEventListener('fetch', function(e) {
   var _chatHasMoreOlder = false;  // هل يُحتمل وجود رسائل أقدم لم تُحمَّل؟
   var _chatLoadingOlder = false;  // ✅ PERF: يمنع تكرار طلب "تحميل أقدم" أثناء تنفيذ طلب سابق
   var _chatScrollListenerAttached = false;
+  var _chatPendingFile     = null; // ملف مُختار بانتظار الإرسال
+  var _chatPendingFileKind = null; // 'image' | 'pdf' | 'file'
+  var _chatAttMap          = {};   // message_id -> [attachment,...] لكل الرسائل المحمّلة حالياً في الغرفة المفتوحة
+
+  // ==================== Attachments (chat-attachments bucket — PRIVATE) ====================
+  // نفس Bucket ونفس Storage Policies المستخدمة في DM (chat-attachments، مسار {room_id}/...)
+  // لم يُنشأ أو يُعدَّل أي Bucket/Policy/جدول هنا — فقط نفس نمط DM مطبّق هنا لمحادثة الشعبة.
+  var CHAT_ATTACH_BUCKET  = 'chat-attachments';
+  var CHAT_MAX_FILE_SIZE  = 25 * 1024 * 1024; // 25MB
+  var CHAT_ALLOWED_EXT = {
+    jpg:'image', jpeg:'image', png:'image', webp:'image', gif:'image',
+    pdf:'pdf',
+    doc:'file', docx:'file', xls:'file', xlsx:'file', ppt:'file', pptx:'file',
+    txt:'file', csv:'file', zip:'file', rar:'file'
+  };
+  var _CHAT_IMG_PLACEHOLDER = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==';
+
+  function _chatUuid() {
+    if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+      var r = Math.random()*16|0, v = c === 'x' ? r : (r & 0x3 | 0x8);
+      return v.toString(16);
+    });
+  }
+
+  function _chatSafeFileName(name) {
+    var parts = String(name || 'file').split('.');
+    var ext = parts.length > 1 ? parts.pop() : '';
+    var base = parts.join('.').replace(/[^a-zA-Z0-9\u0600-\u06FF _-]/g, '').trim().slice(0, 60) || 'file';
+    return base + (ext ? '.' + ext.replace(/[^a-zA-Z0-9]/g, '').toLowerCase() : '');
+  }
+
+  function _chatEscJs(s) {
+    return String(s == null ? '' : s).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/[\r\n]/g, ' ');
+  }
+
+  function _chatFileKindFromPath(path) {
+    var ext = (String(path || '').split('.').pop() || '').toLowerCase();
+    return CHAT_ALLOWED_EXT[ext] || 'file';
+  }
+
+  function _chatAttachmentDisplayName(filePath) {
+    var base = String(filePath || '').split('/').pop() || 'ملف';
+    return base.replace(/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}-/, '');
+  }
+
+  function _chatFileSizeLabel(bytes) {
+    if (!bytes && bytes !== 0) return '';
+    if (bytes >= 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+    return Math.max(1, Math.round(bytes / 1024)) + ' KB';
+  }
 
   // ✅ PERF: مستمع scroll واحد فقط طوال عمر الصفحة (لا يُعاد إضافته كل مرة يُفتح فيها الشات)
   function _chatAttachScrollListener() {
@@ -15322,6 +15380,7 @@ self.addEventListener('fetch', function(e) {
       _chatLoadedMessages = rows;
 
       await _chatFetchMissingProfiles(rows);
+      _chatAttMap = await _chatFetchAttachmentsFor(rows); // تحميل كامل — نبدأ الخريطة من جديد
       _chatRenderMessages(rows, { scrollToBottom: true });
     } catch(e) {
       console.error('[CHAT] loadMessages error:', e && e.message);
@@ -15349,6 +15408,8 @@ self.addEventListener('fetch', function(e) {
       _chatHasMoreOlder = older.length === _CHAT_PAGE_SIZE;
       if (older.length) {
         await _chatFetchMissingProfiles(older);
+        var olderAttMap = await _chatFetchAttachmentsFor(older);
+        Object.keys(olderAttMap).forEach(function(k) { _chatAttMap[k] = olderAttMap[k]; });
         _chatLoadedMessages = older.concat(_chatLoadedMessages);
         _chatRenderMessages(_chatLoadedMessages, { preserveScrollFrom: prevScrollHeight });
       }
@@ -15370,6 +15431,103 @@ self.addEventListener('fetch', function(e) {
     (profRes.data || []).forEach(function(p){ _chatProfilesCache[p.id] = p; });
   }
 
+  // ── جلب مرفقات مجموعة رسائل (استعلام منفصل عن chat_messages، بنفس أسلوب DM) ──
+  async function _chatFetchAttachmentsFor(rows) {
+    if (!rows || !rows.length || !window.supabase) return {};
+    var ids = rows.map(function(m) { return m.id; });
+    try {
+      var res = await window.supabase.from('message_attachments')
+        .select('id, message_id, file_path, file_type, file_size')
+        .in('message_id', ids);
+      if (res.error) { console.warn('[CHAT] attachments fetch error:', res.error.message); return {}; }
+      var map = {};
+      (res.data || []).forEach(function(a) {
+        (map[a.message_id] = map[a.message_id] || []).push(a);
+      });
+      return map;
+    } catch(e) {
+      console.warn('[CHAT] attachments fetch exception:', e && e.message);
+      return {};
+    }
+  }
+
+  function _chatAttachmentHTML(att) {
+    var kind = _chatFileKindFromPath(att.file_path);
+    var name = _chatAttachmentDisplayName(att.file_path);
+    var sizeLabel = _chatFileSizeLabel(att.file_size);
+    var pathJs = _chatEscJs(att.file_path);
+    var typeJs = _chatEscJs(att.file_type || '');
+    var nameJs = _chatEscJs(name);
+    var onclickAttr = 'onclick="_chatOpenAttachment(\'' + pathJs + '\',\'' + typeJs + '\',\'' + nameJs + '\')"';
+    if (kind === 'image') {
+      return '<img class="dm2-att-image" data-chat-att-img="' + _chatEsc(att.file_path) + '" src="' + _CHAT_IMG_PLACEHOLDER + '" alt="' + _chatEsc(name) + '" ' + onclickAttr + '>';
+    }
+    var icon = kind === 'pdf' ? '📄' : '📎';
+    return '<div class="dm2-att-file" ' + onclickAttr + '>' +
+      '<span class="dm2-att-file-icon">' + icon + '</span>' +
+      '<div class="dm2-att-file-info">' +
+        '<span class="dm2-att-file-name">' + _chatEsc(name) + '</span>' +
+        '<span class="dm2-att-file-size">' + sizeLabel + '</span>' +
+      '</div>' +
+      '<span class="dm2-att-open-icon">⬇️</span>' +
+    '</div>';
+  }
+
+  // ── دفعة واحدة من Signed URLs لكل صور الغرفة المعروضة حالياً ──
+  async function _chatHydrateImageAttachments() {
+    var imgEls = Array.prototype.slice.call(document.querySelectorAll('#chat-body img[data-chat-att-img]'));
+    if (!imgEls.length || !window.supabase) return;
+    var paths = [];
+    imgEls.forEach(function(el) {
+      var p = el.getAttribute('data-chat-att-img');
+      if (p && paths.indexOf(p) === -1) paths.push(p);
+    });
+    if (!paths.length) return;
+    try {
+      var res = await window.supabase.storage.from(CHAT_ATTACH_BUCKET).createSignedUrls(paths, 3600);
+      if (res.error) { console.warn('[CHAT] createSignedUrls error:', res.error.message); return; }
+      var map = {};
+      (res.data || []).forEach(function(r) { if (r && r.path && r.signedUrl) map[r.path] = r.signedUrl; });
+      imgEls.forEach(function(el) {
+        var p = el.getAttribute('data-chat-att-img');
+        if (map[p]) el.src = map[p];
+      });
+    } catch(e) {
+      console.warn('[CHAT] hydrate images exception:', e && e.message);
+    }
+  }
+
+  // ── فتح/تحميل مرفق: Signed URL مؤقت فقط (Bucket خاص) — نفس منطق DM بالضبط ──
+  window._chatOpenAttachment = async function(path, type, name) {
+    var db = window.supabase;
+    if (!db || !path) return;
+    var kind = _chatFileKindFromPath(path);
+    var forceDownload = (kind !== 'image' && kind !== 'pdf');
+    var popup = null;
+    if (!forceDownload) {
+      try { popup = (window._origWindowOpen || window.open)('', '_blank'); } catch(e) { popup = null; }
+    }
+    try {
+      var opts = forceDownload ? { download: name || true } : {};
+      var res = await db.storage.from(CHAT_ATTACH_BUCKET).createSignedUrl(path, 120, opts);
+      if (res.error || !res.data || !res.data.signedUrl) throw (res.error || new Error('تعذر توليد رابط الملف'));
+      var url = res.data.signedUrl;
+      if (forceDownload) {
+        var a = document.createElement('a');
+        a.href = url; a.download = name || '';
+        document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      } else if (popup) {
+        popup.location.href = url;
+      } else {
+        window.open(url, '_blank');
+      }
+    } catch(e) {
+      console.error('[CHAT] open attachment error:', e && e.message);
+      if (popup) { try { popup.close(); } catch(e2) {} }
+      if (window._showToast) _showToast('❌ تعذر فتح الملف — قد لا يكون لديك صلاحية الوصول', 'error');
+    }
+  };
+
   function _chatRenderMessages(rows, opts) {
     opts = opts || {};
     var bodyEl = document.getElementById('chat-body');
@@ -15387,6 +15545,7 @@ self.addEventListener('fetch', function(e) {
     } else {
       bodyEl.scrollTop = bodyEl.scrollHeight;
     }
+    _chatHydrateImageAttachments();
   }
 
   function _chatRenderOneMessage(m) {
@@ -15400,9 +15559,13 @@ self.addEventListener('fetch', function(e) {
     var canDelete = _chatIsAdmin; // الحذف للأدمن فقط (RLS تفرض هذا فعلياً على أي حال)
     var delBtn = canDelete ? '<button class="chat-msg-del" onclick="_chatDeleteMessage(' + m.id + ')">🗑️ حذف</button>' : '';
 
+    var atts = _chatAttMap[m.id] || [];
+    var attHtml = atts.length ? atts.map(_chatAttachmentHTML).join('') : '';
+    var bubbleHtml = m.message ? '<div class="chat-msg-bubble">' + _chatEsc(m.message) + '</div>' : '';
+
     return '' +
       '<div class="chat-msg-row ' + (mine ? 'mine' : 'theirs') + '">' +
-        '<div class="chat-msg-bubble">' + _chatEsc(m.message) + '</div>' +
+        bubbleHtml + attHtml +
         '<div class="chat-msg-meta">' +
           (mine ? '' : '<span>' + _chatEsc(displayName) + '</span>') +
           (isSenderAdmin ? '<span class="chat-msg-admin-badge">🛡️ أدمن</span>' : '') +
@@ -15416,25 +15579,113 @@ self.addEventListener('fetch', function(e) {
     if (ev.key === 'Enter' && !ev.shiftKey) { ev.preventDefault(); _chatSend(); }
   };
 
+  // ── 📎 إرفاق ملف: اختيار + تحقق من النوع والحجم، الرفع الفعلي يحدث عند الإرسال ──
+  window._chatAttachClick = function() {
+    var input = document.getElementById('chat-file-input');
+    if (input) input.click();
+  };
+  window._chatFileSelected = function(ev) {
+    var file = ev.target.files && ev.target.files[0];
+    if (!file) return;
+    var ext = (file.name.split('.').pop() || '').toLowerCase();
+    var kind = CHAT_ALLOWED_EXT[ext];
+    if (!kind) {
+      if (window._showToast) _showToast('❌ نوع الملف غير مدعوم', 'error');
+      ev.target.value = '';
+      return;
+    }
+    if (file.size > CHAT_MAX_FILE_SIZE) {
+      if (window._showToast) _showToast('❌ حجم الملف كبير جداً (الحد الأقصى 25MB)', 'error');
+      ev.target.value = '';
+      return;
+    }
+    _chatPendingFile = file;
+    _chatPendingFileKind = kind;
+    var wrap = document.getElementById('chat-att-pending-wrap');
+    var sizeLabel = _chatFileSizeLabel(file.size);
+    var preview = '';
+    if (kind === 'image') {
+      var url = URL.createObjectURL(file);
+      preview = '<img src="' + url + '" alt="">';
+    } else {
+      preview = '<span class="dm2-att-file-icon">' + (kind === 'pdf' ? '📄' : '📎') + '</span>';
+    }
+    wrap.innerHTML = '<div class="dm2-att-pending">' + preview +
+      '<div class="dm2-att-file-info"><span class="dm2-att-file-name">' + _chatEsc(file.name) + '</span>' +
+      '<span class="dm2-att-file-size">' + sizeLabel + '</span></div>' +
+      '<button type="button" class="dm2-att-pending-remove" onclick="_chatRemovePendingFile()">✕</button></div>';
+  };
+  window._chatRemovePendingFile = function() {
+    _chatPendingFile = null;
+    _chatPendingFileKind = null;
+    var input = document.getElementById('chat-file-input');
+    if (input) input.value = '';
+    var wrap = document.getElementById('chat-att-pending-wrap');
+    if (wrap) wrap.innerHTML = '';
+  };
+
+  // ── رفع فعلي إلى chat-attachments داخل {room_id}/ ثم تسجيل message_attachments.
+  //    عند فشل التسجيل بعد نجاح الرفع، نحذف الملف اليتيم من Storage فوراً. ──
+  async function _chatUploadAttachment(messageId, file) {
+    var db = window.supabase;
+    var storagePath = _chatRoom.id + '/' + _chatUuid() + '-' + _chatSafeFileName(file.name);
+    try {
+      var upRes = await db.storage.from(CHAT_ATTACH_BUCKET).upload(storagePath, file, {
+        upsert: false,
+        contentType: file.type || 'application/octet-stream'
+      });
+      if (upRes.error) throw upRes.error;
+
+      var attRes = await db.from('message_attachments').insert([{
+        message_id: messageId,
+        file_path: storagePath,
+        file_type: file.type || null,
+        file_size: file.size
+      }]);
+      if (attRes.error) {
+        try { await db.storage.from(CHAT_ATTACH_BUCKET).remove([storagePath]); } catch(e2) {}
+        throw attRes.error;
+      }
+      return true;
+    } catch(e) {
+      console.error('[CHAT] attachment upload error:', e && e.message);
+      if (window._showToast) _showToast('❌ فشل إرفاق الملف' + (e && e.message ? ': ' + e.message : ''), 'error');
+      return false;
+    }
+  }
+
   window._chatSend = async function() {
     var input = document.getElementById('chat-input');
     var text = (input.value || '').trim();
-    if (!text || !_chatRoom || !window.supabase) return;
+    var pendingFile = _chatPendingFile;
+    if ((!text && !pendingFile) || !_chatRoom || !window.supabase) return;
     var btn = document.getElementById('chat-send-btn');
     btn.disabled = true;
+    var db = window.supabase;
     try {
-      var res = await window.supabase.from('chat_messages').insert([{
+      var insRes = await db.from('chat_messages').insert([{
         room_id: _chatRoom.id,
         message: text,
         user_id: _chatMe ? _chatMe.id : null,   // ✅ يُعاد ضبطه دائماً من السيرفر عبر Trigger
         user_name: '' // ✅ يُعاد ضبطه دائماً من profiles عبر Trigger — لا نثق بأي قيمة هنا
-      }]);
-      if (res.error) {
-        console.error('[CHAT] send error:', res.error.message);
+      }]).select('id').single();
+      if (insRes.error || !insRes.data) {
+        console.error('[CHAT] send error:', insRes.error && insRes.error.message);
         if (window._showToast) _showToast(_chatFriendlyError(), 'error');
         return;
       }
+      var newMsgId = insRes.data.id;
+
+      if (pendingFile) {
+        var attOk = await _chatUploadAttachment(newMsgId, pendingFile);
+        if (!attOk && !text) {
+          // الرسالة كانت مرفق فقط وفشل رفعه/تسجيله بالكامل — لا نترك رسالة فارغة يتيمة
+          try { await db.from('chat_messages').delete().eq('id', newMsgId); } catch(e) {}
+        }
+      }
+
       input.value = '';
+      _chatRemovePendingFile();
       await _chatLoadMessages();
     } catch(e) {
       console.error('[CHAT] send exception:', e && e.message);
@@ -15445,9 +15696,17 @@ self.addEventListener('fetch', function(e) {
   };
 
   // ── حذف رسالة (أدمن الشعبة أو الأدمن العام فقط — RLS تفرض هذا في قاعدة البيانات) ──
+  //    لو كانت الرسالة تحمل مرفقات، نحذف ملفاتها من Storage أولاً بأفضل محاولة ممكنة
+  //    حتى لا تبقى ملفات يتيمة بعد حذف الرسالة (سجلات message_attachments تُحذف
+  //    مع الرسالة عبر FK الموجودة أصلاً على الجدول — لم نُضف أو نُعدّل أي شيء هنا).
   window._chatDeleteMessage = async function(msgId) {
     if (!window.supabase) return;
     try {
+      var atts = _chatAttMap[msgId] || [];
+      if (atts.length) {
+        var paths = atts.map(function(a) { return a.file_path; }).filter(Boolean);
+        if (paths.length) { try { await window.supabase.storage.from(CHAT_ATTACH_BUCKET).remove(paths); } catch(e0) {} }
+      }
       var res = await window.supabase.from('chat_messages').delete().eq('id', msgId);
       if (res.error) {
         if (window._showToast) _showToast('❌ لا تملك صلاحية حذف هذه الرسالة', 'error');
