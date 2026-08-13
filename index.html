@@ -2788,6 +2788,31 @@ var _supabaseUrl = "https://xiqeaohemuxgujrcnpzd.supabase.co";
 // المفتاح الصحيح يبدأ بـ eyJ (صيغة JWT)
 var _supabaseKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhpcWVhb2hlbXV4Z3VqcmNucHpkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkxMjEwNjUsImV4cCI6MjA5NDY5NzA2NX0.vnpHTfn9KhRUjJDxKGPlzhPHyrrEaBWlACxxv2QEFWY";
 
+// ✅ AUTH-LOCK-FIX: custom global fetch مع AbortController timeout (15000ms).
+// الهدف: منع تعليق طلبات fetch الداخلية لـ gotrue-js (auth/user, auth/token)
+// بلا نهاية، لأن ذلك يُبقي navigator.locks lock باسم lock:benisuef_auth
+// held إلى الأبد (انظر تشخيص _acquireLock(-1, ...) في GoTrueClient).
+// هذا التعديل إضافي بحت: لا يستبدل window.fetch، ولا يضيف أي navigator.locks
+// منطق جديد، ولا يمس أي إعداد آخر من createClient.
+var _supabaseAuthFetch = function(url, options) {
+  options = options || {};
+  var controller = new AbortController();
+  var timeoutId = setTimeout(function() {
+    controller.abort();
+  }, 15000);
+  return fetch(url, Object.assign({}, options, { signal: controller.signal }))
+    .catch(function(err) {
+      if (err && err.name === 'AbortError') {
+        var _safeUrl = String(url).replace(/([?&](access_token|refresh_token|code|apikey)=)[^&]*/gi, '$1[REDACTED]');
+        console.error('[AUTH-FETCH-TIMEOUT]', { url: _safeUrl, timeout: 15000 });
+      }
+      throw err;
+    })
+    .finally(function() {
+      clearTimeout(timeoutId);
+    });
+};
+
 window._supabaseReady.then(function(lib) {
   _boot(4, 'entered window._supabaseReady.then() callback');
   if (!lib || typeof lib.createClient !== 'function') {
@@ -2805,6 +2830,9 @@ window._supabaseReady.then(function(lib) {
           autoRefreshToken: true,
           detectSessionInUrl: true,
           storageKey: 'benisuef_auth'
+        },
+        global: {
+          fetch: _supabaseAuthFetch
         }
       });
     }
@@ -2875,16 +2903,9 @@ function toValidId(value) {
 }
 
 function showLoading(containerId) {
-  // ✅ (بناءً على طلب المستخدم): لا تظهر أي شاشة/رسالة "جاري التحميل من قاعدة
-  // البيانات..." نهائياً. نُبقي محتوى الحاوية كما هو (الصفحة السابقة تبقى ظاهرة)
-  // لحين وصول البيانات الجديدة فتستبدله مباشرة — بدون أي حالة وسيطة مرئية.
-  // هذا التغيير يُلغي تلقائياً أيضاً رسالة "التحميل استغرق وقتاً أطول من
-  // المعتاد" (_apWatchLoading) لأنها تعتمد على وجود عنصر .loading/.ap-loading
-  // داخل الحاوية، ولن يعود يوجد لأننا لم نعد نضيفه هنا.
-  // شريط التحميل الرفيع أعلى الصفحة (_apNavLoaderShow/_apNavLoaderHide) يبقى
-  // هو المؤشر الوحيد على أن هناك تحميلاً جارياً في الخلفية.
+  const el = document.getElementById(containerId);
+  if (el) el.innerHTML = `<div class="loading"><div class="spinner"></div> جاري التحميل من قاعدة البيانات...</div>`;
 }
-
 
 function showError(containerId, msg) {
   const el = document.getElementById(containerId);
@@ -3682,7 +3703,7 @@ async function _renderDynamicSectionPage(sec) {
       if (gate) { window._lastGateSec = sec; window.__currentChapterGate = gate; }
     } catch(gateErr) {
       console.error('[DB LOAD ERROR][_renderDynamicSectionPage:checkSectionAccess]', gateErr && gateErr.message, gateErr);
-      gate = { anchor: sec, state: 'error' }; window._lastGateSec = sec; window.__currentChapterGate = gate;
+      gate = null; // fail-open — لا نعطّل عرض القسم بسبب فشل فحص الاشتراك
     }
   }
 
@@ -3757,7 +3778,7 @@ async function _renderDynamicSectionPage(sec) {
       window[`__sectionData_${child.id}`] = child;
       window[`__sectionAction_${child.id}`] = (s) => openDynamicSubSection(s);
     });
-    var gridHtml = children.map((child, idx) => buildSubSectionCard(child, !!gate && (gate.state === 'error' || idx > 0))).join('');
+    var gridHtml = children.map((child, idx) => buildSubSectionCard(child, !!gate && idx > 0)).join('');
     if (gate) gridHtml += window._renderSubscriptionGateHTML(gate);
     document.getElementById('dynamic-section-grid').innerHTML = gridHtml;
   } catch(err) {
@@ -4078,9 +4099,7 @@ async function trackSectionProgress(sectionId) {
     const db = window.supabase;
     if (!db || typeof db.auth?.getSession !== 'function') return;
 
-    const session = (window._currentAuthUser && window._currentAuthUser.id)
-      ? { user: window._currentAuthUser }
-      : ((await _fetchWithTimeout(function(){ return db.auth.getSession(); }, 4000)).data || {}).session;
+    const { data: { session } } = await db.auth.getSession();
     const uid = session && session.user && session.user.id;
     if (!uid) return; // زائر غير مسجّل دخول — لا يوجد تتبّع
 
@@ -4127,7 +4146,7 @@ async function _openContentPage(sec, _preloadedContent, _preloadedResources) {
       if (gate) { window._lastGateSec = sec; window.__currentChapterGate = gate; }
     } catch(gateErr) {
       console.error('[DB LOAD ERROR][_openContentPage:checkSectionAccess]', gateErr && gateErr.message, gateErr);
-      gate = { anchor: sec, state: 'error' }; window._lastGateSec = sec; window.__currentChapterGate = gate;
+      gate = null; // fail-open
     }
   }
 
@@ -14282,11 +14301,9 @@ self.addEventListener('fetch', function(e) {
   async function _getSectionSubStatus(userId, sectionId, forceRefresh) {
     var key = userId + ':' + sectionId;
     if (!forceRefresh && window._subStatusCache[key]) return window._subStatusCache[key];
-    if (!forceRefresh && window._subStatusPending[key]) return window._subStatusPending[key];
     var db = window.supabase;
-    var work = (async function() {
-      var result = { state: 'none' };
-      try {
+    var result = { state: 'none' };
+    try {
       // ✅ FIX (Aug 2026): كانت هذه أيضاً بدون حماية timeout — وهي الاستعلام الوحيد
       // على جدول subscriptions الذي يُنفَّذ لكل مستخدم مسجّل دخول عند فتح أي قسم
       // مقفول. لو تعلّقت (بسبب سياسة RLS بطيئة/معلّقة على subscriptions) كانت
@@ -14306,81 +14323,99 @@ self.addEventListener('fetch', function(e) {
           result = { state: 'expired', row: row }; // منتهي أو مُلغى
         }
       }
-      } catch(e) {
-        console.warn('[_getSectionSubStatus] timeout/error:', e && e.message);
-        // لا نخزّن الخطأ كأنه حالة اشتراك حقيقية.
-        return { state: 'error' };
-      }
-      window._subStatusCache[key] = result;
-      return result;
-    })();
-    window._subStatusPending[key] = work;
-    try { return await work; }
-    finally { delete window._subStatusPending[key]; }
+    } catch(e) { console.warn('[_getSectionSubStatus] timeout/error:', e && e.message); /* fail-open أدناه */ }
+    window._subStatusCache[key] = result;
+    return result;
   }
 
   function _clearSectionSubCache(userId, sectionId) {
     delete window._subStatusCache[userId + ':' + sectionId];
   }
 
-  // ── يحدد هل sectionId هو أول Chapter داخل مادة من مواد الشعبة ──
-  // القاعدة: عند عدم وجود اشتراك، أول Chapter من كل مادة فقط مجاني.
+  // ── يحدد هل sectionId يقع داخل «الفصل المجاني الوحيد» لكل شعبة ──
+  // ✅ (تحديث): الفصل المجاني هو فصل واحد بالتحديد لكل شعبة — الفصل الأول من
+  // أول مادة في تلك الشعبة (بحسب display_order) — وليس فصل أول من كل مادة
+  // على حدة كما كان سابقاً. أي مادة أخرى غير المادة الأولى تبقى محمية بالكامل
+  // بالاشتراك من فصلها الأول، وليس فقط من الفصل الثاني فأكثر.
   async function _isWithinFreeChapter(anchorId, sectionId) {
-    if (sectionId === anchorId) return false;
+    if (sectionId === anchorId) return false; // صفحة الشعبة نفسها (قائمة المواد) — لا معاينة مجانية هنا
 
+    // 1) نبني السلسلة الكاملة من sectionId صعوداً حتى نصل لـ anchorId (الشعبة)
+    var chain = [];
     var current = await _getSectionRow(sectionId);
-    if (!current || current.parent_id === null || current.parent_id === undefined) return false;
+    var depth = 0;
+    while (current && depth < 20) {
+      chain.push(current);
+      if (current.id === anchorId) break;
+      if (current.parent_id === null || current.parent_id === undefined) return false;
+      current = await _getSectionRow(current.parent_id);
+      depth++;
+    }
+    if (!current || current.id !== anchorId) return false; // لم نصل للشعبة — سلسلة غير متوقعة
+    if (chain.length < 2) return false;
 
-    // المادة هي الابن المباشر للشعبة. أي Chapter مجاني يجب أن يكون ابنًا مباشرًا لمادة.
-    var parent = await _getSectionRow(current.parent_id);
-    if (!parent || parent.parent_id !== anchorId) return false;
+    // 2) نحدد أول مادة في هذه الشعبة تحديداً (وليس مادة sectionId نفسه)
+    var subjects = await loadSections(anchorId);
+    if (!subjects || subjects.length === 0) return false; // الشعبة بلا مواد بعد
+    var firstSubjectId = subjects[0].id;
 
-    var chapters = await loadSections(parent.id);
-    if (!chapters || !chapters.length) return false;
+    // sectionId لازم يكون واقعاً بالفعل داخل أول مادة في الشعبة — غير كده مفيش معاينة مجانية
+    var passesFirstSubject = false;
+    for (var i = 0; i < chain.length - 1; i++) {
+      if (chain[i].id === firstSubjectId) { passesFirstSubject = true; break; }
+    }
+    if (!passesFirstSubject) return false;
 
-    return String(chapters[0].id) === String(sectionId);
+    // 3) نجلب فصول أول مادة تحديداً (لا فصول أي مادة أخرى) ونحدد الفصل الأول منها
+    var chapters = await loadSections(firstSubjectId);
+    if (!chapters || chapters.length === 0) return false; // المادة الأولى بلا فصول فرعية
+    var firstChapterId = chapters[0].id;
+
+    // 4) هل sectionId هو الفصل الأول لأول مادة أو يقع بداخله؟ (نستثني anchor من الفحص)
+    for (var j = 0; j < chain.length - 1; j++) {
+      if (chain[j].id === firstChapterId) return true;
+    }
+    return false;
   }
 
   // ── نقطة الفحص الرئيسية: تُستدعى قبل عرض أي قسم ──
-  // null = مفتوح بالكامل، object = يوجد Gate على هذا القسم/الفصل.
+  // ترجع null = مسموح بالدخول بالكامل، أو object = يجب عرض الفصل الأول فقط وقفل الباقي
   window.checkSectionAccess = async function(sectionId) {
-    var anchor = null;
     try {
-      if (window._isAdminUser) return null;
+      if (window._isAdminUser) return null; // الأدمن يرى كل شيء دائماً
 
-      anchor = await _findSubscriptionAnchor(sectionId);
-      if (!anchor) return null;
+      var anchor = await _findSubscriptionAnchor(sectionId);
+      if (!anchor) return null; // هذا القسم/الشعبة لا يتطلب اشتراكاً (requires_subscription = false)
 
-      // صفحة الشعبة نفسها: نعرض كل المواد، ولا نقفل بطاقات المواد.
-      if (String(sectionId) === String(anchor.id)) return null;
+      // ── ✅ (تحديث): فصل واحد فقط مجاني لكل شعبة بالكامل — الفصل الأول من أول
+      // مادة في الشعبة فقط (كل section_content و section_resources والفيديوهات
+      // وملفات الـ PDF التابعة له تحديداً). باقي مواد الشعبة، وباقي فصول المادة
+      // الأولى نفسها، تظل كلها محمية بالاشتراك كالمعتاد.
+      var isFreePreview = await _isWithinFreeChapter(anchor.id, sectionId);
+      if (isFreePreview) return null;
 
       var db = window.supabase;
       if (!db) return { anchor: anchor, state: 'error' };
 
-      // جلسة المستخدم: guest لا يملك اشتراكًا لكنه يستفيد من Free Preview.
-      var sessionRes = await _fetchWithTimeout(function() {
-        return db.auth.getSession();
-      }, 6000);
+      // ✅ DEBUG FIX: db.auth.getSession() كان بدون أي timeout — لو تعلّق (مثلاً بسبب
+      // جلسة/رمز تحديث تالف في localStorage) كانت الصفحة تظل معلّقة على "جاري التحميل
+      // من قاعدة البيانات..." للأبد بدون أي خطأ في الـ Console. الآن محدود بـ 8 ثوانٍ.
+      var sessionRes = await Promise.race([
+        db.auth.getSession(),
+        new Promise(function(_, reject) {
+          setTimeout(function() { reject(new Error('getSession timeout after 6000ms')); }, 6000);
+        })
+      ]);
       var user = sessionRes && sessionRes.data && sessionRes.data.session && sessionRes.data.session.user;
+      if (!user) return { anchor: anchor, state: 'guest' };
 
-      // فحص الاشتراك مرة واحدة على مستوى الشعبة.
-      if (user) {
-        var status = await _getSectionSubStatus(user.id, anchor.id);
-        if (status.state === 'active') return null;
+      var status = await _getSectionSubStatus(user.id, anchor.id);
+      if (status.state === 'active') return null; // اشتراك نشط → مسموح بالكامل
 
-        // لو هذا هو أول Chapter في مادة، فهو مجاني حتى بدون اشتراك.
-        if (await _isWithinFreeChapter(anchor.id, sectionId)) return null;
-
-        return { anchor: anchor, state: status.state, row: status.row, user: user };
-      }
-
-      // Guest: أول Chapter من كل مادة مجاني، وما عداه مقفول.
-      if (await _isWithinFreeChapter(anchor.id, sectionId)) return null;
-      return { anchor: anchor, state: 'guest' };
+      return { anchor: anchor, state: status.state, row: status.row, user: user };
     } catch(e) {
       console.error('[DB LOAD ERROR][checkSectionAccess]', e && e.message, e);
-      // مهم أمنيًا: فشل Authorization لا يعني اشتراكًا.
-      return anchor ? { anchor: anchor, state: 'error' } : { state: 'error' };
+      return (anchor ? { anchor: anchor, state: 'error' } : null); // fail-closed للمحتوى المحمي
     }
   };
 
@@ -14422,23 +14457,6 @@ self.addEventListener('fetch', function(e) {
     }
   };
 
-  window._retryCurrentAccessCheck = async function() {
-    var sec = window._currentContentSec || window._currentDynamicSec || window._lastGateSec;
-    if (!sec || !sec.id) return;
-    try {
-      if (window._sectionRowCache) delete window._sectionRowCache[sec.id];
-      if (window._dataCache && window._dataCache.sections) delete window._dataCache.sections['sec:' + sec.id];
-      var children = await loadSections(sec.id).catch(function(){ return []; });
-      if (children && children.length) {
-        await _renderDynamicSectionPage(sec);
-      } else {
-        await _openContentPage(sec);
-      }
-    } catch (e) {
-      console.warn('[ACCESS RETRY]', e && e.message);
-    }
-  };
-
   // ── بطاقة "رسالة جميلة" لطلب الاشتراك/التجديد ──
   window._renderSubscriptionGateHTML = function(gate) {
     window._currentGateAnchor = gate.anchor;
@@ -14452,7 +14470,7 @@ self.addEventListener('fetch', function(e) {
     if (state === 'error') {
       headline = '⚠️ تعذّر التحقق من الاشتراك';
       sub = 'حدثت مشكلة مؤقتة أثناء الاتصال بالخادم. أعد المحاولة بعد لحظات.';
-      btnHtml = '<button class="chatgpt-login-btn" style="padding:12px 26px;font-size:.95rem;" onclick="window._retryCurrentAccessCheck && window._retryCurrentAccessCheck()">🔄 إعادة المحاولة</button>';
+      btnHtml = '<button class="chatgpt-login-btn" style="padding:12px 26px;font-size:.95rem;" onclick="location.reload()">🔄 إعادة المحاولة</button>';
     } else if (state === 'guest') {
       headline = '🔐 سجّل الدخول أولاً';
       sub = 'يجب تسجيل الدخول حتى تتمكن من الاشتراك في «' + title + '» ومتابعة كل محتواها.';
@@ -14498,7 +14516,7 @@ self.addEventListener('fetch', function(e) {
   window._triggerSubscriptionFlow = async function(gate) {
     if (!gate) return;
     window._currentGateAnchor = gate.anchor;
-    if (gate.state === 'error') { if (typeof window._retryCurrentAccessCheck === 'function') window._retryCurrentAccessCheck(); return; }
+    if (gate.state === 'error') { location.reload(); return; }
     if (gate.state === 'guest') { loginWithGoogle(); return; }
     if (gate.state === 'pending') {
       if (window._showToast) _showToast('⏳ طلبك قيد المراجعة بالفعل — برجاء الانتظار', 'warning');
@@ -14645,7 +14663,7 @@ self.addEventListener('fetch', function(e) {
     var gate = _lnGate;
     closeLockNoticeModal();
     if (!gate) return;
-    if (gate.state === 'error') { if (typeof window._retryCurrentAccessCheck === 'function') window._retryCurrentAccessCheck(); return; }
+    if (gate.state === 'error') { location.reload(); return; }
     if (gate.state === 'pending') {
       window.open('https://wa.me/' + (window._SUBS_WHATSAPP_NUMBER || '201147908978'), '_blank', 'noopener');
       return;
@@ -15206,6 +15224,10 @@ self.addEventListener('fetch', function(e) {
 <!-- الموجودين بالفعل + get_or_create_chat_room() و RLS الحالية.       -->
 <!-- الأمان الفعلي دائماً من RLS/الـ Trigger على قاعدة البيانات، وليس   -->
 <!-- من أي فحص هنا في الـ Frontend.                                    -->
+<!-- ملاحظة (Phase 5): إرفاق الملفات (📎) مفعّل هنا بنفس أسلوب DM        -->
+<!-- بالضبط — نفس Bucket الخاص chat-attachments ونفس جدول               -->
+<!-- message_attachments ونفس مسار {room_id}/uuid-filename، بدون أي     -->
+<!-- Bucket/Policy/جدول جديد. الوصول عبر Signed URLs مؤقتة فقط.          -->
 <!-- ============================================================ -->
 <div id="chat-modal-overlay" class="chat-overlay" onclick="if(event.target===this) closeSectionChat()">
   <div class="chat-modal" role="dialog" aria-modal="true" aria-labelledby="chat-header-title">
@@ -15217,7 +15239,7 @@ self.addEventListener('fetch', function(e) {
       <div class="chat-loading"><div class="spinner"></div> جاري تحميل المحادثة...</div>
     </div>
     <div id="chat-att-pending-wrap"></div>
-    <div class="chat-footer dm2-composer">
+    <div class="chat-footer">
       <button type="button" class="dm2-attach-btn" id="chat-attach-btn" onclick="_chatAttachClick()" aria-label="إرفاق ملف" title="إرفاق ملف">📎</button>
       <input type="file" id="chat-file-input" style="display:none" onchange="_chatFileSelected(event)">
       <textarea id="chat-input" class="chat-input" rows="1" placeholder="اكتب رسالتك هنا..." onkeydown="_chatHandleKeydown(event)"></textarea>
@@ -15243,13 +15265,13 @@ self.addEventListener('fetch', function(e) {
   var _chatScrollListenerAttached = false;
   var _chatPendingFile     = null; // ملف مُختار بانتظار الإرسال
   var _chatPendingFileKind = null; // 'image' | 'pdf' | 'file'
-  var _chatAttMap          = {};   // message_id -> [attachment,...] لكل الرسائل المحمّلة حالياً
+  var _chatAttMap          = {};   // message_id -> [attachment,...] لكل الرسائل المحمّلة حالياً في الغرفة المفتوحة
 
-  // ==================== Attachments (نفس bucket/جدول/RLS المستخدمة في الرسائل
-  // الخاصة بالضبط — chat-attachments + message_attachments — لم يُنشأ أو يُعدَّل
-  // أي منها هنا، فقط استُخدمت بنفس الطريقة لمحادثة الشعبة) ====================
-  var CHAT_ATTACH_BUCKET = 'chat-attachments';
-  var CHAT_MAX_FILE_SIZE = 25 * 1024 * 1024; // 25MB
+  // ==================== Attachments (chat-attachments bucket — PRIVATE) ====================
+  // نفس Bucket ونفس Storage Policies المستخدمة في DM (chat-attachments، مسار {room_id}/...)
+  // لم يُنشأ أو يُعدَّل أي Bucket/Policy/جدول هنا — فقط نفس نمط DM مطبّق هنا لمحادثة الشعبة.
+  var CHAT_ATTACH_BUCKET  = 'chat-attachments';
+  var CHAT_MAX_FILE_SIZE  = 25 * 1024 * 1024; // 25MB
   var CHAT_ALLOWED_EXT = {
     jpg:'image', jpeg:'image', png:'image', webp:'image', gif:'image',
     pdf:'pdf',
@@ -15291,178 +15313,6 @@ self.addEventListener('fetch', function(e) {
     if (!bytes && bytes !== 0) return '';
     if (bytes >= 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
     return Math.max(1, Math.round(bytes / 1024)) + ' KB';
-  }
-
-  function _chatAttachmentHTML(att) {
-    var kind = _chatFileKindFromPath(att.file_path);
-    var name = _chatAttachmentDisplayName(att.file_path);
-    var sizeLabel = _chatFileSizeLabel(att.file_size);
-    var pathJs = _chatEscJs(att.file_path);
-    var typeJs = _chatEscJs(att.file_type || '');
-    var nameJs = _chatEscJs(name);
-    var onclickAttr = 'onclick="_chatOpenAttachment(\'' + pathJs + '\',\'' + typeJs + '\',\'' + nameJs + '\')"';
-    if (kind === 'image') {
-      return '<img class="dm2-att-image" data-att-img="' + _chatEsc(att.file_path) + '" src="' + _CHAT_IMG_PLACEHOLDER + '" alt="' + _chatEsc(name) + '" ' + onclickAttr + '>';
-    }
-    var icon = kind === 'pdf' ? '📄' : '📎';
-    return '<div class="dm2-att-file" ' + onclickAttr + '>' +
-      '<span class="dm2-att-file-icon">' + icon + '</span>' +
-      '<div class="dm2-att-file-info">' +
-        '<span class="dm2-att-file-name">' + _chatEsc(name) + '</span>' +
-        '<span class="dm2-att-file-size">' + sizeLabel + '</span>' +
-      '</div>' +
-      '<span class="dm2-att-open-icon">⬇️</span>' +
-    '</div>';
-  }
-
-  // ── جلب مرفقات مجموعة رسائل (استعلام منفصل عن chat_messages، بنفس أسلوب DM) ──
-  async function _chatFetchAttachmentsFor(rows) {
-    if (!rows || !rows.length || !window.supabase) return {};
-    var ids = rows.map(function(m) { return m.id; });
-    try {
-      var res = await window.supabase.from('message_attachments')
-        .select('id, message_id, file_path, file_type, file_size')
-        .in('message_id', ids);
-      if (res.error) { console.warn('[CHAT] attachments fetch error:', res.error.message); return {}; }
-      var map = {};
-      (res.data || []).forEach(function(a) {
-        (map[a.message_id] = map[a.message_id] || []).push(a);
-      });
-      return map;
-    } catch(e) {
-      console.warn('[CHAT] attachments fetch exception:', e && e.message);
-      return {};
-    }
-  }
-
-  // ── دفعة واحدة من Signed URLs لكل صور المحادثة المعروضة حالياً ──
-  async function _chatHydrateImageAttachments() {
-    var imgEls = Array.prototype.slice.call(document.querySelectorAll('#chat-body img[data-att-img]'));
-    if (!imgEls.length || !window.supabase) return;
-    var paths = [];
-    imgEls.forEach(function(el) {
-      var p = el.getAttribute('data-att-img');
-      if (p && paths.indexOf(p) === -1) paths.push(p);
-    });
-    if (!paths.length) return;
-    try {
-      var res = await window.supabase.storage.from(CHAT_ATTACH_BUCKET).createSignedUrls(paths, 3600);
-      if (res.error) { console.warn('[CHAT] createSignedUrls error:', res.error.message); return; }
-      var map = {};
-      (res.data || []).forEach(function(r) { if (r && r.path && r.signedUrl) map[r.path] = r.signedUrl; });
-      imgEls.forEach(function(el) {
-        var p = el.getAttribute('data-att-img');
-        if (map[p]) el.src = map[p];
-      });
-    } catch(e) {
-      console.warn('[CHAT] hydrate images exception:', e && e.message);
-    }
-  }
-
-  // ── فتح/تحميل مرفق: Signed URL مؤقت (Bucket خاص — لا Public URL إطلاقاً) ──
-  window._chatOpenAttachment = async function(path, type, name) {
-    var db = window.supabase;
-    if (!db || !path) return;
-    var kind = _chatFileKindFromPath(path);
-    var forceDownload = (kind !== 'image' && kind !== 'pdf');
-    var popup = null;
-    if (!forceDownload) {
-      try { popup = (window._origWindowOpen || window.open)('', '_blank'); } catch(e) { popup = null; }
-    }
-    try {
-      var opts = forceDownload ? { download: name || true } : {};
-      var res = await db.storage.from(CHAT_ATTACH_BUCKET).createSignedUrl(path, 120, opts);
-      if (res.error || !res.data || !res.data.signedUrl) throw (res.error || new Error('تعذر توليد رابط الملف'));
-      var url = res.data.signedUrl;
-      if (forceDownload) {
-        var a = document.createElement('a');
-        a.href = url; a.download = name || '';
-        document.body.appendChild(a); a.click(); document.body.removeChild(a);
-      } else if (popup) {
-        popup.location.href = url;
-      } else {
-        window.open(url, '_blank');
-      }
-    } catch(e) {
-      console.error('[CHAT] open attachment error:', e && e.message);
-      if (popup) { try { popup.close(); } catch(e2) {} }
-      if (window._showToast) _showToast('❌ تعذر فتح الملف — قد لا يكون لديك صلاحية الوصول', 'error');
-    }
-  };
-
-  // ── 📎 إرفاق ملف: اختيار + تحقق من النوع والحجم، الرفع الفعلي يحدث عند الإرسال ──
-  window._chatAttachClick = function() {
-    var input = document.getElementById('chat-file-input');
-    if (input) input.click();
-  };
-  window._chatFileSelected = function(ev) {
-    var file = ev.target.files && ev.target.files[0];
-    if (!file) return;
-    var ext = (file.name.split('.').pop() || '').toLowerCase();
-    var kind = CHAT_ALLOWED_EXT[ext];
-    if (!kind) {
-      if (window._showToast) _showToast('❌ نوع الملف غير مدعوم', 'error');
-      ev.target.value = '';
-      return;
-    }
-    if (file.size > CHAT_MAX_FILE_SIZE) {
-      if (window._showToast) _showToast('❌ حجم الملف كبير جداً (الحد الأقصى 25MB)', 'error');
-      ev.target.value = '';
-      return;
-    }
-    _chatPendingFile = file;
-    _chatPendingFileKind = kind;
-    var wrap = document.getElementById('chat-att-pending-wrap');
-    var sizeLabel = _chatFileSizeLabel(file.size);
-    var preview = '';
-    if (kind === 'image') {
-      var url = URL.createObjectURL(file);
-      preview = '<img src="' + url + '" alt="">';
-    } else {
-      preview = '<span class="dm2-att-file-icon">' + (kind === 'pdf' ? '📄' : '📎') + '</span>';
-    }
-    wrap.innerHTML = '<div class="dm2-att-pending">' + preview +
-      '<div class="dm2-att-file-info"><span class="dm2-att-file-name">' + _chatEsc(file.name) + '</span>' +
-      '<span class="dm2-att-file-size">' + sizeLabel + '</span></div>' +
-      '<button type="button" class="dm2-att-pending-remove" onclick="_chatRemovePendingFile()">✕</button></div>';
-  };
-  window._chatRemovePendingFile = function() {
-    _chatPendingFile = null;
-    _chatPendingFileKind = null;
-    var input = document.getElementById('chat-file-input');
-    if (input) input.value = '';
-    var wrap = document.getElementById('chat-att-pending-wrap');
-    if (wrap) wrap.innerHTML = '';
-  };
-
-  // ── رفع فعلي إلى chat-attachments داخل مجلد {room_id}/ ثم تسجيل message_attachments.
-  //    عند فشل التسجيل بعد نجاح الرفع، نحذف الملف اليتيم من Storage فوراً ──
-  async function _chatUploadAttachment(messageId, file) {
-    var db = window.supabase;
-    var storagePath = _chatRoom.id + '/' + _chatUuid() + '-' + _chatSafeFileName(file.name);
-    try {
-      var upRes = await db.storage.from(CHAT_ATTACH_BUCKET).upload(storagePath, file, {
-        upsert: false,
-        contentType: file.type || 'application/octet-stream'
-      });
-      if (upRes.error) throw upRes.error;
-
-      var attRes = await db.from('message_attachments').insert([{
-        message_id: messageId,
-        file_path: storagePath,
-        file_type: file.type || null,
-        file_size: file.size
-      }]);
-      if (attRes.error) {
-        try { await db.storage.from(CHAT_ATTACH_BUCKET).remove([storagePath]); } catch(e2) {}
-        throw attRes.error;
-      }
-      return true;
-    } catch(e) {
-      console.error('[CHAT] attachment upload error:', e && e.message);
-      if (window._showToast) _showToast('❌ فشل إرفاق الملف' + (e && e.message ? ': ' + e.message : ''), 'error');
-      return false;
-    }
   }
 
   // ✅ PERF: مستمع scroll واحد فقط طوال عمر الصفحة (لا يُعاد إضافته كل مرة يُفتح فيها الشات)
@@ -15558,9 +15408,8 @@ self.addEventListener('fetch', function(e) {
       _chatLoadedMessages = rows;
 
       await _chatFetchMissingProfiles(rows);
-      _chatAttMap = await _chatFetchAttachmentsFor(rows);
+      _chatAttMap = await _chatFetchAttachmentsFor(rows); // تحميل كامل — نبدأ الخريطة من جديد
       _chatRenderMessages(rows, { scrollToBottom: true });
-      _chatHydrateImageAttachments();
     } catch(e) {
       console.error('[CHAT] loadMessages error:', e && e.message);
       bodyEl.innerHTML = '<div class="chat-empty">' + _chatFriendlyError() + '</div>';
@@ -15588,10 +15437,9 @@ self.addEventListener('fetch', function(e) {
       if (older.length) {
         await _chatFetchMissingProfiles(older);
         var olderAttMap = await _chatFetchAttachmentsFor(older);
-        for (var k in olderAttMap) { if (olderAttMap.hasOwnProperty(k)) _chatAttMap[k] = olderAttMap[k]; }
+        Object.keys(olderAttMap).forEach(function(k) { _chatAttMap[k] = olderAttMap[k]; });
         _chatLoadedMessages = older.concat(_chatLoadedMessages);
         _chatRenderMessages(_chatLoadedMessages, { preserveScrollFrom: prevScrollHeight });
-        _chatHydrateImageAttachments();
       }
     } catch(e) {
       console.error('[CHAT] loadOlder error:', e && e.message);
@@ -15611,6 +15459,103 @@ self.addEventListener('fetch', function(e) {
     (profRes.data || []).forEach(function(p){ _chatProfilesCache[p.id] = p; });
   }
 
+  // ── جلب مرفقات مجموعة رسائل (استعلام منفصل عن chat_messages، بنفس أسلوب DM) ──
+  async function _chatFetchAttachmentsFor(rows) {
+    if (!rows || !rows.length || !window.supabase) return {};
+    var ids = rows.map(function(m) { return m.id; });
+    try {
+      var res = await window.supabase.from('message_attachments')
+        .select('id, message_id, file_path, file_type, file_size')
+        .in('message_id', ids);
+      if (res.error) { console.warn('[CHAT] attachments fetch error:', res.error.message); return {}; }
+      var map = {};
+      (res.data || []).forEach(function(a) {
+        (map[a.message_id] = map[a.message_id] || []).push(a);
+      });
+      return map;
+    } catch(e) {
+      console.warn('[CHAT] attachments fetch exception:', e && e.message);
+      return {};
+    }
+  }
+
+  function _chatAttachmentHTML(att) {
+    var kind = _chatFileKindFromPath(att.file_path);
+    var name = _chatAttachmentDisplayName(att.file_path);
+    var sizeLabel = _chatFileSizeLabel(att.file_size);
+    var pathJs = _chatEscJs(att.file_path);
+    var typeJs = _chatEscJs(att.file_type || '');
+    var nameJs = _chatEscJs(name);
+    var onclickAttr = 'onclick="_chatOpenAttachment(\'' + pathJs + '\',\'' + typeJs + '\',\'' + nameJs + '\')"';
+    if (kind === 'image') {
+      return '<img class="dm2-att-image" data-chat-att-img="' + _chatEsc(att.file_path) + '" src="' + _CHAT_IMG_PLACEHOLDER + '" alt="' + _chatEsc(name) + '" ' + onclickAttr + '>';
+    }
+    var icon = kind === 'pdf' ? '📄' : '📎';
+    return '<div class="dm2-att-file" ' + onclickAttr + '>' +
+      '<span class="dm2-att-file-icon">' + icon + '</span>' +
+      '<div class="dm2-att-file-info">' +
+        '<span class="dm2-att-file-name">' + _chatEsc(name) + '</span>' +
+        '<span class="dm2-att-file-size">' + sizeLabel + '</span>' +
+      '</div>' +
+      '<span class="dm2-att-open-icon">⬇️</span>' +
+    '</div>';
+  }
+
+  // ── دفعة واحدة من Signed URLs لكل صور الغرفة المعروضة حالياً ──
+  async function _chatHydrateImageAttachments() {
+    var imgEls = Array.prototype.slice.call(document.querySelectorAll('#chat-body img[data-chat-att-img]'));
+    if (!imgEls.length || !window.supabase) return;
+    var paths = [];
+    imgEls.forEach(function(el) {
+      var p = el.getAttribute('data-chat-att-img');
+      if (p && paths.indexOf(p) === -1) paths.push(p);
+    });
+    if (!paths.length) return;
+    try {
+      var res = await window.supabase.storage.from(CHAT_ATTACH_BUCKET).createSignedUrls(paths, 3600);
+      if (res.error) { console.warn('[CHAT] createSignedUrls error:', res.error.message); return; }
+      var map = {};
+      (res.data || []).forEach(function(r) { if (r && r.path && r.signedUrl) map[r.path] = r.signedUrl; });
+      imgEls.forEach(function(el) {
+        var p = el.getAttribute('data-chat-att-img');
+        if (map[p]) el.src = map[p];
+      });
+    } catch(e) {
+      console.warn('[CHAT] hydrate images exception:', e && e.message);
+    }
+  }
+
+  // ── فتح/تحميل مرفق: Signed URL مؤقت فقط (Bucket خاص) — نفس منطق DM بالضبط ──
+  window._chatOpenAttachment = async function(path, type, name) {
+    var db = window.supabase;
+    if (!db || !path) return;
+    var kind = _chatFileKindFromPath(path);
+    var forceDownload = (kind !== 'image' && kind !== 'pdf');
+    var popup = null;
+    if (!forceDownload) {
+      try { popup = (window._origWindowOpen || window.open)('', '_blank'); } catch(e) { popup = null; }
+    }
+    try {
+      var opts = forceDownload ? { download: name || true } : {};
+      var res = await db.storage.from(CHAT_ATTACH_BUCKET).createSignedUrl(path, 120, opts);
+      if (res.error || !res.data || !res.data.signedUrl) throw (res.error || new Error('تعذر توليد رابط الملف'));
+      var url = res.data.signedUrl;
+      if (forceDownload) {
+        var a = document.createElement('a');
+        a.href = url; a.download = name || '';
+        document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      } else if (popup) {
+        popup.location.href = url;
+      } else {
+        window.open(url, '_blank');
+      }
+    } catch(e) {
+      console.error('[CHAT] open attachment error:', e && e.message);
+      if (popup) { try { popup.close(); } catch(e2) {} }
+      if (window._showToast) _showToast('❌ تعذر فتح الملف — قد لا يكون لديك صلاحية الوصول', 'error');
+    }
+  };
+
   function _chatRenderMessages(rows, opts) {
     opts = opts || {};
     var bodyEl = document.getElementById('chat-body');
@@ -15628,6 +15573,7 @@ self.addEventListener('fetch', function(e) {
     } else {
       bodyEl.scrollTop = bodyEl.scrollHeight;
     }
+    _chatHydrateImageAttachments();
   }
 
   function _chatRenderOneMessage(m) {
@@ -15640,6 +15586,7 @@ self.addEventListener('fetch', function(e) {
 
     var canDelete = _chatIsAdmin; // الحذف للأدمن فقط (RLS تفرض هذا فعلياً على أي حال)
     var delBtn = canDelete ? '<button class="chat-msg-del" onclick="_chatDeleteMessage(' + m.id + ')">🗑️ حذف</button>' : '';
+
     var atts = _chatAttMap[m.id] || [];
     var attHtml = atts.length ? atts.map(_chatAttachmentHTML).join('') : '';
     var bubbleHtml = m.message ? '<div class="chat-msg-bubble">' + _chatEsc(m.message) + '</div>' : '';
@@ -15660,6 +15607,81 @@ self.addEventListener('fetch', function(e) {
     if (ev.key === 'Enter' && !ev.shiftKey) { ev.preventDefault(); _chatSend(); }
   };
 
+  // ── 📎 إرفاق ملف: اختيار + تحقق من النوع والحجم، الرفع الفعلي يحدث عند الإرسال ──
+  window._chatAttachClick = function() {
+    var input = document.getElementById('chat-file-input');
+    if (input) input.click();
+  };
+  window._chatFileSelected = function(ev) {
+    var file = ev.target.files && ev.target.files[0];
+    if (!file) return;
+    var ext = (file.name.split('.').pop() || '').toLowerCase();
+    var kind = CHAT_ALLOWED_EXT[ext];
+    if (!kind) {
+      if (window._showToast) _showToast('❌ نوع الملف غير مدعوم', 'error');
+      ev.target.value = '';
+      return;
+    }
+    if (file.size > CHAT_MAX_FILE_SIZE) {
+      if (window._showToast) _showToast('❌ حجم الملف كبير جداً (الحد الأقصى 25MB)', 'error');
+      ev.target.value = '';
+      return;
+    }
+    _chatPendingFile = file;
+    _chatPendingFileKind = kind;
+    var wrap = document.getElementById('chat-att-pending-wrap');
+    var sizeLabel = _chatFileSizeLabel(file.size);
+    var preview = '';
+    if (kind === 'image') {
+      var url = URL.createObjectURL(file);
+      preview = '<img src="' + url + '" alt="">';
+    } else {
+      preview = '<span class="dm2-att-file-icon">' + (kind === 'pdf' ? '📄' : '📎') + '</span>';
+    }
+    wrap.innerHTML = '<div class="dm2-att-pending">' + preview +
+      '<div class="dm2-att-file-info"><span class="dm2-att-file-name">' + _chatEsc(file.name) + '</span>' +
+      '<span class="dm2-att-file-size">' + sizeLabel + '</span></div>' +
+      '<button type="button" class="dm2-att-pending-remove" onclick="_chatRemovePendingFile()">✕</button></div>';
+  };
+  window._chatRemovePendingFile = function() {
+    _chatPendingFile = null;
+    _chatPendingFileKind = null;
+    var input = document.getElementById('chat-file-input');
+    if (input) input.value = '';
+    var wrap = document.getElementById('chat-att-pending-wrap');
+    if (wrap) wrap.innerHTML = '';
+  };
+
+  // ── رفع فعلي إلى chat-attachments داخل {room_id}/ ثم تسجيل message_attachments.
+  //    عند فشل التسجيل بعد نجاح الرفع، نحذف الملف اليتيم من Storage فوراً. ──
+  async function _chatUploadAttachment(messageId, file) {
+    var db = window.supabase;
+    var storagePath = _chatRoom.id + '/' + _chatUuid() + '-' + _chatSafeFileName(file.name);
+    try {
+      var upRes = await db.storage.from(CHAT_ATTACH_BUCKET).upload(storagePath, file, {
+        upsert: false,
+        contentType: file.type || 'application/octet-stream'
+      });
+      if (upRes.error) throw upRes.error;
+
+      var attRes = await db.from('message_attachments').insert([{
+        message_id: messageId,
+        file_path: storagePath,
+        file_type: file.type || null,
+        file_size: file.size
+      }]);
+      if (attRes.error) {
+        try { await db.storage.from(CHAT_ATTACH_BUCKET).remove([storagePath]); } catch(e2) {}
+        throw attRes.error;
+      }
+      return true;
+    } catch(e) {
+      console.error('[CHAT] attachment upload error:', e && e.message);
+      if (window._showToast) _showToast('❌ فشل إرفاق الملف' + (e && e.message ? ': ' + e.message : ''), 'error');
+      return false;
+    }
+  }
+
   window._chatSend = async function() {
     var input = document.getElementById('chat-input');
     var text = (input.value || '').trim();
@@ -15669,21 +15691,19 @@ self.addEventListener('fetch', function(e) {
     btn.disabled = true;
     var db = window.supabase;
     try {
-      // الرسالة ممكن تكون بنص فارغ لو كانت مرفق فقط بدون تعليق نصي
-      var res = await db.from('chat_messages').insert([{
+      var insRes = await db.from('chat_messages').insert([{
         room_id: _chatRoom.id,
         message: text,
         user_id: _chatMe ? _chatMe.id : null,   // ✅ يُعاد ضبطه دائماً من السيرفر عبر Trigger
         user_name: '' // ✅ يُعاد ضبطه دائماً من profiles عبر Trigger — لا نثق بأي قيمة هنا
       }]).select('id').single();
-      if (res.error || !res.data) {
-        console.error('[CHAT] send error:', res.error && res.error.message);
+      if (insRes.error || !insRes.data) {
+        console.error('[CHAT] send error:', insRes.error && insRes.error.message);
         if (window._showToast) _showToast(_chatFriendlyError(), 'error');
         return;
       }
-      var newMsgId = res.data.id;
+      var newMsgId = insRes.data.id;
 
-      // لو فيه مرفق، ارفعه وسجّله بعد نجاح إنشاء الرسالة
       if (pendingFile) {
         var attOk = await _chatUploadAttachment(newMsgId, pendingFile);
         if (!attOk && !text) {
@@ -15704,9 +15724,17 @@ self.addEventListener('fetch', function(e) {
   };
 
   // ── حذف رسالة (أدمن الشعبة أو الأدمن العام فقط — RLS تفرض هذا في قاعدة البيانات) ──
+  //    لو كانت الرسالة تحمل مرفقات، نحذف ملفاتها من Storage أولاً بأفضل محاولة ممكنة
+  //    حتى لا تبقى ملفات يتيمة بعد حذف الرسالة (سجلات message_attachments تُحذف
+  //    مع الرسالة عبر FK الموجودة أصلاً على الجدول — لم نُضف أو نُعدّل أي شيء هنا).
   window._chatDeleteMessage = async function(msgId) {
     if (!window.supabase) return;
     try {
+      var atts = _chatAttMap[msgId] || [];
+      if (atts.length) {
+        var paths = atts.map(function(a) { return a.file_path; }).filter(Boolean);
+        if (paths.length) { try { await window.supabase.storage.from(CHAT_ATTACH_BUCKET).remove(paths); } catch(e0) {} }
+      }
       var res = await window.supabase.from('chat_messages').delete().eq('id', msgId);
       if (res.error) {
         if (window._showToast) _showToast('❌ لا تملك صلاحية حذف هذه الرسالة', 'error');
