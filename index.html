@@ -2788,31 +2788,6 @@ var _supabaseUrl = "https://xiqeaohemuxgujrcnpzd.supabase.co";
 // المفتاح الصحيح يبدأ بـ eyJ (صيغة JWT)
 var _supabaseKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhpcWVhb2hlbXV4Z3VqcmNucHpkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkxMjEwNjUsImV4cCI6MjA5NDY5NzA2NX0.vnpHTfn9KhRUjJDxKGPlzhPHyrrEaBWlACxxv2QEFWY";
 
-// ✅ AUTH-LOCK-FIX: custom global fetch مع AbortController timeout (15000ms).
-// الهدف: منع تعليق طلبات fetch الداخلية لـ gotrue-js (auth/user, auth/token)
-// بلا نهاية، لأن ذلك يُبقي navigator.locks lock باسم lock:benisuef_auth
-// held إلى الأبد (انظر تشخيص _acquireLock(-1, ...) في GoTrueClient).
-// هذا التعديل إضافي بحت: لا يستبدل window.fetch، ولا يضيف أي navigator.locks
-// منطق جديد، ولا يمس أي إعداد آخر من createClient.
-var _supabaseAuthFetch = function(url, options) {
-  options = options || {};
-  var controller = new AbortController();
-  var timeoutId = setTimeout(function() {
-    controller.abort();
-  }, 15000);
-  return fetch(url, Object.assign({}, options, { signal: controller.signal }))
-    .catch(function(err) {
-      if (err && err.name === 'AbortError') {
-        var _safeUrl = String(url).replace(/([?&](access_token|refresh_token|code|apikey)=)[^&]*/gi, '$1[REDACTED]');
-        console.error('[AUTH-FETCH-TIMEOUT]', { url: _safeUrl, timeout: 15000 });
-      }
-      throw err;
-    })
-    .finally(function() {
-      clearTimeout(timeoutId);
-    });
-};
-
 window._supabaseReady.then(function(lib) {
   _boot(4, 'entered window._supabaseReady.then() callback');
   if (!lib || typeof lib.createClient !== 'function') {
@@ -2830,9 +2805,6 @@ window._supabaseReady.then(function(lib) {
           autoRefreshToken: true,
           detectSessionInUrl: true,
           storageKey: 'benisuef_auth'
-        },
-        global: {
-          fetch: _supabaseAuthFetch
         }
       });
     }
@@ -6591,7 +6563,18 @@ window.checkUser = async function() {
     if (session && session.user && session.user.email) {
       var isBanned = await _isBanned(session.user.email);
       if (isBanned) {
-        await window.supabase.auth.signOut();
+        // ✅ FIX (Aug 2026 — AUTH LOCK DEADLOCK): كان await مباشر هنا يستدعي
+        // signOut() من داخل onAuthStateChange نفسه، واللي بيتنفذ وهو لسه ماسك
+        // نفس lock:benisuef_auth (Navigator LockManager) — ده كان بيعمل
+        // reentrant lock request على نفس القفل غير القابل لإعادة الدخول،
+        // فيتجمّد للأبد (deadlock) ويمنع أي getSession() تاني من الاستمرار.
+        // الحل: تأجيل signOut() لـ tick تالي (setTimeout 0) عشان ينفّذ بعد ما
+        // القفل الحالي يتحرر تمامًا — بدون أي تغيير في منطق فحص الحظر أو الرندر.
+        setTimeout(function() {
+          window.supabase.auth.signOut().catch(function(err) {
+            console.error('[AUTH] deferred signOut failed:', err);
+          });
+        }, 0);
         _renderUserBoxGuarded(null, null, _authSeq);
         _showBanMessage(isBanned.reason);
         return;
@@ -6688,7 +6671,14 @@ window.checkUser = async function() {
   if (session && session.user && session.user.email) {
     var isBanned = await _isBanned(session.user.email);
     if (isBanned) {
-      await window.supabase.auth.signOut();
+      // ✅ FIX (Aug 2026 — AUTH LOCK DEADLOCK, defensive): نفس التأجيل المطبّق
+      // في onAuthStateChange أعلاه، لنفس السبب بالظبط — منع أي احتمال لطلب
+      // lock:benisuef_auth بشكل متداخل (reentrant) من داخل مسار auth آخر.
+      setTimeout(function() {
+        window.supabase.auth.signOut().catch(function(err) {
+          console.error('[AUTH] deferred signOut failed:', err);
+        });
+      }, 0);
       _renderUserBoxGuarded(null, null, _authSeqCU);
       _showBanMessage(isBanned.reason);
       return;
