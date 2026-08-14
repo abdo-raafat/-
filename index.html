@@ -2444,7 +2444,7 @@ body.sm-open {
   </div>
   <div style="display:flex;align-items:center;gap:8px;">
     <button class="ms-bell-btn" id="ms-paths-btn" onclick="openLearningPathsPage()" aria-label="المسارات التعليمية" title="المسارات التعليمية">🗺️</button>
-    <button class="ms-bell-btn" id="ms-bell-btn" onclick="msNotificationsPlaceholder()" aria-label="الإشعارات" title="الإشعارات">🔔</button>
+    <button class="ms-bell-btn" id="ms-bell-btn" onclick="openNotificationsCenter()" aria-label="الإشعارات" title="الإشعارات">🔔</button>
     <div id="user-box" style="display:none;">
       <button class="chatgpt-login-btn" onclick="loginWithGoogle()">🔐 دخول</button>
     </div>
@@ -3576,7 +3576,11 @@ function _paintHomeSections(sections) {
   };
   const grouped = {};
   sections.forEach(sec => {
-    const cat = sec.category || TYPE_GROUP_MAP[sec.type] || 'أخرى';
+    const cat = sec.category || (
+      String(sec.title || '').trim() === 'تنسيق المعاهد الفنية الصحية'
+        ? 'المراحل الدراسية'
+        : TYPE_GROUP_MAP[sec.type] || 'أخرى'
+    );
     if (!grouped[cat]) grouped[cat] = [];
     grouped[cat].push(sec);
   });
@@ -3589,7 +3593,15 @@ function _paintHomeSections(sections) {
   });
   let html = '';
   for (const cat of sortedGroups) {
-    const items = grouped[cat];
+    const items = grouped[cat].slice().sort((a,b) => {
+      const rank = (s) => {
+        const t = String(s.title || '').trim();
+        if (t === 'تنسيق المعاهد الفنية الصحية') return -100000;
+        if (t === 'ما بعد الثانوية') return -99999;
+        return Number(s.display_order || 0);
+      };
+      return rank(a) - rank(b);
+    });
     html += `
     <div class="home-section-label">
       <span class="home-section-icon">${rowIcons[cat] || '📌'}</span>
@@ -3668,6 +3680,7 @@ async function renderHomeSections() {
 
 function renderHomeFallback() {
   const fallback = [
+    { id:'f0', title:'تنسيق المعاهد الفنية الصحية', subtitle:'التنسيق والقبول بالمعاهد الفنية الصحية', category:'المراحل الدراسية' },
     { id:'f1', title:'ما بعد الثانوية',       subtitle:'تجهيز وتأهيل قبل الدراسة',          category:'المراحل الدراسية' },
     { id:'f2', title:'الفرقة الأولى',         subtitle:'السنة الدراسية الأولى',              category:'المراحل الدراسية' },
     { id:'f3', title:'الفرقة الثانية',        subtitle:'السنة الدراسية الثانية',             category:'المراحل الدراسية' },
@@ -5448,6 +5461,7 @@ DROP POLICY IF EXISTS "allow_public_read" ON site_sections;
 CREATE POLICY "allow_public_read" ON site_sections FOR SELECT USING (true);
 
 INSERT INTO site_sections (title, subtitle, icon, gradient_color, tags, category, parent_id, display_order) VALUES
+  ('تنسيق المعاهد الفنية الصحية', 'التنسيق والقبول بالمعاهد الفنية الصحية', '📝', 'linear-gradient(135deg,#0a3d62,#17a589)', 'تنسيق,قبول,معاهد فنية صحية', 'المراحل الدراسية', NULL, 0),
   ('ما بعد الثانوية',       'تجهيز وتأهيل قبل الدراسة',           '🎓', 'linear-gradient(135deg,#0b6e4f,#17a589)',  'تأهيل مسبق,الإعداد للمعهد,قريباً',        'المراحل الدراسية',    NULL, 1),
   ('الفرقة الأولى',         'السنة الدراسية الأولى',               '📘', 'linear-gradient(135deg,#1a3a5c,#17a589)',  'شعبة فنية صحية,شعبة تمريض',               'المراحل الدراسية',    NULL, 2),
   ('الفرقة الثانية',        'السنة الدراسية الثانية',              '📗', 'linear-gradient(135deg,#6c3483,#1a5276)',  '16 شعبة متخصصة,مواد متقدمة',              'المراحل الدراسية',    NULL, 3),
@@ -6075,14 +6089,25 @@ async function openResource(url, title, resourceType) {
       return;
     }
 
-    // ── PDF ──
+    // ── PDF: افتحه في عارض PDF الخارجي للمتصفح ──
+    // على الموبايل العارض الداخلي كان يعيد رسم صفحات PDF بطريقة تسبب
+    // تداخل/تشوه النص. فتح الرابط الأصلي مباشرة يجعل Chrome/Edge/Safari
+    // يستخدم عارض PDF الأصلي، ويحافظ على أي Highlights/Annotations
+    // مضمّنة داخل ملف الـPDF نفسه.
     if (rt === 'pdf' || /\.pdf($|\?)/i.test(url)) {
-      // ✅ الآن ننتظر (await) فعلياً بدل fire-and-forget: هذا ما كان يجعل الزر
-      // "لا يستجيب" أثناء انتظار رابط PDF الموقّع من Supabase — المستخدم كان
-      // يضغط أكثر من مرة ظنّاً أن الزر لا يعمل. الآن القفل أعلاه يمنع الفتح
-      // المزدوج، والـ toast يعطي تغذية راجعة فورية بدل الصمت التام.
-      if (typeof _showToast === 'function') _showToast('⏳ جاري فتح الملف...', 'info');
-      await NativePDFViewer.open(url, title);
+      var pdfOpen = window._origWindowOpen || window.open;
+      var pdfWin = pdfOpen.call(window, url, '_blank', 'noopener,noreferrer');
+      if (!pdfWin) {
+        try {
+          // fallback عند منع النوافذ المنبثقة، خصوصاً بعد ضغطة المستخدم المباشرة
+          window.location.href = url;
+        } catch (pdfNavErr) {
+          console.error('[openResource pdf] تعذر فتح PDF الخارجي:', pdfNavErr);
+          if (typeof _showToast === 'function') {
+            _showToast('❌ لم يتم فتح ملف PDF — اسمح بالنوافذ المنبثقة للموقع', 'error');
+          }
+        }
+      }
       return;
     }
 
@@ -7532,6 +7557,7 @@ window.checkBanStatus = async function(email) {
     <!-- Navigation Tabs -->
     <nav class="ap-nav" role="tablist">
       <button class="ap-nav-btn active" onclick="apSwitchTab('dashboard')" id="ap-tab-dashboard" role="tab">📊 Dashboard</button>
+      <button class="ap-nav-btn" onclick="apSwitchTab('notifications')" id="ap-tab-notifications" role="tab">🔔 الإشعارات</button>
       <button class="ap-nav-btn" onclick="apSwitchTab('requests')"  id="ap-tab-requests"  role="tab">📝 Requests</button>
       <button class="ap-nav-btn" onclick="apSwitchTab('divsubs')"   id="ap-tab-divsubs"   role="tab">🎓 إدارة الاشتراكات</button>
       <button class="ap-nav-btn" onclick="apSwitchTab('payments')"  id="ap-tab-payments"  role="tab">💳 إدارة المدفوعات</button>
@@ -7566,6 +7592,47 @@ window.checkBanStatus = async function(email) {
         <div class="ap-section-heading" style="margin-top:20px;">🕐 آخر النشاطات</div>
         <div id="ap-recent-activity">
           <div class="ap-loading"><div class="spinner"></div> جاري التحميل...</div>
+        </div>
+      </div>
+
+      <!-- ═══════════════════ TAB: NOTIFICATIONS ═══════════════════ -->
+      <div class="ap-tab-panel" id="ap-panel-notifications" role="tabpanel">
+        <div class="ap-section-heading">🔔 إرسال إشعارات للمستخدمين</div>
+        <div class="ap-card" style="padding:16px;">
+          <div id="ap-notif-scope-note" class="ap-empty" style="margin-bottom:12px;">جاري تحديد نطاق الإشعار...</div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;">
+            <div>
+              <label class="ap-label">نوع المستلمين</label>
+              <select id="ap-notif-target" class="ap-input" onchange="apNotifTargetChanged()">
+                <option value="all">كل المستخدمين</option>
+                <option value="section">مشتركو شعبة محددة</option>
+                <option value="specific">مستخدم محدد</option>
+              </select>
+            </div>
+            <div id="ap-notif-section-wrap" style="display:none;">
+              <label class="ap-label">الشعبة</label>
+              <select id="ap-notif-section" class="ap-input"></select>
+            </div>
+            <div id="ap-notif-user-wrap" style="display:none;">
+              <label class="ap-label">المستخدم</label>
+              <input id="ap-notif-user" class="ap-input" placeholder="البريد الإلكتروني أو الاسم">
+              <div id="ap-notif-user-results" style="margin-top:6px;"></div>
+            </div>
+          </div>
+          <div style="margin-top:12px;">
+            <label class="ap-label">عنوان الإشعار</label>
+            <input id="ap-notif-title" class="ap-input" maxlength="120" placeholder="مثال: 📢 تنبيه مهم">
+          </div>
+          <div style="margin-top:12px;">
+            <label class="ap-label">نص الإشعار</label>
+            <textarea id="ap-notif-message" class="ap-input" rows="5" maxlength="2000" placeholder="اكتب الرسالة التي ستظهر للمستخدمين..."></textarea>
+          </div>
+          <div id="ap-notif-selected-user" style="display:none;margin-top:8px;"></div>
+          <div style="display:flex;gap:8px;justify-content:flex-start;flex-wrap:wrap;margin-top:14px;">
+            <button class="ap-btn ap-btn-primary" id="ap-notif-send-btn" onclick="apSendNotifications()">🔔 إرسال الإشعار</button>
+            <button class="ap-btn ap-btn-ghost" onclick="apLoadNotificationsPanel()">🔄 تحديث</button>
+          </div>
+          <div id="ap-notif-result" style="margin-top:12px;"></div>
         </div>
       </div>
 
@@ -8596,7 +8663,7 @@ function _applyBranchAdminPanelGating() {
   if (!isBranch) {
     // مستخدم عادي أو سوبر أدمن: أظهر كل التابات كما هي
     ['ap-tab-requests','ap-tab-usermgmt','ap-tab-users','ap-tab-messages','ap-tab-divsubs','ap-tab-content','ap-tab-dashboard',
-     'ap-tab-payments','ap-tab-sectionsmgmt','ap-tab-paths','ap-tab-ads','ap-tab-monthlystats','ap-tab-sectionchat','ap-tab-auditlog']
+     'ap-tab-payments','ap-tab-sectionsmgmt','ap-tab-paths','ap-tab-ads','ap-tab-monthlystats','ap-tab-sectionchat','ap-tab-auditlog','ap-tab-notifications']
       .forEach(function(id) { var el = document.getElementById(id); if (el) el.style.display = ''; });
     return;
   }
@@ -8619,6 +8686,8 @@ function _applyBranchAdminPanelGating() {
   var dashTab = document.getElementById('ap-tab-dashboard');
   if (dashTab) dashTab.style.display = perms.can_view_stats ? '' : 'none';
   // محادثة الشعبة: متاحة دائماً لأدمن الشعبة (جزء أساسي من الإدارة، غير مرتبطة بصلاحيات إضافية)
+  var notifTab = document.getElementById('ap-tab-notifications');
+  if (notifTab) notifTab.style.display = '';
   var chatTab = document.getElementById('ap-tab-sectionchat');
   if (chatTab) chatTab.style.display = '';
   // سجل العمليات: متاح دائماً لأدمن الشعبة، لكن RLS في القاعدة تعرض له سجل شعبته فقط (وليس باقي الشعب)
@@ -8641,6 +8710,229 @@ function _applyBranchAdminPanelGating() {
   }
 }
 
+
+// ════════════════════════════════════════════════════════════════
+// IN-APP NOTIFICATIONS — يستخدم جدول notifications الموجود بالفعل.
+// Super Admin: كل المستخدمين / شعبة / مستخدم محدد.
+// Branch Admin: مشتركو نطاق شعبته فقط أو مستخدم محدد داخل نطاقه.
+// الحماية النهائية يجب أن تكون في RLS/RPC — الواجهة ليست Security.
+// ════════════════════════════════════════════════════════════════
+window._apNotifSelectedUser = null;
+window._apNotifSearchTimer = null;
+
+function _notifScopeIds(){
+  return Array.isArray(window._branchAdminSectionIds) ? window._branchAdminSectionIds.slice() : [];
+}
+function _notifEsc(s){
+  return String(s==null?'':s).replace(/[&<>"']/g,function(c){
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+  });
+}
+function apNotifTargetChanged(){
+  var target=document.getElementById('ap-notif-target');
+  var sw=document.getElementById('ap-notif-section-wrap');
+  var uw=document.getElementById('ap-notif-user-wrap');
+  if(!target) return;
+  var v=target.value;
+  if(sw) sw.style.display=v==='section'?'':'none';
+  if(uw) uw.style.display=v==='specific'?'':'none';
+  if(v==='section') apNotifLoadSections();
+}
+async function apNotifLoadSections(){
+  var el=document.getElementById('ap-notif-section');
+  if(!el || !window.supabase) return;
+  try{
+    var q=window.supabase.from('site_sections').select('id,title,parent_id').order('display_order',{ascending:true}).order('id',{ascending:true});
+    if(window._isBranchAdmin && !_notifScopeIds().length){ el.innerHTML='<option value="">لا توجد شعب مُسندة</option>'; return; }
+    var res=await q;
+    if(res.error) throw res.error;
+    var rows=res.data||[];
+    if(window._isBranchAdmin){
+      var scope=_notifScopeIds();
+      rows=rows.filter(function(r){return scope.indexOf(Number(r.id))>-1;});
+    }
+    el.innerHTML=rows.length?rows.map(function(r){return '<option value="'+Number(r.id)+'">'+_notifEsc(r.title)+'</option>';}).join(''):'<option value="">لا توجد شعب</option>';
+  }catch(e){
+    el.innerHTML='<option value="">تعذّر تحميل الشعب</option>';
+  }
+}
+function apNotifUserInput(){
+  var input=document.getElementById('ap-notif-user');
+  clearTimeout(window._apNotifSearchTimer);
+  var q=(input&&input.value||'').trim();
+  if(q.length<2){ document.getElementById('ap-notif-user-results').innerHTML=''; return; }
+  window._apNotifSearchTimer=setTimeout(function(){apNotifSearchUsers(q);},300);
+}
+async function apNotifSearchUsers(q){
+  var box=document.getElementById('ap-notif-user-results');
+  if(!box||!window.supabase)return;
+  try{
+    var res=await window.supabase.from('profiles').select('id,email,full_name').or('email.ilike.%'+q+'%,full_name.ilike.%'+q+'%').limit(8);
+    if(res.error) throw res.error;
+    var rows=res.data||[];
+    if(window._isBranchAdmin){
+      // Branch Admin لا يعتمد على UI فقط: نتحقق من وجود اشتراك فعال داخل نطاقه قبل عرض المستخدم.
+      var ids=rows.map(function(r){return r.id;}).filter(Boolean);
+      var scope=_notifScopeIds();
+      if(ids.length && scope.length){
+        var sr=await window.supabase.from('subscriptions').select('user_id,section_id,payment_status,end_date').in('user_id',ids).in('section_id',scope).eq('payment_status','active');
+        var activeMap={};
+        (sr.data||[]).forEach(function(s){
+          if(!s.end_date || new Date(s.end_date).getTime()>=Date.now()) activeMap[s.user_id]=true;
+        });
+        rows=rows.filter(function(r){return !!activeMap[r.id];});
+      }else rows=[];
+    }
+    box.innerHTML=rows.length?rows.map(function(u){
+      return '<button type="button" class="ap-btn ap-btn-ghost" style="width:100%;justify-content:flex-start;margin-bottom:5px;" onclick="apNotifSelectUser('+JSON.stringify(u.id)+','+JSON.stringify(u.email||'')+','+JSON.stringify(u.full_name||'')+')">👤 '+_notifEsc(u.full_name||'بدون اسم')+' — '+_notifEsc(u.email||'')+'</button>';
+    }).join(''):'<div style="font-size:.72rem;color:#888;padding:6px;">لا توجد نتائج ضمن النطاق المسموح.</div>';
+  }catch(e){
+    box.innerHTML='<div style="font-size:.72rem;color:#c0392b;padding:6px;">تعذّر البحث عن المستخدم.</div>';
+  }
+}
+function apNotifSelectUser(id,email,name){
+  window._apNotifSelectedUser={id:id,email:email,name:name};
+  var box=document.getElementById('ap-notif-selected-user');
+  if(box){box.style.display='';box.innerHTML='✅ المستلم: <b>'+_notifEsc(name||'بدون اسم')+'</b> — '+_notifEsc(email||'');}
+  var res=document.getElementById('ap-notif-user-results'); if(res)res.innerHTML='';
+  var input=document.getElementById('ap-notif-user'); if(input)input.value=email||name||'';
+}
+async function apLoadNotificationsPanel(){
+  var note=document.getElementById('ap-notif-scope-note');
+  if(!note)return;
+  if(window._isBranchAdmin){
+    var roots=(window._branchAdminRoots||[]).map(function(r){return r.title;}).filter(Boolean);
+    note.textContent='🛡️ يمكنك إرسال إشعارات فقط للمستخدمين المرتبطين بشعبتك: '+(roots.join('، ')||'نطاق الشعبة الحالي');
+  }else{
+    note.textContent='👑 سوبر أدمن: يمكنك إرسال إشعار لكل المستخدمين أو لشعبة محددة أو لمستخدم محدد.';
+  }
+  apNotifTargetChanged();
+  var input=document.getElementById('ap-notif-user');
+  if(input && !input._notifBound){
+    input.addEventListener('input',apNotifUserInput);
+    input._notifBound=true;
+  }
+}
+async function _notifGetRecipientIds(target){
+  var db=window.supabase;
+  if(!db) throw new Error('Supabase غير جاهز');
+  if(target==='specific'){
+    var u=window._apNotifSelectedUser;
+    if(!u||!u.id) throw new Error('اختر مستخدماً أولاً');
+    if(window._isBranchAdmin){
+      var scope=_notifScopeIds();
+      if(!scope.length) throw new Error('لا يوجد نطاق شعبة لهذا الأدمن');
+      var sr=await db.from('subscriptions').select('user_id,section_id,payment_status,end_date').eq('user_id',u.id).in('section_id',scope).eq('payment_status','active');
+      if(sr.error) throw sr.error;
+      var ok=(sr.data||[]).some(function(s){return !s.end_date||new Date(s.end_date).getTime()>=Date.now();});
+      if(!ok) throw new Error('هذا المستخدم ليس مشتركاً فعالاً داخل نطاق شعبتك');
+    }
+    return [u.id];
+  }
+  if(target==='section'){
+    var sid=Number((document.getElementById('ap-notif-section')||{}).value);
+    if(!sid) throw new Error('اختر الشعبة');
+    if(window._isBranchAdmin && _notifScopeIds().indexOf(sid)===-1) throw new Error('الشعبة خارج نطاق صلاحياتك');
+    var sr=await db.from('subscriptions').select('user_id,payment_status,end_date').eq('section_id',sid).eq('payment_status','active');
+    if(sr.error) throw sr.error;
+    return Array.from(new Set((sr.data||[]).filter(function(s){return !s.end_date||new Date(s.end_date).getTime()>=Date.now();}).map(function(s){return s.user_id;}).filter(Boolean)));
+  }
+  // all
+  if(window._isBranchAdmin){
+    var scope=_notifScopeIds();
+    if(!scope.length) throw new Error('لا يوجد نطاق شعبة لهذا الأدمن');
+    var sr=await db.from('subscriptions').select('user_id,section_id,payment_status,end_date').in('section_id',scope).eq('payment_status','active');
+    if(sr.error) throw sr.error;
+    return Array.from(new Set((sr.data||[]).filter(function(s){return !s.end_date||new Date(s.end_date).getTime()>=Date.now();}).map(function(s){return s.user_id;}).filter(Boolean)));
+  }
+  var pr=await db.from('profiles').select('id').limit(10000);
+  if(pr.error) throw pr.error;
+  return (pr.data||[]).map(function(r){return r.id;}).filter(Boolean);
+}
+async function _notifInsertRows(rows){
+  var db=window.supabase;
+  if(!rows.length) return {count:0};
+  var total=0;
+  for(var i=0;i<rows.length;i+=100){
+    var batch=rows.slice(i,i+100);
+    var variants=[
+      batch,
+      batch.map(function(r){return {user_id:r.user_id,title:r.title,message:r.message,is_read:r.is_read,created_at:r.created_at};}),
+      batch.map(function(r){return {user_id:r.user_id,title:r.title,message:r.message};})
+    ];
+    var lastErr=null, ok=false;
+    for(var vi=0;vi<variants.length;vi++){
+      var res=await db.from('notifications').insert(variants[vi]);
+      if(!res.error){ok=true;break;}
+      lastErr=res.error;
+      var em=String(res.error.message||'').toLowerCase();
+      // لو الفشل مجرد column غير موجود نجرب الشكل الأبسط؛ RLS/permission لا نتجاوزه.
+      if(!(em.indexOf('column')!==-1 || em.indexOf('schema cache')!==-1 || em.indexOf('could not find')!==-1)) break;
+    }
+    if(!ok) throw lastErr;
+    total+=batch.length;
+  }
+  return {count:total};
+}
+window.apSendNotifications=async function(){
+  var btn=document.getElementById('ap-notif-send-btn'), out=document.getElementById('ap-notif-result');
+  var title=(document.getElementById('ap-notif-title')||{}).value||'';
+  var message=(document.getElementById('ap-notif-message')||{}).value||'';
+  var target=(document.getElementById('ap-notif-target')||{}).value||'all';
+  title=title.trim(); message=message.trim();
+  if(!title||!message){if(out)out.innerHTML='<div style="color:#c0392b">اكتب عنوان الإشعار ونصه أولاً.</div>';return;}
+  if(btn)btn.disabled=true;
+  try{
+    var ids=await _notifGetRecipientIds(target);
+    if(!ids.length) throw new Error('لا يوجد مستلمون مطابقون للاختيار.');
+    var rows=ids.map(function(uid){return {user_id:uid,title:title,message:message,type:'admin',is_read:false,created_at:new Date().toISOString()};});
+    await _notifInsertRows(rows);
+    if(out)out.innerHTML='<div style="color:#18864b;font-weight:800;">✅ تم إرسال الإشعار إلى '+rows.length+' مستخدم.</div>';
+    var msg=document.getElementById('ap-notif-message'); if(msg)msg.value='';
+    var ttl=document.getElementById('ap-notif-title'); if(ttl)ttl.value='';
+  }catch(e){
+    console.error('[Notifications] send error:',e);
+    if(out)out.innerHTML='<div style="color:#c0392b;font-weight:700;">❌ تعذر إرسال الإشعار: '+_notifEsc(e.message||'خطأ غير معروف')+'<br><small>إذا كان الخطأ من RLS شغّل migration الإشعارات الموجود أسفل الملف.</small></div>';
+  }finally{if(btn)btn.disabled=false;}
+};
+
+// مستخدم الإشعارات — فتح قائمة الإشعارات بدلاً من رسالة "لا توجد".
+window.openNotificationsCenter=async function(){
+  var old=document.getElementById('notifications-center-overlay');
+  if(old)old.remove();
+  var ov=document.createElement('div');
+  ov.id='notifications-center-overlay';
+  ov.style.cssText='position:fixed;inset:0;z-index:9999998;background:rgba(5,20,35,.55);display:flex;align-items:flex-start;justify-content:center;padding:72px 14px 20px;';
+  ov.innerHTML='<div style="width:min(620px,100%);max-height:80vh;overflow:auto;background:var(--bg-card,#fff);border-radius:20px;box-shadow:0 20px 70px rgba(0,0,0,.25);padding:16px;">'+
+    '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;border-bottom:1px solid #e8eef4;padding-bottom:10px;"><h3 style="margin:0;color:var(--primary);">🔔 الإشعارات</h3><button class="ap-btn ap-btn-ghost" onclick="document.getElementById(\'notifications-center-overlay\').remove()">✕</button></div>'+
+    '<div id="notifications-center-body" style="padding-top:10px;"><div class="ap-loading"><div class="spinner"></div> جاري التحميل...</div></div></div>';
+  document.body.appendChild(ov);
+  try{
+    var sessionRes=await _getSessionSafe(), user=sessionRes&&sessionRes.data&&sessionRes.data.session&&sessionRes.data.session.user;
+    var body=document.getElementById('notifications-center-body');
+    if(!user){body.innerHTML='<div class="ap-empty">🔐 سجّل الدخول لرؤية الإشعارات.</div>';return;}
+    var res=await window.supabase.from('notifications').select('*').eq('user_id',user.id).order('created_at',{ascending:false}).limit(50);
+    if(res.error) throw res.error;
+    var rows=res.data||[];
+    if(!rows.length){body.innerHTML='<div class="ap-empty">🔔 لا توجد إشعارات جديدة.</div>';return;}
+    body.innerHTML=rows.map(function(n){
+      var unread=n.is_read===false;
+      return '<div style="padding:12px;border:1px solid '+(unread?'#b9ddf0':'#e7edf2')+';background:'+(unread?'#f2faff':'#fff')+';border-radius:13px;margin-bottom:8px;">'+
+        '<div style="font-weight:900;color:#0a3d62;">'+_notifEsc(n.title||'إشعار')+'</div>'+
+        '<div style="font-size:.8rem;line-height:1.8;color:#425466;margin-top:4px;">'+_notifEsc(n.message||'')+'</div>'+
+        '<div style="font-size:.66rem;color:#8a9bab;margin-top:6px;">'+_notifEsc(n.created_at||'')+(unread?' · 🔵 جديد':'')+'</div>'+
+      '</div>';
+    }).join('');
+    // Mark all visible as read without blocking display.
+    var unreadIds=rows.filter(function(n){return n.is_read===false;}).map(function(n){return n.id;});
+    if(unreadIds.length) window.supabase.from('notifications').update({is_read:true}).in('id',unreadIds).then(function(){});
+  }catch(e){
+    var body=document.getElementById('notifications-center-body');
+    if(body)body.innerHTML='<div class="ap-empty" style="color:#c0392b">❌ تعذر تحميل الإشعارات.</div>';
+  }
+};
+window.msNotificationsPlaceholder=window.openNotificationsCenter;
+
 // ── apSwitchTab ─────────────────────────────────────────────────
 function apSwitchTab(tab) {
   // Update nav buttons
@@ -8660,6 +8952,7 @@ function apSwitchTab(tab) {
   // Lazy load data
   if (tab === 'dashboard')     apLoadDashboard();
   else if (tab === 'auditlog') apLoadAuditLog();
+  else if (tab === 'notifications') apLoadNotificationsPanel();
   else if (tab === 'requests') apLoadRequests();
   else if (tab === 'subscriptions') apLoadSubscriptions();
   else if (tab === 'divsubs')  { dsLoadGrades(); apLoadDivisionSubs(); }
@@ -17714,6 +18007,69 @@ function _qnFallbackCopy(text, done, fail) {
 </script>
 
 <script>
+
+// ============================================================
+// SQL MIGRATION — Notifications: Super Admin + Section Admin
+// لا يتم تشغيل SQL تلقائياً من المتصفح. اطبع migration وشغّله مرة واحدة في Supabase SQL Editor.
+// ============================================================
+window.printNotificationsMigration = function(){
+  var sql = `
+-- NOTIFICATIONS ADDITIVE MIGRATION — بدون DROP TABLE / بدون حذف بيانات
+ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "notif_own" ON notifications;
+DROP POLICY IF EXISTS "notif_admin_all" ON notifications;
+DROP POLICY IF EXISTS "notif_branch_insert" ON notifications;
+
+CREATE POLICY "notif_own"
+ON notifications FOR SELECT
+USING (auth.uid() = user_id OR is_admin());
+
+CREATE POLICY "notif_admin_all"
+ON notifications FOR ALL
+USING (is_admin())
+WITH CHECK (is_admin());
+
+-- أدمن الشعبة يستطيع الإرسال فقط لمستخدم لديه اشتراك فعال داخل نطاق شعبته.
+CREATE OR REPLACE FUNCTION can_branch_admin_notify_user(target_user UUID)
+RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER
+AS $$
+  SELECT EXISTS (
+    SELECT 1
+    FROM subscriptions sub
+    WHERE sub.user_id = target_user
+      AND sub.payment_status = 'active'
+      AND (sub.end_date IS NULL OR sub.end_date >= NOW())
+      AND is_branch_admin_of(sub.section_id)
+  );
+$$;
+
+DROP POLICY IF EXISTS "notif_branch_insert" ON notifications;
+CREATE POLICY "notif_branch_insert"
+ON notifications FOR INSERT
+WITH CHECK (
+  is_admin()
+  OR (auth.uid() IS NOT NULL AND can_branch_admin_notify_user(user_id))
+);
+
+-- السماح للمستخدم بتمييز إشعاراته كمقروءة فقط.
+DROP POLICY IF EXISTS "notif_own_update" ON notifications;
+CREATE POLICY "notif_own_update"
+ON notifications FOR UPDATE
+USING (auth.uid() = user_id OR is_admin())
+WITH CHECK (auth.uid() = user_id OR is_admin());
+`;
+  console.group('🔔 Notifications Migration');
+  console.log(sql);
+  console.groupEnd();
+  try{navigator.clipboard.writeText(sql);console.log('✅ تم نسخ SQL إلى Clipboard');}catch(e){}
+  return sql;
+};
+
+</script>
+
+<script>
 // ==================== FINAL AUDIT MARKER ====================
 // هذه النسخة خضعت لفحص static إضافي: لا تغييرات تلقائية على Supabase/RLS.
 window.__FIXED2_AUDIT = { version: 'FIXED-2', date: '2026-08-12' };
@@ -17721,6 +18077,14 @@ window.__FIXED2_AUDIT = { version: 'FIXED-2', date: '2026-08-12' };
 
 <style>
 .learning-paths-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:18px;padding:0 4px 30px;}
+.learning-path-card-clickable{cursor:pointer;transition:transform .18s,box-shadow .18s,border-color .18s;}
+.learning-path-card-clickable:hover{transform:translateY(-2px);box-shadow:0 12px 30px rgba(10,61,98,.13);border-color:rgba(10,61,98,.22);}
+.learning-path-open-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding-top:12px;border-top:1px dashed #dce8f1;color:#6d7f8f;font-size:.72rem;font-weight:800;}
+.learning-path-open-btn,.learning-path-back-btn{border:1px solid #cfe0eb;background:#fff;color:#0a3d62;border-radius:10px;padding:8px 12px;font-family:inherit;font-size:.72rem;font-weight:900;cursor:pointer;}
+.learning-path-open-btn:hover,.learning-path-back-btn:hover{background:#eef7fc;}
+.learning-path-detail-wrap{grid-column:1/-1;}
+.learning-path-back-btn{margin-bottom:12px;}
+.learning-path-detail-card{max-width:900px;margin:0 auto;}
 .learning-path-card{background:var(--bg-card,#fff);border:1px solid rgba(10,61,98,.10);border-radius:20px;padding:18px;box-shadow:0 8px 24px rgba(10,61,98,.08);}
 .learning-path-head{display:flex;align-items:flex-start;gap:12px;margin-bottom:14px;}
 .learning-path-icon{width:52px;height:52px;border-radius:15px;background:linear-gradient(135deg,#6c3483,#8e44ad);color:#fff;display:flex;align-items:center;justify-content:center;font-size:1.5rem;flex-shrink:0;}
@@ -17748,7 +18112,14 @@ window.__FIXED2_AUDIT = { version: 'FIXED-2', date: '2026-08-12' };
 </style>
 <script>
 (function(){
+  function _lpEsc(s){
+    return String(s==null?'':s).replace(/[&<>"']/g,function(c){
+      return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+    });
+  }
+
   window.openLearningPathsPage = async function(){
+    window._activeLearningPathId=null;
     document.querySelectorAll('.page').forEach(function(p){p.classList.remove('active');});
     var page=document.getElementById('page-paths'); if(page) page.classList.add('active');
     window.scrollTo(0,0);
@@ -17760,35 +18131,101 @@ window.__FIXED2_AUDIT = { version: 'FIXED-2', date: '2026-08-12' };
   window.renderLearningPathsPage = async function(){
     var grid=document.getElementById('learning-paths-grid');
     if(!grid || !window.supabase) return;
+
+    var activePathId = window._activeLearningPathId || null;
     grid.innerHTML='<div class="learning-path-empty"><div class="spinner"></div><p>جاري تحميل المسارات...</p></div>';
+
     try{
-      var res=await window.supabase.from('learning_paths').select('id,title,description,icon,image,display_order,is_active,learning_path_items(id,section_id,display_order,is_required,site_sections(id,title,icon,type,requires_subscription,price,parent_id))').eq('is_active',true).order('display_order',{ascending:true});
+      var res=await window.supabase
+        .from('learning_paths')
+        .select('id,title,description,icon,image,display_order,is_active,learning_path_items(id,section_id,display_order,is_required,site_sections(id,title,icon,type,requires_subscription,price,parent_id))')
+        .eq('is_active',true)
+        .order('display_order',{ascending:true});
       if(res.error) throw res.error;
+
       var paths=res.data||[];
-      if(!paths.length){grid.innerHTML='<div class="learning-path-empty"><div style="font-size:3rem">🗺️</div><p>لا توجد مسارات تعليمية مفعّلة حالياً.</p></div>';return;}
-      var cards=[];
-      for(var pi=0;pi<paths.length;pi++){
-        var path=paths[pi];
-        var items=(path.learning_path_items||[]).slice().sort(function(a,b){return Number(a.display_order||0)-Number(b.display_order||0)||Number(a.id||0)-Number(b.id||0);});
-        var itemHtml=[];
-        for(var ii=0;ii<items.length;ii++){
-          var it=items[ii], sec=it.site_sections||{};
-          if(!sec.id) continue;
-          var access=window.getDetailedSectionAccess?await window.getDetailedSectionAccess(sec.id):{state:sec.requires_subscription?'locked':'free'};
-          var stateLabel={free:'مجاني',subscribed:'مشترك',admin:'أدمن',locked:'مغلق'}[access.state]||'مغلق';
-          var meta=sec.requires_subscription?(access.state==='subscribed'?'اشتراكك فعّال':access.state==='admin'?'صلاحية أدمن':'يتطلب اشتراك'):'مجاني';
-          var safeTitle=(sec.title||'الدورة').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/'/g,'&#39;');
-          itemHtml.push('<div class="learning-path-item" data-path-section="'+sec.id+'" data-access-state="'+access.state+'">'+
-            '<span class="learning-path-num">'+(ii+1)+'</span>'+
-            '<div class="learning-path-item-main"><div class="learning-path-item-title">'+(sec.icon||'📚')+' '+safeTitle+'</div><div class="learning-path-item-meta">'+meta+'</div></div>'+
-            '<span class="learning-path-badge '+access.state+'">'+stateLabel+'</span></div>');
-        }
-        cards.push('<article class="learning-path-card"><div class="learning-path-head">'+
-          '<div class="learning-path-icon">'+(path.icon||'🎯')+'</div><div style="min-width:0;flex:1"><div class="learning-path-title">'+(path.title||'مسار تعليمي')+'</div>'+
-          (path.description?'<div class="learning-path-desc">'+String(path.description).replace(/[&<>]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c];})+'</div>':'')+
-          '</div></div><div class="learning-path-items">'+(itemHtml.length?itemHtml.join(''):'<div class="learning-path-desc">لا توجد دورات داخل هذا المسار بعد.</div>')+'</div></article>');
+      if(!paths.length){
+        grid.innerHTML='<div class="learning-path-empty"><div style="font-size:3rem">🗺️</div><p>لا توجد مسارات تعليمية مفعّلة حالياً.</p></div>';
+        return;
       }
-      grid.innerHTML=cards.join('');
+
+      /* المسارات: في الصفحة الرئيسية نعرض بطاقات المسارات فقط.
+         لا نعرض أي Course تحت البطاقة. عند الضغط على المسار نفتح تفاصيله
+         ونحمّل عناصره من learning_path_items بالترتيب. */
+      if(!activePathId){
+        var cards = paths.map(function(path){
+          var safeTitle=_lpEsc(path.title||'مسار تعليمي');
+          var safeDesc=path.description?_lpEsc(path.description):'';
+          var count=(path.learning_path_items||[]).length;
+          var icon=path.icon||'🎯';
+          return '<article class="learning-path-card learning-path-card-clickable" data-learning-path-id="'+Number(path.id)+'">'+
+            '<div class="learning-path-head">'+
+              '<div class="learning-path-icon">'+_lpEsc(icon)+'</div>'+
+              '<div style="min-width:0;flex:1">'+
+                '<div class="learning-path-title">'+safeTitle+'</div>'+
+                (safeDesc?'<div class="learning-path-desc">'+safeDesc+'</div>':'')+
+              '</div>'+
+            '</div>'+
+            '<div class="learning-path-open-row">'+
+              '<span>📚 '+count+' '+(count===1?'دورة':'دورات')+'</span>'+
+              '<button type="button" class="learning-path-open-btn">فتح المسار ←</button>'+
+            '</div>'+
+          '</article>';
+        }).join('');
+        grid.innerHTML=cards;
+
+        grid.querySelectorAll('[data-learning-path-id]').forEach(function(el){
+          el.addEventListener('click',function(){
+            window._activeLearningPathId=Number(el.getAttribute('data-learning-path-id'));
+            window.renderLearningPathsPage();
+          });
+        });
+        return;
+      }
+
+      var path=paths.find(function(p){ return Number(p.id)===Number(activePathId); });
+      if(!path){
+        window._activeLearningPathId=null;
+        return window.renderLearningPathsPage();
+      }
+
+      var items=(path.learning_path_items||[]).slice().sort(function(a,b){
+        return Number(a.display_order||0)-Number(b.display_order||0)||Number(a.id||0)-Number(b.id||0);
+      });
+
+      var itemHtml=[];
+      for(var ii=0;ii<items.length;ii++){
+        var it=items[ii], sec=it.site_sections||{};
+        if(!sec.id) continue;
+        var access=window.getDetailedSectionAccess?await window.getDetailedSectionAccess(sec.id):{state:sec.requires_subscription?'locked':'free'};
+        var stateLabel={free:'مجاني',subscribed:'مشترك',admin:'أدمن',locked:'مغلق'}[access.state]||'مغلق';
+        var meta=sec.requires_subscription?(access.state==='subscribed'?'اشتراكك فعّال':access.state==='admin'?'صلاحية أدمن':'يتطلب اشتراك'):'مجاني';
+        itemHtml.push('<div class="learning-path-item" data-path-section="'+Number(sec.id)+'" data-access-state="'+access.state+'">'+
+          '<span class="learning-path-num">'+(ii+1)+'</span>'+
+          '<div class="learning-path-item-main"><div class="learning-path-item-title">'+_lpEsc((sec.icon||'📚')+' '+(sec.title||'الدورة'))+'</div><div class="learning-path-item-meta">'+_lpEsc(meta)+'</div></div>'+
+          '<span class="learning-path-badge '+access.state+'">'+stateLabel+'</span></div>');
+      }
+
+      grid.innerHTML=
+        '<div class="learning-path-detail-wrap">'+
+          '<button type="button" class="learning-path-back-btn" id="learning-path-back-btn">← رجوع إلى المسارات</button>'+
+          '<article class="learning-path-card learning-path-detail-card">'+
+            '<div class="learning-path-head">'+
+              '<div class="learning-path-icon">'+_lpEsc(path.icon||'🎯')+'</div>'+
+              '<div style="min-width:0;flex:1">'+
+                '<div class="learning-path-title">'+_lpEsc(path.title||'مسار تعليمي')+'</div>'+
+                (path.description?'<div class="learning-path-desc">'+_lpEsc(path.description)+'</div>':'')+
+              '</div>'+
+            '</div>'+
+            '<div class="learning-path-items">'+(itemHtml.length?itemHtml.join(''):'<div class="learning-path-desc">لا توجد دورات داخل هذا المسار بعد.</div>')+'</div>'+
+          '</article>'+
+        '</div>';
+
+      document.getElementById('learning-path-back-btn').addEventListener('click',function(){
+        window._activeLearningPathId=null;
+        window.renderLearningPathsPage();
+      });
+
       grid.querySelectorAll('[data-path-section]').forEach(function(el){
         el.addEventListener('click',function(){
           var id=Number(el.getAttribute('data-path-section'));
@@ -17800,7 +18237,10 @@ window.__FIXED2_AUDIT = { version: 'FIXED-2', date: '2026-08-12' };
             if(typeof openDynamicSection==='function') return openDynamicSection({id:id});
           };
           if(stateVal==='locked' && window.checkSectionAccess){
-            window.checkSectionAccess(id).then(function(g){if(g && window._openLockNoticeModal) window._openLockNoticeModal(g); else openFull();});
+            window.checkSectionAccess(id).then(function(g){
+              if(g && window._openLockNoticeModal) window._openLockNoticeModal(g);
+              else openFull();
+            });
             return;
           }
           openFull();
