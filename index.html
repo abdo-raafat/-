@@ -4071,7 +4071,9 @@ async function trackSectionProgress(sectionId) {
     const db = window.supabase;
     if (!db || typeof db.auth?.getSession !== 'function') return;
 
-    const { data: { session } } = await db.auth.getSession();
+    // ✅ (Aug 2026): عملية خلفية — تمر عبر _getSessionSafe() المركزية بدل
+    // استدعاء getSession() مباشرة، فتتجنب أي تزاحم مع تهيئة الـ Auth الأولى
+    const { data: { session } } = await _getSessionSafe();
     const uid = session && session.user && session.user.id;
     if (!uid) return; // زائر غير مسجّل دخول — لا يوجد تتبّع
 
@@ -6524,6 +6526,202 @@ function _renderBranchAdminSwitcher() {
     + opts + '</select></label>';
 }
 
+// ════════════════════════════════════════════════════════════════
+// ✅ RE-ARCHITECTURE (Aug 2026 — AUTH LOCK/INITIALIZATION DEADLOCK, root-cause fix)
+// ────────────────────────────────────────────────────────────────
+// السبب الجذري الأصلي: onAuthStateChange كان مسجَّلاً بـ callback من نوع
+// `async function(event, session)`، ومكتبة gotrue-js تستدعي هذا الـcallback
+// وتنتظره (await) وهي *لسه ماسكة* نفس الـ Navigator Lock الحصري
+// (lock:benisuef_auth) الخاص بعملية التهيئة/تحميل الجلسة. أي `await` لأي
+// عملية auth/DB **داخل** هذا الـcallback المباشر كان بالتالي يُبقي القفل
+// ممسوكاً لفترة غير محددة، وأي نداء آخر لـ getSession() (سواء من نفس
+// checkUser() بعد تسجيل الـlistener، أو من أي مكان آخر بالموقع) كان يطلب
+// نفس القفل فيدخل في طابور انتظار لا ينتهي أبداً — deadlock حقيقي، مش مجرد
+// بطء شبكة. الدليل القاطع: navigator.locks.query() أظهر held/pending لنفس
+// اسم القفل ونفس clientId، وpendingInLock كان في نمو مستمر مع كل getSession()
+// جديد يُضاف للطابور المسدود.
+//
+// الحل الجذري (مش مجرد timeout إضافي):
+//   1) الـcallback المُسجَّل فعلياً في onAuthStateChange أصبح **متزامن تماماً**
+//      (function عادية، بدون async وبدون أي await بداخلها مباشرة) — فيخرج من
+//      نطاق تنفيذ gotrue-js فوراً في نفس الـtick، فيسمح للقفل بالتحرر طبيعياً
+//      كما تتوقعه المكتبة.
+//   2) كل المعالجة الفعلية (ban check/role lookup/render/profile sync/OAuth
+//      redirect restore) انتقلت لدالة مركزية منفصلة _handleAuthStateChange()
+//      تُستدعى عبر setTimeout(...,0) — أي **بعد** خروج gotrue-js من الـcallback
+//      وتحرير القفل بالكامل، فلا يوجد أي تنافس على القفل من الأساس.
+//   3) تسجيل الـlistener انفصل تماماً عن checkUser() (دالة _registerAuthListenerOnce
+//      منفصلة، بحارس idempotent) — فلم يعد أي استدعاء متكرر لـcheckUser() يضيف
+//      listener جديد فوق القديم (وهو ما كان يُضاعف عدد الاستدعاءات المتزامنة).
+//   4) checkUser() نفسها لم تعد تستدعي getSession() كجزء من الإقلاع (bootstrap)
+//      إطلاقاً — تعتمد بالكامل على أن gotrue-js تُطلق دائماً حدث INITIAL_SESSION
+//      تلقائياً بمجرد جاهزية العميل (حتى لو الزائر Guest بلا جلسة، الحدث يصل
+//      بـ session=null) — وهذا الحدث نفسه، بعد الإصلاح، يُعالَج خارج القفل
+//      تماماً عبر _handleAuthStateChange(). بهذا يختفي مصدر التنافس الثاني
+//      (getSession() المباشر من checkUser() مقابل onAuthStateChange في نفس
+//      اللحظة بالضبط) الذي كان موجوداً حتى بعد أي تأجيل جزئي سابق.
+//   5) دالة مركزية آمنة _getSessionSafe() (تحت) هي المصدر الوحيد الآن لأي
+//      getSession() يحدث *بعد* الإقلاع (فحوصات صلاحيات/شات/اشتراك/خلفية) —
+//      تتجنب الاستدعاء المباشر أثناء التهيئة الأولى تحديداً (window._authInitializing)
+//      وتستخدم timeout دفاعي فقط كشبكة أمان أخيرة، وليس كحل أساسي.
+// ════════════════════════════════════════════════════════════════
+
+window._authListenerRegistered = false; // يمنع تسجيل onAuthStateChange أكثر من مرة لنفس الـ client
+window._authInitializing       = true;  // true فقط أثناء انتظار أول حدث auth من gotrue-js (يُستخدم لحماية _getSessionSafe من التزاحم على القفل)
+window._authBootstrapped       = false; // true بمجرد وصول أول حدث auth (INITIAL_SESSION) — الإقلاع انتهى
+window._lastProcessedAuthKey   = null;  // يمنع تكرار معالجة/رندر نفس (event + user) مرتين متتاليتين
+
+// ============================================================
+// [AUTH v4] _handleAuthStateChange — المعالج المركزي الوحيد لكل أحداث
+// onAuthStateChange. يعمل *خارج* الـ Navigator Lock دائماً (يُستدعى عبر
+// setTimeout من الـcallback المتزامن أسفل) — لذلك آمن تماماً أن يعمل await
+// بداخله على أي عملية auth/DB (بما فيها استدعاءات auth أخرى) بدون أي خطر
+// إعادة دخول (reentrancy) على نفس القفل.
+// يجلب الـ role من profiles.role — لا يعتمد على البريد المُشفَّر في HTML،
+// لا يستخدم localStorage.
+// ============================================================
+async function _handleAuthStateChange(event, session) {
+  // [AUTH-DEBUG] لا نطبع أي Token — فقط اسم الحدث ووجود/عدم وجود session
+  console.log('[AUTH-DEBUG] _handleAuthStateChange (deferred) — event:', event, '| session present:', !!session);
+
+  // ✅ أول حدث auth وصل فعلياً — التهيئة الأولى انتهت من منظور تطبيقنا (القفل
+  // الداخلي لـ gotrue-js يكون قد تحرر بالفعل بحلول هذه اللحظة أصلاً، بما أن
+  // الحدث وصل، حتى لو معالجتنا هنا لسه شغالة/بتنتظر شبكة)
+  if (!window._authBootstrapped) {
+    window._authBootstrapped = true;
+  }
+  window._authInitializing = false;
+
+  // ✅ منع تكرار معالجة/رندر نفس INITIAL_SESSION لنفس المستخدم أكثر من مرة
+  // (شبكة أمان إضافية — لن يحدث عادةً الآن بعد ضمان تسجيل listener واحد فقط،
+  // لكنها تحمي أيضاً من أي استدعاء غير متوقع مستقبلاً لهذا المعالج)
+  var _dedupeKey = event + ':' + (session && session.user ? session.user.id : 'guest');
+  if (event === 'INITIAL_SESSION' && window._lastProcessedAuthKey === _dedupeKey) {
+    console.log('[AUTH-DEBUG] _handleAuthStateChange: تجاهل INITIAL_SESSION مكرر لنفس المستخدم/الحالة');
+    return;
+  }
+  window._lastProcessedAuthKey = _dedupeKey;
+
+  // كل نداء لهذا المعالج يمثل "أحدث حالة معروفة" — ياخد رقم تسلسل جديد فورًا
+  var _authSeq = ++window._authRenderSeq;
+
+  // ✅ شبكة أمان: حتى لو المستخدم خرج من مسار غير logoutUser (مثلاً انتهاء الجلسة
+  // من تبويب آخر)، SIGNED_OUT هنا يضمن نفس التنظيف المركزي لكل الـ Realtime channels
+  // (ويشمل ضمنياً إغلاق لوحة الأدمن — انظر logoutUser._finishAsGuest و_renderUserBox
+  // اللي بتشيل is-admin وتمسح window._isAdminUser عند session=null، فلا تبقى لوحة
+  // الأدمن مفتوحة بصلاحيات وهمية بعد SIGNED_OUT من أي مصدر)
+  if (event === 'SIGNED_OUT' && typeof window._cleanupRealtimeChannels === 'function') {
+    window._cleanupRealtimeChannels();
+  }
+
+  // [BAN CHECK] عند أي حدث يحمل session
+  if (session && session.user && session.user.email) {
+    var isBanned = await _isBanned(session.user.email);
+    if (isBanned) {
+      // ✅ نبقي signOut() مؤجَّلة عبر setTimeout كشبكة أمان دفاعية إضافية (وليست
+      // الحل الأساسي — الحل الأساسي هو أن _handleAuthStateChange بالكامل أصلاً
+      // يعمل خارج القفل، فحتى await مباشر هنا كان سيصبح آمناً تقنياً؛ التأجيل هنا
+      // للمحافظة الصريحة على "لا نستدعي signOut() مباشرة داخل مسار auth callback"
+      // كما هو مطلوب، وبدون أي reentrant محتمل مهما تغيّر ترتيب التنفيذ مستقبلاً)
+      setTimeout(function() {
+        window.supabase.auth.signOut().catch(function(err) {
+          console.error('[AUTH] deferred signOut failed:', err);
+        });
+      }, 0);
+      _renderUserBoxGuarded(null, null, _authSeq);
+      _showBanMessage(isBanned.reason);
+      return;
+    }
+  }
+
+  if (session && session.user) {
+    console.log('[AUTH-DEBUG] _handleAuthStateChange session.user →', 'id:', session.user.id, '| email:', session.user.email);
+    // ── Admin Middleware: جلب الـ role من قاعدة البيانات ──
+    var role = await _fetchUserRole(session.user.id);
+    console.log('[AUTH-DEBUG] _fetchUserRole resolved role:', role);
+    _renderUserBoxGuarded(session.user, role, _authSeq);
+    // ✅ مزامنة بريد الحساب في profiles (مرة واحدة فقط لو كان ناقصاً — راجع _ensureProfileEmailSynced)
+    if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') {
+      _ensureProfileEmailSynced(session.user);
+    }
+  } else {
+    _renderUserBoxGuarded(null, null, _authSeq);
+  }
+
+  // استعادة آخر صفحة بعد Google OAuth redirect
+  if (event === 'SIGNED_IN') {
+    try {
+      var lastId = sessionStorage.getItem('_last_section_id');
+      sessionStorage.removeItem('_last_section_id');
+      sessionStorage.removeItem('_nav_stack_labels');
+      if (lastId) {
+        setTimeout(function() {
+          var sec = window['__sectionData_' + lastId];
+          if (sec) { openDynamicSection(sec); }
+        }, 600);
+      }
+    } catch(e) {}
+  }
+}
+
+// ============================================================
+// _registerAuthListenerOnce — يسجّل onAuthStateChange مرة واحدة فقط بغض
+// النظر عن عدد نداءات checkUser() (بحارس idempotent صريح). الـcallback
+// نفسه **متزامن تماماً** (بدون async/await) — كل ما يفعله هو تمرير الحدث
+// فوراً لـ _handleAuthStateChange() عبر setTimeout(...,0)، أي بعد خروجه من
+// نطاق تنفيذ gotrue-js وتحرر القفل الداخلي — هذا هو جوهر إصلاح الـ deadlock.
+// ============================================================
+function _registerAuthListenerOnce() {
+  if (window._authListenerRegistered) {
+    console.log('[AUTH-DEBUG] _registerAuthListenerOnce: مُسجَّل بالفعل — تجاهل');
+    return;
+  }
+  if (!window.supabase || typeof window.supabase.auth === 'undefined') return;
+  window._authListenerRegistered = true;
+  window.supabase.auth.onAuthStateChange(function(event, session) {
+    // [AUTH-DEBUG] لا نطبع أي Token — فقط اسم الحدث ووجود/عدم وجود session.
+    // ملاحظة مهمة: هذا الـcallback نفسه لا يحتوي على أي await لأي عملية
+    // auth/DB — أي عملية كهذه هنا كانت (قبل هذا الإصلاح) هي بالضبط سبب
+    // تجمّد lock:benisuef_auth للأبد.
+    console.log('[AUTH-DEBUG] onAuthStateChange fired (sync callback) — event:', event, '| session present:', !!session);
+    setTimeout(function() {
+      _handleAuthStateChange(event, session);
+    }, 0);
+  });
+  console.log('[AUTH-DEBUG] _registerAuthListenerOnce: تم تسجيل onAuthStateChange (مرة واحدة)');
+}
+
+// ============================================================
+// _getSessionSafe — المصدر المركزي الوحيد لأي getSession() يحدث *بعد*
+// الإقلاع (خارج مسار bootstrap): فحوصات صلاحيات إدارية، شات، اشتراك،
+// تتبّع خلفية، فحص دوري للجلسة... إلخ.
+// يحمي نفسه من مزاحمة تهيئة gotrue-js الأولى (window._authInitializing)
+// عن طريق انتظار قصير جداً بدل استدعاء getSession() في نفس لحظة التهيئة
+// (وهو تحديداً ما كان يسبب تكدّس pendingInLock أصلاً) — ثم يكمل بـ timeout
+// دفاعي (شبكة أمان أخيرة فقط، وليس آلية الحل الأساسية).
+// ============================================================
+async function _getSessionSafe(timeoutMs) {
+  timeoutMs = timeoutMs || 8000;
+  if (!window.supabase || !window.supabase.auth) return { data: { session: null } };
+
+  if (window._authInitializing) {
+    var _waited = 0;
+    while (window._authInitializing && _waited < 4000) {
+      await new Promise(function(r) { setTimeout(r, 100); });
+      _waited += 100;
+    }
+  }
+
+  try {
+    return await _fetchWithTimeout(function() {
+      return window.supabase.auth.getSession();
+    }, timeoutMs);
+  } catch (e) {
+    console.warn('[AUTH] _getSessionSafe: getSession timeout/error — معاملة كـ "لا جلسة":', e && e.message);
+    return { data: { session: null } };
+  }
+}
+
 window.checkUser = async function() {
   // ✅ [PERF] DEBUG timing logs مؤقتة (بطلب المستخدم) — لتحديد بالضبط أين يضيع
   // الوقت في مسار تسجيل الدخول. لا تغيّر أي منطق، فقط console.log إضافي.
@@ -6541,157 +6739,33 @@ window.checkUser = async function() {
     }
   }
 
-  // ============================================================
-  // [AUTH v3] onAuthStateChange — يجلب الـ role من profiles.role
-  // لا يعتمد على البريد المُشفَّر في HTML، لا يستخدم localStorage
-  // ============================================================
-  window.supabase.auth.onAuthStateChange(async function(event, session) {
+  // ✅ تسجيل الـ listener مرة واحدة فقط — نداءات checkUser() المتكررة (لو
+  // حدثت مستقبلاً من أي مكان) لن تُضيف listener جديد فوق القديم أبداً
+  _registerAuthListenerOnce();
 
-    // [AUTH-DEBUG] لا نطبع أي Token — فقط اسم الحدث ووجود/عدم وجود session
-    console.log('[AUTH-DEBUG] onAuthStateChange fired — event:', event, '| session present:', !!session);
-
-    // كل نداء لهذا الـ handler يمثل "أحدث حالة معروفة" — ياخد رقم تسلسل جديد فورًا
-    var _authSeq = ++window._authRenderSeq;
-
-    // ✅ شبكة أمان: حتى لو المستخدم خرج من مسار غير logoutUser (مثلاً انتهاء الجلسة
-    // من تبويب آخر)، SIGNED_OUT هنا يضمن نفس التنظيف المركزي لكل الـ Realtime channels
-    if (event === 'SIGNED_OUT' && typeof window._cleanupRealtimeChannels === 'function') {
-      window._cleanupRealtimeChannels();
-    }
-
-    // [BAN CHECK] عند أي حدث يحمل session
-    if (session && session.user && session.user.email) {
-      var isBanned = await _isBanned(session.user.email);
-      if (isBanned) {
-        // ✅ FIX (Aug 2026 — AUTH LOCK DEADLOCK): كان await مباشر هنا يستدعي
-        // signOut() من داخل onAuthStateChange نفسه، واللي بيتنفذ وهو لسه ماسك
-        // نفس lock:benisuef_auth (Navigator LockManager) — ده كان بيعمل
-        // reentrant lock request على نفس القفل غير القابل لإعادة الدخول،
-        // فيتجمّد للأبد (deadlock) ويمنع أي getSession() تاني من الاستمرار.
-        // الحل: تأجيل signOut() لـ tick تالي (setTimeout 0) عشان ينفّذ بعد ما
-        // القفل الحالي يتحرر تمامًا — بدون أي تغيير في منطق فحص الحظر أو الرندر.
-        setTimeout(function() {
-          window.supabase.auth.signOut().catch(function(err) {
-            console.error('[AUTH] deferred signOut failed:', err);
-          });
-        }, 0);
-        _renderUserBoxGuarded(null, null, _authSeq);
-        _showBanMessage(isBanned.reason);
-        return;
-      }
-    }
-
-    if (session && session.user) {
-      console.log('[AUTH-DEBUG] onAuthStateChange session.user →', 'id:', session.user.id, '| email:', session.user.email);
-      // ── Admin Middleware: جلب الـ role من قاعدة البيانات ──
-      var role = await _fetchUserRole(session.user.id);
-      console.log('[AUTH-DEBUG] _fetchUserRole resolved role:', role);
-      _renderUserBoxGuarded(session.user, role, _authSeq);
-      // ✅ مزامنة بريد الحساب في profiles (مرة واحدة فقط لو كان ناقصاً — راجع _ensureProfileEmailSynced)
-      if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') {
-        _ensureProfileEmailSynced(session.user);
-      }
-    } else {
-      _renderUserBoxGuarded(null, null, _authSeq);
-    }
-
-    // استعادة آخر صفحة بعد Google OAuth redirect
-    if (event === 'SIGNED_IN') {
-      try {
-        var lastId = sessionStorage.getItem('_last_section_id');
-        sessionStorage.removeItem('_last_section_id');
-        sessionStorage.removeItem('_nav_stack_labels');
-        if (lastId) {
-          setTimeout(function() {
-            var sec = window['__sectionData_' + lastId];
-            if (sec) { openDynamicSection(sec); }
-          }, 600);
-        }
-      } catch(e) {}
-    }
-  });
-
-  // فحص الـ session الحالية عند تحميل الصفحة
-  // ✅ FIX (Aug 2026): getSession() هنا بدون حماية timeout كانت تجمّد الصفحة للأبد
-  // على شاشة "جاري التحميل..." لو تعلّقت (مشكلة شبكة/توكن تالف). الآن محدودة بمهلة،
-  // وفي حالة التعليق نُعامل المستخدم كـ Guest (fail-safe) — لا صلاحيات أدمن ولا اشتراك أبداً.
+  // ✅ FIX الجذري (Aug 2026): لم نعد نستدعي getSession() هنا كجزء من الإقلاع
+  // إطلاقاً. gotrue-js تُطلق دائماً حدث INITIAL_SESSION تلقائياً بمجرد جاهزية
+  // الـ client (حتى للزائر Guest، بـ session=null) — وهذا الحدث، عبر
+  // _handleAuthStateChange أعلاه، هو المصدر الوحيد الآن لتحديد الحالة الأولية
+  // وعمل ban check/role lookup/render. هذا يُزيل تماماً مصدر التنافس الذي كان
+  // يجعل getSession() المباشر هنا يتزاحم مع onAuthStateChange على نفس
+  // lock:benisuef_auth في نفس اللحظة بالضبط.
   //
-  // ✅ FIX (Aug 2026 #2): لما تكون الصفحة راجعة من Google OAuth redirect (فيه
-  // access_token في الـ hash أو code في الـ query)، الـ Supabase client بيكون
-  // مشغول داخليًا بمعالجة الـ URL وتبادل التوكن مع الشبكة (detectSessionInUrl:true) —
-  // ده ممكن ياخد وقت أطول من مهلة الـ Guest fail-safe العادية (8 ثوانٍ)، فكان بيتحول
-  // المستخدم لـ Guest مؤقتًا بالخطأ رغم إن الـ session كانت هتوصل بعد لحظات عبر
-  // onAuthStateChange (مُسجَّل فعلاً فوق قبل هذا الكود). الحل: مهلة أطول أثناء OAuth
-  // callback، وفي حالة انتهائها لا نجزم بـ Guest؛ نسيب onAuthStateChange (اللي هيطلق
-  // حتماً بمجرد ما الـ client يخلص التهيئة) هو اللي يحدّد الحالة النهائية — بدل ما
-  // نفرض Guest مؤقت على الواجهة ثم نصلّحه لاحقاً.
+  // شبكة أمان دفاعية فقط (وليست الحل الأساسي): لو — لأي سبب استثنائي نادر —
+  // لم يصل أي حدث auth إطلاقاً خلال مهلة معقولة (مشكلة شبكة حقيقية أو خلل غير
+  // متوقع في تحميل المكتبة نفسها)، لا نترك المستخدم عالقاً على شاشة تحميل
+  // للأبد؛ نعامله كـ Guest fail-safe — لكن فقط لو لم يبدأ أي رندر إطلاقاً بعد
+  // (لو أي حدث وصل بالفعل وبيعالج ban check/role lookup، حتى لو لسه ماخلصش،
+  // لا نتدخل ولا نكتب فوقه بحالة Guest مؤقتة).
   var _isOAuthCallback = /[#&]access_token=|[?&#]code=/.test(window.location.href);
-  var _sessionTimeoutMs = _isOAuthCallback ? 25000 : 12000;
-  console.log('[AUTH-DEBUG] checkUser: _isOAuthCallback:', _isOAuthCallback, '| timeout:', _sessionTimeoutMs, 'ms');
-  var session = null;
-  try {
-    var sessionRes = await _fetchWithTimeout(function() {
-      return window.supabase.auth.getSession();
-    }, _sessionTimeoutMs);
-    session = sessionRes && sessionRes.data && sessionRes.data.session;
-    console.log('[AUTH-DEBUG] checkUser: getSession() resolved — session:', session ? 'PRESENT' : 'null', session ? ('| user.id: ' + session.user.id + ' | user.email: ' + session.user.email) : '');
-    console.log('[PERF] session ready', performance.now().toFixed(0) + 'ms');
-  } catch (e) {
-    if (_isOAuthCallback) {
-      // مفيش Guest مؤقت هنا — الـ session لسه بتتأسّس؛ onAuthStateChange هو اللي هيتكفّل بالنتيجة
-      console.warn('[AUTH] checkUser: getSession OAuth timeout — في انتظار onAuthStateChange بدل Guest فوري:', e && e.message);
-      console.log('[AUTH-DEBUG] checkUser: getSession() threw/timed out during OAuth callback — error:', e && e.message);
-      return;
+  var _bootstrapFailSafeMs = _isOAuthCallback ? 25000 : 12000;
+  console.log('[AUTH-DEBUG] checkUser: _isOAuthCallback:', _isOAuthCallback, '| fail-safe timeout:', _bootstrapFailSafeMs, 'ms');
+  setTimeout(function() {
+    if (window._authRenderSeq === 0) {
+      console.warn('[AUTH] checkUser: لم يصل أي حدث auth خلال', _bootstrapFailSafeMs, 'ms — معاملة كـ Guest مؤقتاً (fail-safe دفاعي فقط)');
+      _renderUserBox(null, null);
     }
-    console.warn('[AUTH] checkUser: getSession timeout/error — معاملة كـ Guest:', e && e.message);
-    console.log('[AUTH-DEBUG] checkUser: getSession() threw/timed out (non-OAuth) — error:', e && e.message);
-    _renderUserBox(null, null);
-    return;
-  }
-
-  // ✅ FIX (Aug 2026 — سرعة تسجيل الدخول): onAuthStateChange (المُسجَّل فوق في
-  // نفس الدالة) يُطلق INITIAL_SESSION تلقائيًا لنفس الـsession بمجرد جاهزية
-  // الـclient، ويعمل هو نفسه _fetchUserRole() + render كاملَين. لو كان هذا
-  // المسار المباشر قد وصل هنا *بعد* ما INITIAL_SESSION خلص بالفعل بنجاح لنفس
-  // المستخدم (الحالة الشائعة على شبكة سريعة)، فكنا بنكرر نفس استعلام الدور
-  // (profiles.role) مرة تانية بالتوازي من غير أي فايدة — تأخير إضافي حقيقي
-  // بيتضاعف مع كل صفحة/كل مستخدم. نتجاهل التكرار فقط لو نفس المستخدم بالظبط
-  // خلص رندره فعليًا؛ في أي حالة تانية (لسه محدث حاجة، أو مستخدم مختلف، أو
-  // INITIAL_SESSION لسه مخلصش) نكمل بنفس المسار الأصلي بدون أي تغيير — فـ
-  // شبكة الأمان (timeout) والسلوك fail-safe يفضلوا زي ما هما تمامًا.
-  if (session && session.user && window._currentAuthUser &&
-      window._currentAuthUser.id === session.user.id &&
-      window._authRenderSeq > 0) {
-    console.log('[AUTH-DEBUG] checkUser: تجاهل تكرار fetchUserRole/render — INITIAL_SESSION خلص بالفعل لنفس المستخدم');
-    return;
-  }
-
-  var _authSeqCU = ++window._authRenderSeq;
-
-  if (session && session.user && session.user.email) {
-    var isBanned = await _isBanned(session.user.email);
-    if (isBanned) {
-      // ✅ FIX (Aug 2026 — AUTH LOCK DEADLOCK, defensive): نفس التأجيل المطبّق
-      // في onAuthStateChange أعلاه، لنفس السبب بالظبط — منع أي احتمال لطلب
-      // lock:benisuef_auth بشكل متداخل (reentrant) من داخل مسار auth آخر.
-      setTimeout(function() {
-        window.supabase.auth.signOut().catch(function(err) {
-          console.error('[AUTH] deferred signOut failed:', err);
-        });
-      }, 0);
-      _renderUserBoxGuarded(null, null, _authSeqCU);
-      _showBanMessage(isBanned.reason);
-      return;
-    }
-  }
-
-  if (session && session.user) {
-    var role = await _fetchUserRole(session.user.id);
-    console.log('[PERF] role ready', performance.now().toFixed(0) + 'ms');
-    _renderUserBoxGuarded(session.user, role, _authSeqCU);
-  } else {
-    _renderUserBoxGuarded(null, null, _authSeqCU);
-  }
+  }, _bootstrapFailSafeMs);
 };
 
 // ✅ [PERF] DEBUG timing log مؤقت إضافي — يسجّل فقط لحظة ما المتصفح خلص تحميل
@@ -12332,7 +12406,9 @@ window.requireAdmin = async function(silent) {
     if (!silent) _secAlert('النظام غير جاهز');
     return { ok: false };
   }
-  var sessionRes = await window.supabase.auth.getSession();
+  // ✅ (Aug 2026): فحص صلاحية عند الطلب (على استدعاء المستخدم) — يمر عبر
+  // _getSessionSafe() المركزية بدل getSession() مباشرة
+  var sessionRes = await _getSessionSafe();
   var session    = sessionRes && sessionRes.data && sessionRes.data.session;
   if (!session || !session.user) {
     if (!silent) _secAlert('يجب تسجيل الدخول أولاً');
@@ -12369,7 +12445,9 @@ window.requireBranchAccess = async function(sectionId, silent) {
     if (!silent) _secAlert('النظام غير جاهز');
     return { ok: false };
   }
-  var sessionRes = await window.supabase.auth.getSession();
+  // ✅ (Aug 2026): فحص صلاحية عند الطلب (على استدعاء المستخدم) — يمر عبر
+  // _getSessionSafe() المركزية بدل getSession() مباشرة
+  var sessionRes = await _getSessionSafe();
   var session    = sessionRes && sessionRes.data && sessionRes.data.session;
   if (!session || !session.user) {
     if (!silent) _secAlert('يجب تسجيل الدخول أولاً');
@@ -12644,7 +12722,8 @@ function _applyBranchAdminPanelRestrictions() {
     // الفحص يُستأنف فورًا عند العودة للتاب (visibilitychange أعلاه)، فلا تأثير أمني حقيقي
     if (document.hidden) return;
     if (!window.supabase) return;
-    var res  = await window.supabase.auth.getSession();
+    // ✅ (Aug 2026): فحص دوري في الخلفية — يمر عبر _getSessionSafe() المركزية
+    var res  = await _getSessionSafe();
     var sess = res && res.data && res.data.session;
     if (!sess) {
       // انتهت الجلسة — أزل صلاحيات الأدمن فوراً
@@ -14387,15 +14466,9 @@ self.addEventListener('fetch', function(e) {
       var db = window.supabase;
       if (!db) return { anchor: anchor, state: 'error' };
 
-      // ✅ DEBUG FIX: db.auth.getSession() كان بدون أي timeout — لو تعلّق (مثلاً بسبب
-      // جلسة/رمز تحديث تالف في localStorage) كانت الصفحة تظل معلّقة على "جاري التحميل
-      // من قاعدة البيانات..." للأبد بدون أي خطأ في الـ Console. الآن محدود بـ 8 ثوانٍ.
-      var sessionRes = await Promise.race([
-        db.auth.getSession(),
-        new Promise(function(_, reject) {
-          setTimeout(function() { reject(new Error('getSession timeout after 6000ms')); }, 6000);
-        })
-      ]);
+      // ✅ (Aug 2026): فحص صلاحية عند فتح القسم — يمر عبر _getSessionSafe()
+      // المركزية (نفس مهلة الـ6 ثوانٍ الدفاعية السابقة، بدون أي تزاحم على القفل)
+      var sessionRes = await _getSessionSafe(6000);
       var user = sessionRes && sessionRes.data && sessionRes.data.session && sessionRes.data.session.user;
       if (!user) return { anchor: anchor, state: 'guest' };
 
@@ -14426,15 +14499,9 @@ self.addEventListener('fetch', function(e) {
 
       var db = window.supabase;
       if (!db) return null;
-      // ✅ (تحديث): نفس حماية الـ timeout المستخدمة في checkSectionAccess — كانت
-      // هذه بدون أي حد أقصى، ولو تعلّقت ما كنتش هتظهر أي تأثير على الصفحة لكنها
-      // كانت ممكن تفضل معلّقة في الخلفية للأبد بلا داعٍ.
-      var sessionRes = await Promise.race([
-        db.auth.getSession(),
-        new Promise(function(_, reject) {
-          setTimeout(function() { reject(new Error('getSession timeout after 6000ms')); }, 6000);
-        })
-      ]);
+      // ✅ (Aug 2026): نفس حماية _getSessionSafe() المركزية المستخدمة في
+      // checkSectionAccess (نفس مهلة الـ6 ثوانٍ الدفاعية السابقة)
+      var sessionRes = await _getSessionSafe(6000);
       var user = sessionRes && sessionRes.data && sessionRes.data.session && sessionRes.data.session.user;
       if (!user) return { anchor: anchor, allowed: false, state: 'guest' };
 
@@ -14522,7 +14589,8 @@ self.addEventListener('fetch', function(e) {
     var db = window.supabase;
     if (!db) { if (window._showToast) _showToast('جاري التحميل، حاول مجدداً', 'warning'); return; }
 
-    var sessionRes = await db.auth.getSession();
+    // ✅ (Aug 2026): يمر عبر _getSessionSafe() المركزية بدل getSession() مباشرة
+    var sessionRes = await _getSessionSafe();
     var user = sessionRes && sessionRes.data && sessionRes.data.session && sessionRes.data.session.user;
     if (!user) { loginWithGoogle(); return; }
 
@@ -15347,7 +15415,8 @@ self.addEventListener('fetch', function(e) {
     if (!db) { bodyEl.innerHTML = '<div class="chat-empty">تعذّر الاتصال بالخادم، حاول مجدداً.</div>'; return; }
 
     try {
-      var sessionRes = await db.auth.getSession();
+      // ✅ (Aug 2026): يمر عبر _getSessionSafe() المركزية بدل getSession() مباشرة
+      var sessionRes = await _getSessionSafe();
       _chatMe = sessionRes && sessionRes.data && sessionRes.data.session && sessionRes.data.session.user;
       if (!_chatMe) { bodyEl.innerHTML = '<div class="chat-empty">🔐 يجب تسجيل الدخول أولاً لدخول المحادثة.</div>'; return; }
 
@@ -15987,7 +16056,8 @@ self.addEventListener('fetch', function(e) {
     if (!db) { listEl.innerHTML = '<div class="dm2-empty-list">تعذّر الاتصال بالخادم، حاول مجدداً.</div>'; return; }
 
     try {
-      var sessionRes = await db.auth.getSession();
+      // ✅ (Aug 2026): يمر عبر _getSessionSafe() المركزية بدل getSession() مباشرة
+      var sessionRes = await _getSessionSafe();
       _dmMe = sessionRes && sessionRes.data && sessionRes.data.session && sessionRes.data.session.user;
       if (!_dmMe) { listEl.innerHTML = '<div class="dm2-empty-list">🔐 يجب تسجيل الدخول أولاً لعرض رسائلك.</div>'; return; }
       if (newBtn) newBtn.style.display = '';
@@ -16255,7 +16325,8 @@ self.addEventListener('fetch', function(e) {
     if (!db) { bodyEl.innerHTML = '<div class="chat-empty">تعذّر الاتصال بالخادم، حاول مجدداً.</div>'; return; }
 
     try {
-      var sessionRes = await db.auth.getSession();
+      // ✅ (Aug 2026): يمر عبر _getSessionSafe() المركزية بدل getSession() مباشرة
+      var sessionRes = await _getSessionSafe();
       _dmMe = sessionRes && sessionRes.data && sessionRes.data.session && sessionRes.data.session.user;
       if (!_dmMe) { bodyEl.innerHTML = '<div class="chat-empty">🔐 يجب تسجيل الدخول أولاً لدخول المحادثة.</div>'; return; }
       if (!otherUserId && !knownRoomId) { bodyEl.innerHTML = '<div class="chat-empty">تعذّر تحديد المستخدم المطلوب مراسلته.</div>'; return; }
