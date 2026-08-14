@@ -2992,7 +2992,7 @@ async function _waitForSupabase(timeoutMs) {
 // ✅ PERF: استعادة Cache من sessionStorage عند إعادة تحميل الصفحة
 (function _restoreSessionCache() {
   try {
-    var saved = sessionStorage.getItem('_sbDataCache_v2');
+    var saved = sessionStorage.getItem('_sbDataCache_v3');
     if (saved) {
       var parsed = JSON.parse(saved);
       var age = Date.now() - (parsed._savedAt || 0);
@@ -3030,7 +3030,7 @@ function _saveCacheToSession() {
       resources: window._dataCache.resources,
       _savedAt:  Date.now(),
     };
-    sessionStorage.setItem('_sbDataCache_v2', JSON.stringify(toSave));
+    sessionStorage.setItem('_sbDataCache_v3', JSON.stringify(toSave));
   } catch(e) { /* quota exceeded or unavailable */ }
 }
 
@@ -3737,7 +3737,7 @@ async function _renderDynamicSectionPage(sec) {
             <div style="font-size:2.5rem;margin-bottom:12px">🚧</div>
             <p style="margin-bottom:8px;font-size:1rem">هذا القسم قيد الإعداد — سيتم إضافة المحتوى قريباً</p>
             <p style="font-size:.78rem;color:#bbb;margin-bottom:16px">إذا كنت تتوقع ظهور محتوى، تحقق من Console للتشخيص</p>
-            <button onclick="sessionStorage.removeItem('_sbDataCache_v2');window._dataCache.sections={};window._dataCache.content={};window._dataCache.resources={};window._dataCache._pending={};_renderDynamicSectionPage(window.__sectionData_${sec.id});"
+            <button onclick="sessionStorage.removeItem('_sbDataCache_v3');window._dataCache.sections={};window._dataCache.content={};window._dataCache.resources={};window._dataCache._pending={};_renderDynamicSectionPage(window.__sectionData_${sec.id});"
               style="background:linear-gradient(135deg,var(--primary),var(--teal));color:#fff;border:none;border-radius:10px;padding:10px 20px;font-family:var(--font);font-size:.85rem;font-weight:700;cursor:pointer;box-shadow:0 3px 10px rgba(10,61,98,0.25)">
               🔄 إعادة المحاولة
             </button>
