@@ -6105,6 +6105,24 @@ window.logoutUser = async function(btnEl) {
     _finishAsGuest();
     _showToast ? _showToast('✅ تم تسجيل الخروج بنجاح', 'success') : null;
   } catch (err) {
+    var errMsg = String((err && err.message) || '');
+
+    // ✅ FIX (Phase 5 — Aug 2026): signOut() قد يرمي هذا الخطأ عندما يكون الـJWT
+    // المحلي يشير إلى Session لم تعد موجودة أصلاً على خادم Supabase (مثلاً انتهت
+    // صلاحيتها أو أُبطلت من مكان آخر). في حالة تسجيل الخروج هذا ليس فشلاً حقيقياً؛
+    // الهدف أصلاً هو ألا تبقى Session نشطة، وهي بالفعل غير موجودة على الخادم —
+    // لذلك نعامله كنجاح محلي بدل عرضه كخطأ للمستخدم.
+    var isMissingSession =
+      errMsg.includes('Session from session_id claim in JWT does not exist');
+
+    if (isMissingSession) {
+      console.warn('[AUTH] logoutUser: session غير موجودة على الخادم — تنظيف الجلسة محلياً');
+      try { localStorage.removeItem('benisuef_auth'); } catch (e) {}
+      _finishAsGuest();
+      _showToast ? _showToast('✅ تم تسجيل الخروج بنجاح', 'success') : null;
+      return;
+    }
+
     console.error('[AUTH] logoutUser error:', err && err.message, err);
     // ❌ فشل حقيقي — لا نترك الزر في Loading، نعيده لحالته الطبيعية مع رسالة خطأ واضحة
     if (btn) { btn.disabled = false; btn.textContent = originalText || 'خروج'; }
@@ -6214,6 +6232,7 @@ async function _renderUserBox(user, role, mySeq) {
   if (!box) { console.warn('[AUTH-DEBUG] _renderUserBox: #user-box element NOT found in DOM — cannot render'); return; }
   if (!user) {
     window._isAdminUser = false;
+    window._isSuperAdmin = false; // ✅ FIX: لم يكن يُصفّر هنا، فكان بإمكانه يبقى true بعد logout بدون reload
     window._isBranchAdmin = false;
     window._currentUserRole = null;
     window._branchAdminSectionIds = [];
@@ -12729,6 +12748,9 @@ function _applyBranchAdminPanelRestrictions() {
       // انتهت الجلسة — أزل صلاحيات الأدمن فوراً
       if (window._isAdminUser) {
         window._isAdminUser = false;
+        window._isSuperAdmin = false; // ✅ FIX: لم يكن يُصفّر هنا أيضًا
+        window._isBranchAdmin = false;
+        window._branchAdminSectionIds = [];
         window._currentUserRole = null;
         document.body.classList.remove('is-admin');
         var panel = document.getElementById('admin-panel');
@@ -12744,6 +12766,9 @@ function _applyBranchAdminPanelRestrictions() {
     if (!status.isAdmin && window._isAdminUser) {
       // سُحبت صلاحيات الأدمن من قاعدة البيانات
       window._isAdminUser = false;
+      window._isSuperAdmin = false; // ✅ FIX: لم يكن يُصفّر هنا أيضًا
+      window._isBranchAdmin = false;
+      window._branchAdminSectionIds = [];
       window._currentUserRole = status.role;
       document.body.classList.remove('is-admin');
       document.body.classList.add('content-protected');
@@ -14451,10 +14476,21 @@ self.addEventListener('fetch', function(e) {
   // ترجع null = مسموح بالدخول بالكامل، أو object = يجب عرض الفصل الأول فقط وقفل الباقي
   window.checkSectionAccess = async function(sectionId) {
     try {
-      if (window._isAdminUser) return null; // الأدمن يرى كل شيء دائماً
+      if (window._isSuperAdmin) return null; // السوبر أدمن يرى كل شيء دائماً
 
       var anchor = await _findSubscriptionAnchor(sectionId);
       if (!anchor) return null; // هذا القسم/الشعبة لا يتطلب اشتراكاً (requires_subscription = false)
+
+      // ✅ FIX: أدمن الشعبة (section_admins) يجب أن يكون له وصول كامل *فقط* للشعبة
+      // التي يديرها ولكل ما تحتها — وليس لكل الشعب. سابقًا كان الفحص يعتمد على
+      // window._isAdminUser وهو true لأي أدمن شعبة (isSuperAdmin || isBranchAdmin)
+      // بدون أي scoping، فكان أدمن شعبة "أ" يرى محتوى شعبة "ب" مقفولاً بالكامل
+      // مجانًا رغم أنه غير مسؤول عنها إطلاقًا. الآن نتحقق أن anchor.id (الشعبة)
+      // فعلاً ضمن الشعب/الأقسام الفرعية المُسندة لهذا الأدمن تحديدًا.
+      if (window._isBranchAdmin && Array.isArray(window._branchAdminSectionIds) &&
+          window._branchAdminSectionIds.indexOf(anchor.id) !== -1) {
+        return null;
+      }
 
       // ── ✅ (تحديث): فصل واحد فقط مجاني لكل شعبة بالكامل — الفصل الأول من أول
       // مادة في الشعبة فقط (كل section_content و section_resources والفيديوهات
@@ -14491,7 +14527,11 @@ self.addEventListener('fetch', function(e) {
       // الشات فقط على صفحة الشعبة نفسها (site_sections.requires_subscription = true)
       if (!anchor || anchor.id !== sectionId) return null;
 
-      if (window._isAdminUser) return { anchor: anchor, allowed: true, isAdmin: true };
+      // ✅ FIX: نفس تصحيح checkSectionAccess — السوبر أدمن فقط يدخل بلا شرط،
+      // وأدمن الشعبة يدخل فقط لو anchor.id ضمن الشعب المُسندة له تحديدًا
+      // (الفحص التالي أصلاً كان موجودًا لكنه كان ميت الكود عمليًا لأن الشرط قبله
+      // window._isAdminUser كان يشمل أدمن أي شعبة أخرى ويرجّع true قبل الوصول له).
+      if (window._isSuperAdmin) return { anchor: anchor, allowed: true, isAdmin: true };
       if (window._isBranchAdmin && Array.isArray(window._branchAdminSectionIds) &&
           window._branchAdminSectionIds.indexOf(anchor.id) !== -1) {
         return { anchor: anchor, allowed: true, isAdmin: true };
@@ -15429,7 +15469,11 @@ self.addEventListener('fetch', function(e) {
       }
       _chatRoom = roomRes.data;
 
-      _chatIsAdmin = !!(window._isAdminUser ||
+      // ✅ FIX: window._isAdminUser كان يشمل أدمن أي شعبة (isSuperAdmin || isBranchAdmin)
+      // بدون scoping، فكان أدمن شعبة "أ" يظهر له badge "أدمن" وصلاحية حذف رسائل
+      // داخل شات شعبة "ب" التي لا يديرها. الآن: سوبر أدمن دائمًا، أو أدمن هذه
+      // الشعبة تحديدًا (نفس الشرط الموجود بالفعل، لكنه الآن فعلي وليس ميت الكود).
+      _chatIsAdmin = !!(window._isSuperAdmin ||
         (window._isBranchAdmin && Array.isArray(window._branchAdminSectionIds) &&
           window._branchAdminSectionIds.indexOf(sectionId) !== -1));
 
