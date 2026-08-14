@@ -3819,8 +3819,13 @@ async function _renderDynamicSectionPage(sec) {
       window[`__sectionData_${child.id}`] = child;
       window[`__sectionAction_${child.id}`] = (s) => openDynamicSubSection(s);
     });
-    var gridHtml = children.map((child, idx) => buildSubSectionCard(child, !!gate && idx > 0)).join('');
-    if (gate) gridHtml += window._renderSubscriptionGateHTML(gate);
+    var childCards = await Promise.all(children.map(async function(child) {
+      var childAccess = window.getDetailedSectionAccess
+        ? await window.getDetailedSectionAccess(child.id)
+        : { state: gate ? 'locked' : 'free' };
+      return buildSubSectionCard(child, childAccess.state === 'locked');
+    }));
+    var gridHtml = childCards.join('');
     document.getElementById('dynamic-section-grid').innerHTML = gridHtml;
   } catch(err) {
     console.error('[_renderDynamicSectionPage] خطأ:', err.message);
@@ -6038,6 +6043,29 @@ async function openResource(url, title, resourceType) {
       // Internal Viewer مرة ثانية ويعمل recursion/lock على زر العرض.
       var nativeOpen = window._origWindowOpen || window.open;
       nativeOpen.call(window, url, '_blank', 'noopener,noreferrer');
+      return;
+    }
+
+    // ── Google Forms / الاختبارات ──
+    // مهم: Google Forms يحتاج سياق صفحة عادي حتى تعمل أزرار
+    // "إرسال" و"عرض النتيجة" والتنقل إلى صفحة score بشكل موثوق.
+    // وضع النموذج داخل iframe sandbox كان يمنع بعض عمليات التنقل/عرض النتيجة
+    // خصوصًا على الموبايل. لذلك نفتح الامتحان في تبويب مستقل مع نفس الرابط
+    // الأصلي، بدون تغيير رابط الامتحان أو بياناته.
+    if (
+      rt === 'form' ||
+      /(^|\.)forms\.gle\//i.test(url) ||
+      /docs\.google\.com\/forms\//i.test(url)
+    ) {
+      var formOpen = window._origWindowOpen || window.open;
+      var formWin = formOpen.call(window, url, '_blank', 'noopener,noreferrer');
+      if (!formWin) {
+        // لو المتصفح منع popup، نستخدم location كـ fallback بعد تفاعل المستخدم.
+        try { window.location.href = url; } catch (navErr) {
+          console.error('[openResource form] تعذر فتح Google Form:', navErr);
+          if (typeof _showToast === 'function') _showToast('❌ لم يتم فتح الامتحان — اسمح بالنوافذ المنبثقة للموقع', 'error');
+        }
+      }
       return;
     }
 
@@ -11791,73 +11819,115 @@ var NativePDFViewer = (function() {
   }
 
   // ==================== فتح الملف ====================
-  // ==================== فتح الملف ====================
-  // ✅ FIX (Aug 2026): PDF لم يعد يُفتح داخل الـ Viewer الداخلي للموقع إطلاقاً.
-  // بدلاً من بناء الـ overlay/canvas ورسم الصفحات بـ pdf.js، الدالة الآن تكتفي
-  // بحل رابط الملف (نفس _getSignedPdfUrl المستخدمة سابقاً — صلاحيات الوصول
-  // والـ RLS والتوقيع الزمني للرابط لم تتغيّر إطلاقاً) ثم تفتحه في تبويب جديد
-  // ليعرضه عارض المتصفح الأصلي مباشرة. لا Rendering ولا canvas ولا pdf.js هنا.
-  // باقي دوال الملف (render/_showOpenError/زووم/بحث...) أصبحت غير مستخدمة من
-  // هذا المسار لكنها لم تُحذف (قاعدة: لا حذف لأي كود غير مطلوب حذفه صراحة).
+  // PDF.js داخلي بالكامل — بدون عارض خارجي.
   async function open(url, title) {
     if (!url) throw new Error('رابط PDF غير موجود');
-
-    // افتح نافذة/تبويباً فارغاً فوراً داخل سياق ضغطة المستخدم.
-    // لو انتظرنا createSignedUrl() أولاً، بعض متصفحات الهاتف تعتبر window.open
-    // لاحقاً Popup غير موثوق وتمنعه؛ وهذا كان أحد أسباب زر PDF الذي يبدو كأنه لا يعمل.
-    // ⚠️ FIX: لازم عدم استخدام 'noopener' هنا — المواصفة تفرض إن window.open()
-    // يرجّع null دايماً لو استخدمنا noopener، يعني مفيش أي مرجع (handle) نقدر
-    // نوجّهه لاحقاً للرابط النهائي، فالتاب بيفضل فاضي للأبد. ده بالظبط سبب
-    // ظهور "تاب فاضي" على Chrome Android بينما شغّال على الكمبيوتر (المتصفحات
-    // على الديسكتوب أكثر تساهلاً). لازم نمسك مرجع حقيقي للنافذة عشان نقدر
-    // نغيّر .location.href بتاعها بعد ما نجيب الرابط الموقّع.
-    var popup = null;
-    try {
-      popup = (window._origWindowOpen || window.open)('', '_blank');
-    } catch(e) {
-      popup = null;
-    }
+    close();
 
     var finalUrl = url;
+    try { finalUrl = await _getSignedPdfUrl(url); }
+    catch(e) { console.warn('[PDF] signed URL failed:', e && e.message); }
+
+    if (!finalUrl || !/^https?:\/\//i.test(finalUrl)) throw new Error('رابط الملف غير صالح');
+
+    var overlay = document.createElement('div');
+    overlay.id = 'native-pdf-overlay';
+    overlay.innerHTML =
+      '<div id="native-pdf-modal" role="dialog" aria-modal="true">' +
+        '<div id="native-pdf-header"><div id="native-pdf-title">' + _esc(title || 'ملف PDF') + '</div>' +
+        '<button id="native-pdf-close" type="button">✕</button></div>' +
+        '<div class="pdfv-toolbar">' +
+          '<div class="pdfv-toolbar-group"><button class="pdfv-btn" id="pdfv-prev">‹</button><input class="pdfv-page-input" id="pdfv-page-num" inputmode="numeric" value="1"><span class="pdfv-page-total" id="pdfv-page-total">/ —</span><button class="pdfv-btn" id="pdfv-next">›</button></div>' +
+          '<div class="pdfv-toolbar-group"><button class="pdfv-btn" id="pdfv-zoom-out">−</button><span class="pdfv-zoom-pct" id="pdfv-zoom-pct">100%</span><button class="pdfv-btn" id="pdfv-zoom-in">+</button></div>' +
+          '<div class="pdfv-toolbar-group"><button class="pdfv-btn" id="pdfv-search-btn">🔎</button><button class="pdfv-btn" id="pdfv-theme-toggle">🌗</button><button class="pdfv-btn" id="pdfv-fullscreen">⛶</button></div>' +
+        '</div>' +
+        '<div class="pdfv-search-bar" id="pdfv-search-bar"><input class="pdfv-search-input" id="pdfv-search-input" placeholder="ابحث داخل الملف..." autocomplete="off"><span class="pdfv-search-count" id="pdfv-search-count"></span><button class="pdfv-btn" id="pdfv-search-prev">↑</button><button class="pdfv-btn" id="pdfv-search-next">↓</button><button class="pdfv-btn" id="pdfv-search-close">✕</button></div>' +
+        '<div id="native-pdf-pdfjs-wrapper"><div class="pdfv-page-loading"><div class="pdfv-spin"></div>جاري فتح ملف PDF...</div></div>' +
+      '</div>';
+
+    document.body.appendChild(overlay);
+    _overlayEl = overlay;
+    document.body.style.overflow = 'hidden';
+    document.body.classList.add('rv-open');
+
+    var modal = document.getElementById('native-pdf-modal');
+    var wrapper = document.getElementById('native-pdf-pdfjs-wrapper');
+    var pageInput = document.getElementById('pdfv-page-num');
+
+    document.getElementById('native-pdf-close').onclick = close;
+    overlay.addEventListener('click', function(e){ if(e.target === overlay) close(); });
+
+    var keyHandler = function(e){
+      if(!_overlayEl) return;
+      if(e.key === 'Escape'){ e.preventDefault(); close(); return; }
+      if(e.key === 'ArrowRight' && S){ e.preventDefault(); _goToPage(S.currentPage + 1); }
+      if(e.key === 'ArrowLeft' && S){ e.preventDefault(); _goToPage(S.currentPage - 1); }
+    };
+    overlay._keyHandler = keyHandler;
+    document.addEventListener('keydown', keyHandler);
+
+    S = {
+      url: finalUrl, title: title || 'ملف PDF', wrapper: wrapper, modal: modal,
+      pdf: null, numPages: 0, currentPage: 1, zoom: 1, baseAspect: 1.4142,
+      pageEls: {}, renderedSet: new Set(), observer: null, pagesDark: false,
+      search: {query:'', matches:[], index:-1}, _pendingPinchZoom:null, _searchToken:null
+    };
+
+    document.getElementById('pdfv-prev').onclick = function(){if(S)_goToPage(S.currentPage-1);};
+    document.getElementById('pdfv-next').onclick = function(){if(S)_goToPage(S.currentPage+1);};
+    document.getElementById('pdfv-zoom-out').onclick = function(){if(S)_setZoom(S.zoom-.1);};
+    document.getElementById('pdfv-zoom-in').onclick = function(){if(S)_setZoom(S.zoom+.1);};
+    document.getElementById('pdfv-search-btn').onclick = _openSearch;
+    document.getElementById('pdfv-search-close').onclick = _closeSearch;
+    document.getElementById('pdfv-search-prev').onclick = function(){_searchStep(-1);};
+    document.getElementById('pdfv-search-next').onclick = function(){_searchStep(1);};
+    document.getElementById('pdfv-theme-toggle').onclick = _togglePageTheme;
+    document.getElementById('pdfv-fullscreen').onclick = _toggleFullscreen;
+
+    pageInput.addEventListener('change', function(){
+      var n=parseInt(pageInput.value,10); if(S && Number.isFinite(n)) _goToPage(n);
+    });
+
+    var searchInput=document.getElementById('pdfv-search-input');
+    searchInput.addEventListener('input', function(){
+      clearTimeout(searchInput._timer);
+      searchInput._timer=setTimeout(function(){_runSearch(searchInput.value);},180);
+    });
+    searchInput.addEventListener('keydown', function(e){
+      if(e.key==='Enter'){e.preventDefault();_searchStep(e.shiftKey?-1:1);}
+    });
+
     try {
-      finalUrl = await _getSignedPdfUrl(url);
-    } catch(e) {
-      console.warn('[PDF] فشل توقيع الرابط، سيُستخدم الرابط الأصلي:', e && e.message);
-    }
+      var lib=await _loadPdfJs();
+      if(!S)return;
+      var loadingTask=lib.getDocument({url:finalUrl,useWorkerFetch:true,isEvalSupported:true,enableXfa:false});
+      var pdf=await loadingTask.promise;
+      if(!S){try{await pdf.destroy();}catch(e){}return;}
 
-    if (!finalUrl || !/^https?:\/\//i.test(finalUrl)) {
-      if (popup && !popup.closed) {
-        try { popup.close(); } catch(e) {}
-      }
-      throw new Error('رابط الملف غير صالح');
-    }
+      S.pdf=pdf;
+      S.numPages=pdf.numPages;
+      document.getElementById('pdfv-page-total').textContent='/ '+pdf.numPages;
 
-    // PDF.js الرسمي يحتوي على annotation/text layers، لذلك نستخدمه كعارض PDF
-    // في التبويب الجديد بدلاً من Native PDF viewer في الهاتف، مع الاحتفاظ برابط الملف
-    // الموقّع كما هو. هذا يعالج ظهور highlights/annotations على Android وTablet.
-    var pdfViewerUrl = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@' + PDFJS_VERSION + '/web/viewer.html?file=' + encodeURIComponent(finalUrl) + '#zoom=page-width';
-    if (popup && !popup.closed) {
-      try {
-        popup.location.href = pdfViewerUrl;
-        // نقطع صلة opener الآن بعد ما خلّصنا التوجيه (حماية إضافية ضد
-        // tabnabbing) — لو فشلت مش مشكلة، الملف يكون فتح بالفعل.
-        try { popup.opener = null; } catch(_e) {}
-        return;
-      } catch(e) {
-        try { popup.close(); } catch(_) {}
-      }
-    }
+      try{
+        var firstPage=await pdf.getPage(1);
+        var vp=firstPage.getViewport({scale:1});
+        if(vp&&vp.width)S.baseAspect=vp.height/vp.width;
+      }catch(e){}
 
-    // fallback: لو المتصفح منع الـpopup، استخدم الرابط الأصلي كتنقل عادي.
-    // لا نعيد استدعاء window.open المعترض حتى لا ندخل في recursion.
-    var a = document.createElement('a');
-    a.href = pdfViewerUrl;
-    a.target = '_blank';
-    a.rel = 'noopener noreferrer';
-    a.style.display = 'none';
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
+      _buildPlaceholders();
+      _setupScrollPageTracking();
+      _setupObserver();
+      _setupPinchZoom();
+      _setupResizeRelayout();
+      _updateZoomLabel();
+      _renderPage(1);
+      for(var i=2;i<=Math.min(2,S.numPages);i++)_renderPage(i);
+
+      try{if(localStorage.getItem('pdfv_page_theme')==='dark')_togglePageTheme();}catch(e){}
+    }catch(e){
+      console.error('[PDFjs] تعذر فتح الملف:',e);
+      _showOpenError(e,finalUrl);
+    }
   }
 
   // ==================== رسالة فشل موحّدة (URL غير صالح / منتهي / تعذّر الجلب / ملف مفقود) ====================
@@ -14792,37 +14862,53 @@ self.addEventListener('fetch', function(e) {
     delete window._subStatusCache[userId + ':' + sectionId];
   }
 
-  // ── يحدد الفصل المجاني الأول سواء كانت الشعبة تحتوي فصولاً مباشرة، أو مواد ثم فصولاً ──
+  // ── يحدد الفصل المجاني الأول بدون hardcoded section IDs.
+  async function _getFirstFreeChapterId(anchorId) {
+    anchorId=Number(anchorId);
+    if(!Number.isFinite(anchorId)) return null;
+
+    var directChildren=await loadSections(anchorId);
+    if(!directChildren || !directChildren.length) return null;
+
+    var first=directChildren[0];
+    var firstChildren=await loadSections(first.id);
+    if(!firstChildren || !firstChildren.length) return first.id;
+
+    var level=firstChildren;
+    for(var depth=0; depth<4 && level && level.length; depth++){
+      var candidate=level[0];
+      var ctype=String(candidate.type||'').toLowerCase();
+      var ctitle=String(candidate.title||'').toLowerCase();
+
+      if(ctype.indexOf('chapter')!==-1 || ctype.indexOf('شابت')!==-1 ||
+         ctitle.indexOf('chapter')!==-1 || ctitle.indexOf('شابتر')!==-1 || ctitle.indexOf('فصل')!==-1){
+        return candidate.id;
+      }
+
+      var next=await loadSections(candidate.id);
+      if(!next || !next.length) return candidate.id;
+      level=next;
+    }
+
+    return firstChildren[0].id;
+  }
+
   async function _isWithinFreeChapter(anchorId, sectionId) {
-    anchorId = Number(anchorId); sectionId = Number(sectionId);
-    if (!Number.isFinite(anchorId) || !Number.isFinite(sectionId) || sectionId === anchorId) return false;
-    var directChildren = await loadSections(anchorId);
-    if (directChildren && directChildren.length) {
-      var first = directChildren[0];
-      var firstChildren = await loadSections(first.id);
-      // لو أبناء الشعبة أنفسهم هم الفصول (لا توجد طبقة مادة)، أول ابن هو المعاينة المجانية.
-      if (!firstChildren || !firstChildren.length) return sectionId === first.id;
+    anchorId=Number(anchorId); sectionId=Number(sectionId);
+    if(!Number.isFinite(anchorId)||!Number.isFinite(sectionId)||sectionId===anchorId) return false;
+
+    var firstChapterId=await _getFirstFreeChapterId(anchorId);
+    if(!firstChapterId) return false;
+
+    var current=await _getSectionRow(firstChapterId);
+    var depth=0;
+    while(current && depth++<20){
+      if(Number(current.id)===sectionId) return true;
+      if(Number(current.id)===anchorId) break;
+      if(current.parent_id===null||current.parent_id===undefined) break;
+      current=await _getSectionRow(current.parent_id);
     }
-    var chain = [];
-    var current = await _getSectionRow(sectionId);
-    var depth = 0;
-    while (current && depth < 20) {
-      chain.push(current);
-      if (current.id === anchorId) break;
-      if (current.parent_id === null || current.parent_id === undefined) return false;
-      current = await _getSectionRow(current.parent_id);
-      depth++;
-    }
-    if (!current || current.id !== anchorId || chain.length < 2) return false;
-    var subjects = directChildren;
-    if (!subjects || !subjects.length) return false;
-    var firstSubjectId = subjects[0].id;
-    var passesFirstSubject = chain.some(function(x, i) { return i < chain.length - 1 && x.id === firstSubjectId; });
-    if (!passesFirstSubject) return false;
-    var chapters = await loadSections(firstSubjectId);
-    if (!chapters || !chapters.length) return false;
-    var firstChapterId = chapters[0].id;
-    return chain.some(function(x, i) { return i < chain.length - 1 && x.id === firstChapterId; });
+    return false;
   }
 
   // ── حالة وصول تفصيلية للمسارات/الواجهات، بنفس مصدر الحقيقة الخاص بالاشتراك ──
