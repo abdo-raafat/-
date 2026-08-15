@@ -3313,41 +3313,21 @@ async function loadSectionContent(sectionId) {
   return fetchPromise;
 }
 
-// ترتيب الموارد القياسي في كل شابتر — يعتمد على نوع/عنوان المورد فقط، بدون أي section IDs.
-// الأولوية: تحديدات → فيديو → تسجيل صوتي → ملخص → كويز/أسئلة، ثم أي ملفات إضافية.
-function _resourceDisplayRank(resource) {
-  var title = String(resource && resource.title || '').toLowerCase();
-  var type  = String(resource && (resource.resource_type || resource.content_type) || '').toLowerCase();
-  if (/تحديد|تحديدات|highlights?/.test(title)) return 1;
-  if (type === 'video' || /فيديو|video/.test(title)) return 2;
-  if (type === 'audio' || /تسجيل صوت|audio/.test(title)) return 3;
-  if (/ملخص|تلخيص|summary|summar/.test(title)) return 4;
-  if (type === 'form' || /كويز|quiz|أسئلة|اسئلة|امتحان|اختبار/.test(title)) return 5;
-  return 99;
-}
-function _resourceDisplayComparator(a, b, hasQuiz) {
-  var ra = _resourceDisplayRank(a), rb = _resourceDisplayRank(b);
-  // لو يوجد كويز فعلي داخل نفس الشابتر، ملفات "أسئلة/امتحان" تبقى ملفات إضافية بعد الكويز.
-  function adjusted(r, item) {
-    var title = String(item && item.title || '').toLowerCase();
-    var type = String(item && item.resource_type || '').toLowerCase();
-    if (hasQuiz && r === 5 && type !== 'form' && !/كويز|quiz/.test(title)) return 99;
-    return r;
-  }
-  ra = adjusted(ra, a); rb = adjusted(rb, b);
-  if (ra !== rb) return ra - rb;
-  var sa = Number(a && a.sort_order); var sb = Number(b && b.sort_order);
-  if (Number.isFinite(sa) && Number.isFinite(sb) && sa !== sb) return sa - sb;
+// ✅ مصدر الترتيب الوحيد لعرض section_resources هو عمود sort_order في قاعدة البيانات.
+// العمود ده بيتحسب تلقائيًا بواسطة PostgreSQL trigger (انظر SQL أسفل الملف) — الـ frontend
+// ممنوع يعيد اختراع الترتيب من title/resource_type، وممنوع يعتمد على id أو created_at
+// كترتيب أساسي. الترتيب الوحيد المسموح به هنا هو: sort_order ASC ثم id ASC (tie-breaker ثابت).
+function _resourceDisplayComparator(a, b) {
+  var sa = Number(a && a.sort_order);
+  var sb = Number(b && b.sort_order);
+  if (!Number.isFinite(sa)) sa = 999999; // صف بدون sort_order يروح آخر القائمة بدل ما يكسر الترتيب
+  if (!Number.isFinite(sb)) sb = 999999;
+  if (sa !== sb) return sa - sb;
   return Number(a && a.id || 0) - Number(b && b.id || 0);
 }
 function _sortResourcesForDisplay(list) {
   var rows = (list || []).slice();
-  var hasQuiz = rows.some(function(r){
-    var title = String(r && r.title || '').toLowerCase();
-    var type = String(r && r.resource_type || '').toLowerCase();
-    return type === 'form' || /كويز|quiz/.test(title);
-  });
-  return rows.sort(function(a,b){ return _resourceDisplayComparator(a,b,hasQuiz); });
+  return rows.sort(function(a, b){ return _resourceDisplayComparator(a, b); });
 }
 
 async function loadSectionResources(sectionId) {
@@ -12127,7 +12107,20 @@ async function _getSignedPdfUrl(storagePath) {
 // أحدث إصدار مستقر من Mozilla PDF.js عبر jsDelivr (ESM)
 var NativePDFViewer = (function() {
   var PDFJS_VERSION = '6.1.200';
-  var PDFJS_BASE     = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@' + PDFJS_VERSION + '/build/';
+  var PDFJS_ROOT     = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@' + PDFJS_VERSION + '/';
+  var PDFJS_BASE     = PDFJS_ROOT + 'build/';
+  // ✅ FIX (النص متداخل/ملتصق ببعضه — "H storta lPerspective" بدل "Historical
+  // Perspective"): السبب إن getDocument() كان بينادَى من غير cMapUrl ولا
+  // standardFontDataUrl. أي PDF فيه خط مضمّن (embedded font) مش قياسي أو خط
+  // فرعي (subset) بيحتاج CMaps عشان PDF.js يفك ترميز الحروف صح، ولو الخط ده
+  // من الخطوط القياسية الـ14 (زي Helvetica/Times) بيحتاج standard_fonts.
+  // من غيرهم، PDF.js بيستبدل بخط نظام افتراضي بعرض حروف (glyph widths) مختلف
+  // عن اللي المستند مبني عليه أصلاً — فالمسافات المحسوبة مسبقاً بين الحروف/
+  // الكلمات (بناءً على عرض الخط الأصلي) بتطلع غلط مع الخط البديل، والنتيجة
+  // حروف متلاصقة أو متراكبة بالظبط زي المُشاهَد. المسارين دول موجودين جاهزين
+  // داخل نفس حزمة pdfjs-dist على jsDelivr.
+  var PDFJS_CMAPS    = PDFJS_ROOT + 'cmaps/';
+  var PDFJS_FONTS    = PDFJS_ROOT + 'standard_fonts/';
 
   var _overlayEl   = null;
   var _pdfjsLib     = null;
@@ -12239,7 +12232,15 @@ var NativePDFViewer = (function() {
     try {
       var lib=await _loadPdfJs();
       if(!S)return;
-      var loadingTask=lib.getDocument({url:finalUrl,useWorkerFetch:true,isEvalSupported:true,enableXfa:false});
+      var loadingTask=lib.getDocument({
+        url:finalUrl,
+        useWorkerFetch:true,
+        isEvalSupported:true,
+        enableXfa:false,
+        cMapUrl:PDFJS_CMAPS,
+        cMapPacked:true,
+        standardFontDataUrl:PDFJS_FONTS
+      });
       var pdf=await loadingTask.promise;
       if(!S){try{await pdf.destroy();}catch(e){}return;}
 
@@ -14630,20 +14631,12 @@ DROP POLICY IF EXISTS "chatmsg_insert_direct_member" ON chat_messages;
 CREATE POLICY "chatmsg_read_direct_member" ON chat_messages FOR SELECT USING (EXISTS (SELECT 1 FROM chat_rooms cr WHERE cr.id=chat_messages.room_id AND cr.section_id IS NULL AND can_access_direct_room_member(cr.id)));
 CREATE POLICY "chatmsg_insert_direct_member" ON chat_messages FOR INSERT WITH CHECK (EXISTS (SELECT 1 FROM chat_rooms cr WHERE cr.id=chat_messages.room_id AND cr.section_id IS NULL AND can_access_direct_room_member(cr.id)));
 
--- 7) ترتيب الموارد القياسي: تحديدات → فيديو → صوت → ملخص → كويز/أسئلة
-WITH ranked AS (
-  SELECT id,
-    CASE
-      WHEN lower(COALESCE(title,'')) ~ '(تحديد|تحديدات|highlights?)' THEN 1
-      WHEN resource_type='video' OR lower(COALESCE(title,'')) ~ '(فيديو|video)' THEN 2
-      WHEN resource_type='audio' OR lower(COALESCE(title,'')) ~ '(تسجيل صوت|audio)' THEN 3
-      WHEN lower(COALESCE(title,'')) ~ '(ملخص|تلخيص|summary|summar)' THEN 4
-      WHEN resource_type='form' OR lower(COALESCE(title,'')) ~ '(كويز|quiz|أسئلة|اسئلة|امتحان|اختبار)' THEN 5
-      ELSE 99
-    END AS new_order
-  FROM section_resources r
-)
-UPDATE section_resources r SET sort_order=ranked.new_order FROM ranked WHERE r.id=ranked.id;
+-- 7) ترتيب الموارد القياسي — ⚠️ تم نقل هذا المنطق لملف migration منفصل
+--    (compute_resource_sort_order + trigger set_resource_sort_order) لأنه بيضيف:
+--    - fallback صحيح للموارد الغير مصنّفة لما مفيش "تحديدات" في نفس الـ section
+--    - id ASC كترتيب ثانوي ثابت عند تساوي sort_order
+--    - Trigger دائم يشتغل تلقائيًا على أي INSERT/UPDATE مستقبلي
+--    شغّل ملف sort_order_migration.sql في Supabase SQL Editor بدل السطر القديم هنا.
 
 NOTIFY pgrst, 'reload schema';
 `;
