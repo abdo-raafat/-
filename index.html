@@ -6101,14 +6101,13 @@ async function openResource(url, title, resourceType) {
       /quizizz\.com|kahoot\.it|classroom\.google\.com/i.test(url) ||
       /كويز|quiz|أسئلة|اسئلة|امتحان|اختبار/.test(title || '')
     ) {
-      var formLink = document.createElement('a');
-      formLink.href = url;
-      formLink.target = '_blank';
-      formLink.rel = 'noopener noreferrer';
-      formLink.style.display = 'none';
-      document.body.appendChild(formLink);
-      formLink.click();
-      setTimeout(function(){ try { formLink.remove(); } catch(e) {} }, 1000);
+      // ✅ FIX (Aug 2026): نفس مشكلة فرع الـPDF بالظبط — إنشاء <a> وعمل click()
+      // عليه كان بيتصاد بنفس اعتراض document على مستوى الموقع كله (target=_blank
+      // + رابط خارجي = يتحوّل لعارض داخلي تلقائياً) فمكانش بيفتح تبويب خارجي
+      // حقيقي أبداً، ده اللي كان سبب "بدوس ومفيش حاجة بتظهر" في الكويزات. نفس
+      // الحل: نداء مباشر لـ window.open الأصلي بدل أي عنصر <a> قابل للـ click.
+      var nativeFormOpen = window._origWindowOpen || window.open;
+      nativeFormOpen.call(window, url, '_blank', 'noopener,noreferrer');
       return;
     }
 
@@ -6123,15 +6122,22 @@ async function openResource(url, title, resourceType) {
     // تداخل/تشوه النص. فتح الرابط الأصلي مباشرة يجعل Chrome/Edge/Safari
     // يستخدم عارض PDF الأصلي، ويحافظ على أي Highlights/Annotations
     // مضمّنة داخل ملف الـPDF نفسه.
+    // ✅ FIX (Aug 2026 — السبب الحقيقي لمشكلة "PDF بيتفتح في عارض الموقع مش في
+    // تبويب خارجي"): كان هذا الفرع بيعمل createElement('a') + target='_blank'
+    // + click() — لكن الموقع فيه اعتراض عالمي على مستوى document (اتنين، مش
+    // واحد) بيسمع لأي click على أي <a> بـ target="_blank" أو رابط خارجي
+    // ويعمل e.preventDefault() ويحوّله لعارض داخلي (openResource/NativePDFViewer)
+    // — يعني الفتح الاصطناعي ده كان بيتلقّف ويتلغى بمعرفة كود الموقع نفسه قبل
+    // ما المتصفح يوصله أصلاً، فمكانش بيفتح تبويب خارجي حقيقي أبداً (والمحاولة
+    // الاحتياطية بعد الاعتراض كانت بتترفض هي كمان بسبب قفل "resourceOpenBusy").
+    // الحل: نفتح بنفس أسلوب فرع 'link' الصحيح أصلاً — استدعاء window.open
+    // الأصلي (_origWindowOpen، المحفوظ *قبل* أي اعتراض) مباشرة كدالة، من غير
+    // إنشاء أي <a> ومن غير أي click event يقدر أي اعتراض document يمسكه. نفس
+    // رابط الـCloudinary الأصلي بالظبط، من غير fetch ولا Blob ولا Canvas ولا
+    // PDF.js في المسار ده إطلاقاً.
     if (rt === 'pdf' || /\.pdf($|\?)/i.test(url)) {
-      var pdfLink = document.createElement('a');
-      pdfLink.href = url;
-      pdfLink.target = '_blank';
-      pdfLink.rel = 'noopener noreferrer';
-      pdfLink.style.display = 'none';
-      document.body.appendChild(pdfLink);
-      pdfLink.click();
-      setTimeout(function(){ try { pdfLink.remove(); } catch(e) {} }, 1000);
+      var nativePdfOpen = window._origWindowOpen || window.open;
+      nativePdfOpen.call(window, url, '_blank', 'noopener,noreferrer');
       return;
     }
 
@@ -12278,7 +12284,7 @@ var NativePDFViewer = (function() {
       var safeUrl = url.replace(/'/g, '%27');
       actionsHtml =
         '<div style="display:flex;gap:10px;justify-content:center;margin-top:14px;flex-wrap:wrap">' +
-          '<button class="pdfv-btn" style="width:auto;padding:0 16px;background:rgba(255,255,255,.15)" onclick="window.open(\'' + safeUrl + '\',\'_blank\')">↗️ فتح الملف</button>' +
+          '<button class="pdfv-btn" style="width:auto;padding:0 16px;background:rgba(255,255,255,.15)" onclick="(window._origWindowOpen||window.open)(\'' + safeUrl + '\',\'_blank\',\'noopener,noreferrer\')">↗️ فتح الملف</button>' +
           '<button class="pdfv-btn" style="width:auto;padding:0 16px;background:rgba(255,255,255,.15)" onclick="(function(){var a=document.createElement(\'a\');a.href=\'' + safeUrl + '\';a.setAttribute(\'download\',\'\');document.body.appendChild(a);a.click();document.body.removeChild(a);})()">⬇️ تحميل الملف</button>' +
         '</div>';
     } else {
