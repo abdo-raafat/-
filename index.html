@@ -6117,27 +6117,21 @@ async function openResource(url, title, resourceType) {
       return;
     }
 
-    // ── PDF: افتحه في عارض PDF الخارجي للمتصفح ──
-    // على الموبايل العارض الداخلي كان يعيد رسم صفحات PDF بطريقة تسبب
-    // تداخل/تشوه النص. فتح الرابط الأصلي مباشرة يجعل Chrome/Edge/Safari
-    // يستخدم عارض PDF الأصلي، ويحافظ على أي Highlights/Annotations
-    // مضمّنة داخل ملف الـPDF نفسه.
-    // ✅ FIX (Aug 2026 — السبب الحقيقي لمشكلة "PDF بيتفتح في عارض الموقع مش في
-    // تبويب خارجي"): كان هذا الفرع بيعمل createElement('a') + target='_blank'
-    // + click() — لكن الموقع فيه اعتراض عالمي على مستوى document (اتنين، مش
-    // واحد) بيسمع لأي click على أي <a> بـ target="_blank" أو رابط خارجي
-    // ويعمل e.preventDefault() ويحوّله لعارض داخلي (openResource/NativePDFViewer)
-    // — يعني الفتح الاصطناعي ده كان بيتلقّف ويتلغى بمعرفة كود الموقع نفسه قبل
-    // ما المتصفح يوصله أصلاً، فمكانش بيفتح تبويب خارجي حقيقي أبداً (والمحاولة
-    // الاحتياطية بعد الاعتراض كانت بتترفض هي كمان بسبب قفل "resourceOpenBusy").
-    // الحل: نفتح بنفس أسلوب فرع 'link' الصحيح أصلاً — استدعاء window.open
-    // الأصلي (_origWindowOpen، المحفوظ *قبل* أي اعتراض) مباشرة كدالة، من غير
-    // إنشاء أي <a> ومن غير أي click event يقدر أي اعتراض document يمسكه. نفس
-    // رابط الـCloudinary الأصلي بالظبط، من غير fetch ولا Blob ولا Canvas ولا
-    // PDF.js في المسار ده إطلاقاً.
+    // ── PDF: افتحه في عارض PDF الداخلي (NativePDFViewer / PDF.js) ──
+    // ✅ FIX (Aug 2026 v4 — التحديدات/التظليل بتظهر عادي على الكمبيوتر ومش
+    // بتظهر على الموبايل): الفرع القديم كان بيفتح رابط الملف في تبويب خارجي
+    // (window.open) عشان "يسيب" عرض التظليلات لعارض PDF الجاهز في المتصفح/
+    // النظام. المشكلة إن عارض PDF ده مختلف من جهاز لجهاز ومن متصفح لمتصفح —
+    // فبعض عارضات PDF على الموبايل (خصوصاً العارض المدمج جوه بعض المتصفحات
+    // أو تطبيقات فتح الروابط) مبيرسمش الـannotations (highlight/underline)
+    // زي ما بيعمل Chrome/Firefox على الكمبيوتر، فالنتيجة اختلاف فعلي في الشكل
+    // بين الجهازين رغم إن الرابط نفس الرابط بالظبط. الحل الثابت: منعتمدش على
+    // عارض خارجي متغيّر أصلاً — نستخدم عارض PDF.js المدمج جوه المنصة نفسها
+    // (NativePDFViewer عن طريق ResourceViewer.open) على كل الأجهزة بالتساوي،
+    // وده بقى دلوقتي بيرسم التحديدات صراحةً (annotationMode: ENABLE أعلاه)
+    // فيبقى نفس الشكل بالظبط على الموبايل والكمبيوتر لأنه حرفيًا نفس الكود.
     if (rt === 'pdf' || /\.pdf($|\?)/i.test(url)) {
-      var nativePdfOpen = window._origWindowOpen || window.open;
-      nativePdfOpen.call(window, url, '_blank', 'noopener,noreferrer');
+      ResourceViewer.open(url, title, 'pdf');
       return;
     }
 
@@ -7273,6 +7267,18 @@ window.checkBanStatus = async function(email) {
   scrollbar-width: none;
 }
 .ap-nav::-webkit-scrollbar { display: none; }
+/* ✅ FIX (Aug 2026): على الشاشات الواسعة (كمبيوتر) كانت التبويبات الزايدة عن
+   عرض الشاشة بتتخفي فورا لأن .ap-nav بيعتمد على overflow-x:auto بدون أي
+   scrollbar ظاهر (scrollbar-width:none) — فالمستخدم مكانش عارف إنه لازم
+   يعمل سحب أفقي (على الموبايل السحب باللمس طبيعي فكل التبويبات كانت
+   بتظهر بالتمرير، لكن على الكمبيوتر مفيش أي إشارة إن فيه المزيد). الحل:
+   من عرض معين وفوق نخلي التبويبات تعمل wrap على أكتر من سطر بدل ما تتقص. */
+@media (min-width: 900px) {
+  .ap-nav {
+    flex-wrap: wrap;
+    overflow-x: visible;
+  }
+}
 .ap-nav-btn {
   padding: 13px 18px;
   border: none;
@@ -7661,7 +7667,9 @@ window.checkBanStatus = async function(email) {
           <div style="display:flex;gap:8px;justify-content:flex-start;flex-wrap:wrap;margin-top:14px;">
             <button class="ap-btn ap-btn-primary" id="ap-notif-send-btn" onclick="apSendNotifications()">🔔 إرسال الإشعار</button>
             <button class="ap-btn ap-btn-ghost" onclick="apLoadNotificationsPanel()">🔄 تحديث</button>
+            <button class="ap-btn ap-btn-ghost" onclick="printNotificationsMigration(); if(typeof _showToast==='function'){_showToast('✅ تم نسخ سكريبت الإصلاح — الصقه في Supabase → SQL Editor وشغّله مرة واحدة','success');}else{alert('تم نسخ سكريبت الإصلاح، الصقه في Supabase SQL Editor وشغّله مرة واحدة');}">🛠️ نسخ سكريبت إصلاح الإشعارات</button>
           </div>
+          <div class="ap-empty" style="margin-top:8px;font-size:.72rem;">إذا ظهر خطأ "Could not find the 'message' column" اضغط الزرار ده، وابعت السكريبت المنسوخ لمرة واحدة فى Supabase (Dashboard → SQL Editor → New query → Paste → Run). لأسباب أمان، تعديل بنية الجدول (ALTER TABLE) لازم يتم من هناك، مش من المنصة مباشرة.</div>
           <div id="ap-notif-result" style="margin-top:12px;"></div>
         </div>
       </div>
@@ -12530,7 +12538,19 @@ var NativePDFViewer = (function() {
         highlightLayer.style.height = Math.floor(cssViewport.height) + 'px';
         container.appendChild(highlightLayer);
 
-        await page.render({ canvasContext: canvas.getContext('2d'), viewport: viewport }).promise;
+        // ✅ FIX (تحديدات/تظليل الـPDF مش بتظهر على الموبايل): بنجبر PDF.js يرسم
+        // طبقة الـannotations (highlight/underline المحفوظة جوه ملف الـPDF نفسه
+        // كـ appearance streams) فوق الـcanvas صراحةً، بدل ما نعتمد على القيمة
+        // الافتراضية لـ annotationMode اللي ممكن تختلف حسب نسخة/بيئة PDF.js —
+        // وده اللي كان بيخلي التحديدات تظهر في متصفح وتختفي في متصفح/جهاز تاني.
+        var _annotationMode = (_pdfjsLib && _pdfjsLib.AnnotationMode)
+          ? _pdfjsLib.AnnotationMode.ENABLE
+          : 2; // 2 = AnnotationMode.ENABLE في PDF.js
+        await page.render({
+          canvasContext: canvas.getContext('2d'),
+          viewport: viewport,
+          annotationMode: _annotationMode
+        }).promise;
 
         // ✅ نحتفظ بـ getTextContent() لأغراض البحث فقط (فهرسة نصية) —
         //    لا نستخدمه لبناء أي طبقة نص مرئية فوق الـ canvas.
@@ -18053,6 +18073,24 @@ function _qnFallbackCopy(text, done, fail) {
 window.printNotificationsMigration = function(){
   var sql = `
 -- NOTIFICATIONS ADDITIVE MIGRATION — بدون DROP TABLE / بدون حذف بيانات
+
+-- ✅ FIX (Aug 2026): السبب الحقيقي لخطأ "Could not find the 'message' column
+-- of 'notifications' in the schema cache" هو إن عمود message (وربما أعمدة
+-- تانية) مش موجود أصلاً في جدول notifications الحقيقي على Supabase — مش
+-- مجرد مشكلة RLS. الكود بيحاول يبعت title/message/type/is_read/created_at
+-- لكن لو العمود مش موجود PostgREST بيرفض الطلب بالخطأ ده. نضيف الأعمدة
+-- الناقصة بأمان (IF NOT EXISTS) من غير ما نلمس أي بيانات موجودة.
+ALTER TABLE notifications ADD COLUMN IF NOT EXISTS title text;
+ALTER TABLE notifications ADD COLUMN IF NOT EXISTS message text;
+ALTER TABLE notifications ADD COLUMN IF NOT EXISTS type text DEFAULT 'admin';
+ALTER TABLE notifications ADD COLUMN IF NOT EXISTS is_read boolean DEFAULT false;
+ALTER TABLE notifications ADD COLUMN IF NOT EXISTS created_at timestamptz DEFAULT now();
+ALTER TABLE notifications ADD COLUMN IF NOT EXISTS user_id uuid;
+
+-- بعد إضافة الأعمدة، لازم نجبر PostgREST يعيد تحميل الـschema cache وإلا
+-- هيفضل يرمي نفس الخطأ لحد ما يعمل reload لوحده (ممكن ياخد لحظات):
+NOTIFY pgrst, 'reload schema';
+
 ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "notif_own" ON notifications;
