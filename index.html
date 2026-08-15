@@ -16262,12 +16262,15 @@ self.addEventListener('fetch', function(e) {
   // نفس Bucket ونفس Storage Policies المستخدمة في DM (chat-attachments، مسار {room_id}/...)
   // لم يُنشأ أو يُعدَّل أي Bucket/Policy/جدول هنا — فقط نفس نمط DM مطبّق هنا لمحادثة الشعبة.
   var CHAT_ATTACH_BUCKET  = 'chat-attachments';
-  var CHAT_MAX_FILE_SIZE  = 25 * 1024 * 1024; // 25MB
+  var CHAT_MAX_FILE_SIZE  = 50 * 1024 * 1024; // ✅ 50MB (Aug 2026 — رُفع من 25MB لدعم الفيديو/الصوت)
   var CHAT_ALLOWED_EXT = {
     jpg:'image', jpeg:'image', png:'image', webp:'image', gif:'image',
     pdf:'pdf',
     doc:'file', docx:'file', xls:'file', xlsx:'file', ppt:'file', pptx:'file',
-    txt:'file', csv:'file', zip:'file', rar:'file'
+    txt:'file', csv:'file', zip:'file', rar:'file',
+    // ✅ Aug 2026: دعم الفيديو والصوت في مرفقات الشات
+    mp4:'video', mov:'video', webm:'video', mkv:'video', avi:'video', '3gp':'video',
+    mp3:'audio', wav:'audio', m4a:'audio', ogg:'audio', aac:'audio'
   };
   var _CHAT_IMG_PLACEHOLDER = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==';
 
@@ -16486,7 +16489,7 @@ self.addEventListener('fetch', function(e) {
     if (kind === 'image') {
       return '<img class="dm2-att-image" data-chat-att-img="' + _chatEsc(att.file_path) + '" src="' + _CHAT_IMG_PLACEHOLDER + '" alt="' + _chatEsc(name) + '" ' + onclickAttr + '>';
     }
-    var icon = kind === 'pdf' ? '📄' : '📎';
+    var icon = kind === 'pdf' ? '📄' : (kind === 'video' ? '🎬' : (kind === 'audio' ? '🎵' : '📎'));
     return '<div class="dm2-att-file" ' + onclickAttr + '>' +
       '<span class="dm2-att-file-icon">' + icon + '</span>' +
       '<div class="dm2-att-file-info">' +
@@ -16619,7 +16622,7 @@ self.addEventListener('fetch', function(e) {
       return;
     }
     if (file.size > CHAT_MAX_FILE_SIZE) {
-      if (window._showToast) _showToast('❌ حجم الملف كبير جداً (الحد الأقصى 25MB)', 'error');
+      if (window._showToast) _showToast('❌ حجم الملف كبير جداً (الحد الأقصى 50MB)', 'error');
       ev.target.value = '';
       return;
     }
@@ -16632,7 +16635,7 @@ self.addEventListener('fetch', function(e) {
       var url = URL.createObjectURL(file);
       preview = '<img src="' + url + '" alt="">';
     } else {
-      preview = '<span class="dm2-att-file-icon">' + (kind === 'pdf' ? '📄' : '📎') + '</span>';
+      preview = '<span class="dm2-att-file-icon">' + (kind === 'pdf' ? '📄' : (kind === 'video' ? '🎬' : (kind === 'audio' ? '🎵' : '📎'))) + '</span>';
     }
     wrap.innerHTML = '<div class="dm2-att-pending">' + preview +
       '<div class="dm2-att-file-info"><span class="dm2-att-file-name">' + _chatEsc(file.name) + '</span>' +
@@ -16893,12 +16896,15 @@ self.addEventListener('fetch', function(e) {
   // ==================== Attachments (chat-attachments bucket — PRIVATE) ====================
   // Bucket وStorage Policies موجودة بالفعل (safe_chat_room_id_from_path)، لم يتم إنشاء أو تعديل أي منها هنا.
   var DM_ATTACH_BUCKET  = 'chat-attachments';
-  var DM_MAX_FILE_SIZE  = 25 * 1024 * 1024; // 25MB
+  var DM_MAX_FILE_SIZE  = 50 * 1024 * 1024; // ✅ 50MB (Aug 2026 — رُفع من 25MB لدعم الفيديو/الصوت)
   var DM_ALLOWED_EXT = {
     jpg:'image', jpeg:'image', png:'image', webp:'image', gif:'image',
     pdf:'pdf',
     doc:'file', docx:'file', xls:'file', xlsx:'file', ppt:'file', pptx:'file',
-    txt:'file', csv:'file', zip:'file', rar:'file'
+    txt:'file', csv:'file', zip:'file', rar:'file',
+    // ✅ Aug 2026: دعم الفيديو والصوت في مرفقات الرسائل الخاصة
+    mp4:'video', mov:'video', webm:'video', mkv:'video', avi:'video', '3gp':'video',
+    mp3:'audio', wav:'audio', m4a:'audio', ogg:'audio', aac:'audio'
   };
   var _DM_IMG_PLACEHOLDER = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==';
 
@@ -17146,22 +17152,29 @@ self.addEventListener('fetch', function(e) {
     try {
       var scope = window._branchAdminSectionIds || [];
       if (!scope.length) { resultsEl.innerHTML = '<div class="chat-empty">لا يوجد نطاق شعبة مُعيَّن لك بعد.</div>'; return; }
-      var subsRes = await db.from('subscriptions').select('user_id, payment_status, end_date')
+      // ✅ FIX (Aug 2026): لازم نجيب section_id مع كل اشتراك عشان نقدر نبعته
+      // لـ get_or_create_direct_room (تتطلبه إجباريًا) — قبل كده كان بيتسقط
+      // فترفض كل محادثة يبدأها أدمن الشعبة مع أي مشترك عنده.
+      var subsRes = await db.from('subscriptions').select('user_id, section_id, payment_status, end_date')
         .in('section_id', scope).eq('payment_status', 'active');
       if (subsRes.error) throw subsRes.error;
       var nowMs = Date.now();
-      var activeIds = Array.from(new Set((subsRes.data || [])
-        .filter(function(s) { return !s.end_date || new Date(s.end_date).getTime() >= nowMs; })
-        .map(function(s) { return s.user_id; })
-        .filter(Boolean)));
+      var userSectionMap = {}; // أول قسم فعّال نلاقيه لكل مستخدم (يكفي لتحقق صلاحية RPC)
+      (subsRes.data || []).forEach(function(s) {
+        if (!s.user_id) return;
+        var active = !s.end_date || new Date(s.end_date).getTime() >= nowMs;
+        if (active && userSectionMap[s.user_id] === undefined) userSectionMap[s.user_id] = s.section_id;
+      });
+      var activeIds = Object.keys(userSectionMap);
       if (!activeIds.length) { resultsEl.innerHTML = '<div class="chat-empty">لا يوجد مشتركون نشطون في شعبتك حاليًا.</div>'; return; }
       var profMap = await _apGetProfilesMap(activeIds);
       resultsEl.innerHTML = activeIds.map(function(uid) {
         var prof  = profMap[uid] || {};
         var label = prof.full_name || prof.email || uid;
-        return _dmPickRowHTML(uid, label, prof.email || '');
+        return _dmPickRowHTML(uid, label, prof.email || '', '', userSectionMap[uid]);
       }).join('');
     } catch(e) {
+
       console.error('[DM] candidates error:', e && e.message);
       resultsEl.innerHTML = '<div class="chat-empty">' + _dmFriendlyError() + '</div>';
     }
@@ -17481,7 +17494,7 @@ self.addEventListener('fetch', function(e) {
     if (kind === 'image') {
       return '<img class="dm2-att-image" data-att-img="' + _dmEsc(att.file_path) + '" src="' + _DM_IMG_PLACEHOLDER + '" alt="' + _dmEsc(name) + '" ' + onclickAttr + '>';
     }
-    var icon = kind === 'pdf' ? '📄' : '📎';
+    var icon = kind === 'pdf' ? '📄' : (kind === 'video' ? '🎬' : (kind === 'audio' ? '🎵' : '📎'));
     return '<div class="dm2-att-file" ' + onclickAttr + '>' +
       '<span class="dm2-att-file-icon">' + icon + '</span>' +
       '<div class="dm2-att-file-info">' +
@@ -17599,7 +17612,7 @@ self.addEventListener('fetch', function(e) {
       return;
     }
     if (file.size > DM_MAX_FILE_SIZE) {
-      if (window._showToast) _showToast('❌ حجم الملف كبير جداً (الحد الأقصى 25MB)', 'error');
+      if (window._showToast) _showToast('❌ حجم الملف كبير جداً (الحد الأقصى 50MB)', 'error');
       ev.target.value = '';
       return;
     }
@@ -17612,7 +17625,7 @@ self.addEventListener('fetch', function(e) {
       var url = URL.createObjectURL(file);
       preview = '<img src="' + url + '" alt="">';
     } else {
-      preview = '<span class="dm2-att-file-icon">' + (kind === 'pdf' ? '📄' : '📎') + '</span>';
+      preview = '<span class="dm2-att-file-icon">' + (kind === 'pdf' ? '📄' : (kind === 'video' ? '🎬' : (kind === 'audio' ? '🎵' : '📎'))) + '</span>';
     }
     wrap.innerHTML = '<div class="dm2-att-pending">' + preview +
       '<div class="dm2-att-file-info"><span class="dm2-att-file-name">' + _dmEsc(file.name) + '</span>' +
