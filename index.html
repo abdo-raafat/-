@@ -3838,7 +3838,16 @@ async function _renderDynamicSectionPage(sec) {
       var childAccess = window.getDetailedSectionAccess
         ? await window.getDetailedSectionAccess(child.id)
         : { state: gate ? 'locked' : 'free' };
-      return buildSubSectionCard(child, childAccess.state === 'locked');
+      // ✅ FIX (Aug 2026 — بلاغ الطلبة): لما الابن ده هو نفسه "الشعبة" اللي عليها
+      // requires_subscription = true (يعني childAccess.anchor.id === child.id)، ماينفعش
+      // نقفل الكارت بتاعه بالكامل من بره — لإن ده كان بيمنع أي حد (زائر/مش مشترك)
+      // من الدخول أصلاً، فيفقد قدرته يشوف "الفصل الأول" المجاني اللي جوه الشعبة.
+      // القفل الحقيقي المفروض يبقى *جوه* الشعبة على مستوى المحتوى/الفصول، مش على
+      // باب الدخول نفسه. فبنسمح دايماً بالدخول للشعبة (anchor)، والقفل يبان صح
+      // جوه لما يوصل لحاجة خارج الفصل المجاني.
+      var isAnchorItself = childAccess.anchor && Number(childAccess.anchor.id) === Number(child.id);
+      var lockCard = childAccess.state === 'locked' && !isAnchorItself;
+      return buildSubSectionCard(child, lockCard);
     }));
     var gridHtml = childCards.join('');
     document.getElementById('dynamic-section-grid').innerHTML = gridHtml;
@@ -5818,8 +5827,14 @@ const ResourceViewer = (function() {
           <span style="font-size:.75rem;color:#999;direction:ltr;word-break:break-all;flex:1;max-width:55%" id="rv-url-display" class="admin-only-el" style="display:none">${escHtml(url.length > 60 ? url.substring(0,57)+'...' : url)}</span>
           <div class="rv-footer-btns">
             ${(type !== 'fallback' && type !== 'invalid') ? `<button class="rv-btn rv-btn-outline" onclick="ResourceViewer._reload()">🔄 إعادة التحميل</button>` : ''}
+            ${(type === 'html' || type === 'external_link' || type === 'fallback') ? `<button class="rv-btn rv-btn-outline" onclick="(window._origWindowOpen||window.open)('${escUrl(url)}','_blank','noopener')">↗️ افتح في تبويب جديد</button>` : ''}
             ${(type === 'pdf' || type === 'gdrive_pdf' || type === 'image' || type === 'audio' || type === 'video_direct') ? `<button class="rv-btn rv-btn-primary admin-only-el" onclick="if(window._isAdminUser){var a=document.createElement('a');a.href='${escUrl(url)}';a.setAttribute('download','');document.body.appendChild(a);a.click();document.body.removeChild(a);}" style="display:none">&#11015;&#65039; تحميل (أدمن)</button>` : ''}
           </div>
+          <!-- ✅ FIX (Aug 2026 — كويز "مفيش حاجة بتظهر"): بعض منصات الكويز/الاستبيانات
+               ترفض الظهور جوه iframe (X-Frame-Options) بصمت تام — الـ iframe يبعت
+               onload عادي فمفيش أي رسالة خطأ تظهر، وكل اللي الطالب شايفه شاشة فاضية.
+               الزرار فوق "↗️ افتح في تبويب جديد" دايمًا ظاهر لأي نوع محتوى بيتفتح
+               بطريقة iframe، فيبقى للطالب مخرج مضمون دايمًا حتى لو الـ iframe فشل بصمت. -->
         </div>
       </div>`;
 
@@ -6068,10 +6083,23 @@ async function openResource(url, title, resourceType) {
     // وضع النموذج داخل iframe sandbox كان يمنع بعض عمليات التنقل/عرض النتيجة
     // خصوصًا على الموبايل. لذلك نفتح الامتحان في تبويب مستقل مع نفس الرابط
     // الأصلي، بدون تغيير رابط الامتحان أو بياناته.
+    // ✅ FIX (Aug 2026 — بلاغ "الكويز بدوس عليه ومفيش حاجة بتظهر"): الأدمن panel
+    // مفيهوش خيار "كويز/اختبار" ضمن أنواع المحتوى (فيديو/نص/رابط/PDF فقط)، فأي
+    // كويز بيتضاف بيتسجل بنوع 'link' مش 'form'. النوع 'link' كان بيروح لمسار تاني
+    // (فتح داخل iframe عبر ResourceViewer) وده بالظبط اللي بيفشل بصمت لو منصة
+    // الكويز بترفض الـ embedding (X-Frame-Options) — الـ iframe بيحمّل "onload"
+    // عادي (فمفيش رسالة خطأ) لكن يفضل فاضي تمامًا فيبان للطالب إنه "مفيش حاجة
+    // بتظهر". الحل: نوسّع شرط الفتح في تبويب مستقل (نفس مسار الفورمز الموثوق)
+    // ليشمل أي رابط شكله كويز/اختبار برضو، مش بس Google Forms، مهما كان الـ
+    // resource_type المسجّل. أي رابط زي كده لازم "يخرج" من الموقع في تبويب
+    // مستقل بدل ما يتحط جوه iframe ممكن يترفض بصمت.
     if (
-      rt === 'form' ||
+      rt === 'form' || rt === 'quiz' || rt === 'exam' || rt === 'test' ||
       /(^|\.)forms\.gle\//i.test(url) ||
-      /docs\.google\.com\/forms\//i.test(url)
+      /docs\.google\.com\/forms\//i.test(url) ||
+      /forms\.office\.com/i.test(url) ||
+      /quizizz\.com|kahoot\.it|classroom\.google\.com/i.test(url) ||
+      /كويز|quiz|أسئلة|اسئلة|امتحان|اختبار/.test(title || '')
     ) {
       var formLink = document.createElement('a');
       formLink.href = url;
@@ -8112,7 +8140,14 @@ window.checkBanStatus = async function(email) {
               <option value="text">📝 نص / شرح</option>
               <option value="link">🔗 رابط</option>
               <option value="pdf">📄 PDF</option>
+              <option value="form">📝 كويز / اختبار (Google Form أو رابط اختبار)</option>
             </select>
+            <!-- ✅ FIX (Aug 2026 — بلاغ الكويز "بدوس عليه ومفيش حاجة بتظهر"): مكانش فيه
+                 خيار مخصص للكويز، فأي كويز بيتضاف كان يتسجل غالبًا كـ "رابط" (link)،
+                 والنوع ده كان بيفتح جوه iframe (ResourceViewer) بدل ما يفتح في تبويب
+                 مستقل — ولو منصة الكويز بترفض الـ embedding يفضل الطالب شايف شاشة
+                 فاضية بدون أي رسالة خطأ. دلوقتي أي كويز بيتضاف بنوع "form" يفتح
+                 مباشرة في تبويب مستقل (نفس مسار Google Forms الموثوق أصلاً في الكود). -->
           </div>
           <div class="ap-field">
             <label class="ap-label">📌 العنوان</label>
@@ -8491,6 +8526,7 @@ function adminToggleFields() {
     bodyField.style.display = 'none';
     if (type === 'video') hint.textContent = 'للفيديو: رابط يوتيوب أو أي رابط فيديو';
     else if (type === 'pdf') hint.textContent = 'رابط مباشر لملف PDF';
+    else if (type === 'form') hint.textContent = 'رابط الكويز/الاختبار (Google Form أو أي رابط اختبار) — هيفتح دايمًا في تبويب مستقل';
     else hint.textContent = 'رابط الصفحة أو المصدر';
   }
 }
