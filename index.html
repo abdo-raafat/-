@@ -17290,7 +17290,13 @@ self.addEventListener('fetch', function(e) {
       if (!otherUserId && !knownRoomId) { bodyEl.innerHTML = '<div class="chat-empty">تعذّر تحديد المستخدم المطلوب مراسلته.</div>'; return; }
 
       var room;
-      if (otherUserId) {
+      // ✅ لو رقم الغرفة معروف بالفعل (بنفتح محادثة موجودة من قائمة المحادثات)،
+      // نستخدمه مباشرة من غير ما ننده على get_or_create_direct_room — لأن
+      // الدالة دي بترفض أي نداء من غير section_id حتى لو الغرفة موجودة فعلاً،
+      // وده كان بيسبب "🔒 غير مسموح بهذه المحادثة" مع كل محادثة قديمة.
+      if (knownRoomId) {
+        room = { id: knownRoomId };
+      } else if (otherUserId) {
         var roomRes = await db.rpc('get_or_create_direct_room', { p_other_user_id: otherUserId, p_section_id: window._dmSectionId || null });
         if (roomRes.error || !roomRes.data) {
           console.error('[DM] get_or_create_direct_room error:', roomRes.error && roomRes.error.message);
@@ -17299,7 +17305,8 @@ self.addEventListener('fetch', function(e) {
         }
         room = roomRes.data;
       } else {
-        room = { id: knownRoomId };
+        bodyEl.innerHTML = '<div class="chat-empty">تعذّر تحديد المحادثة المطلوبة.</div>';
+        return;
       }
       _dmRoom = room;
 
