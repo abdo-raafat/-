@@ -12232,6 +12232,19 @@ var NativePDFViewer = (function() {
     try {
       var lib=await _loadPdfJs();
       if(!S)return;
+      // ✅ FIX الجذري (الحروف متراكبة/متلاصقة جوه الكلمة نفسها — "H storta l"
+      // بدل "Historical"): الفحص بتاع cMapUrl/standardFontDataUrl مفيدة لكنها
+      // مش كانت السبب الأساسي هنا. السبب الحقيقي: PDF.js افتراضيًا (disableFontFace:
+      // false) بيحوّل الخط المضمّن جوه الملف لصيغة OpenType ويسلّمه للمتصفح
+      // يرسمه عبر @font-face (أسرع، لكن بيفشل بصمت مع خطوط مضمّنة/مجزّأة (subset)
+      // غريبة زي اللي بتطلع من CamScanner/برامج OCR). لما التحويل يفشل، المتصفح
+      // بيستبدل بخط نظام بديل عرض حروفه (glyph widths) مختلف، لكن PDF.js لسه
+      // بيحسب المسافة بين كل حرف والتاني بناءً على عرض الخط *الأصلي* من ملف
+      // الـPDF — فالحروف بتتراكب فوق بعضها تراكمياً كل ما نتقدم في الكلمة،
+      // وده بالظبط الشكل اللي وصفته. الحل: disableFontFace:true يخلي PDF.js
+      // يرسم الحروف بمحرك الخطوط الداخلي بتاعه (مسارات vector مباشرة على
+      // الـcanvas) من نفس بيانات الخط المضمّن، فالعرض والرسم بيبقوا متطابقين
+      // دايمًا مهما كان الخط غريب أو تالف جزئيًا.
       var loadingTask=lib.getDocument({
         url:finalUrl,
         useWorkerFetch:true,
@@ -12239,7 +12252,8 @@ var NativePDFViewer = (function() {
         enableXfa:false,
         cMapUrl:PDFJS_CMAPS,
         cMapPacked:true,
-        standardFontDataUrl:PDFJS_FONTS
+        standardFontDataUrl:PDFJS_FONTS,
+        disableFontFace:true
       });
       var pdf=await loadingTask.promise;
       if(!S){try{await pdf.destroy();}catch(e){}return;}
@@ -12363,6 +12377,13 @@ var NativePDFViewer = (function() {
 
   // ==================== بناء عناصر الصفحات (Placeholders) ====================
   function _buildPlaceholders() {
+    // ✅ FIX (رسالة "جاري فتح ملف PDF..." فاضلة عالقة فوق الصفحة الأولى):
+    // wrapper كان بيتبني أول مرة برسالة تحميل ثابتة (سطر فتح الـmodal)، ولما
+    // الملف يخلص تحميل كانت هذه الدالة بتـ appendChild لصفحات الملف الحقيقية
+    // *بجانب* رسالة التحميل القديمة بدل ما تمسحها الأول — فتفضل ظاهرة فوق
+    // الصفحة الأولى دايمًا. الحل: نمسح محتوى الـwrapper بالكامل هنا قبل
+    // ما نبني صفحات الملف الحقيقية.
+    S.wrapper.innerHTML = '';
     var frag = document.createDocumentFragment();
     var containerW = Math.max(280, S.wrapper.clientWidth - 24);
 
