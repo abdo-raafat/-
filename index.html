@@ -3576,8 +3576,9 @@ function _paintHomeSections(sections) {
   };
   const grouped = {};
   sections.forEach(sec => {
+    const _t = String(sec.title || '').trim();
     const cat = (
-      String(sec.title || '').trim() === 'تنسيق المعاهد الفنية الصحية'
+      (_t === 'تنسيق المعاهد الفنية الصحية' || _t === 'نتيجة المعاهد الفنية الصحية')
         ? 'المراحل الدراسية'
         : (sec.category || TYPE_GROUP_MAP[sec.type] || 'أخرى')
     );
@@ -3593,11 +3594,20 @@ function _paintHomeSections(sections) {
   });
   let html = '';
   for (const cat of sortedGroups) {
-    const items = grouped[cat].slice().sort((a,b) => {
+    const _rawItems = grouped[cat];
+    // ✅ نحسب ترتيب "الفرقة الثانية" الفعلي في نفس المجموعة، عشان نحط
+    // "نتيجة المعاهد الفنية الصحية" فوراً بعدها مباشرة — بغض النظر عن
+    // الـ category أو display_order المُخزَّن لها في قاعدة البيانات.
+    const _secondYearSec = _rawItems.find(s => String(s.title || '').trim() === 'الفرقة الثانية');
+    const _secondYearOrder = _secondYearSec ? Number(_secondYearSec.display_order || 0) : null;
+    const items = _rawItems.slice().sort((a,b) => {
       const rank = (s) => {
         const t = String(s.title || '').trim();
         if (t === 'تنسيق المعاهد الفنية الصحية') return -1000000;
         if (t === 'ما بعد الثانوية') return -999999;
+        if (t === 'نتيجة المعاهد الفنية الصحية') {
+          return _secondYearOrder !== null ? (_secondYearOrder + 0.5) : Number(s.display_order || 0);
+        }
         return Number(s.display_order || 0);
       };
       return rank(a) - rank(b);
