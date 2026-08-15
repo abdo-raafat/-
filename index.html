@@ -3748,12 +3748,17 @@ async function _renderDynamicSectionPage(sec) {
   if (chatEntryEl) chatEntryEl.innerHTML = '';
   if (window.getChatEligibility && sec && sec.id) {
     window.getChatEligibility(sec.id).then(function(elig) {
-      if (elig && elig.allowed && chatEntryEl && document.getElementById('dynamic-section-title')) {
-        chatEntryEl.innerHTML = window._renderChatEntryButtonHTML(elig.anchor);
+      if (elig && elig.anchor && chatEntryEl && document.getElementById('dynamic-section-title')) {
+        // ✅ FIX (Aug 2026 — طلب المستخدم): محادثة الشعبة الجماعية تظل مقفولة إلا
+        // لمن عنده اشتراك نشط (elig.allowed)، لكن زر "راسل أدمن الشعبة" لازم يفضل
+        // موجوداً دايماً طول ما القسم عنده anchor صحيح — حتى لو الطالب لسه مش
+        // مشترك أو اشتراكه منتهي/معلّق — عشان يقدر يسأل الأدمن قبل/أثناء الاشتراك.
+        chatEntryEl.innerHTML = elig.allowed ? window._renderChatEntryButtonHTML(elig.anchor) : '';
         // ✅ Phase C — زر "راسل أدمن الشعبة" (محادثة ثنائية، منفصلة عن محادثة
-        // الشعبة الجماعية أعلاه). يظهر فقط بنفس شرط أهلية الشات (elig.allowed)،
-        // ثم يتحقق داخليًا مرة أخرى عبر RPC آمنة (get_section_admins_for_messaging)
-        // قبل إظهار أي بيانات عن الأدمن. لا يظهر إطلاقاً لو رجع صفر نتائج.
+        // الشعبة الجماعية أعلاه). يظهر طالما القسم عنده anchor (يتطلب اشتراكاً)،
+        // بغض النظر عن حالة الاشتراك نفسها، ثم يتحقق داخليًا مرة أخرى عبر RPC آمنة
+        // (get_section_admins_for_messaging) قبل إظهار أي بيانات عن الأدمن.
+        // لا يظهر إطلاقاً لو رجع صفر نتائج (مفيش أدمن مُعيَّن للشعبة أصلاً).
         if (typeof window._renderMessageAdminEntry === 'function') {
           window._renderMessageAdminEntry(elig.anchor, chatEntryEl);
         }
@@ -7603,7 +7608,7 @@ window.checkBanStatus = async function(email) {
       <button class="ap-nav-btn" onclick="apSwitchTab('monthlystats')" id="ap-tab-monthlystats" role="tab">📈 إحصائيات شهرية</button>
       <button class="ap-nav-btn" onclick="apSwitchTab('usermgmt')"  id="ap-tab-usermgmt"  role="tab">👥 إدارة المستخدمين</button>
       <button class="ap-nav-btn" onclick="apSwitchTab('users')"     id="ap-tab-users"     role="tab">🔒 الحظر</button>
-      <button class="ap-nav-btn" onclick="apSwitchTab('messages')"  id="ap-tab-messages"  role="tab">💬 Messages</button>
+      <button class="ap-nav-btn" onclick="apSwitchTab('messages')"  id="ap-tab-messages"  role="tab">💬 الرسائل</button>
       <button class="ap-nav-btn" onclick="apSwitchTab('content')"   id="ap-tab-content"   role="tab">➕ المحتوى</button>
       <button class="ap-nav-btn" onclick="apSwitchTab('sectionchat')" id="ap-tab-sectionchat" role="tab">💬 محادثة الشعبة</button>
       <button class="ap-nav-btn" onclick="apSwitchTab('branchadmins')" id="ap-tab-branchadmins" role="tab">🛡️ أدمن الشعب</button>
@@ -9837,6 +9842,23 @@ async function apLoadDivisionSubs() {
     }
     var { data, error } = await query;
     if (error) throw error;
+    // ✅ FIX (Aug 2026 — طلب المستخدم): أدمن الشعبة (المُعيَّن عبر section_admins على
+    // نفس الشعبة) ما ينفعش يظهر في جدول اشتراكات الشعبة — هو أصلاً عنده دخول كامل
+    // بدون اشتراك، فظهوره هنا بحالة/تاريخ بداية/تاريخ انتهاء كان مربكاً وغير صحيح.
+    // بنجيب كل section_admins النشطين على نفس الشعب الظاهرة في النتيجة، ونستبعد أي
+    // صف (user_id + section_id) يطابق أدمن مُعيَّن على نفس الشعبة تحديداً — مجرد
+    // إخفاء بالعرض فقط، مفيش أي حذف أو تعديل على صف subscriptions نفسه بقاعدة البيانات.
+    if (data && data.length) {
+      try {
+        var _dsSecIds = Array.from(new Set(data.map(function(r){ return r.section_id; }).filter(function(v){ return v !== null && v !== undefined; })));
+        if (_dsSecIds.length) {
+          var _dsAdminRes = await window.supabase.from('section_admins').select('user_id, section_id').eq('is_active', true).in('section_id', _dsSecIds);
+          var _dsAdminSet = {};
+          (_dsAdminRes.data || []).forEach(function(a){ _dsAdminSet[a.user_id + '|' + a.section_id] = true; });
+          data = data.filter(function(r){ return !_dsAdminSet[r.user_id + '|' + r.section_id]; });
+        }
+      } catch(admErr) { console.warn('[apLoadDivisionSubs] section_admins filter skipped:', admErr && admErr.message); }
+    }
     if (!data || data.length === 0) {
       el.innerHTML = '<div class="ap-empty"><div class="ap-empty-icon">📭</div>لا توجد اشتراكات</div>';
       return;
