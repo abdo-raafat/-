@@ -3313,16 +3313,20 @@ async function loadSectionContent(sectionId) {
   return fetchPromise;
 }
 
-// ✅ مصدر الترتيب الوحيد لعرض section_resources هو عمود sort_order في قاعدة البيانات.
-// العمود ده بيتحسب تلقائيًا بواسطة PostgreSQL trigger (انظر SQL أسفل الملف) — الـ frontend
-// ممنوع يعيد اختراع الترتيب من title/resource_type، وممنوع يعتمد على id أو created_at
-// كترتيب أساسي. الترتيب الوحيد المسموح به هنا هو: sort_order ASC ثم id ASC (tie-breaker ثابت).
+// ✅ مصدر الترتيب لعرض section_resources هو عمودين في قاعدة البيانات:
+// 1) sort_order — الفئة، بيتحسب تلقائيًا بواسطة PostgreSQL trigger (شابتر/فيديو/صوت/ملخص/كويز)
+//    ولا يجب لمسه يدويًا لأن أي UPDATE بيعيد حسابه تلقائيًا من العنوان/النوع.
+// 2) sub_order — ترتيب يدوي بالكامل جوه نفس الفئة، التريجر لا يلمسه أبداً (✅ Aug 2026).
+// الترتيب النهائي: sort_order ASC → sub_order ASC → id ASC (tie-breaker ثابت أخير).
 function _resourceDisplayComparator(a, b) {
   var sa = Number(a && a.sort_order);
   var sb = Number(b && b.sort_order);
   if (!Number.isFinite(sa)) sa = 999999; // صف بدون sort_order يروح آخر القائمة بدل ما يكسر الترتيب
   if (!Number.isFinite(sb)) sb = 999999;
   if (sa !== sb) return sa - sb;
+  var suba = Number(a && a.sub_order); if (!Number.isFinite(suba)) suba = 0;
+  var subb = Number(b && b.sub_order); if (!Number.isFinite(subb)) subb = 0;
+  if (suba !== subb) return suba - subb;
   return Number(a && a.id || 0) - Number(b && b.id || 0);
 }
 function _sortResourcesForDisplay(list) {
@@ -3330,13 +3334,23 @@ function _sortResourcesForDisplay(list) {
   return rows.sort(function(a, b){ return _resourceDisplayComparator(a, b); });
 }
 
+// ✅ FIX (Aug 2026): section_resources بيتعدّل ترتيبها (sort_order) أحيانًا مباشرة
+// من جدول Supabase (بدون المرور بواجهة الأدمن في الموقع)، فمفيش أي حدث برمجي
+// يقدر يمسح الكاش وقتها. عشان الترتيب يظهر بسرعة معقولة من غير ما نحمّل قاعدة
+// البيانات بملايين الطلبات المكررة (الموقع بحجم كبير جدًا من الزوار)، بنستخدم
+// كاش قصير المدة (30 ثانية) بدل الكاش الطويل القديم (10 دقايق) وبدل إلغاء
+// الكاش خالص. أي طلب لنفس القسم خلال آخر 30 ثانية بياخد من الذاكرة فورًا
+// بدون أي طلب شبكة جديد؛ بعد 30 ثانية بيتجدد تلقائيًا من القاعدة.
+var _RESOURCES_CACHE_TTL_MS = 30000;
+
 async function loadSectionResources(sectionId) {
   var key = _cacheKey('res', sectionId);
 
-  if (window._dataCache.resources[key] !== undefined) {
-    console.log('[DEBUG loadSectionResources] Cache hit → sectionId=' + sectionId + ', rows=' + (window._dataCache.resources[key] || []).length);
-    window._dataCache.resources[key] = _sortResourcesForDisplay(window._dataCache.resources[key]);
-    return window._dataCache.resources[key];
+  var cached = window._dataCache.resources[key];
+  if (cached !== undefined && cached._fetchedAt !== undefined &&
+      (Date.now() - cached._fetchedAt) < _RESOURCES_CACHE_TTL_MS) {
+    console.log('[DEBUG loadSectionResources] Cache hit (fresh, age=' + Math.round((Date.now()-cached._fetchedAt)/1000) + 's) → sectionId=' + sectionId + ', rows=' + (cached.rows || []).length);
+    return cached.rows;
   }
   if (window._dataCache._pending[key]) {
     return window._dataCache._pending[key];
@@ -3347,17 +3361,17 @@ async function loadSectionResources(sectionId) {
       var db = await _waitForSupabase();
       if (!db) {
         console.error('[DEBUG loadSectionResources] ❌ Supabase client غير جاهز');
-        window._dataCache.resources[key] = []; return [];
+        window._dataCache.resources[key] = { rows: [], _fetchedAt: Date.now() }; return [];
       }
       const safeId = toValidId(sectionId);
       console.log('[DEBUG loadSectionResources] sectionId=' + sectionId + ' → safeId=' + safeId);
       if (safeId === null) {
         console.error('[DEBUG loadSectionResources] ❌ safeId=null — تحقق من نوع الـ ID');
-        window._dataCache.resources[key] = []; return [];
+        window._dataCache.resources[key] = { rows: [], _fetchedAt: Date.now() }; return [];
       }
       // ✅ استخدام Retry تلقائي
       const { data, error } = await _fetchWithRetry(function() {
-        return db.from('section_resources').select('*').eq('section_id', safeId).order('sort_order', { ascending: true }).order('id', { ascending: true });
+        return db.from('section_resources').select('*').eq('section_id', safeId).order('sort_order', { ascending: true }).order('sub_order', { ascending: true }).order('id', { ascending: true });
       });
       if (error) {
         console.error('[DEBUG loadSectionResources] ❌ خطأ Supabase:', error.message, '| code:', error.code);
@@ -3368,15 +3382,19 @@ async function loadSectionResources(sectionId) {
             'DROP POLICY IF EXISTS "resources_read_all" ON section_resources;\n' +
             'CREATE POLICY "resources_read_all" ON section_resources FOR SELECT USING (true);');
         }
-        window._dataCache.resources[key] = []; return [];
+        // ✅ لا نخزّن خطأ مؤقت كـ "طازة" — نمسح الكاش القديم لهذا المفتاح
+        // عشان أول طلب جاي (حتى لو خلال أقل من 30 ثانية) يعيد المحاولة
+        // بدل ما يفضل يرجّع [] لمدة 30 ثانية كاملة بسبب خطأ شبكة عابر.
+        delete window._dataCache.resources[key];
+        return [];
       }
       const result = _sortResourcesForDisplay(data || []);
       console.log('[DEBUG loadSectionResources] ✅ sectionId=' + sectionId + ' → ' + result.length + ' مورد');
-      window._dataCache.resources[key] = result;
+      window._dataCache.resources[key] = { rows: result, _fetchedAt: Date.now() };
       return result;
     } catch (err) {
       console.error('[DEBUG loadSectionResources] ❌ استثناء:', err?.message || String(err));
-      window._dataCache.resources[key] = [];
+      delete window._dataCache.resources[key];
       return [];
     } finally {
       delete window._dataCache._pending[key];
