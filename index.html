@@ -10953,18 +10953,11 @@ async function smSave() {
   };
   if (!id) {
     payload.parent_id = _smCurrentParentId();
-    // ── تصنيف تلقائي لمستوى القسم (فرقة/ترم/شعبة/محتوى) بناءً على مستوى الأب —
-    // يضمن إن أي قسم جديد يتصنّف صح من أول لحظة، وبالتالي الحماية في
-    // section_admins (لا يُسمح بتعيين أدمن إلا على "شعبة") تفضل موثوقة دايماً. ──
-    if (!payload.parent_id) {
-      payload.section_type = 'grade';
-    } else {
-      var parentSec = (_smCache || []).find(function(x){ return x.id === payload.parent_id; });
-      var parentType = parentSec ? parentSec.section_type : null;
-      payload.section_type = parentType === 'grade' ? 'term'
-        : parentType === 'term' ? 'branch'
-        : 'content'; // أب = شعبة أو محتوى، أو غير معروف → اعتبره محتوى فرعي بأمان
-    }
+    // ✅ FIX (Aug 2026): تم حذف كود "section_type" اللي كان بيحاول يحفظ في عمود
+    // غير موجود أصلاً في جدول site_sections (العمود الحقيقي اسمه "type" بس،
+    // ومُستخدَم بالفعل فوق لتحديد "دورة" أو لأ). الكود القديم كان بيوقف حفظ
+    // أي قسم جديد بالكامل (فرقة/ترم/شعبة/محتوى) برسالة:
+    // "Could not find the 'section_type' column of 'site_sections' in the schema cache"
   }
   // ── أدمن الشعبة: حاجز واجهة إضافي — الحفظ فقط داخل نطاق شعبته (RLS هي الحماية الحقيقية) ──
   var targetScopeId = id ? Number(id) : payload.parent_id;
