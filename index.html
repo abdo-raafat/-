@@ -5786,6 +5786,26 @@ const ResourceViewer = (function() {
     var isValidUrl = /^https?:\/\//i.test(url) || url.indexOf('/') === 0 || url.indexOf('supabase') !== -1;
     const type = isValidUrl ? detectType(url, resourceType) : 'invalid';
 
+    // ✅ FIX (بلاغ "بيعوق اووي... لما بدوس X بيظهرلي الملف عادي"): كان بيتفتح
+    // rv-overlay خارجي مالوش شغلانة إلا إنه يعرض سبنر "جاري فتح الملف..."،
+    // وبعده بـ50ms يتنادى NativePDFViewer.open() اللي بيبني overlay تاني
+    // منفصل بالكامل (له header/toolbar خاص بيه فعلاً — صفحات/زوم/بحث). ده
+    // معناه طبقتين فوق بعض؛ وطالما NativePDFViewer.open() بينتظر أول حاجة
+    // signed URL (ممكن ياخد وقت على نت بطيء)، يفضل المستخدم شايف سبنر
+    // rv-overlay القديم واقف في مكانه، وبيحس إن الملف "معلّق"، لحد ما يقفل
+    // الـrv-overlay يدويًا (X) فيبان اللي وراه لو كان خلص تحميل فعلاً. الحل:
+    // ملفات PDF (رابط مباشر أو Google Drive) بتروح لـNativePDFViewer على
+    // طول من غير أي طبقة وسيطة خالص — فمفيش غير سبنر واحد طول الوقت، وأول
+    // ما يخلص التحميل يظهر مباشرة بدون أي تدخل يدوي.
+    if (type === 'pdf' || type === 'gdrive_pdf') {
+      var pdfUrl = (type === 'gdrive_pdf') ? toEmbedUrl(url, 'gdrive_pdf') : url;
+      Promise.resolve(NativePDFViewer.open(pdfUrl, title)).catch(function(err) {
+        console.error('[ResourceViewer pdf] تعذر فتح الملف:', err);
+        if (typeof _showToast === 'function') _showToast('❌ تعذر فتح ملف PDF، حاول مرة أخرى', 'error');
+      });
+      return;
+    }
+
     const overlay = document.createElement('div');
     overlay.className = 'rv-overlay';
     overlay.id = 'rv-overlay';
