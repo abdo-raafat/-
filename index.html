@@ -3604,6 +3604,7 @@ function _paintHomeSections(sections) {
       const rank = (s) => {
         const t = String(s.title || '').trim();
         if (t === 'تنسيق المعاهد الفنية الصحية') return -1000000;
+        if (t === 'تجهيز وتأهيل قبل الدراسة') return -999999.5;
         if (t === 'ما بعد الثانوية') return -999999;
         if (t === 'نتيجة المعاهد الفنية الصحية') {
           return _secondYearOrder !== null ? (_secondYearOrder + 0.5) : Number(s.display_order || 0);
@@ -7700,7 +7701,8 @@ window.checkBanStatus = async function(email) {
           <div style="display:flex;gap:8px;justify-content:flex-start;flex-wrap:wrap;margin-top:14px;">
             <button class="ap-btn ap-btn-primary" id="ap-notif-send-btn" onclick="apSendNotifications()">🔔 إرسال الإشعار</button>
             <button class="ap-btn ap-btn-ghost" onclick="apLoadNotificationsPanel()">🔄 تحديث</button>
-            <button class="ap-btn ap-btn-ghost" onclick="printNotificationsMigration(); if(typeof _showToast==='function'){_showToast('✅ تم نسخ سكريبت الإصلاح — الصقه في Supabase → SQL Editor وشغّله مرة واحدة','success');}else{alert('تم نسخ سكريبت الإصلاح، الصقه في Supabase SQL Editor وشغّله مرة واحدة');}">🛠️ نسخ سكريبت إصلاح الإشعارات</button>
+            <button class="ap-btn ap-btn-primary" onclick="window._runAutoFixNotifications && window._runAutoFixNotifications();">🔧 تشغيل الإصلاح تلقائيًا الآن</button>
+            <button class="ap-btn ap-btn-ghost" onclick="printNotificationsMigration(); if(typeof _showToast==='function'){_showToast('✅ تم نسخ سكريبت الإصلاح — الصقه في Supabase → SQL Editor وشغّله مرة واحدة','success');}else{alert('تم نسخ سكريبت الإصلاح، الصقه في Supabase SQL Editor وشغّله مرة واحدة');}">🛠️ نسخ سكريبت إصلاح الإشعارات (يدوي)</button>
           </div>
           <div class="ap-empty" style="margin-top:8px;font-size:.72rem;">إذا ظهر خطأ "Could not find the 'message' column" اضغط الزرار ده، وابعت السكريبت المنسوخ لمرة واحدة فى Supabase (Dashboard → SQL Editor → New query → Paste → Run). لأسباب أمان، تعديل بنية الجدول (ALTER TABLE) لازم يتم من هناك، مش من المنصة مباشرة.</div>
           <div id="ap-notif-result" style="margin-top:12px;"></div>
@@ -18167,6 +18169,37 @@ function _qnFallbackCopy(text, done, fail) {
 // SQL MIGRATION — Notifications: Super Admin + Section Admin
 // لا يتم تشغيل SQL تلقائياً من المتصفح. اطبع migration وشغّله مرة واحدة في Supabase SQL Editor.
 // ============================================================
+// ============================================================
+// ✅ إصلاح تلقائي فوري من الموقع نفسه — بينده على دالة SQL جاهزة
+// (admin_fix_notifications_schema) اتعملت مرة واحدة بس مسبقًا في
+// Supabase. الدالة نفسها بتتأكد إن المستخدم أدمن حقيقي قبل أي تعديل،
+// فمفيش خطورة إن أي حد يستخدمها غير الأدمن.
+// ============================================================
+window._runAutoFixNotifications = async function(){
+  if (!window.supabase) { if (typeof _showToast==='function') _showToast('تعذّر الاتصال بقاعدة البيانات', 'error'); return; }
+  if (typeof _showToast==='function') _showToast('⏳ جاري تشغيل الإصلاح...', 'info');
+  try {
+    var res = await window.supabase.rpc('admin_fix_notifications_schema');
+    if (res.error) {
+      console.error('[NotifAutoFix] error:', res.error.message);
+      if (typeof _showToast==='function') {
+        _showToast('❌ فشل الإصلاح التلقائي: ' + res.error.message + ' — استخدم زرار النسخ اليدوي بدلاً منه', 'error');
+      } else {
+        alert('فشل الإصلاح التلقائي: ' + res.error.message);
+      }
+      return;
+    }
+    if (typeof _showToast==='function') {
+      _showToast('✅ تم إصلاح نظام الإشعارات تلقائيًا بنجاح', 'success');
+    } else {
+      alert('تم إصلاح نظام الإشعارات بنجاح');
+    }
+  } catch(e) {
+    console.error('[NotifAutoFix] exception:', e && e.message);
+    if (typeof _showToast==='function') _showToast('❌ حصل خطأ غير متوقع أثناء الإصلاح', 'error');
+  }
+};
+
 window.printNotificationsMigration = function(){
   var sql = `
 -- NOTIFICATIONS ADDITIVE MIGRATION — بدون DROP TABLE / بدون حذف بيانات
