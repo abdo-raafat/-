@@ -18532,8 +18532,7 @@ window.showQuizResultNotice = function(container){
       e.preventDefault();
     }, true);
   });
-
-  // منع سحب الصور/الفيديو (بيصعّب "حفظ الصورة باسم" بالسحب)
+  // منع سحب الصور/الفيديو
   document.addEventListener('dragstart', function(e){
     var tag = e.target && e.target.tagName;
     if (tag === 'IMG' || tag === 'VIDEO') e.preventDefault();
@@ -18548,6 +18547,20 @@ window.showQuizResultNotice = function(container){
     if (ctrlOrCmd && (k === 'p' || k === 's' || k === 'u')) { e.preventDefault(); return; }
   }, true);
 })();
+</script>
+
+<script>
+if ("serviceWorker" in navigator) {
+    window.addEventListener("load", function () {
+        navigator.serviceWorker.register("./service-worker.js")
+            .then(function (registration) {
+                console.log("Service Worker registered:", registration.scope);
+            })
+            .catch(function (error) {
+                console.error("Service Worker registration failed:", error);
+            });
+    });
+}
 </script>
 </body>
 </html>
