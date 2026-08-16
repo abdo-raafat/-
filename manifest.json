@@ -1,0 +1,13 @@
+{
+  "name": "منصة المعاهد الفنية الصحية",
+  "short_name": "المعاهد الصحية",
+  "description": "منصة المعاهد الفنية الصحية",
+  "lang": "ar",
+  "dir": "rtl",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#ffffff",
+  "theme_color": "#ffffff"
+}
