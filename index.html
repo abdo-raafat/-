@@ -2431,6 +2431,44 @@ body.sm-open {
 }
 </style>
 <!-- Supabase loaded dynamically above -->
+<style id="__content-protection-style">
+/* ============================================================
+   ✅ نظام حماية المحتوى (رادع، مش منع مطلق — راجع الشرح اللي
+   اتقال للمستخدم: مفيش تقنية ويب تقدر تمنع سكرين شوت أو تسجيل
+   شاشة فعليًا، ده قيد نظام التشغيل مش قيد كود).
+   بيمنع: تحديد النص، السحب/حفظ الصور، الطباعة المباشرة.
+   ============================================================ */
+body {
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none; /* يمنع قائمة "نسخ/حفظ" اللي بتطلع بالضغط المطول على آيفون */
+}
+/* لازم تفضل قابلة للكتابة والتحديد الطبيعي جوه أي مربع إدخال أو بحث */
+input, textarea, [contenteditable="true"], [contenteditable=""] {
+  -webkit-user-select: text !important;
+  -moz-user-select: text !important;
+  -ms-user-select: text !important;
+  user-select: text !important;
+  -webkit-touch-callout: default !important;
+}
+img, video {
+  -webkit-user-drag: none;
+  user-drag: none;
+}
+@media print {
+  body { display: none !important; }
+}
+#__site_watermark_overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 999999;
+  pointer-events: none;
+  background-repeat: repeat;
+  opacity: 1; /* الشفافية متحكم فيها من جوه الصورة نفسها عشان تبقى خفيفة جداً */
+}
+</style>
 </head>
 <body>
 
@@ -18473,5 +18511,95 @@ window.showQuizResultNotice = function(container){
 };
 </script>
 
+<script>
+// ============================================================
+// ✅ نظام حماية المحتوى — الجزء التفاعلي (JS)
+// راجع الشرح اللي اتقال للمستخدم: ده كله "رادع" مش "منع مطلق".
+// السكرين شوت وتسجيل الشاشة مستحيل يتمنعوا من موقع ويب تقنيًا —
+// ده قيد نظام التشغيل (Android/iOS/Windows)، مش قصور في الكود.
+// اللي بيحصل هنا: منع تحديد/نسخ النص، منع كليك يمين، منع أهم
+// اختصارات لوحة المفاتيح (طباعة/حفظ/عرض المصدر/أدوات المطور)،
+// وعلامة مائية بإيميل المستخدم الحالي فوق كل صفحة (رادع نفسي +
+// وسيلة تتبّع لو أي محتوى اتسرّب).
+// ============================================================
+(function(){
+  function _isEditableTarget(el){
+    if (!el) return false;
+    var tag = (el.tagName || '').toLowerCase();
+    return tag === 'input' || tag === 'textarea' || el.isContentEditable === true;
+  }
+
+  // منع كليك يمين (عدا جوه مربعات الكتابة/البحث الطبيعية)
+  document.addEventListener('contextmenu', function(e){
+    if (_isEditableTarget(e.target)) return;
+    e.preventDefault();
+  }, true);
+
+  // منع النسخ/القص (عدا جوه مربعات الكتابة)
+  ['copy','cut'].forEach(function(evt){
+    document.addEventListener(evt, function(e){
+      if (_isEditableTarget(e.target)) return;
+      e.preventDefault();
+    }, true);
+  });
+
+  // منع سحب الصور/الفيديو (بيصعّب "حفظ الصورة باسم" بالسحب)
+  document.addEventListener('dragstart', function(e){
+    var tag = e.target && e.target.tagName;
+    if (tag === 'IMG' || tag === 'VIDEO') e.preventDefault();
+  }, true);
+
+  // منع أهم اختصارات لوحة المفاتيح المشبوهة
+  document.addEventListener('keydown', function(e){
+    var k = (e.key || '').toLowerCase();
+    var ctrlOrCmd = e.ctrlKey || e.metaKey;
+    if (e.key === 'F12') { e.preventDefault(); return; }
+    if (ctrlOrCmd && e.shiftKey && (k === 'i' || k === 'j' || k === 'c')) { e.preventDefault(); return; }
+    if (ctrlOrCmd && (k === 'p' || k === 's' || k === 'u')) { e.preventDefault(); return; }
+  }, true);
+
+  // ── العلامة المائية: إيميل المستخدم الحالي + التاريخ، متكررة بشفافية خفيفة ──
+  var _lastWatermarkEmail; // نعيد رسمها بس لما تتغيّر (تسجيل دخول/خروج)، مش كل ثانية
+  function _applyWatermark(){
+    var email = (window._currentAuthUser && window._currentAuthUser.email) || null;
+    var key = email || '__guest__';
+    if (key === _lastWatermarkEmail) return;
+    _lastWatermarkEmail = key;
+
+    var label = email || 'زائر — غير مسجل دخول';
+    var stamp = new Date().toLocaleDateString('ar-EG');
+    var text = label + '   •   ' + stamp;
+
+    var canvas = document.createElement('canvas');
+    canvas.width = 480; canvas.height = 260;
+    var ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.translate(canvas.width / 2, canvas.height / 2);
+    ctx.rotate(-28 * Math.PI / 180);
+    ctx.font = '15px Tahoma, Arial, sans-serif';
+    ctx.fillStyle = 'rgba(0,0,0,0.09)';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text, 0, 0);
+
+    var dataUrl = canvas.toDataURL('image/png');
+    var overlay = document.getElementById('__site_watermark_overlay');
+    if (!overlay) {
+      overlay = document.createElement('div');
+      overlay.id = '__site_watermark_overlay';
+      document.body.appendChild(overlay);
+    }
+    overlay.style.backgroundImage = 'url(' + dataUrl + ')';
+  }
+  // نتأكد إن body جاهز، ونراقب تغيّر حالة تسجيل الدخول كل شوية من غير
+  // ما نلمس أي كود Auth موجود أصلاً (بولّينج خفيف جداً، مش تكلفة حقيقية)
+  function _startWatermarkWatcher(){
+    _applyWatermark();
+    setInterval(_applyWatermark, 4000);
+  }
+  if (document.body) { _startWatermarkWatcher(); }
+  else { document.addEventListener('DOMContentLoaded', _startWatermarkWatcher); }
+})();
+</script>
 </body>
 </html>
