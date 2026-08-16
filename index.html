@@ -2460,14 +2460,6 @@ img, video {
 @media print {
   body { display: none !important; }
 }
-#__site_watermark_overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 999999;
-  pointer-events: none;
-  background-repeat: repeat;
-  opacity: 1; /* الشفافية متحكم فيها من جوه الصورة نفسها عشان تبقى خفيفة جداً */
-}
 </style>
 </head>
 <body>
@@ -18517,10 +18509,8 @@ window.showQuizResultNotice = function(container){
 // راجع الشرح اللي اتقال للمستخدم: ده كله "رادع" مش "منع مطلق".
 // السكرين شوت وتسجيل الشاشة مستحيل يتمنعوا من موقع ويب تقنيًا —
 // ده قيد نظام التشغيل (Android/iOS/Windows)، مش قصور في الكود.
-// اللي بيحصل هنا: منع تحديد/نسخ النص، منع كليك يمين، منع أهم
-// اختصارات لوحة المفاتيح (طباعة/حفظ/عرض المصدر/أدوات المطور)،
-// وعلامة مائية بإيميل المستخدم الحالي فوق كل صفحة (رادع نفسي +
-// وسيلة تتبّع لو أي محتوى اتسرّب).
+// اللي بيحصل هنا: منع تحديد/نسخ النص، منع كليك يمين، ومنع أهم
+// اختصارات لوحة المفاتيح (طباعة/حفظ/عرض المصدر/أدوات المطور).
 // ============================================================
 (function(){
   function _isEditableTarget(el){
@@ -18557,48 +18547,6 @@ window.showQuizResultNotice = function(container){
     if (ctrlOrCmd && e.shiftKey && (k === 'i' || k === 'j' || k === 'c')) { e.preventDefault(); return; }
     if (ctrlOrCmd && (k === 'p' || k === 's' || k === 'u')) { e.preventDefault(); return; }
   }, true);
-
-  // ── العلامة المائية: إيميل المستخدم الحالي + التاريخ، متكررة بشفافية خفيفة ──
-  var _lastWatermarkEmail; // نعيد رسمها بس لما تتغيّر (تسجيل دخول/خروج)، مش كل ثانية
-  function _applyWatermark(){
-    var email = (window._currentAuthUser && window._currentAuthUser.email) || null;
-    var key = email || '__guest__';
-    if (key === _lastWatermarkEmail) return;
-    _lastWatermarkEmail = key;
-
-    var label = email || 'زائر — غير مسجل دخول';
-    var stamp = new Date().toLocaleDateString('ar-EG');
-    var text = label + '   •   ' + stamp;
-
-    var canvas = document.createElement('canvas');
-    canvas.width = 480; canvas.height = 260;
-    var ctx = canvas.getContext('2d');
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.translate(canvas.width / 2, canvas.height / 2);
-    ctx.rotate(-28 * Math.PI / 180);
-    ctx.font = '15px Tahoma, Arial, sans-serif';
-    ctx.fillStyle = 'rgba(0,0,0,0.09)';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(text, 0, 0);
-
-    var dataUrl = canvas.toDataURL('image/png');
-    var overlay = document.getElementById('__site_watermark_overlay');
-    if (!overlay) {
-      overlay = document.createElement('div');
-      overlay.id = '__site_watermark_overlay';
-      document.body.appendChild(overlay);
-    }
-    overlay.style.backgroundImage = 'url(' + dataUrl + ')';
-  }
-  // نتأكد إن body جاهز، ونراقب تغيّر حالة تسجيل الدخول كل شوية من غير
-  // ما نلمس أي كود Auth موجود أصلاً (بولّينج خفيف جداً، مش تكلفة حقيقية)
-  function _startWatermarkWatcher(){
-    _applyWatermark();
-    setInterval(_applyWatermark, 4000);
-  }
-  if (document.body) { _startWatermarkWatcher(); }
-  else { document.addEventListener('DOMContentLoaded', _startWatermarkWatcher); }
 })();
 </script>
 </body>
