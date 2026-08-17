@@ -6253,9 +6253,12 @@ window.loginWithGoogle = async function() {
     }
   } catch(e) {}
   // redirectTo: الـ URL الحالي بدقة (يعمل على GitHub Pages, localhost, إلخ)
-  var redirectTo = window.location.origin + window.location.pathname;
-  if (!redirectTo.endsWith('/') && !redirectTo.endsWith('.html')) redirectTo += '/';
-  console.log('[AUTH-DEBUG] loginWithGoogle → redirectTo passed to signInWithOAuth:', redirectTo);
+var redirectTo = 'bsmapp://auth-callback';
+
+console.log(
+  '[AUTH-DEBUG] loginWithGoogle → redirectTo passed to signInWithOAuth:',
+  redirectTo
+);
   try {
     const { error } = await db.auth.signInWithOAuth({
       provider: 'google',
