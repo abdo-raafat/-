@@ -18572,5 +18572,106 @@ window.showQuizResultNotice = function(container){
   }, true);
 })();
 </script>
+<!-- ============================================================
+     🔒 طبقة حماية المحتوى (Content Protection Layer) — HTML/JS فقط
+     تمنع: قائمة الحفظ/المشاركة عبر الضغط المطول على الصور والفيديو،
+     سحب الصور، تحديد/نسخ/لصق المحتوى، قائمة الزر الأيمن، واختصارات
+     حفظ/طباعة/فحص الصفحة الشائعة (Ctrl+S / U / P / F12 / Ctrl+Shift+I/J/C).
+     لا تلمس: حقول الإدخال (input/textarea/select/contenteditable) —
+     أي تسجيل الدخول، النماذج، رفع الملفات، الكاميرا، الأزرار، الروابط،
+     التنقل، وأي JavaScript موجود مسبقاً تعمل بشكل طبيعي تماماً.
+     ============================================================ -->
+<script>
+(function () {
+  'use strict';
+
+  // أي عنصر إدخال حقيقي (أو داخل عنصر إدخال) يُستثنى دائماً من الحماية
+  function nearestFormField(el) {
+    if (!el || !el.closest) return null;
+    return el.closest('input, textarea, select, [contenteditable="true"], [contenteditable=""]');
+  }
+
+  // ---- 5) منع قائمة الزر الأيمن / الضغط المطول (Context Menu) في كل الموقع، عدا حقول الإدخال ----
+  document.addEventListener('contextmenu', function (e) {
+    if (!nearestFormField(e.target)) e.preventDefault();
+  }, true);
+
+  // ---- 3) منع تحديد النص (Select) خارج حقول الإدخال ----
+  document.addEventListener('selectstart', function (e) {
+    if (!nearestFormField(e.target)) e.preventDefault();
+  }, true);
+
+  // ---- 4) منع Copy / Cut / Paste خارج حقول الإدخال ----
+  ['copy', 'cut', 'paste'].forEach(function (evtName) {
+    document.addEventListener(evtName, function (e) {
+      if (!nearestFormField(e.target)) e.preventDefault();
+    }, true);
+  });
+
+  // ---- 2) منع سحب الصور (Drag & Drop) ----
+  document.addEventListener('dragstart', function (e) {
+    var tag = e.target && e.target.tagName ? e.target.tagName.toUpperCase() : '';
+    if (tag === 'IMG' || tag === 'VIDEO' || tag === 'CANVAS') e.preventDefault();
+  }, true);
+
+  // ---- 1 و 7) تقوية الصور/الفيديو تحديداً: منع السحب + منع قائمة اللمس المطول على iOS/Android ----
+  function hardenMediaElement(el) {
+    if (!el || el.__bsmProtected) return;
+    el.__bsmProtected = true;
+    el.setAttribute('draggable', 'false');
+    el.style.webkitUserDrag = 'none';
+    el.style.webkitTouchCallout = 'none'; // يمنع قائمة "حفظ الصورة" عند الضغط المطول في Safari/iOS
+    el.style.userSelect = 'none';
+    el.style.webkitUserSelect = 'none';
+  }
+
+  function hardenAllMedia(root) {
+    var scope = root && root.querySelectorAll ? root : document;
+    var nodes = scope.querySelectorAll('img, video, canvas, source');
+    for (var i = 0; i < nodes.length; i++) hardenMediaElement(nodes[i]);
+    if (root && root.tagName) {
+      var t = root.tagName.toUpperCase();
+      if (t === 'IMG' || t === 'VIDEO' || t === 'CANVAS' || t === 'SOURCE') hardenMediaElement(root);
+    }
+  }
+
+  hardenAllMedia(document);
+
+  // ---- 10) دعم الصور/الفيديوهات التي تُضاف لاحقاً ديناميكياً (تحميل الأقسام من Supabase وغيرها) ----
+  if (window.MutationObserver) {
+    var mediaObserver = new MutationObserver(function (mutations) {
+      for (var m = 0; m < mutations.length; m++) {
+        var added = mutations[m].addedNodes;
+        for (var n = 0; n < added.length; n++) {
+          var node = added[n];
+          if (node.nodeType === 1) hardenAllMedia(node);
+        }
+      }
+    });
+    mediaObserver.observe(document.documentElement, { childList: true, subtree: true });
+  }
+
+  // ---- 6) منع اختصارات لوحة المفاتيح الشائعة لحفظ/طباعة/فحص الصفحة ----
+  document.addEventListener('keydown', function (e) {
+    var key = (e.key || '').toLowerCase();
+
+    if (key === 'f12') { e.preventDefault(); return; }
+
+    var ctrlOrCmd = e.ctrlKey || e.metaKey;
+
+    // Ctrl+S / Ctrl+U / Ctrl+P
+    if (ctrlOrCmd && !e.shiftKey && (key === 's' || key === 'u' || key === 'p')) {
+      e.preventDefault();
+      return;
+    }
+
+    // Ctrl+Shift+I / J / C (أدوات المطور)
+    if (ctrlOrCmd && e.shiftKey && (key === 'i' || key === 'j' || key === 'c')) {
+      e.preventDefault();
+      return;
+    }
+  }, true);
+})();
+</script>
 </body>
 </html>
