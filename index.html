@@ -1,6 +1,25 @@
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
+<!-- ==================== BSM App Gate — PRE-RENDER GUARD (سهل الإزالة: احذف هذه الكتلة + كتلة OVERLAY المقابلة قرب نهاية الملف — ابحث عن "BSM App Gate") ====================
+     يُخفي عرض الصفحة مؤقتاً (بدون إيقاف تحميل أي CSS/JS/Supabase) لحين التأكد من فتح الموقع
+     من التطبيق الرسمي (Android عبر BSMApp/1.0 أو iOS مستقبلاً عبر BSMIOSApp/1.0) أم من متصفح عادي. -->
+<script>
+(function () {
+  try {
+    window.isOfficialApp = function () {
+      var ua = navigator.userAgent || '';
+      return ua.indexOf('BSMApp/1.0') !== -1 ||
+             ua.indexOf('BSMIOSApp/1.0') !== -1 ||
+             !!window.BSMAndroidBridge; // نفس الاحتياط المستخدم أصلاً في isAndroidApp
+    };
+    if (!window.isOfficialApp()) {
+      document.documentElement.style.visibility = 'hidden';
+      window.__bsmGateBlocked = true;
+    }
+  } catch (e) { /* لا نمنع الصفحة من الظهور في حال أي خطأ غير متوقع */ }
+})();
+</script>
 <meta name="google-site-verification" content="my6dMoAsuc_97Jks_OQF75GK_f1PGWqz2Kng2obkIgE" />
 <meta charset="UTF-8">
 <meta name="app-build" content="2026-08-14-external-pdf-paths-v3">
@@ -2466,6 +2485,24 @@ img, video {
 </style>
 </head>
 <body>
+<!-- ==================== BSM App Gate — OVERLAY (الجزء المقابل لكتلة PRE-RENDER GUARD في <head>؛ احذف الكتلتين معاً لإلغاء الحماية) ==================== -->
+<div id="bsm-app-gate" style="display:none; position:fixed; inset:0; z-index:2147483647; background:#0a3d62; color:#fff; direction:rtl; align-items:center; justify-content:center; text-align:center; padding:24px; font-family:inherit;">
+  <div>
+    <div style="font-size:1.15rem; font-weight:700; margin-bottom:10px;">هذا الموقع متاح من خلال التطبيق الرسمي فقط.</div>
+    <div style="font-size:.95rem; opacity:.9;">يرجى فتح منصة المعاهد الفنية الصحية من تطبيق الهاتف.</div>
+  </div>
+</div>
+<script>
+(function () {
+  try {
+    if (window.__bsmGateBlocked) {
+      var gate = document.getElementById('bsm-app-gate');
+      if (gate) gate.style.display = 'flex';
+    }
+  } catch (e) {}
+  document.documentElement.style.visibility = 'visible';
+})();
+</script>
 
 <!-- ==================== PWA Install Banner ==================== -->
 <div id="pwa-install-banner" style="display:none;position:fixed;left:0;right:0;bottom:0;z-index:9999;background:#0a3d62;color:#fff;padding:10px 16px;display:none;align-items:center;justify-content:space-between;gap:10px;box-shadow:0 -2px 10px rgba(0,0,0,.2);direction:rtl;font-family:inherit;">
