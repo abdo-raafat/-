@@ -11,7 +11,8 @@
       var ua = navigator.userAgent || '';
       return ua.indexOf('BSMApp/1.0') !== -1 ||
              ua.indexOf('BSMIOSApp/1.0') !== -1 ||
-             !!window.BSMAndroidBridge; // نفس الاحتياط المستخدم أصلاً في isAndroidApp
+             !!window.BSMAndroidBridge || // نفس الاحتياط المستخدم أصلاً في isAndroidApp
+             !!(window.BSMAndroidBridge && typeof window.BSMAndroidBridge.isOfficialApp === 'function' && window.BSMAndroidBridge.isOfficialApp());
     };
     if (!window.isOfficialApp()) {
       document.documentElement.style.visibility = 'hidden';
@@ -2488,19 +2489,66 @@ img, video {
 <!-- ==================== BSM App Gate — OVERLAY (الجزء المقابل لكتلة PRE-RENDER GUARD في <head>؛ احذف الكتلتين معاً لإلغاء الحماية) ==================== -->
 <div id="bsm-app-gate" style="display:none; position:fixed; inset:0; z-index:2147483647; background:#0a3d62; color:#fff; direction:rtl; align-items:center; justify-content:center; text-align:center; padding:24px; font-family:inherit;">
   <div>
-    <div style="font-size:1.15rem; font-weight:700; margin-bottom:10px;">هذا الموقع متاح من خلال التطبيق الرسمي فقط.</div>
-    <div style="font-size:.95rem; opacity:.9;">يرجى فتح منصة المعاهد الفنية الصحية من تطبيق الهاتف.</div>
+    <div id="bsm-gate-msg" style="font-size:1.15rem; font-weight:700; margin-bottom:10px;">هذا الموقع متاح من خلال التطبيق الرسمي فقط.</div>
+    <div id="bsm-gate-sub" style="font-size:.95rem; opacity:.9; margin-bottom:18px;">يرجى فتح منصة المعاهد الفنية الصحية من تطبيق الهاتف.</div>
+    <a id="bsm-gate-android-btn" href="https://github.com/fanysehy/-/raw/refs/heads/main/app-debug.apk" style="display:none; background:#fff; color:#0a3d62; font-weight:700; padding:12px 22px; border-radius:10px; text-decoration:none; font-size:.95rem;">⬇️ تحميل تطبيق Android</a>
   </div>
 </div>
 <script>
 (function () {
   try {
-    if (window.__bsmGateBlocked) {
-      var gate = document.getElementById('bsm-app-gate');
-      if (gate) gate.style.display = 'flex';
+    if (!window.__bsmGateBlocked) {
+      // تطبيق رسمي (Android/iOS): اعرض الموقع فورًا كالمعتاد — لا تغيير في التوقيت أو السلوك إطلاقاً
+      document.documentElement.style.visibility = 'visible';
+      return;
     }
-  } catch (e) {}
-  document.documentElement.style.visibility = 'visible';
+
+    // متصفح عادي: أظهر شاشة الحجب فورًا
+    var gate = document.getElementById('bsm-app-gate');
+    if (gate) gate.style.display = 'flex';
+    document.documentElement.style.visibility = 'visible';
+
+    // تخصيص رسالة/زر شاشة الحجب حسب نوع الجهاز
+    try {
+      var _ua = navigator.userAgent || '';
+      var _isAndroid = /Android/i.test(_ua);
+      var _isIOS = /iPhone|iPad|iPod/i.test(_ua);
+      var _isDesktop = !_isAndroid && !_isIOS;
+      var _msgEl = document.getElementById('bsm-gate-msg');
+      var _subEl = document.getElementById('bsm-gate-sub');
+      var _btnEl = document.getElementById('bsm-gate-android-btn');
+      if (_isAndroid) {
+        // أندرويد خارج التطبيق: أظهر زر تحميل APK بجانب الرسالة الافتراضية
+        if (_btnEl) _btnEl.style.display = 'inline-block';
+      } else if (_isDesktop) {
+        // كمبيوتر (Windows/Mac/Linux): التطبيق غير متاح لسطح المكتب، لا تعرض زر أندرويد
+        if (_msgEl) _msgEl.textContent = 'التطبيق متاح للهواتف فقط.';
+        if (_subEl) _subEl.style.display = 'none';
+      }
+      // iPhone/iPad: تُترك الرسالة الافتراضية كما هي بدون زر
+      // (رابط تطبيق iOS يمكن إضافته لاحقًا هنا عند توفره)
+    } catch (e3) {}
+
+    // لا نحذف محتوى الواجهة الآن — ننتظر اكتمال تحميل الصفحة بالكامل (كل CSS/JS/صور)
+    // حتى لا نوقف أي مورد ضروري قد يحتاج التطبيق نفسه لاحقاً لتشغيله في الخلفية،
+    // ثم نُزيل فعلياً كل عناصر الواجهة من الـ DOM (وليس مجرد إخفائها بصرياً)،
+    // بحيث لا يبقى في المستند المعروض فعلياً سوى شاشة الحجب.
+    window.addEventListener('load', function () {
+      try {
+        var body = document.body;
+        var toRemove = [];
+        for (var i = 0; i < body.children.length; i++) {
+          var el = body.children[i];
+          if (el.id !== 'bsm-app-gate') toRemove.push(el);
+        }
+        for (var j = 0; j < toRemove.length; j++) {
+          toRemove[j].parentNode.removeChild(toRemove[j]);
+        }
+      } catch (e2) {}
+    });
+  } catch (e) {
+    document.documentElement.style.visibility = 'visible';
+  }
 })();
 </script>
 
