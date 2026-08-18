@@ -1,4 +1,4 @@
-const CACHE_NAME = "health-platform-v1";
+const CACHE_NAME = "health-platform-v2";
 
 const FILES_TO_CACHE = [
   "./",
@@ -8,18 +8,24 @@ const FILES_TO_CACHE = [
   "./icon-512.png"
 ];
 
-// عند تثبيت التطبيق
+// تثبيت Service Worker
 self.addEventListener("install", (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(FILES_TO_CACHE);
+      return Promise.all(
+        FILES_TO_CACHE.map((file) => {
+          return cache.add(file).catch(() => {
+            // تجاهل الملف إذا لم يكن موجودًا
+          });
+        })
+      );
     })
   );
 
   self.skipWaiting();
 });
 
-// تفعيل النسخة الجديدة
+// تفعيل النسخة الجديدة وحذف الكاش القديم
 self.addEventListener("activate", (event) => {
   event.waitUntil(
     caches.keys().then((cacheNames) => {
@@ -34,25 +40,62 @@ self.addEventListener("activate", (event) => {
   self.clients.claim();
 });
 
-// التعامل مع طلبات الموقع
+// التعامل مع الطلبات
 self.addEventListener("fetch", (event) => {
-  if (event.request.method !== "GET") {
+  const request = event.request;
+
+  // لا نتعامل إلا مع GET
+  if (request.method !== "GET") {
     return;
   }
 
-  event.respondWith(
-    fetch(event.request)
-      .then((response) => {
-        const responseClone = response.clone();
+  const url = new URL(request.url);
 
-        caches.open(CACHE_NAME).then((cache) => {
-          cache.put(event.request, responseClone);
-        });
+  // لا نتدخل في أي موقع أو خدمة خارج موقعنا
+  // مثل Supabase أو Google أو أي خدمة خارجية.
+  if (url.origin !== self.location.origin) {
+    return;
+  }
+
+  // لا نتدخل في مسارات API
+  if (url.pathname.includes("/api/")) {
+    return;
+  }
+
+  // الملفات التي نسمح بتخزينها في الكاش فقط
+  const isStaticFile =
+    url.pathname.endsWith("/") ||
+    url.pathname.endsWith("/index.html") ||
+    url.pathname.endsWith("/manifest.json") ||
+    url.pathname.endsWith("/icon-192.png") ||
+    url.pathname.endsWith("/icon-512.png");
+
+  // أي ملف ديناميكي آخر:
+  // نتركه يذهب للشبكة فقط ولا نخزنه.
+  if (!isStaticFile) {
+    return;
+  }
+
+  // Network First:
+  // نحاول الحصول على النسخة الجديدة من الإنترنت أولًا،
+  // وإذا لم يوجد إنترنت نستخدم الكاش.
+  event.respondWith(
+    fetch(request)
+      .then((response) => {
+        if (response && response.ok) {
+          const responseClone = response.clone();
+
+          caches.open(CACHE_NAME).then((cache) => {
+            cache.put(request, responseClone);
+          });
+        }
 
         return response;
       })
       .catch(() => {
-        return caches.match(event.request);
+        return caches.match(request).then((cachedResponse) => {
+          return cachedResponse || caches.match("./");
+        });
       })
   );
 });
