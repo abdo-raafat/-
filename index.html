@@ -7,12 +7,24 @@
 <script>
 (function () {
   try {
+    window.isIOSDevice = function () {
+      var ua = navigator.userAgent || '';
+      return /iPhone|iPad|iPod/i.test(ua) ||
+             (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1); // iPadOS 13+
+    };
+    window.isIOSStandalone = function () {
+      try {
+        return window.navigator.standalone === true ||
+               (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
+      } catch (eStd) { return false; }
+    };
     window.isOfficialApp = function () {
       var ua = navigator.userAgent || '';
       return ua.indexOf('BSMApp/1.0') !== -1 ||
              ua.indexOf('BSMIOSApp/1.0') !== -1 ||
              !!window.BSMAndroidBridge || // نفس الاحتياط المستخدم أصلاً في isAndroidApp
-             !!(window.BSMAndroidBridge && typeof window.BSMAndroidBridge.isOfficialApp === 'function' && window.BSMAndroidBridge.isOfficialApp());
+             !!(window.BSMAndroidBridge && typeof window.BSMAndroidBridge.isOfficialApp === 'function' && window.BSMAndroidBridge.isOfficialApp()) ||
+             (window.isIOSDevice() && window.isIOSStandalone()); // iOS PWA مثبّتة على الشاشة الرئيسية
     };
     if (!window.isOfficialApp()) {
       document.documentElement.style.visibility = 'hidden';
@@ -2492,6 +2504,27 @@ img, video {
     <div id="bsm-gate-msg" style="font-size:1.15rem; font-weight:700; margin-bottom:10px;">هذا الموقع متاح من خلال التطبيق الرسمي فقط.</div>
     <div id="bsm-gate-sub" style="font-size:.95rem; opacity:.9; margin-bottom:18px;">يرجى فتح منصة المعاهد الفنية الصحية من تطبيق الهاتف.</div>
     <a id="bsm-gate-android-btn" href="https://github.com/fanysehy/-/raw/refs/heads/main/app-debug.apk" style="display:none; background:#fff; color:#0a3d62; font-weight:700; padding:12px 22px; border-radius:10px; text-decoration:none; font-size:.95rem;">⬇️ تحميل تطبيق Android</a>
+
+    <!-- ==================== iOS: واجهة تثبيت PWA (بديل شاشة الحجب الافتراضية على Safari/iPhone/iPad) ==================== -->
+    <div id="bsm-gate-ios" style="display:none;">
+      <div style="font-size:1.2rem; font-weight:800; margin-bottom:8px;">منصة المعاهد الفنية الصحية</div>
+      <div style="font-size:.95rem; opacity:.9; margin-bottom:20px;">هذا الموقع متاح كتطبيق على الهاتف.</div>
+      <button id="bsm-gate-ios-btn" onclick="document.getElementById('bsm-ios-modal').style.display='flex'" style="background:#fff; color:#0a3d62; font-weight:700; padding:12px 22px; border-radius:10px; border:none; font-size:.95rem; cursor:pointer;">📱 طريقة التثبيت على iPhone</button>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== iOS: Modal شرح خطوات التثبيت ==================== -->
+<div id="bsm-ios-modal" style="display:none; position:fixed; inset:0; z-index:2147483647; background:rgba(10,61,98,.92); color:#0a3d62; align-items:center; justify-content:center; padding:20px; direction:rtl; font-family:inherit;">
+  <div style="background:#fff; border-radius:14px; padding:24px; max-width:360px; width:100%; text-align:right; position:relative;">
+    <button onclick="document.getElementById('bsm-ios-modal').style.display='none'" aria-label="إغلاق" style="position:absolute; top:10px; left:10px; background:transparent; border:none; font-size:1.3rem; color:#0a3d62; cursor:pointer;">✕</button>
+    <div style="font-size:1.05rem; font-weight:800; margin-bottom:14px;">لتثبيت المنصة على iPhone:</div>
+    <ol style="margin:0; padding-inline-start:22px; line-height:2; font-size:.95rem;">
+      <li>اضغط زر المشاركة في Safari.</li>
+      <li>اختر "إضافة إلى الشاشة الرئيسية".</li>
+      <li>اضغط "إضافة".</li>
+      <li>افتح المنصة من الأيقونة الموجودة على الشاشة الرئيسية.</li>
+    </ol>
   </div>
 </div>
 <script>
@@ -2520,13 +2553,17 @@ img, video {
       if (_isAndroid) {
         // أندرويد خارج التطبيق: أظهر زر تحميل APK بجانب الرسالة الافتراضية
         if (_btnEl) _btnEl.style.display = 'inline-block';
+      } else if (_isIOS) {
+        // iPhone/iPad خارج التطبيق: أظهر واجهة تثبيت PWA بدل الرسالة الافتراضية (بدون زر أندرويد ومن غير اختراع رابط iOS)
+        if (_msgEl) _msgEl.style.display = 'none';
+        if (_subEl) _subEl.style.display = 'none';
+        var _iosBlock = document.getElementById('bsm-gate-ios');
+        if (_iosBlock) _iosBlock.style.display = 'block';
       } else if (_isDesktop) {
         // كمبيوتر (Windows/Mac/Linux): التطبيق غير متاح لسطح المكتب، لا تعرض زر أندرويد
         if (_msgEl) _msgEl.textContent = 'التطبيق متاح للهواتف فقط.';
         if (_subEl) _subEl.style.display = 'none';
       }
-      // iPhone/iPad: تُترك الرسالة الافتراضية كما هي بدون زر
-      // (رابط تطبيق iOS يمكن إضافته لاحقًا هنا عند توفره)
     } catch (e3) {}
 
     // لا نحذف محتوى الواجهة الآن — ننتظر اكتمال تحميل الصفحة بالكامل (كل CSS/JS/صور)
@@ -2539,7 +2576,7 @@ img, video {
         var toRemove = [];
         for (var i = 0; i < body.children.length; i++) {
           var el = body.children[i];
-          if (el.id !== 'bsm-app-gate') toRemove.push(el);
+          if (el.id !== 'bsm-app-gate' && el.id !== 'bsm-ios-modal') toRemove.push(el);
         }
         for (var j = 0; j < toRemove.length; j++) {
           toRemove[j].parentNode.removeChild(toRemove[j]);
