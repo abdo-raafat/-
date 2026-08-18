@@ -1,4 +1,4 @@
-const CACHE_NAME = "health-platform-v2";
+const CACHE_NAME = "health-platform-v3";
 
 const FILES_TO_CACHE = [
   "./",
@@ -50,6 +50,12 @@ self.addEventListener("fetch", (event) => {
   }
 
   const url = new URL(request.url);
+
+  // لا نخزن أي طلب يحتوي على Query Parameters
+  // مثل ?utm_source= أو أي معاملات أخرى.
+  if (url.search) {
+    return;
+  }
 
   // لا نتدخل في أي موقع أو خدمة خارج موقعنا
   // مثل Supabase أو Google أو أي خدمة خارجية.
