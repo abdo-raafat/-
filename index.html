@@ -8196,10 +8196,13 @@ window.checkBanStatus = async function(email) {
               <div class="ap-field">
                 <label class="ap-label">الصلاحية (Role)</label>
                 <select class="ap-select" id="um-edit-role">
-                  <option value="user">👤 مستخدم عادي</option>
-                  <option value="admin">👑 أدمن</option>
-                  <option value="moderator">🛡️ مشرف</option>
+                  <option value="student">🎓 طالب</option>
+                  <option value="branch_admin">🏷️ أدمن شعبة (قديم)</option>
+                  <option value="admin">👑 أدمن عام</option>
                 </select>
+                <div style="font-size:.72rem;color:var(--text-muted);margin-top:4px;">
+                  لتعيين أدمن شعبة، الأفضل استخدام "إدارة أدمن الشعب" (section_admins) — تعيين "أدمن شعبة" هنا وحده بدون ربطه بشعبة عبر تلك اللوحة لن يفعّل له أي صلاحية.
+                </div>
               </div>
               <div class="ap-field">
                 <label class="ap-label">حالة الاشتراك</label>
@@ -10618,16 +10621,20 @@ function _umRenderTable() {
     cancelled: '<span class="um-badge um-badge-expired">🚫 ملغي</span>',
   };
   var roleLabels = {
-    admin:     '<span class="um-badge um-badge-admin">👑 أدمن</span>',
-    moderator: '<span class="um-badge um-badge-mod">🛡️ مشرف</span>',
-    user:      '<span class="um-badge um-badge-user">👤 عادي</span>',
+    admin:        '<span class="um-badge um-badge-admin">👑 أدمن</span>',
+    branch_admin: '<span class="um-badge um-badge-mod">🏷️ أدمن شعبة</span>',
+    student:      '<span class="um-badge um-badge-user">🎓 طالب</span>',
+    // ⚠️ أدوار قديمة (قبل ترحيل Roles Phase 2) — تُعرض فقط لو لسه موجودة في القاعدة،
+    // شغّل printRoleMigrationSQL() لترحيلها. لا تُستخدم في أي منطق صلاحيات.
+    moderator:    '<span class="um-badge um-badge-mod">🛡️ مشرف (قديم)</span>',
+    user:         '<span class="um-badge um-badge-user">👤 عادي (قديم)</span>',
   };
 
   var rows = pageData.map(function(u) {
     var isBanned = u._isBanned;
     var initials = ((u.full_name || u.email || '?')[0]).toUpperCase();
     var subStatus = u.subscription_status || 'none';
-    var role = u.role || 'user';
+    var role = u.role || 'student';
     var endDate = u.subscription_end ? _apDate(u.subscription_end) : (u._sub ? _apDate(u._sub.end_date) : '—');
     var banInfo  = u._banInfo ? ('🚫 ' + (u._banInfo.reason || 'محظور')) : '';
 
@@ -10700,7 +10707,7 @@ function umOpenEdit(userId) {
   document.getElementById('um-edit-user-id').value  = user.id;
   document.getElementById('um-edit-email-display').textContent = user.email || '—';
   document.getElementById('um-edit-name').value      = user.full_name || '';
-  document.getElementById('um-edit-role').value      = user.role || 'user';
+  document.getElementById('um-edit-role').value      = user.role || 'student';
   document.getElementById('um-edit-sub-status').value = user.subscription_status || 'none';
 
   // تحويل التاريخ لصيغة input[type=date]
@@ -13613,9 +13620,13 @@ window.printSecuritySQL = function() {
 -- ────────────────────────────────────────────────────────────────
 -- 1. إضافة عمود role لجدول profiles
 -- ────────────────────────────────────────────────────────────────
+-- ✅ (Aug 2026 — Roles Phase 2): الأدوار الحقيقية في هذا المشروع هي فقط
+-- admin / branch_admin / student. 'user' و'moderator' كانا أدوار قديمة غير
+-- مستخدمة فعليًا في أي منطق صلاحيات، وتمت إزالتهما — انظر printRoleMigrationSQL()
+-- لخطوات الترحيل الآمنة قبل تطبيق هذا الـ CHECK على قاعدة تحتوي بيانات فعلية.
 ALTER TABLE profiles
-  ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'user'
-  CHECK (role IN ('admin', 'branch_admin', 'moderator', 'user', 'student'));
+  ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'student'
+  CHECK (role IN ('admin', 'branch_admin', 'student'));
 
 -- فهرس للبحث السريع
 CREATE INDEX IF NOT EXISTS idx_profiles_role ON profiles(role);
@@ -13651,20 +13662,20 @@ CREATE POLICY "profiles_own_update" ON profiles FOR UPDATE USING (auth.uid() = i
     auth.uid() = id
     -- لا يسمح للمستخدم بتغيير الـ role لنفسه
     AND role = (SELECT role FROM profiles WHERE id = auth.uid())
+    -- ✅ (Aug 2026 — Roles Phase 2): ولا يسمح لأدمن الشعبة بتغيير الشعبة
+    -- المُسندة له لنفسه (managed_section_id) — كان هذا العمود غير محمي سابقًا
+    AND managed_section_id IS NOT DISTINCT FROM (SELECT managed_section_id FROM profiles WHERE id = auth.uid())
   );
 CREATE POLICY "profiles_insert_own" ON profiles FOR INSERT WITH CHECK (auth.uid() = id);
 CREATE POLICY "profiles_admin_all"  ON profiles FOR ALL USING (is_admin());
 
 -- ────────────────────────────────────────────────────────────────
 -- 4. RLS على subscriptions
+-- ⚠️ هذا القسم قديم/مبسّط ومُتجاوَز — لا تشغّله بمفرده. السياسة الآمنة
+-- الكاملة (per-command + trigger يمنع الطالب من تفعيل اشتراكه لنفسه)
+-- موجودة في printFullRLS() فقط — شغّل تلك الدالة بدلاً من هذا القسم.
 -- ────────────────────────────────────────────────────────────────
-ALTER TABLE subscriptions ENABLE ROW LEVEL SECURITY;
-
-DROP POLICY IF EXISTS "subs_own"         ON subscriptions;
-DROP POLICY IF EXISTS "subs_admin_all"   ON subscriptions;
-
-CREATE POLICY "subs_own"       ON subscriptions FOR ALL   USING (auth.uid() = user_id);
-CREATE POLICY "subs_admin_all" ON subscriptions FOR ALL   USING (is_admin());
+-- (محذوف عمداً هنا لمنع تشغيل نسخة غير آمنة بالخطأ — انظر printFullRLS)
 
 -- ────────────────────────────────────────────────────────────────
 -- 5. RLS على section_content
@@ -13740,6 +13751,11 @@ BEGIN
   IF NOT is_admin() AND NEW.role != OLD.role THEN
     RAISE EXCEPTION 'Forbidden: cannot change role without admin privileges';
   END IF;
+  -- ✅ (Aug 2026 — Roles Phase 2): نفس الحماية لـ managed_section_id — دفاع إضافي
+  -- بجانب WITH CHECK في profiles_own_update (دفاع على مستوى الـ Trigger أيضًا)
+  IF NOT is_admin() AND NEW.managed_section_id IS DISTINCT FROM OLD.managed_section_id THEN
+    RAISE EXCEPTION 'Forbidden: cannot change managed_section_id without admin privileges';
+  END IF;
   RETURN NEW;
 END;
 $$;
@@ -13760,7 +13776,7 @@ BEGIN
     NEW.id,
     NEW.email,
     COALESCE(NEW.raw_user_meta_data->>'full_name', ''),
-    'user',   -- الافتراضي دائماً 'user'
+    'student',   -- ✅ (Aug 2026 — Roles Phase 2): الافتراضي دائماً 'student' (كان 'user')
     'none',
     NOW()
   )
@@ -13795,6 +13811,72 @@ CREATE TRIGGER on_auth_user_created
 // طباعة تلقائية عند تحميل الصفحة (للمطوِّر فقط في Console)
 // اعزم printSecuritySQL() في الـ Console لرؤيته
 console.log('%c[SECURITY v1] اكتب printSecuritySQL() في الـ Console لعرض SQL الإعداد', 'color:#0a3d62;font-weight:bold');
+
+// ════════════════════════════════════════════════════════════════
+// printRoleMigrationSQL() — (Aug 2026, Roles Phase 2)
+// ترحيل آمن لأدوار profiles.role إلى النظام النهائي: admin / branch_admin / student
+// شغّله *قبل* printSecuritySQL()/printFullRLS() على أي قاعدة فيها بيانات فعلية،
+// لأن الاثنين دلوقتي بيطبّقوا CHECK constraint يقبل admin/branch_admin/student
+// فقط — ولو فيه صفوف role='user' أو role='moderator' لسه موجودة، هيفشل الـ ALTER.
+// لا يحذف أي مستخدم ولا أي صف — فقط يقرأ ثم (اختياريًا) يحدّث عمود role.
+// ════════════════════════════════════════════════════════════════
+window.printRoleMigrationSQL = function() {
+  var sql = `
+-- ================================================================
+-- ROLE MIGRATION — شغّل هذا في Supabase SQL Editor *قبل* printSecuritySQL()/printFullRLS()
+-- نفّذ كل خطوة على حدة وراجع النتيجة قبل الانتقال للتالية
+-- ================================================================
+
+-- ────────────────────────────────────────────────────────────────
+-- الخطوة 1: فحص — كم مستخدم لديه role='user' أو role='moderator' الآن؟
+-- (شغّل هذا أولاً وراجع النتيجة قبل أي تعديل)
+-- ────────────────────────────────────────────────────────────────
+SELECT role, count(*) AS how_many
+FROM profiles
+WHERE role IN ('user', 'moderator')
+GROUP BY role;
+
+-- لرؤية المستخدمين أنفسهم (اختياري):
+-- SELECT id, email, full_name, role, created_at FROM profiles WHERE role IN ('user','moderator') ORDER BY role;
+
+-- ────────────────────────────────────────────────────────────────
+-- الخطوة 2: role='user' → 'student'  (آمن دائمًا — 'user' كان القيمة
+-- الافتراضية القديمة لكل مستخدم عادي، و'student' هو نفس المعنى بالضبط
+-- في النظام الجديد. لا صلاحيات إضافية تُمنح أو تُسحب بهذا التحويل).
+-- ────────────────────────────────────────────────────────────────
+UPDATE profiles SET role = 'student' WHERE role = 'user';
+
+-- ────────────────────────────────────────────────────────────────
+-- الخطوة 3: role='moderator' — ⚠️ يحتاج قرارك أنت تحديدًا.
+-- لا يوجد أي منطق صلاحيات في الكود الحالي يعتمد فعليًا على 'moderator'
+-- (كان مجرد خيار في قائمة منسدلة قديمة في لوحة التحكم، بدون أي تأثير
+-- على RLS أو أي RPC). لذلك الافتراضي الأكثر أمانًا هو تحويله إلى
+-- 'student' (أقل صلاحية ممكنة)، لكن إذا كان أي 'moderator' حاليًا يُفترض
+-- أن يكون فعليًا Branch Admin على شعبة معيّنة، غيّر السطر أدناه لذلك بدلاً
+-- من ترك السطر كما هو. هذا السطر معلَّق (commented) عمدًا — لا يُنفَّذ
+-- إلا بعد أن تراجعه وتزيل التعليق يدويًا:
+-- UPDATE profiles SET role = 'student' WHERE role = 'moderator';
+
+-- ────────────────────────────────────────────────────────────────
+-- الخطوة 4: تأكيد نهائي — يجب أن ترجع هذه صفر صفوف قبل تطبيق الـ CHECK
+-- ────────────────────────────────────────────────────────────────
+SELECT id, email, role FROM profiles WHERE role NOT IN ('admin', 'branch_admin', 'student');
+
+-- إذا رجعت صفر صفوف: أنت جاهز الآن لتشغيل printSecuritySQL() ثم printFullRLS()
+-- (اللي بيطبّقوا الـ CHECK constraint الجديد role IN ('admin','branch_admin','student')).
+`;
+  console.group('%c🔄 ROLE MIGRATION SQL — شغّله قبل printSecuritySQL()/printFullRLS()', 'color:#d35400;font-size:1.1em;font-weight:bold');
+  console.log('%cافتح: Supabase Dashboard → SQL Editor → New Query → نفّذ خطوة بخطوة', 'color:#17a589;font-weight:bold');
+  console.log(sql);
+  console.groupEnd();
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(sql).then(function() {
+      console.log('%c✅ تم نسخ الـ SQL للـ clipboard!', 'color:#17a589;font-weight:bold');
+    }).catch(function(){});
+  }
+  return sql;
+};
+console.log('%c[Roles] اكتب printRoleMigrationSQL() في الـ Console — شغّله أولاً قبل أي SQL آخر إذا كانت القاعدة تحتوي بيانات فعلية', 'color:#d35400;font-weight:bold');
 
 // ── Startup Diagnostic: يتنفذ بعد 10 ثوانٍ لفحص حالة الأقسام ──
 // (بعد الـ 8 ثوانٍ timeout للـ renderHomeSections + هامش أمان)
@@ -13977,10 +14059,12 @@ window.printFullRLS = function() {
 
 -- 0. نظام الصلاحيات: Super Admin (admin) + Branch Admin (branch_admin لكل شعبة)
 -- ────────────────────────────────────────────────────────────────
--- 0.أ) لازم عمود role يقبل قيمة 'branch_admin' (كان مقصور على admin/moderator/user)
+-- 0.أ) ✅ (Aug 2026 — Roles Phase 2): الأدوار الحقيقية فقط admin/branch_admin/student.
+-- 'user' و'moderator' أدوار قديمة غير مستخدمة في أي منطق صلاحيات — تمت إزالتهما.
+-- شغّل printRoleMigrationSQL() أولاً على قاعدة فيها بيانات فعلية قبل هذا السطر.
 ALTER TABLE profiles DROP CONSTRAINT IF EXISTS profiles_role_check;
 ALTER TABLE profiles ADD CONSTRAINT profiles_role_check
-  CHECK (role IN ('admin', 'branch_admin', 'moderator', 'user', 'student'));
+  CHECK (role IN ('admin', 'branch_admin', 'student'));
 
 -- 0.ب) عمود managed_section_id — الشعبة المُسندة لأدمن الشعبة
 ALTER TABLE profiles ADD COLUMN IF NOT EXISTS managed_section_id BIGINT REFERENCES site_sections(id) ON DELETE SET NULL;
@@ -14061,20 +14145,79 @@ DROP POLICY IF EXISTS "profiles_admin_all"  ON profiles;
 DROP POLICY IF EXISTS "own_read"            ON profiles;
 CREATE POLICY "profiles_own_read"   ON profiles FOR SELECT USING (auth.uid() = id OR is_admin());
 CREATE POLICY "profiles_own_update" ON profiles FOR UPDATE USING (auth.uid() = id)
-  WITH CHECK (auth.uid() = id AND role = (SELECT role FROM profiles WHERE id = auth.uid()));
+  WITH CHECK (
+    auth.uid() = id
+    AND role = (SELECT role FROM profiles WHERE id = auth.uid())
+    -- ✅ (Aug 2026 — Roles Phase 2): يمنع أدمن الشعبة من تغيير شعبته لنفسه
+    AND managed_section_id IS NOT DISTINCT FROM (SELECT managed_section_id FROM profiles WHERE id = auth.uid())
+  );
 CREATE POLICY "profiles_insert_own" ON profiles FOR INSERT WITH CHECK (auth.uid() = id);
 CREATE POLICY "profiles_admin_all"  ON profiles FOR ALL    USING (is_admin());
 
 -- 5. subscriptions
+-- ⚠️ (Aug 2026 — Roles Phase 2 RLS Audit): السياسة القديمة "subs_own" كانت
+-- FOR ALL USING (auth.uid()=user_id) بدون WITH CHECK منفصل — ده كان يسمح
+-- لأي طالب يعدّل صف اشتراكه الخاص (عن طريق Supabase Client مباشرة، مش عن
+-- طريق واجهة الموقع) ويحوّل payment_status لنفسه إلى 'active' بدون مراجعة
+-- أدمن فعلياً. الأدمن أكد سابقًا أنه تم رصد هذه الثغرة وإصلاحها، لكن هذا
+-- الملف (printFullRLS) كان لسه فيه النسخة القديمة غير الآمنة — لو حد شغّل
+-- printFullRLS() تاني كان هيرجّع الثغرة تاني فوق أي إصلاح مطبّق فعليًا على
+-- القاعدة. تم استبدالها هنا بسياسات منفصلة لكل عملية + Trigger يقفل كل
+-- الأعمدة الحساسة، ولا يسمح للطالب إلا بتعديل receipt_image/requested_at
+-- بحرية، وإرجاع payment_status إلى 'pending' فقط (لإعادة تقديم الطلب).
 ALTER TABLE subscriptions ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "subs_own"       ON subscriptions;
-DROP POLICY IF EXISTS "subs_admin_all" ON subscriptions;
+DROP POLICY IF EXISTS "subs_own"         ON subscriptions;
+DROP POLICY IF EXISTS "subs_select_own"  ON subscriptions;
+DROP POLICY IF EXISTS "subs_insert_own"  ON subscriptions;
+DROP POLICY IF EXISTS "subs_update_own"  ON subscriptions;
+DROP POLICY IF EXISTS "subs_admin_all"   ON subscriptions;
 DROP POLICY IF EXISTS "subs_branch_admin_all" ON subscriptions;
-CREATE POLICY "subs_own"       ON subscriptions FOR ALL USING (auth.uid() = user_id);
+
+CREATE POLICY "subs_select_own" ON subscriptions FOR SELECT USING (auth.uid() = user_id);
+-- الإدراج المباشر من الطالب يجب أن يبدأ دائمًا كـ 'pending' فقط
+CREATE POLICY "subs_insert_own" ON subscriptions FOR INSERT
+  WITH CHECK (auth.uid() = user_id AND payment_status = 'pending');
+-- التحديث مسموح، لكن الـ Trigger أدناه هو اللي بيمنع فعليًا تعديل الأعمدة الحساسة
+CREATE POLICY "subs_update_own" ON subscriptions FOR UPDATE
+  USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
 CREATE POLICY "subs_admin_all" ON subscriptions FOR ALL USING (is_admin());
 -- Branch Admin: يدير (يقبل/يرفض/يجدّد) اشتراكات وطلبات شعبته فقط
 CREATE POLICY "subs_branch_admin_all" ON subscriptions
   FOR ALL USING (is_branch_admin_of(section_id)) WITH CHECK (is_branch_admin_of(section_id));
+
+-- Trigger: يقفل كل أعمدة subscriptions الحساسة أمام تعديل الطالب لصفه الخاص
+-- (السماح فقط بـ receipt_image/requested_at بحرية، وpayment_status→'pending' فقط)
+CREATE OR REPLACE FUNCTION lock_subscription_sensitive_columns()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER AS $$
+BEGIN
+  -- الأدمن العام أو أدمن هذه الشعبة يقدر يعدّل أي عمود بحرية
+  IF is_admin() OR is_branch_admin_of(NEW.section_id) OR is_branch_admin_of(OLD.section_id) THEN
+    RETURN NEW;
+  END IF;
+  -- غير كده: هذا تحديث من الطالب صاحب الصف نفسه — نقفل الأعمدة الحساسة
+  IF NEW.user_id            IS DISTINCT FROM OLD.user_id
+     OR NEW.section_id      IS DISTINCT FROM OLD.section_id
+     OR NEW.subscription_type IS DISTINCT FROM OLD.subscription_type
+     OR NEW.amount          IS DISTINCT FROM OLD.amount
+     OR NEW.payment_method  IS DISTINCT FROM OLD.payment_method
+     OR NEW.payment_number  IS DISTINCT FROM OLD.payment_number
+     OR NEW.start_date      IS DISTINCT FROM OLD.start_date
+     OR NEW.end_date        IS DISTINCT FROM OLD.end_date
+     OR NEW.reject_reason   IS DISTINCT FROM OLD.reject_reason
+  THEN
+    RAISE EXCEPTION 'Forbidden: cannot modify this field of your own subscription directly';
+  END IF;
+  IF NEW.payment_status IS DISTINCT FROM OLD.payment_status AND NEW.payment_status != 'pending' THEN
+    RAISE EXCEPTION 'Forbidden: cannot set payment_status to % yourself', NEW.payment_status;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_lock_subscription_sensitive ON subscriptions;
+CREATE TRIGGER trg_lock_subscription_sensitive
+  BEFORE UPDATE ON subscriptions
+  FOR EACH ROW EXECUTE FUNCTION lock_subscription_sensitive_columns();
 
 -- 6. banned_users
 ALTER TABLE banned_users ENABLE ROW LEVEL SECURITY;
