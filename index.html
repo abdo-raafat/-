@@ -2502,6 +2502,32 @@ img, video {
 <div id="bsm-app-gate" style="display:none; position:fixed; inset:0; z-index:2147483647; background:#0a3d62; color:#fff; direction:rtl; align-items:center; justify-content:center; text-align:center; padding:24px; font-family:inherit;">
   <div>
     <div id="bsm-gate-msg" style="font-size:1.15rem; font-weight:700; margin-bottom:10px;">هذا الموقع متاح من خلال التطبيق الرسمي فقط.</div>
+    <div id="bsm-gate-support" style="margin:14px 0 18px; font-size:.9rem;">
+      <div style="margin-bottom:10px; opacity:.95;">
+        للمساعدة والاستفسار تواصل معنا:
+        <a href="tel:01147908978"
+           style="color:#fff; text-decoration:underline; font-weight:700;"
+           aria-label="اتصل بنا على الرقم 01147908978">01147908978</a>
+      </div>
+      <div style="display:flex; gap:10px; justify-content:center; flex-wrap:wrap;">
+        <a class="bsm-gate-wa-btn"
+           href="https://wa.me/201147908978"
+           target="_blank"
+           rel="noopener"
+           aria-label="تواصل معنا عبر واتساب"
+           style="display:inline-flex; align-items:center; gap:6px; background:#25D366; color:#fff; padding:10px 18px; border-radius:10px; text-decoration:none; font-weight:700; font-size:.88rem;">
+          💬 واتساب
+        </a>
+        <a class="bsm-gate-tg-btn"
+           href="https://t.me/+201147908978"
+           target="_blank"
+           rel="noopener"
+           aria-label="تواصل معنا عبر تليجرام"
+           style="display:inline-flex; align-items:center; gap:6px; background:#0088cc; color:#fff; padding:10px 18px; border-radius:10px; text-decoration:none; font-weight:700; font-size:.88rem;">
+          ✈️ تليجرام
+        </a>
+      </div>
+    </div>
     <div id="bsm-gate-sub" style="font-size:.95rem; opacity:.9; margin-bottom:18px;">يرجى فتح منصة المعاهد الفنية الصحية من تطبيق الهاتف.</div>
     <a id="bsm-gate-android-btn" href="https://github.com/fanysehy/-/raw/refs/heads/main/app-debug.apk" style="display:none; background:#fff; color:#0a3d62; font-weight:700; padding:12px 22px; border-radius:10px; text-decoration:none; font-size:.95rem;">⬇️ تحميل تطبيق Android</a>
 
@@ -3988,7 +4014,12 @@ async function _renderDynamicSectionPage(sec) {
         } else {
           gridEl.innerHTML = '';
         }
-      } else {
+      }
+      // ✅ QUIZ SYSTEM: عرض بطاقة "ابدأ الاختبار" إن وُجد اختبار مرتبط بهذا القسم (بدون تأثير على المحتوى/الموارد أعلاه)
+      if (!gate && resourcesEl && typeof window.qzRenderSectionEntry === 'function') {
+        window.qzRenderSectionEntry(sec.id, resourcesEl);
+      }
+      if (!(content.length > 0 || leafResources.length > 0)) {
         // لا محتوى ولا موارد — عرض رسالة مناسبة مع زر إعادة المحاولة
         console.warn('[DEBUG] ⚠️ لا يوجد محتوى للقسم id=' + sec.id + ' — تحقق من RLS وصلة section_id');
         var secRef = sec;
@@ -4439,7 +4470,16 @@ async function _openContentPage(sec, _preloadedContent, _preloadedResources) {
     </div>`;
   }
 
+  // ✅ QUIZ SYSTEM: حجز مكان لبطاقة "ابدأ الاختبار" (تُملأ بعد الـ innerHTML أدناه إن وُجد اختبار لهذا القسم)
+  if (!gate && sec && sec.id) {
+    html += '<div id="qz-entry-content-' + sec.id + '"></div>';
+  }
+
   area.innerHTML = html;
+
+  if (!gate && sec && sec.id && typeof window.qzRenderSectionEntry === 'function') {
+    window.qzRenderSectionEntry(sec.id, 'qz-entry-content-' + sec.id);
+  }
 
   // إخفاء الـ container الخارجي للموارد (مش محتاجينه دلوقتي)
   const chResEl = document.getElementById('chapter-resources-container');
@@ -4484,11 +4524,15 @@ function buildContentHTML(contentItems, gate) {
         </div>`;
       return;
     }
+    // ✅ (Aug 2026 — Content Attachments): روابط خارجية مازالت في item.url، لكن
+    // الملفات المرفوعة عبر Supabase Storage بتتخزّن في item.file_url بدل ما نكرّرها
+    // في url. نستخدم fallback بسيط هنا بدل ما نلمس أي منطق تاني في العرض.
+    const displayUrl = item.url || item.file_url || '';
     if (item.content_type === 'video') {
-      const safeUrl = (item.url || '').replace(/'/g,"\\'");
+      const safeUrl = displayUrl.replace(/'/g,"\\'");
       const safeTitle = (item.title || 'فيديو شرح').replace(/'/g,"\\'");
       html += `
-        <div class="video-placeholder" ${item.url ? `onclick="openResource('${safeUrl}','${safeTitle}','video')"` : ''} style="margin-bottom:18px">
+        <div class="video-placeholder" ${displayUrl ? `onclick="openResource('${safeUrl}','${safeTitle}','video')"` : ''} style="margin-bottom:18px">
           <div class="play-btn">▶</div>
           <p style="font-size:1rem;font-weight:700">${item.title || 'فيديو شرح'}</p>
           ${item.description ? `<p style="font-size:.82rem;opacity:.7;margin-top:6px">${item.description}</p>` : ''}
@@ -4501,18 +4545,18 @@ function buildContentHTML(contentItems, gate) {
           <div class="preformatted-text">${renderPreformatted(rawText)}</div>
         </div>`;
     } else {
-      const icon = item.icon || (item.content_type === 'pdf' ? '📄' : item.content_type === 'link' ? '🔗' : '📌');
-      const safeUrl = (item.url || '').replace(/'/g,"\\'");
+      const icon = item.icon || (item.content_type === 'pdf' ? '📄' : item.content_type === 'image' ? '🖼️' : item.content_type === 'link' ? '🔗' : '📌');
+      const safeUrl = displayUrl.replace(/'/g,"\\'");
       const safeTitle = (item.title || '').replace(/'/g,"\\'");
       const safeType = (item.content_type || '').replace(/'/g,"\\'");
       html += `
-        <div class="resource-item" ${item.url ? `onclick="openResource('${safeUrl}','${safeTitle}','${safeType}')"` : ''} style="${item.url ? 'cursor:pointer' : ''};margin-bottom:10px;padding:18px 22px;">
+        <div class="resource-item" ${displayUrl ? `onclick="openResource('${safeUrl}','${safeTitle}','${safeType}')"` : ''} style="${displayUrl ? 'cursor:pointer' : ''};margin-bottom:10px;padding:18px 22px;">
           <div class="ri-icon" style="font-size:2rem">${icon}</div>
           <div class="ri-info">
             <h5 style="font-size:1rem;font-weight:800;color:var(--primary)">${item.title || ''}</h5>
             ${item.description ? `<p style="font-size:.85rem;margin-top:3px">${item.description}</p>` : ''}
           </div>
-          ${item.url ? '<div style="margin-right:auto;color:var(--teal);font-size:1.3rem">▶</div>' : ''}
+          ${displayUrl ? '<div style="margin-right:auto;color:var(--teal);font-size:1.3rem">▶</div>' : ''}
         </div>`;
     }
   });
@@ -6892,7 +6936,12 @@ window._selectBranchAdminRoot = async function(rootId) {
     can_manage_section_chat:     _dbPerms.can_manage_section_chat     !== undefined ? _dbPerms.can_manage_section_chat     : true,
     can_delete_section_messages: _dbPerms.can_delete_section_messages !== undefined ? _dbPerms.can_delete_section_messages : true,
     // اسم قديم متوافق — بعض الكود الحالي بيقرأه بالاسم ده تحديداً
-    can_manage_chats:            _dbPerms.can_manage_section_chat     !== undefined ? _dbPerms.can_manage_section_chat     : true
+    can_manage_chats:            _dbPerms.can_manage_section_chat     !== undefined ? _dbPerms.can_manage_section_chat     : true,
+    // ⚠️ (Aug 2026 — Phase 3): can_manage_admins صلاحية جديدة وحساسة (تسمح
+    // بتعيين أدمن آخر لنفس الشعبة) — بعكس كل الصلاحيات فوق، الافتراضي هنا
+    // false دايمًا لو مش موجودة صراحةً في القاعدة، عشان مانمنحهاش تلقائيًا
+    // لكل أدمن شعبة قديم موجود بالفعل (لا نطبّق نفس قاعدة "null → true").
+    can_manage_admins:           _dbPerms.can_manage_admins           === true
   };
   window._branchAdminSectionIds = await _computeSectionSubtree(rootId);
   // أسماء بديلة مطابقة تمامًا (sectionIds/activeSectionId) — للتوافق مع تسمية section_admins
@@ -6904,7 +6953,7 @@ window._selectBranchAdminRoot = async function(rootId) {
   // من شعبة بصلاحيات مختلفة، كانت تبويبات اللوحة (ومنها Dashboard) تبقى على حالة
   // الشعبة الأولى القديمة بدل صلاحيات الشعبة المختارة فعلياً الآن.
   if (typeof _applyBranchAdminPanelGating === 'function') _applyBranchAdminPanelGating();
-  if (window._isBranchAdmin && typeof apLoadDashboard === 'function' && document.getElementById('admin-panel') &&
+  if (window._isBranchAdmin && !window._isSuperAdmin && typeof apLoadDashboard === 'function' && document.getElementById('admin-panel') &&
       document.getElementById('admin-panel').classList.contains('ap-open')) {
     apLoadDashboard();
   }
@@ -6940,7 +6989,7 @@ function _renderBranchAdminSwitcher() {
   var host = document.getElementById('ap-branch-switcher');
   if (!host) return;
   var roots = window._branchAdminRoots || [];
-  if (!window._isBranchAdmin || roots.length < 2) { host.style.display = 'none'; host.innerHTML = ''; return; }
+  if (!window._isBranchAdmin || window._isSuperAdmin || roots.length < 2) { host.style.display = 'none'; host.innerHTML = ''; return; }
   host.style.display = 'block';
   var opts = roots.map(function(r) {
     var sel = (r.id === window._branchAdminActiveRoot) ? ' selected' : '';
@@ -7685,6 +7734,76 @@ window.checkBanStatus = async function(email) {
 [data-theme="dark"] .ap-msg-meta { color: #5a7a94; }
 [data-theme="dark"] .ap-btn-ghost { background: #1e3050; color: #7dd0f0; border-color: #2a4060; }
 
+/* ════════════════════════════════════════════════════════════════
+   QUIZ SYSTEM — نظام الاختبارات الداخلي (internal quiz system)
+   يعيد استخدام متغيرات التصميم (--primary/--teal/--accent2) ونمط
+   ap-btn/ap-input/ap-modal الموجود بالفعل، بدون أي تعديل عليها.
+   ════════════════════════════════════════════════════════════════ */
+.qz-entry-card {
+  margin-top: 14px; padding: 16px 18px; border-radius: 14px;
+  background: linear-gradient(135deg, rgba(10,61,98,.06), rgba(23,165,137,.06));
+  border: 1px solid #d5e8f5; display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+}
+.qz-entry-icon { font-size: 2.1rem; }
+.qz-entry-info { flex: 1; min-width: 180px; }
+.qz-entry-title { font-weight: 800; color: var(--primary); font-size: .95rem; margin-bottom: 3px; }
+.qz-entry-meta { font-size: .74rem; color: #789; display: flex; gap: 10px; flex-wrap: wrap; }
+.qz-overlay {
+  display: none; position: fixed; inset: 0; z-index: 9999997; background: rgba(10,20,40,.78);
+  backdrop-filter: blur(4px); align-items: center; justify-content: center; padding: 12px;
+}
+.qz-overlay.qz-open { display: flex; }
+.qz-modal {
+  background: var(--card-bg,#fff); border-radius: 18px; max-width: 620px; width: 100%;
+  max-height: 92vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,.4);
+}
+.qz-modal-head {
+  position: sticky; top: 0; z-index: 2; background: linear-gradient(135deg,var(--primary),var(--teal));
+  color: #fff; padding: 16px 20px; display: flex; justify-content: space-between; align-items: center;
+}
+.qz-modal-head h3 { margin: 0; font-size: 1.02rem; }
+.qz-close-btn { background: rgba(255,255,255,.18); border: none; color: #fff; width: 30px; height: 30px;
+  border-radius: 50%; cursor: pointer; font-size: 1rem; line-height: 1; }
+.qz-modal-body { padding: 20px; }
+.qz-timer {
+  position: sticky; top: 0; z-index: 1; display: inline-flex; align-items: center; gap: 6px;
+  background: #fff3e0; color: #e65100; border: 1px solid #ffcc80; border-radius: 20px;
+  padding: 6px 14px; font-weight: 800; font-size: .85rem;
+}
+.qz-timer.qz-timer-danger { background: #ffebee; color: #c62828; border-color: #ef9a9a; animation: qz-pulse 1s infinite; }
+@keyframes qz-pulse { 0%,100% { opacity: 1; } 50% { opacity: .55; } }
+.qz-progress-bar { height: 6px; background: #eaf4fb; border-radius: 4px; overflow: hidden; margin: 12px 0 18px; }
+.qz-progress-fill { height: 100%; background: linear-gradient(90deg,var(--teal),var(--primary)); transition: width .25s ease; }
+.qz-qnav { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 16px; }
+.qz-qnav-dot {
+  width: 30px; height: 30px; border-radius: 50%; border: 1.5px solid #d5e8f5; background: #fff;
+  color: #789; font-size: .74rem; font-weight: 800; cursor: pointer; display: flex; align-items: center; justify-content: center;
+}
+.qz-qnav-dot.qz-answered { background: #eafaf1; border-color: #a8e6c1; color: #1b5e20; }
+.qz-qnav-dot.qz-current { background: var(--primary); border-color: var(--primary); color: #fff; }
+.quiz-container { padding: 4px; }
+.qz-question-text { font-weight: 800; font-size: .98rem; color: var(--primary); margin-bottom: 4px; line-height: 1.7; }
+.qz-question-points { font-size: .72rem; color: #999; margin-bottom: 14px; }
+.quiz-option, .test-option {
+  display: flex; align-items: center; gap: 10px; padding: 12px 14px; margin-bottom: 9px;
+  border: 1.5px solid #e2edf5; border-radius: 12px; cursor: pointer; font-size: .88rem; transition: all .15s ease;
+}
+.quiz-option:hover, .test-option:hover { border-color: #a8d0e6; background: #f7fbfd; }
+.quiz-option.qz-selected, .test-option.qz-selected { border-color: var(--teal); background: #eafaf7; font-weight: 700; }
+.quiz-option.qz-correct { border-color: #2e7d32; background: #eafaf1; }
+.quiz-option.qz-incorrect { border-color: #c62828; background: #fdecea; }
+.qz-match-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.qz-match-left { flex: 1; padding: 10px 12px; background: #f5f9fd; border-radius: 10px; font-size: .85rem; }
+.qz-nav-actions { display: flex; gap: 8px; margin-top: 18px; }
+.qz-review-badge { display: inline-block; padding: 6px 16px; border-radius: 20px; font-weight: 800; font-size: .9rem; }
+.qz-review-badge.qz-pass { background: #eafaf1; color: #1b5e20; }
+.qz-review-badge.qz-fail { background: #fdecea; color: #b71c1c; }
+[data-theme="dark"] .qz-modal { background: #1a2535; }
+[data-theme="dark"] .qz-entry-card { background: linear-gradient(135deg,rgba(125,208,240,.08),rgba(23,165,137,.08)); border-color: #2a3f55; }
+[data-theme="dark"] .quiz-option, [data-theme="dark"] .test-option { border-color: #2a3f55; background: #1e2d40; color: #e8f0f8; }
+[data-theme="dark"] .qz-match-left { background: #1e2d40; color: #e8f0f8; }
+[data-theme="dark"] .qz-qnav-dot { background: #1e2d40; border-color: #2a3f55; color: #9ab0c6; }
+
 /* ===== USER MANAGEMENT TABLE ===== */
 .um-table-wrap {
   overflow-x: auto;
@@ -7820,6 +7939,7 @@ window.checkBanStatus = async function(email) {
       <button class="ap-nav-btn" onclick="apSwitchTab('users')"     id="ap-tab-users"     role="tab">🔒 الحظر</button>
       <button class="ap-nav-btn" onclick="apSwitchTab('messages')"  id="ap-tab-messages"  role="tab">💬 الرسائل</button>
       <button class="ap-nav-btn" onclick="apSwitchTab('content')"   id="ap-tab-content"   role="tab">➕ المحتوى</button>
+      <button class="ap-nav-btn" onclick="apSwitchTab('quizzes')"   id="ap-tab-quizzes"   role="tab">📝 الاختبارات</button>
       <button class="ap-nav-btn" onclick="apSwitchTab('sectionchat')" id="ap-tab-sectionchat" role="tab">💬 محادثة الشعبة</button>
       <button class="ap-nav-btn" onclick="apSwitchTab('branchadmins')" id="ap-tab-branchadmins" role="tab">🛡️ أدمن الشعب</button>
       <button class="ap-nav-btn" onclick="apSwitchTab('auditlog')" id="ap-tab-auditlog" role="tab">🧾 سجل العمليات</button>
@@ -8333,8 +8453,22 @@ window.checkBanStatus = async function(email) {
         <!-- ADD TAB -->
         <div id="admin-tab-add">
           <div class="ap-field">
-            <label class="ap-label">📁 اختر القسم</label>
-            <select id="admin-section-select" class="ap-select" onchange="adminLoadSectionPath()">
+            <label class="ap-label">📁 اختر المادة</label>
+            <!-- ✅ FIX 3: تم تقسيم اختيار "القسم" إلى خطوتين (مادة ثم شابتر) بدون
+                 أي تعديل Schema — لسه نفس شجرة site_sections.parent_id. القيمة
+                 النهائية المُرسَلة فعلياً لـ adminSaveContent() (بدون تعديلها) تبقى
+                 داخل admin-section-select العنصر القديم نفسه، لكنه أصبح مخفياً
+                 ويُضبط برمجياً من adminOnMaterialChange()/adminOnChapterChange(). -->
+            <select id="admin-material-select" class="ap-select" onchange="adminOnMaterialChange()">
+              <option value="">— جاري تحميل المواد —</option>
+            </select>
+            <div id="admin-chapter-wrap" style="display:none;margin-top:8px;">
+              <label class="ap-label">📂 اختر الشابتر</label>
+              <select id="admin-chapter-select" class="ap-select" onchange="adminOnChapterChange()">
+                <option value="">— اختر الشابتر —</option>
+              </select>
+            </div>
+            <select id="admin-section-select" class="ap-select" style="display:none;" onchange="adminLoadSectionPath()">
               <option value="">— جاري تحميل الأقسام —</option>
             </select>
             <div id="admin-section-path" style="font-size:.72rem;color:#888;margin-top:4px;"></div>
@@ -8367,13 +8501,31 @@ window.checkBanStatus = async function(email) {
             </div>
           </div>
           <div class="ap-field">
+            <label class="ap-label">📦 نوع السجل</label>
+            <select id="admin-record-kind" onchange="adminToggleFields()" class="ap-select">
+              <option value="content">📚 محتوى تعليمي (section_content)</option>
+              <option value="resource">📎 مورد إضافي (section_resources)</option>
+            </select>
+          </div>
+          <div class="ap-field" id="admin-content-type-field">
             <label class="ap-label">🏷️ نوع المحتوى</label>
             <select id="admin-content-type" onchange="adminToggleFields()" class="ap-select">
               <option value="video">🎬 فيديو</option>
               <option value="text">📝 نص / شرح</option>
               <option value="link">🔗 رابط</option>
               <option value="pdf">📄 PDF</option>
+              <option value="image">🖼️ صورة</option>
               <option value="form">📝 كويز / اختبار (Google Form أو رابط اختبار)</option>
+            </select>
+          </div>
+          <div class="ap-field" id="admin-resource-type-field" style="display:none;">
+            <label class="ap-label">🏷️ نوع المورد</label>
+            <select id="admin-resource-type" onchange="adminToggleFields()" class="ap-select">
+              <option value="pdf">📄 PDF</option>
+              <option value="video">🎬 فيديو</option>
+              <option value="audio">🎵 صوت</option>
+              <option value="image">🖼️ صورة</option>
+              <option value="link">🔗 رابط</option>
             </select>
             <!-- ✅ FIX (Aug 2026 — بلاغ الكويز "بدوس عليه ومفيش حاجة بتظهر"): مكانش فيه
                  خيار مخصص للكويز، فأي كويز بيتضاف كان يتسجل غالبًا كـ "رابط" (link)،
@@ -8388,8 +8540,17 @@ window.checkBanStatus = async function(email) {
           </div>
           <div id="admin-url-field" class="ap-field">
             <label class="ap-label">🔗 الرابط (URL)</label>
+            <div id="admin-src-toggle" style="display:none;gap:6px;margin-bottom:8px;">
+              <button type="button" id="admin-src-btn-url" class="ap-btn ap-btn-primary" style="flex:1;justify-content:center;padding:8px;font-size:.78rem;" onclick="adminSetContentSource('url')">🔗 رابط خارجي</button>
+              <button type="button" id="admin-src-btn-file" class="ap-btn ap-btn-ghost" style="flex:1;justify-content:center;padding:8px;font-size:.78rem;" onclick="adminSetContentSource('file')">📤 رفع ملف</button>
+            </div>
             <input id="admin-content-url" type="url" placeholder="https://..." class="ap-input" style="direction:ltr;">
             <div style="font-size:.7rem;color:#888;margin-top:3px;" id="admin-url-hint">للفيديو: رابط يوتيوب أو أي رابط فيديو</div>
+            <div id="admin-file-field" style="display:none;">
+              <input id="admin-content-file" type="file" class="ap-input" onchange="adminContentFileSelected(event)">
+              <div style="font-size:.7rem;color:#888;margin-top:3px;" id="admin-file-hint">الحد الأقصى: صور 10MB، PDF 20MB، فيديو 100MB</div>
+              <div id="admin-file-preview" style="margin-top:8px;"></div>
+            </div>
           </div>
           <div id="admin-body-field" class="ap-field" style="display:none;">
             <label class="ap-label">📝 النص / الشرح</label>
@@ -8405,6 +8566,12 @@ window.checkBanStatus = async function(email) {
 
         <!-- LIST TAB -->
         <div id="admin-tab-list" style="display:none;">
+          <div class="ap-field" style="display:flex;gap:6px;">
+            <select id="admin-list-kind" class="ap-select" onchange="adminLoadContentList()" style="flex:1;">
+              <option value="content">📚 محتوى تعليمي</option>
+              <option value="resource">📎 موارد إضافية</option>
+            </select>
+          </div>
           <div class="ap-field">
             <select id="admin-list-section" class="ap-select" onchange="adminLoadContentList()">
               <option value="">اختر القسم لعرض محتواه</option>
@@ -8437,7 +8604,9 @@ window.checkBanStatus = async function(email) {
           إدارة هذه الشعبة تحديداً.
         </div>
         <!-- اختيار الفرقة ← الترم ← الشعبة (site_sections عبر parent_id) — أدمن الشعبة يُعيَّن على مستوى الشعبة فقط -->
-        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;">
+        <!-- ✅ (Aug 2026 — Phase 3): مُخفي عن أدمن الشعبة (مش سوبر أدمن) — نطاقه محدود
+             تلقائيًا لشعبته هو فقط، من غير تصفح باقي الشعب — انظر baLoadGrades() -->
+        <div id="ba-tree-picker" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;">
           <div style="flex:1;min-width:150px;">
             <label class="ap-label">الفرقة</label>
             <select class="ap-select" id="ba-sel-grade" onchange="baOnGradeChange()"><option value="">— اختر الفرقة —</option></select>
@@ -8522,6 +8691,10 @@ window.checkBanStatus = async function(email) {
               <label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" data-perm="can_manage_payments" checked> إدارة المدفوعات</label>
               <label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" data-perm="can_manage_section_chat" checked> إدارة محادثة الشعبة</label>
               <label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" data-perm="can_delete_section_messages" checked> حذف رسائل الشعبة</label>
+              <!-- ⚠️ (Aug 2026 — Phase 3): صلاحية حساسة — تسمح لأدمن الشعبة بتعيين/إزالة
+                   أدمن آخر لنفس شعبته. غير مفعّلة افتراضيًا (بعكس باقي الصلاحيات فوق) —
+                   لازم Super Admin يفعّلها بنفسه صراحةً لكل أدمن على حدة. -->
+              <label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" data-perm="can_manage_admins"> 🔐 تعيين أدمن آخر لنفس الشعبة</label>
             </div>
           </div>
 
@@ -8542,9 +8715,195 @@ window.checkBanStatus = async function(email) {
         </div>
       </div>
 
+      <!-- ═══════════════════ TAB: QUIZZES ═══════════════════ -->
+      <div class="ap-tab-panel" id="ap-panel-quizzes" role="tabpanel">
+        <div class="ap-section-heading" style="margin:0 0 10px;border:none;padding:0;">📝 إدارة الاختبارات (اختبار واحد لكل قسم نهائي)</div>
+        <div style="font-size:.76rem;color:#888;margin-bottom:14px;">
+          اختر المادة ثم الشابتر ثم القسم النهائي (الشعبة/الفصل) لإنشاء أو تعديل اختباره. كل قسم نهائي يملك اختباراً واحداً كحد أقصى.
+        </div>
+
+        <div class="ap-field">
+          <label class="ap-label">📁 اختر المادة</label>
+          <select id="qz-material-select" class="ap-select" onchange="qzOnMaterialChange()">
+            <option value="">— جاري تحميل المواد —</option>
+          </select>
+        </div>
+        <div class="ap-field" id="qz-chapter-wrap" style="display:none;">
+          <label class="ap-label">📂 اختر الشابتر</label>
+          <select id="qz-chapter-select" class="ap-select" onchange="qzOnChapterChange()">
+            <option value="">— اختر الشابتر —</option>
+          </select>
+        </div>
+        <div class="ap-field" id="qz-section-wrap" style="display:none;">
+          <label class="ap-label">📄 اختر القسم النهائي (الشعبة/الفصل)</label>
+          <select id="qz-section-select" class="ap-select" onchange="qzOnSectionChange()">
+            <option value="">— اختر القسم —</option>
+          </select>
+        </div>
+
+        <div id="qz-admin-body" style="display:none;">
+          <div style="border-top:1px dashed #d5e8f5;margin:18px 0;"></div>
+
+          <div class="ap-section-heading" style="margin:0 0 10px;border:none;padding:0;">⚙️ إعدادات الاختبار</div>
+          <div class="ap-field">
+            <label class="ap-label">📌 عنوان الاختبار</label>
+            <input id="qz-title" type="text" class="ap-input" placeholder="مثال: اختبار الفصل الأول">
+          </div>
+          <div class="ap-field">
+            <label class="ap-label">📝 وصف (اختياري)</label>
+            <textarea id="qz-description" class="ap-textarea" placeholder="وصف مختصر للاختبار"></textarea>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+            <div class="ap-field">
+              <label class="ap-label">⏱️ الوقت المحدد (بالدقائق، 0 = بدون وقت)</label>
+              <input id="qz-time-limit" type="number" min="0" class="ap-input" value="0">
+            </div>
+            <div class="ap-field">
+              <label class="ap-label">✅ درجة النجاح (%)</label>
+              <input id="qz-passing-score" type="number" min="0" max="100" class="ap-input" value="60">
+            </div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+            <div class="ap-field">
+              <label class="ap-label">🔁 السماح بإعادة المحاولة؟</label>
+              <select id="qz-allow-retry" class="ap-select" onchange="qzToggleMaxAttemptsField()">
+                <option value="true">✅ نعم</option>
+                <option value="false">❌ لا</option>
+              </select>
+            </div>
+            <div class="ap-field" id="qz-max-attempts-wrap">
+              <label class="ap-label">🔢 الحد الأقصى للمحاولات (0 = بلا حدود)</label>
+              <input id="qz-max-attempts" type="number" min="0" class="ap-input" value="0">
+            </div>
+          </div>
+          <div class="ap-field">
+            <label class="ap-label">👁️ إظهار الإجابات بعد الانتهاء؟</label>
+            <select id="qz-show-answers" class="ap-select">
+              <option value="true">✅ نعم — يشوف الطالب الإجابات الصحيحة والشرح</option>
+              <option value="false">❌ لا — يشوف الدرجة فقط</option>
+            </select>
+          </div>
+          <div style="display:flex;gap:8px;">
+            <button class="ap-btn ap-btn-primary" style="flex:1;justify-content:center;" onclick="qzSaveQuizSettings()">💾 حفظ إعدادات الاختبار</button>
+            <button class="ap-btn ap-btn-danger" id="qz-delete-quiz-btn" style="display:none;" onclick="qzDeleteQuiz()">🗑️ حذف الاختبار</button>
+          </div>
+          <div id="qz-settings-msg" style="margin-top:8px;font-size:.8rem;min-height:16px;"></div>
+
+          <div id="qz-questions-section" style="display:none;">
+            <div style="border-top:1px dashed #d5e8f5;margin:20px 0;"></div>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+              <div class="ap-section-heading" style="margin:0;border:none;padding:0;">❓ الأسئلة (<span id="qz-questions-count">0</span>)</div>
+              <button class="ap-btn ap-btn-success" onclick="qzOpenQuestionEditor(null)">➕ إضافة سؤال</button>
+            </div>
+            <div id="qz-questions-list"><div style="text-align:center;color:#999;padding:20px;">لا توجد أسئلة بعد</div></div>
+          </div>
+        </div>
+      </div>
+      <!-- End Quizzes Tab -->
+
+      <!-- ═══════════════════ MODAL: Question Editor ═══════════════════ -->
+      <div id="qz-question-overlay" class="qz-overlay">
+        <div class="qz-modal" style="max-width:560px;">
+          <div class="qz-modal-head">
+            <h3 id="qz-question-modal-title">➕ إضافة سؤال</h3>
+            <button class="qz-close-btn" onclick="qzCloseQuestionEditor()">✕</button>
+          </div>
+          <div class="qz-modal-body">
+            <input type="hidden" id="qz-q-id" value="">
+            <div class="ap-field">
+              <label class="ap-label">🏷️ نوع السؤال</label>
+              <select id="qz-q-type" class="ap-select" onchange="qzToggleQuestionTypeFields()">
+                <option value="multiple_choice">🔘 اختيار من متعدد</option>
+                <option value="true_false">☑️ صح / خطأ</option>
+                <option value="short_answer">✍️ إجابة قصيرة</option>
+                <option value="matching">🔗 توصيل (مطابقة)</option>
+              </select>
+            </div>
+            <div class="ap-field">
+              <label class="ap-label">❓ نص السؤال</label>
+              <textarea id="qz-q-text" class="ap-textarea" placeholder="اكتب نص السؤال هنا"></textarea>
+            </div>
+            <div class="ap-field">
+              <label class="ap-label">⭐ الدرجة (points)</label>
+              <input id="qz-q-points" type="number" min="1" class="ap-input" value="1">
+            </div>
+
+            <!-- multiple_choice fields -->
+            <div id="qz-q-mc-fields" style="display:none;">
+              <div class="ap-field"><label class="ap-label">الخيار 1</label><input id="qz-q-opt1" type="text" class="ap-input"></div>
+              <div class="ap-field"><label class="ap-label">الخيار 2</label><input id="qz-q-opt2" type="text" class="ap-input"></div>
+              <div class="ap-field"><label class="ap-label">الخيار 3 (اختياري)</label><input id="qz-q-opt3" type="text" class="ap-input"></div>
+              <div class="ap-field"><label class="ap-label">الخيار 4 (اختياري)</label><input id="qz-q-opt4" type="text" class="ap-input"></div>
+              <div class="ap-field">
+                <label class="ap-label">✅ الإجابة الصحيحة</label>
+                <select id="qz-q-mc-correct" class="ap-select">
+                  <option value="1">الخيار 1</option>
+                  <option value="2">الخيار 2</option>
+                  <option value="3">الخيار 3</option>
+                  <option value="4">الخيار 4</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- true_false fields -->
+            <div id="qz-q-tf-fields" style="display:none;">
+              <div class="ap-field">
+                <label class="ap-label">✅ الإجابة الصحيحة</label>
+                <select id="qz-q-tf-correct" class="ap-select">
+                  <option value="true">✔️ صح</option>
+                  <option value="false">✖️ خطأ</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- short_answer fields -->
+            <div id="qz-q-sa-fields" style="display:none;">
+              <div class="ap-field">
+                <label class="ap-label">✅ الإجابة الأساسية</label>
+                <input id="qz-q-sa-correct" type="text" class="ap-input">
+              </div>
+              <div class="ap-field">
+                <label class="ap-label">🔀 إجابات بديلة مقبولة (افصل بينها بفاصلة ,)</label>
+                <input id="qz-q-sa-accepted" type="text" class="ap-input" placeholder="مثال: القاهرة, القاهره">
+              </div>
+            </div>
+
+            <!-- matching fields -->
+            <div id="qz-q-match-fields" style="display:none;">
+              <label class="ap-label">🔗 أزواج التوصيل (كل زوج في سطر، مفصول بـ =)</label>
+              <textarea id="qz-q-match-pairs" class="ap-textarea" placeholder="مصر = القاهرة&#10;السعودية = الرياض"></textarea>
+              <div style="font-size:.72rem;color:#888;margin-top:4px;">كل سطر: العنصر الأيمن = العنصر المطابق له الصحيح</div>
+            </div>
+
+            <div class="ap-field">
+              <label class="ap-label">💡 الشرح (يظهر بعد الإجابة إن سُمح بذلك)</label>
+              <textarea id="qz-q-explanation" class="ap-textarea" placeholder="شرح اختياري للإجابة الصحيحة"></textarea>
+            </div>
+
+            <button class="ap-btn ap-btn-primary" style="width:100%;justify-content:center;" onclick="qzSaveQuestion()">💾 حفظ السؤال</button>
+            <div id="qz-question-msg" style="margin-top:8px;font-size:.8rem;min-height:16px;text-align:center;"></div>
+          </div>
+        </div>
+      </div>
+
     </div><!-- /ap-body -->
   </div><!-- /ap-modal -->
 </div><!-- /admin-panel -->
+
+<!-- ═══════════════════ STUDENT: Quiz Taking Modal ═══════════════════ -->
+<div id="qz-student-overlay" class="qz-overlay">
+  <div class="qz-modal">
+    <div class="qz-modal-head">
+      <h3 id="qz-student-modal-title">📝 الاختبار</h3>
+      <span id="qz-student-timer" class="qz-timer" style="display:none;">⏱️ <span id="qz-student-timer-text">--:--</span></span>
+      <button class="qz-close-btn" onclick="qzCloseStudentModal()">✕</button>
+    </div>
+    <div class="qz-modal-body" id="qz-student-body">
+      <!-- محتوى ديناميكي: شاشة البدء / الأسئلة / شاشة المراجعة -->
+    </div>
+  </div>
+</div>
+
 
 <!-- ==================== BRANCH ADMIN PASSWORD LOGIN MODAL ==================== -->
 <div id="pw-login-overlay" style="display:none;position:fixed;inset:0;z-index:9999998;background:rgba(10,20,40,.75);backdrop-filter:blur(4px);align-items:center;justify-content:center;padding:16px;">
@@ -8625,19 +8984,85 @@ async function adminLoadSections() {
     var { data } = await window.supabase.from('site_sections').select('id, title, parent_id, subtitle, requires_subscription, payment_method, payment_number, price').order('display_order');
     if (!data) return;
     // ── أدمن الشعبة: يرى فقط أقسام شعبته (المحتوى نفسه قراءته عامة، لكن لوحة التحكم مقيَّدة) ──
-    if (window._isBranchAdmin && Array.isArray(window._branchAdminSectionIds) && window._branchAdminSectionIds.length) {
+    // ✅ FIX 2: أضيف !window._isSuperAdmin دفاعياً حتى لو تعارضت الأعلام مؤقتاً.
+    if (window._isBranchAdmin && !window._isSuperAdmin && Array.isArray(window._branchAdminSectionIds) && window._branchAdminSectionIds.length) {
       var allowed = window._branchAdminSectionIds;
       data = data.filter(function(s) { return allowed.indexOf(s.id) > -1; });
-    } else if (window._isBranchAdmin) {
+    } else if (window._isBranchAdmin && !window._isSuperAdmin) {
       data = []; // لا يوجد نطاق مُعيَّن له بعد
     }
     window._adminSections = data;
-    const selAdd  = document.getElementById('admin-section-select');
+    const selAdd  = document.getElementById('admin-section-select'); // مخفي — يحمل القيمة النهائية الفعلية المُرسَلة لـ adminSaveContent()
+    const selMat  = document.getElementById('admin-material-select'); // ✅ FIX 3: نفس البيانات، معروضة كخطوة أولى "اختر المادة"
     const selList = document.getElementById('admin-list-section');
     const opts = data.map(s => `<option value="${s.id}">${s.title}${s.subtitle ? ' — ' + s.subtitle : ''}</option>`).join('');
     if (selAdd)  selAdd.innerHTML  = '<option value="">— اختر القسم —</option>' + opts;
+    if (selMat)  selMat.innerHTML  = '<option value="">— اختر المادة —</option>' + opts;
     if (selList) selList.innerHTML = '<option value="">اختر القسم لعرض محتواه</option>' + opts;
+    // ✅ FIX 3: إعادة ضبط خطوة الشابتر عند إعادة تحميل الأقسام (مثلاً بعد تبديل شعبة أدمن الفرع)
+    var chapterWrap = document.getElementById('admin-chapter-wrap');
+    if (chapterWrap) chapterWrap.style.display = 'none';
   } catch(e) { console.error('adminLoadSections error:', e); }
+}
+
+// ── FIX 3: بعد اختيار "المادة"، حمّل الشباتر التابعة لها (site_sections حيث
+// parent_id = معرّف المادة) — بدون أي Migration أو تعديل Schema، بالاعتماد
+// على شجرة parent_id الموجودة أصلاً. لو المادة ليس لها شباتر، تُحفظ المادة
+// نفسها كوجهة نهائية. القيمة النهائية دايماً تُكتب داخل admin-section-select
+// (العنصر المخفي) عشان adminSaveContent() تفضل بدون أي تعديل.
+async function adminOnMaterialChange() {
+  var matSel      = document.getElementById('admin-material-select');
+  var chapterWrap = document.getElementById('admin-chapter-wrap');
+  var chapterSel  = document.getElementById('admin-chapter-select');
+  var finalSel    = document.getElementById('admin-section-select');
+  var materialId  = matSel ? matSel.value : '';
+
+  if (!materialId) {
+    if (chapterWrap) chapterWrap.style.display = 'none';
+    if (finalSel) finalSel.value = '';
+    adminLoadSectionPath();
+    return;
+  }
+  if (!window.supabase) return;
+  try {
+    var { data, error } = await window.supabase
+      .from('site_sections')
+      .select('id, title')
+      .eq('parent_id', materialId)
+      .order('display_order');
+    if (error) throw error;
+    var chapters = data || [];
+    // ── دفاعياً: لو أدمن شعبة (وليس سوبر أدمن)، اقصر الشباتر على نطاقه ──
+    if (window._isBranchAdmin && !window._isSuperAdmin && Array.isArray(window._branchAdminSectionIds)) {
+      var scope = window._branchAdminSectionIds;
+      chapters = chapters.filter(function(c) { return scope.indexOf(c.id) > -1; });
+    }
+    if (chapters.length) {
+      // المادة لها شباتر — لازم يختار شابتر قبل الحفظ
+      if (chapterSel) {
+        chapterSel.innerHTML = '<option value="">— اختر الشابتر —</option>' +
+          chapters.map(function(c) { return '<option value="' + c.id + '">' + c.title + '</option>'; }).join('');
+      }
+      if (chapterWrap) chapterWrap.style.display = 'block';
+      if (finalSel) finalSel.value = ''; // القيمة النهائية تنتظر اختيار الشابتر
+    } else {
+      // لا يوجد شباتر تحت هذه المادة — احفظ المادة نفسها (كما هو مطلوب بالضبط)
+      if (chapterWrap) chapterWrap.style.display = 'none';
+      if (finalSel) finalSel.value = materialId;
+    }
+    adminLoadSectionPath();
+  } catch(e) {
+    console.error('adminOnMaterialChange error:', e);
+    if (chapterWrap) chapterWrap.style.display = 'none';
+  }
+}
+
+// ── FIX 3: اختيار الشابتر يحدد القيمة النهائية (chapterId) المُرسَلة فعلياً لـ adminSaveContent() ──
+function adminOnChapterChange() {
+  var chapterSel = document.getElementById('admin-chapter-select');
+  var finalSel   = document.getElementById('admin-section-select');
+  if (finalSel) finalSel.value = chapterSel ? chapterSel.value : '';
+  adminLoadSectionPath();
 }
 
 function adminLoadSectionPath() {
@@ -8650,12 +9075,19 @@ function adminLoadSectionPath() {
   }
   const sec = window._adminSections.find(s => String(s.id) === String(id));
   if (!sec) return;
-  let path = sec.title;
-  if (sec.parent_id) {
-    const parent = window._adminSections.find(s => String(s.id) === String(sec.parent_id));
-    if (parent) path = parent.title + ' › ' + path;
+  // ✅ FIX 3: نبني المسار الكامل بالصعود عبر parent_id (بدل مستوى أب واحد فقط
+  // كما كان)، بحيث يظهر: الشعبة › المادة › الشابتر. بدون أي Migration أو
+  // تعديل Schema — لسه نفس شجرة site_sections.parent_id، فقط نمشي فيها لأعلى.
+  let chain = [sec.title];
+  let cur = sec;
+  let guard = 0;
+  while (cur && cur.parent_id != null && guard++ < 10) {
+    const parent = window._adminSections.find(s => String(s.id) === String(cur.parent_id));
+    if (!parent) break; // (مثلاً أدمن شعبة لا يرى الجذر الأعلى ضمن window._adminSections المُقيَّدة بنطاقه)
+    chain.unshift(parent.title);
+    cur = parent;
   }
-  document.getElementById('admin-section-path').textContent = '📍 ' + path;
+  document.getElementById('admin-section-path').textContent = '📍 ' + chain.join(' › ');
 
   // عرض حالة الاشتراك لهذا القسم + إتاحة التبديل
   if (toggleWrap) {
@@ -8746,57 +9178,266 @@ async function adminToggleSectionSubscription() {
   }
 }
 
+// ════════════════════════════════════════════════════════════════
+// § Content Attachments + Supabase Storage (Aug 2026)
+// يستخدم نفس bucket 'files' العام وبنفس نمط المسار المستعمل فعلاً في
+// chat-attachments: {section_id}/{content|resource}/{uuid}-{filename}
+// file_path هو مصدر الحقيقة لعمليات الاستبدال/الحذف من Storage.
+// file_url يُستخدم فقط للعرض/الوصول العام (Public URL من نفس الـ bucket).
+// ════════════════════════════════════════════════════════════════
+
+var ATT_BUCKET = 'files';
+var ATT_MAX_SIZE = { image: 10 * 1024 * 1024, pdf: 20 * 1024 * 1024, video: 100 * 1024 * 1024 };
+var ATT_MIME = {
+  image: ['image/jpeg', 'image/png', 'image/gif', 'image/webp'],
+  pdf: ['application/pdf'],
+  video: ['video/mp4', 'video/quicktime', 'video/webm', 'video/x-msvideo']
+};
+var _adminContentPendingFile = null; // ملف مُختار بانتظار الحفظ (إضافة جديدة)
+var _adminContentListCache = {};     // id -> صف كامل (content أو resource)، لعمليات الاستبدال/الحذف
+
+function _attUuid() {
+  if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+    var r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+}
+
+function _attSafeFileName(name) {
+  var parts = String(name || 'file').split('.');
+  var ext = parts.length > 1 ? parts.pop() : '';
+  var base = parts.join('.').replace(/[^a-zA-Z0-9\u0600-\u06FF _-]/g, '').trim().slice(0, 60) || 'file';
+  return base + (ext ? '.' + ext.replace(/[^a-zA-Z0-9]/g, '').toLowerCase() : '');
+}
+
+function _attFileSizeLabel(bytes) {
+  if (!bytes && bytes !== 0) return '';
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+  return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+}
+
+// يتحقق من نوع/حجم الملف حسب "الفئة" المختارة (image/pdf/video) — يرجع {ok, msg}
+function _attValidateFile(file, kindKey) {
+  var maxSize = ATT_MAX_SIZE[kindKey];
+  var allowedMimes = ATT_MIME[kindKey];
+  if (!maxSize || !allowedMimes) return { ok: false, msg: 'رفع الملفات غير مدعوم لهذا النوع — استخدم رابط بدلاً من ذلك' };
+  if (allowedMimes.indexOf(file.type) === -1) {
+    return { ok: false, msg: '❌ نوع الملف غير مطابق للفئة المختارة (' + kindKey + ')' };
+  }
+  if (file.size > maxSize) {
+    return { ok: false, msg: '❌ حجم الملف كبير جداً (الحد الأقصى ' + _attFileSizeLabel(maxSize) + ')' };
+  }
+  return { ok: true };
+}
+
+// يرفع الملف إلى bucket 'files' تحت {sectionId}/{subfolder}/... ويرجع {path, publicUrl}
+async function _attUploadFile(file, sectionId, subfolder) {
+  var db = window.supabase;
+  var storagePath = sectionId + '/' + subfolder + '/' + _attUuid() + '-' + _attSafeFileName(file.name);
+  var upRes = await db.storage.from(ATT_BUCKET).upload(storagePath, file, {
+    upsert: false,
+    contentType: file.type || 'application/octet-stream'
+  });
+  if (upRes.error) throw upRes.error;
+  var pub = db.storage.from(ATT_BUCKET).getPublicUrl(storagePath);
+  return { path: storagePath, publicUrl: pub && pub.data ? pub.data.publicUrl : null };
+}
+
+async function _attDeleteFile(path) {
+  if (!path) return;
+  try { await window.supabase.storage.from(ATT_BUCKET).remove([path]); }
+  catch (e) { console.warn('[ATTACH] تعذر حذف الملف من التخزين (تجاهل):', e && e.message); }
+}
+
+// يحدّد "فئة" الرفع (image/pdf/video) بناءً على نوع المحتوى/المورد المختار حالياً
+function _attKindForCurrentSelection() {
+  var kind = document.getElementById('admin-record-kind').value;
+  var type = kind === 'resource'
+    ? document.getElementById('admin-resource-type').value
+    : document.getElementById('admin-content-type').value;
+  if (type === 'image') return 'image';
+  if (type === 'pdf') return 'pdf';
+  if (type === 'video') return 'video';
+  return null; // غير مدعوم للرفع (نص/رابط/كويز/صوت) — رابط فقط
+}
+
+function adminSetContentSource(mode) {
+  var urlInput   = document.getElementById('admin-content-url');
+  var fileField  = document.getElementById('admin-file-field');
+  var btnUrl     = document.getElementById('admin-src-btn-url');
+  var btnFile    = document.getElementById('admin-src-btn-file');
+  window._adminContentSrcMode = mode;
+  if (mode === 'file') {
+    urlInput.style.display  = 'none';
+    fileField.style.display = '';
+    btnUrl.className  = 'ap-btn ap-btn-ghost';
+    btnFile.className = 'ap-btn ap-btn-primary';
+  } else {
+    urlInput.style.display  = '';
+    fileField.style.display = 'none';
+    btnUrl.className  = 'ap-btn ap-btn-primary';
+    btnFile.className = 'ap-btn ap-btn-ghost';
+    _adminContentPendingFile = null;
+    document.getElementById('admin-content-file').value = '';
+    document.getElementById('admin-file-preview').innerHTML = '';
+  }
+}
+
+function adminContentFileSelected(ev) {
+  var file = ev.target.files && ev.target.files[0];
+  var previewEl = document.getElementById('admin-file-preview');
+  if (!file) { _adminContentPendingFile = null; previewEl.innerHTML = ''; return; }
+  var kindKey = _attKindForCurrentSelection();
+  var check = _attValidateFile(file, kindKey);
+  if (!check.ok) {
+    if (typeof _showToast === 'function') _showToast(check.msg, 'error');
+    ev.target.value = '';
+    _adminContentPendingFile = null;
+    previewEl.innerHTML = '';
+    return;
+  }
+  _adminContentPendingFile = file;
+  var thumb = kindKey === 'image'
+    ? '<img src="' + URL.createObjectURL(file) + '" style="width:44px;height:44px;object-fit:cover;border-radius:8px;">'
+    : '<span style="font-size:1.6rem;">' + (kindKey === 'pdf' ? '📄' : '🎬') + '</span>';
+  previewEl.innerHTML =
+    '<div style="display:flex;align-items:center;gap:10px;background:#f5f9fd;border-radius:10px;padding:8px 10px;">' +
+      thumb +
+      '<div style="min-width:0;flex:1;"><div style="font-size:.78rem;font-weight:700;color:#0a3d62;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + file.name + '</div>' +
+      '<div style="font-size:.7rem;color:#999;">' + _attFileSizeLabel(file.size) + '</div></div>' +
+    '</div>';
+}
+
 function adminToggleFields() {
-  const type = document.getElementById('admin-content-type').value;
+  const kind = document.getElementById('admin-record-kind').value;
+  const contentTypeField  = document.getElementById('admin-content-type-field');
+  const resourceTypeField = document.getElementById('admin-resource-type-field');
+  contentTypeField.style.display  = kind === 'resource' ? 'none' : '';
+  resourceTypeField.style.display = kind === 'resource' ? '' : 'none';
+
+  const type = kind === 'resource'
+    ? document.getElementById('admin-resource-type').value
+    : document.getElementById('admin-content-type').value;
   const urlField  = document.getElementById('admin-url-field');
   const bodyField = document.getElementById('admin-body-field');
   const hint      = document.getElementById('admin-url-hint');
-  if (type === 'text') {
+  const srcToggle = document.getElementById('admin-src-toggle');
+
+  // النص (section_content فقط) هو النوع الوحيد بدون رابط/ملف
+  if (kind === 'content' && type === 'text') {
     urlField.style.display  = 'none';
     bodyField.style.display = '';
+    return;
+  }
+  urlField.style.display  = '';
+  bodyField.style.display = 'none';
+  if (type === 'video') hint.textContent = 'للفيديو: رابط يوتيوب أو أي رابط فيديو (أو ارفع ملف فيديو مباشرة)';
+  else if (type === 'pdf') hint.textContent = 'رابط مباشر لملف PDF (أو ارفع الملف مباشرة)';
+  else if (type === 'image') hint.textContent = 'رابط صورة (أو ارفع الصورة مباشرة)';
+  else if (type === 'form') hint.textContent = 'رابط الكويز/الاختبار (Google Form أو أي رابط اختبار) — هيفتح دايمًا في تبويب مستقل';
+  else if (type === 'audio') hint.textContent = 'رابط ملف صوتي';
+  else hint.textContent = 'رابط الصفحة أو المصدر';
+
+  // رفع الملفات مدعوم فقط لصور/PDF/فيديو (حسب المتطلبات) — الأنواع الأخرى رابط فقط
+  var uploadSupported = (type === 'image' || type === 'pdf' || type === 'video');
+  if (uploadSupported) {
+    srcToggle.style.display = 'flex';
+    adminSetContentSource(window._adminContentSrcMode === 'file' ? 'file' : 'url');
   } else {
-    urlField.style.display  = '';
-    bodyField.style.display = 'none';
-    if (type === 'video') hint.textContent = 'للفيديو: رابط يوتيوب أو أي رابط فيديو';
-    else if (type === 'pdf') hint.textContent = 'رابط مباشر لملف PDF';
-    else if (type === 'form') hint.textContent = 'رابط الكويز/الاختبار (Google Form أو أي رابط اختبار) — هيفتح دايمًا في تبويب مستقل';
-    else hint.textContent = 'رابط الصفحة أو المصدر';
+    srcToggle.style.display = 'none';
+    adminSetContentSource('url');
   }
 }
 
 async function adminSaveContent() {
+  const kind      = document.getElementById('admin-record-kind').value; // 'content' | 'resource'
   const sectionId = document.getElementById('admin-section-select').value;
-  const type      = document.getElementById('admin-content-type').value;
+  const type      = kind === 'resource'
+    ? document.getElementById('admin-resource-type').value
+    : document.getElementById('admin-content-type').value;
   const title     = document.getElementById('admin-content-title').value.trim();
   const url       = document.getElementById('admin-content-url').value.trim();
   const body      = document.getElementById('admin-content-body').value.trim();
   const desc      = document.getElementById('admin-content-desc').value.trim();
   const msgEl     = document.getElementById('admin-msg');
+  const srcMode   = window._adminContentSrcMode === 'file' ? 'file' : 'url';
+  const saveBtn   = document.querySelector('#admin-tab-add button[onclick="adminSaveContent()"]');
 
   if (!sectionId) { msgEl.style.color='#e74c3c'; msgEl.textContent = '❌ اختر القسم أولاً'; return; }
   if (!title)     { msgEl.style.color='#e74c3c'; msgEl.textContent = '❌ أدخل العنوان'; return; }
-  if (type !== 'text' && !url) { msgEl.style.color='#e74c3c'; msgEl.textContent = '❌ أدخل الرابط'; return; }
-  if (type === 'text' && !body) { msgEl.style.color='#e74c3c'; msgEl.textContent = '❌ أدخل النص'; return; }
+  if (kind === 'content' && type === 'text' && !body) { msgEl.style.color='#e74c3c'; msgEl.textContent = '❌ أدخل النص'; return; }
+  if (!(kind === 'content' && type === 'text')) {
+    if (srcMode === 'file' && !_adminContentPendingFile) { msgEl.style.color='#e74c3c'; msgEl.textContent = '❌ اختر ملفاً للرفع'; return; }
+    if (srcMode === 'url' && !url) { msgEl.style.color='#e74c3c'; msgEl.textContent = '❌ أدخل الرابط'; return; }
+  }
 
-  msgEl.style.color='#0a3d62'; msgEl.textContent = '⏳ جاري الحفظ...';
+  msgEl.style.color='#0a3d62';
+  msgEl.textContent = srcMode === 'file' ? '⏳ جاري رفع الملف...' : '⏳ جاري الحفظ...';
+  if (saveBtn) saveBtn.disabled = true;
 
+  var uploadedPath = null; // لتنظيف Storage لو فشل الحفظ في قاعدة البيانات بعد نجاح الرفع
   try {
-    const record = {
-      section_id: Number(sectionId),
-      content_type: type,
-      title: title,
-      description: desc || null,
-      url: (type !== 'text' && url) ? url : null,
-      body: (type === 'text' && body) ? body : null,
-      display_order: Date.now()
-    };
-    const { error } = await window.supabase.from('section_content').insert([record]);
+    var fileFields = { file_path: null, file_url: null, file_name: null, file_type: null, file_size: null };
+    var finalUrl = (kind === 'content' && type === 'text') ? null : (url || null);
+
+    if (srcMode === 'file' && _adminContentPendingFile) {
+      var subfolder = kind === 'resource' ? 'resource' : 'content';
+      var up = await _attUploadFile(_adminContentPendingFile, Number(sectionId), subfolder);
+      uploadedPath = up.path;
+      fileFields.file_path = up.path;
+      fileFields.file_url  = up.publicUrl;
+      fileFields.file_name = _adminContentPendingFile.name;
+      fileFields.file_type = _adminContentPendingFile.type || null;
+      fileFields.file_size = _adminContentPendingFile.size;
+      finalUrl = null; // الرابط الخارجي فاضي — العرض هيعتمد على file_url
+    }
+
+    var error;
+    if (kind === 'resource') {
+      var resRecord = {
+        section_id: Number(sectionId),
+        title: title,
+        description: desc || null,
+        resource_type: type,
+        file_url: fileFields.file_url || finalUrl || null,
+        file_path: fileFields.file_path,
+        file_name: fileFields.file_name,
+        file_type: fileFields.file_type,
+        file_size: fileFields.file_size,
+        sort_order: 99,
+        sub_order: 0
+      };
+      ({ error } = await window.supabase.from('section_resources').insert([resRecord]));
+    } else {
+      var contentRecord = {
+        section_id: Number(sectionId),
+        content_type: type,
+        title: title,
+        description: desc || null,
+        url: finalUrl,
+        body: (type === 'text' && body) ? body : null,
+        file_path: fileFields.file_path,
+        file_url: fileFields.file_url,
+        file_name: fileFields.file_name,
+        file_type: fileFields.file_type,
+        file_size: fileFields.file_size,
+        display_order: Date.now()
+      };
+      ({ error } = await window.supabase.from('section_content').insert([contentRecord]));
+    }
     if (error) throw error;
+
     msgEl.style.color='#17a589'; msgEl.textContent = '✅ تم الحفظ بنجاح!';
+    if (typeof _showToast === 'function') _showToast('✅ تم الحفظ بنجاح', 'success');
     document.getElementById('admin-content-title').value = '';
     document.getElementById('admin-content-url').value   = '';
     document.getElementById('admin-content-body').value  = '';
     document.getElementById('admin-content-desc').value  = '';
+    document.getElementById('admin-content-file').value  = '';
+    document.getElementById('admin-file-preview').innerHTML = '';
+    _adminContentPendingFile = null;
     setTimeout(() => { msgEl.textContent = ''; }, 3000);
 
     // ✅ مسح الـ cache للقسم المُحدَّث فقط (لإجبار إعادة التحميل)
@@ -8816,51 +9457,135 @@ async function adminSaveContent() {
       await _renderDynamicSectionPage(window._currentDynamicSec);
     }
   } catch(e) {
+    if (uploadedPath) await _attDeleteFile(uploadedPath); // rollback الملف اليتيم لو فشل الحفظ
     msgEl.style.color='#e74c3c';
     msgEl.textContent = '❌ خطأ: ' + (e.message || 'فشل الحفظ');
+    if (typeof _showToast === 'function') _showToast('❌ فشل الحفظ: ' + (e.message || ''), 'error');
+  } finally {
+    if (saveBtn) saveBtn.disabled = false;
   }
 }
 
 async function adminLoadContentList() {
+  const kind      = document.getElementById('admin-list-kind') ? document.getElementById('admin-list-kind').value : 'content';
   const sectionId = document.getElementById('admin-list-section').value;
   const listEl    = document.getElementById('admin-content-list');
   if (!sectionId) { listEl.innerHTML = ''; return; }
   listEl.innerHTML = '<div style="text-align:center;padding:20px;color:#888">⏳ جاري التحميل...</div>';
   try {
-    const { data, error } = await window.supabase.from('section_content').select('*').eq('section_id', sectionId).order('display_order');
+    const table = kind === 'resource' ? 'section_resources' : 'section_content';
+    const orderCol = kind === 'resource' ? 'sort_order' : 'display_order';
+    const { data, error } = await window.supabase.from(table).select('*').eq('section_id', sectionId).order(orderCol);
     if (error) throw error;
+    _adminContentListCache = {};
     if (!data || data.length === 0) {
-      listEl.innerHTML = '<div style="text-align:center;padding:20px;color:#aaa;font-size:.82rem">لا يوجد محتوى لهذا القسم بعد</div>';
+      listEl.innerHTML = '<div style="text-align:center;padding:20px;color:#aaa;font-size:.82rem">لا يوجد عناصر لهذا القسم بعد</div>';
       return;
     }
-    const icons = { video:'🎬', text:'📝', link:'🔗', pdf:'📄' };
-    listEl.innerHTML = data.map(item => `
-      <div style="background:#f8fbff;border:1.5px solid #d5e8f5;border-radius:12px;padding:12px 14px;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;gap:10px;">
+    const icons = { video:'🎬', text:'📝', link:'🔗', pdf:'📄', image:'🖼️', audio:'🎵', form:'📝' };
+    listEl.innerHTML = data.map(item => {
+      _adminContentListCache[item.id] = item;
+      const typeKey = kind === 'resource' ? item.resource_type : item.content_type;
+      const hasFile = !!item.file_path;
+      const displayUrl = item.file_url || item.url || '';
+      const fileBadge = hasFile
+        ? '<div style="font-size:.68rem;color:#0a3d62;background:#eaf4fb;border-radius:6px;padding:2px 6px;display:inline-block;margin-top:3px;">📎 ' +
+          (item.file_name || 'ملف') + (item.file_size ? ' · ' + _attFileSizeLabel(item.file_size) : '') + '</div>'
+        : '';
+      const previewBtn = displayUrl
+        ? '<button onclick="openResource(\'' + displayUrl.replace(/'/g,"\\'") + '\',\'' + (item.title||'').replace(/'/g,"\\'") + '\',\'' + (typeKey||'').replace(/'/g,"\\'") + '\')" style="background:#eaf6ee;border:1px solid #bfe6c9;color:#1e8449;border-radius:8px;padding:5px 10px;cursor:pointer;font-size:.75rem;white-space:nowrap;font-family:inherit;">👁️ معاينة</button>'
+        : '';
+      const replaceBtn = hasFile
+        ? '<button onclick="adminReplaceFile(' + item.id + ',\'' + kind + '\')" style="background:#fef6e6;border:1px solid #f5dfa0;color:#8a6d1f;border-radius:8px;padding:5px 10px;cursor:pointer;font-size:.75rem;white-space:nowrap;font-family:inherit;">🔁 استبدال</button>'
+        : '';
+      return `
+      <div style="background:#f8fbff;border:1.5px solid #d5e8f5;border-radius:12px;padding:12px 14px;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
         <div style="display:flex;align-items:center;gap:8px;flex:1;min-width:0;">
-          <span style="font-size:1.2rem;">${icons[item.content_type]||'📌'}</span>
+          <span style="font-size:1.2rem;">${icons[typeKey]||'📌'}</span>
           <div style="min-width:0;">
-            <div style="font-size:.82rem;font-weight:700;color:#0a3d62;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${item.title}</div>
-            <div style="font-size:.7rem;color:#999;">${item.content_type}</div>
+            <div style="font-size:.82rem;font-weight:700;color:#0a3d62;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${item.title||''}</div>
+            <div style="font-size:.7rem;color:#999;">${typeKey||''}</div>
+            ${fileBadge}
           </div>
         </div>
-        <button onclick="adminDeleteContent(${item.id})" style="background:#fef0f0;border:1px solid #fcc;color:#e74c3c;border-radius:8px;padding:5px 10px;cursor:pointer;font-size:.75rem;white-space:nowrap;font-family:inherit;">🗑️ حذف</button>
-      </div>`).join('');
+        <div style="display:flex;gap:6px;flex-wrap:wrap;">
+          ${previewBtn}
+          ${replaceBtn}
+          <button onclick="adminDeleteContent(${item.id},'${kind}')" style="background:#fef0f0;border:1px solid #fcc;color:#e74c3c;border-radius:8px;padding:5px 10px;cursor:pointer;font-size:.75rem;white-space:nowrap;font-family:inherit;">🗑️ حذف</button>
+        </div>
+      </div>`;
+    }).join('');
   } catch(e) {
     listEl.innerHTML = '<div style="color:#e74c3c;font-size:.8rem;padding:10px;">❌ ' + (e.message||'خطأ') + '</div>';
+    if (typeof _showToast === 'function') _showToast('❌ فشل تحميل القائمة: ' + (e.message||''), 'error');
   }
 }
 
-async function adminDeleteContent(id) {
+// يفتح منتقي ملفات مؤقت لاستبدال ملف عنصر موجود بالفعل (content أو resource)
+function adminReplaceFile(id, kind) {
+  const item = _adminContentListCache[id];
+  if (!item) { if (typeof _showToast === 'function') _showToast('❌ تعذر تحديد العنصر', 'error'); return; }
+  const typeKey = kind === 'resource' ? item.resource_type : item.content_type;
+  const kindKey = (typeKey === 'image' || typeKey === 'pdf' || typeKey === 'video') ? typeKey : null;
+  if (!kindKey) { if (typeof _showToast === 'function') _showToast('❌ الاستبدال غير مدعوم لهذا النوع', 'error'); return; }
+
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.onchange = async function (ev) {
+    const file = ev.target.files && ev.target.files[0];
+    if (!file) return;
+    const check = _attValidateFile(file, kindKey);
+    if (!check.ok) { if (typeof _showToast === 'function') _showToast(check.msg, 'error'); return; }
+
+    if (typeof _showToast === 'function') _showToast('⏳ جاري رفع الملف الجديد...', 'info');
+    const table = kind === 'resource' ? 'section_resources' : 'section_content';
+    const subfolder = kind === 'resource' ? 'resource' : 'content';
+    let uploadedPath = null;
+    try {
+      const up = await _attUploadFile(file, Number(item.section_id), subfolder);
+      uploadedPath = up.path;
+      const updateFields = {
+        file_path: up.path,
+        file_url: up.publicUrl,
+        file_name: file.name,
+        file_type: file.type || null,
+        file_size: file.size
+      };
+      if (kind === 'content') updateFields.url = null; // العرض يعتمد الآن على file_url
+      const { error } = await window.supabase.from(table).update(updateFields).eq('id', id);
+      if (error) throw error;
+      const oldPath = item.file_path;
+      if (oldPath && oldPath !== up.path) await _attDeleteFile(oldPath);
+      if (typeof _showToast === 'function') _showToast('✅ تم استبدال الملف بنجاح', 'success');
+      if (window._dataCache && window._dataCache.content) window._dataCache.content = {};
+      adminLoadContentList();
+    } catch (e) {
+      if (uploadedPath) await _attDeleteFile(uploadedPath);
+      if (typeof _showToast === 'function') _showToast('❌ فشل الاستبدال: ' + (e.message||''), 'error');
+    }
+  };
+  input.click();
+}
+
+async function adminDeleteContent(id, kind) {
   if (!confirm('هل تريد حذف هذا العنصر؟')) return;
+  kind = kind || 'content';
+  const table = kind === 'resource' ? 'section_resources' : 'section_content';
+  const item = _adminContentListCache[id];
   try {
-    const { error } = await window.supabase.from('section_content').delete().eq('id', id);
+    const { error } = await window.supabase.from(table).delete().eq('id', id);
     if (error) throw error;
+    if (item && item.file_path) await _attDeleteFile(item.file_path);
+    if (typeof _showToast === 'function') _showToast('✅ تم الحذف', 'success');
     // مسح الـ cache الكامل للـ content (لا نعرف id القسم هنا)
     if (window._dataCache && window._dataCache.content) {
       window._dataCache.content = {};
     }
     adminLoadContentList();
-  } catch(e) { alert('خطأ في الحذف: ' + e.message); }
+  } catch(e) {
+    if (typeof _showToast === 'function') _showToast('❌ خطأ في الحذف: ' + (e.message||''), 'error');
+    else alert('خطأ في الحذف: ' + e.message);
+  }
 }
 
 // ── adminTab: يُستخدم داخل تاب المحتوى ────────────────────────
@@ -8921,9 +9646,12 @@ function _applyBranchAdminPanelGating() {
   // آخر الدالة دي (ابحث عن _TEMP_HIDE_PATHS_AUDIT) بعد إنشاء الجدولين.
   var _TEMP_HIDE_PATHS_AUDIT = false;
 
-  // تاب "أدمن الشعب" لسوبر أدمن فقط
+  var perms = window._branchAdminPerms || {};
+
+  // تاب "أدمن الشعب" لسوبر أدمن دايمًا، أو لأدمن الشعبة لو معاه can_manage_admins
+  // (Aug 2026 — Phase 3: كان مقصور على سوبر أدمن فقط، الآن يدعم التفويض)
   var baTab = document.getElementById('ap-tab-branchadmins');
-  if (baTab) baTab.style.display = isSuper ? '' : 'none';
+  if (baTab) baTab.style.display = (isSuper || (isBranch && perms.can_manage_admins)) ? '' : 'none';
 
   if (!isBranch) {
     // مستخدم عادي أو سوبر أدمن: أظهر كل التابات كما هي
@@ -8933,7 +9661,6 @@ function _applyBranchAdminPanelGating() {
     return;
   }
 
-  var perms = window._branchAdminPerms || {};
 
   // أدمن الشعبة لا يرى: Requests العامة، إدارة المستخدمين، الحظر، Messages، المدفوعات العامة،
   // إدارة الإعلانات، الإحصائيات الشهرية — كلها خارج نطاق شعبته (سوبر أدمن فقط)
@@ -9008,11 +9735,11 @@ async function apNotifLoadSections(){
   if(!el || !window.supabase) return;
   try{
     var q=window.supabase.from('site_sections').select('id,title,parent_id').order('display_order',{ascending:true}).order('id',{ascending:true});
-    if(window._isBranchAdmin && !_notifScopeIds().length){ el.innerHTML='<option value="">لا توجد شعب مُسندة</option>'; return; }
+    if(window._isBranchAdmin && !window._isSuperAdmin && !_notifScopeIds().length){ el.innerHTML='<option value="">لا توجد شعب مُسندة</option>'; return; }
     var res=await q;
     if(res.error) throw res.error;
     var rows=res.data||[];
-    if(window._isBranchAdmin){
+    if(window._isBranchAdmin && !window._isSuperAdmin){
       var scope=_notifScopeIds();
       rows=rows.filter(function(r){return scope.indexOf(Number(r.id))>-1;});
     }
@@ -9035,7 +9762,7 @@ async function apNotifSearchUsers(q){
     var res=await window.supabase.from('profiles').select('id,email,full_name').or('email.ilike.%'+q+'%,full_name.ilike.%'+q+'%').limit(8);
     if(res.error) throw res.error;
     var rows=res.data||[];
-    if(window._isBranchAdmin){
+    if(window._isBranchAdmin && !window._isSuperAdmin){
       // Branch Admin لا يعتمد على UI فقط: نتحقق من وجود اشتراك فعال داخل نطاقه قبل عرض المستخدم.
       var ids=rows.map(function(r){return r.id;}).filter(Boolean);
       var scope=_notifScopeIds();
@@ -9065,7 +9792,7 @@ function apNotifSelectUser(id,email,name){
 async function apLoadNotificationsPanel(){
   var note=document.getElementById('ap-notif-scope-note');
   if(!note)return;
-  if(window._isBranchAdmin){
+  if(window._isBranchAdmin && !window._isSuperAdmin){
     var roots=(window._branchAdminRoots||[]).map(function(r){return r.title;}).filter(Boolean);
     note.textContent='🛡️ يمكنك إرسال إشعارات فقط للمستخدمين المرتبطين بشعبتك: '+(roots.join('، ')||'نطاق الشعبة الحالي');
   }else{
@@ -9084,26 +9811,32 @@ async function _notifGetRecipientIds(target){
   if(target==='specific'){
     var u=window._apNotifSelectedUser;
     if(!u||!u.id) throw new Error('اختر مستخدماً أولاً');
-    if(window._isBranchAdmin){
+    if(window._isBranchAdmin && !window._isSuperAdmin){
       var scope=_notifScopeIds();
       if(!scope.length) throw new Error('لا يوجد نطاق شعبة لهذا الأدمن');
-      var sr=await db.from('subscriptions').select('user_id,section_id,payment_status,end_date').eq('user_id',u.id).in('section_id',scope).eq('payment_status','active');
+      // ✅ FIX: كان الشرط هنا يتطلب payment_status==='active' فقط، فكان أدمن
+      // الشعبة يقدر يبلّغ الطالب بالموافقة (الحالة بقت active) لكن ميقدرش
+      // يبلّغه بالرفض (الحالة بقت cancelled) — نفس صف الطلب (subscriptions)
+      // لسه موجود بأي حالة طالما داخل نطاق شعبته، فده كل المطلوب للتحقق من
+      // الصلاحية. ده بيطابق تماماً can_branch_admin_notify_user() في قاعدة
+      // البيانات اللي بترجع true لمجرد وجود صف اشتراك للمستخدم داخل نطاق
+      // شعبة الأدمن، بدون أي شرط على payment_status.
+      var sr=await db.from('subscriptions').select('user_id,section_id').eq('user_id',u.id).in('section_id',scope);
       if(sr.error) throw sr.error;
-      var ok=(sr.data||[]).some(function(s){return !s.end_date||new Date(s.end_date).getTime()>=Date.now();});
-      if(!ok) throw new Error('هذا المستخدم ليس مشتركاً فعالاً داخل نطاق شعبتك');
+      if(!sr.data||!sr.data.length) throw new Error('هذا المستخدم ليس له طلب/اشتراك داخل نطاق شعبتك');
     }
     return [u.id];
   }
   if(target==='section'){
     var sid=Number((document.getElementById('ap-notif-section')||{}).value);
     if(!sid) throw new Error('اختر الشعبة');
-    if(window._isBranchAdmin && _notifScopeIds().indexOf(sid)===-1) throw new Error('الشعبة خارج نطاق صلاحياتك');
+    if(window._isBranchAdmin && !window._isSuperAdmin && _notifScopeIds().indexOf(sid)===-1) throw new Error('الشعبة خارج نطاق صلاحياتك');
     var sr=await db.from('subscriptions').select('user_id,payment_status,end_date').eq('section_id',sid).eq('payment_status','active');
     if(sr.error) throw sr.error;
     return Array.from(new Set((sr.data||[]).filter(function(s){return !s.end_date||new Date(s.end_date).getTime()>=Date.now();}).map(function(s){return s.user_id;}).filter(Boolean)));
   }
   // all
-  if(window._isBranchAdmin){
+  if(window._isBranchAdmin && !window._isSuperAdmin){
     var scope=_notifScopeIds();
     if(!scope.length) throw new Error('لا يوجد نطاق شعبة لهذا الأدمن');
     var sr=await db.from('subscriptions').select('user_id,section_id,payment_status,end_date').in('section_id',scope).eq('payment_status','active');
@@ -9224,7 +9957,7 @@ function apSwitchTab(tab) {
   else if (tab === 'payments') apLoadPayments();
   else if (tab === 'sectionsmgmt') {
     // ── أدمن الشعبة: يدخل مباشرة على شعبته فقط، مش على جذر كل الشعب ──
-    if (window._isBranchAdmin) {
+    if (window._isBranchAdmin && !window._isSuperAdmin) {
       var rootRow = window._branchAdminRows && window._branchAdminRows[0];
       var rootId  = rootRow ? rootRow.branch_section_id : null;
       var rootTitle = (rootRow && rootRow.site_sections && rootRow.site_sections.title) || 'شعبتك';
@@ -9245,6 +9978,7 @@ function apSwitchTab(tab) {
   else if (tab === 'users')    apLoadUsers();
   else if (tab === 'messages') apLoadMessages();
   else if (tab === 'content')  { /* already managed by adminTab */ }
+  else if (tab === 'quizzes')  { if (typeof qzLoadMaterialsForAdmin === 'function') qzLoadMaterialsForAdmin(); }
   else if (tab === 'sectionchat') apLoadSectionChatTab();
   else if (tab === 'branchadmins') { baLoadGrades(); }
 }
@@ -9337,6 +10071,25 @@ window._baRemoveCtx = null;        // { adminRowId, userId, name, sectionTitle }
 var _baSearchTimer = null;
 
 async function baLoadGrades() {
+  // ✅ (Aug 2026 — Phase 3): أدمن الشعبة (مش سوبر أدمن) مقصور تلقائيًا على شعبته
+  // النشطة حالياً فقط — بدون تصفح باقي شجرة الفرق/الترمات/الشعب. الحماية الحقيقية
+  // في RLS (branch_admin_can_manage_admins) — هذا فقط لتجربة استخدام صحيحة.
+  if (window._isBranchAdmin && !window._isSuperAdmin) {
+    var picker = document.getElementById('ba-tree-picker');
+    if (picker) picker.style.display = 'none';
+    var ownId = window._activeSectionId;
+    if (!ownId) {
+      document.getElementById('ba-list-body').innerHTML = '<div class="ap-empty">تعذّر تحديد شعبتك الحالية.</div>';
+      return;
+    }
+    window._baSelectedGradeId = null;
+    window._baSelectedTermId = null;
+    window._baSelectedBranchId = ownId;
+    baLoadBranchAdmins();
+    return;
+  }
+  var picker = document.getElementById('ba-tree-picker');
+  if (picker) picker.style.display = '';
   var sel = document.getElementById('ba-sel-grade');
   if (!sel || !window.supabase) return;
   sel.innerHTML = '<option value="">— جاري التحميل —</option>';
@@ -9474,6 +10227,13 @@ async function baLoadBranchAdmins() {
 
 // ── فتح مودال تعيين/تغيير الأدمن ──
 function baOpenAssignModal(sectionId, sectionTitle, mode) {
+  // ✅ (Aug 2026 — Phase 3): حاجز واجهة إضافي — أدمن الشعبة (مش سوبر أدمن) يقدر
+  // فقط يفتح المودال لشعبته النشطة هو. الحماية الحقيقية في RLS
+  // (branch_admin_can_manage_admins) — هذا فقط لمنع محاولة عبث من الواجهة نفسها.
+  if (window._isBranchAdmin && !window._isSuperAdmin && String(sectionId) !== String(window._activeSectionId)) {
+    _showToast ? _showToast('⛔ لا تملك صلاحية إدارة أدمن شعبة أخرى', 'error') : alert('⛔ غير مصرح');
+    return;
+  }
   window._baModalCtx = { sectionId: sectionId, sectionTitle: sectionTitle, mode: mode };
   window._baSelectedUser = null;
   var overlay = document.getElementById('ba-assign-overlay');
@@ -9754,7 +10514,7 @@ async function _apGetProfilesMap(userIds) {
 async function apLoadDashboard() {
   if (!window.supabase) return;
   // ── أدمن الشعبة: إحصائيات شعبته فقط، وليس إحصائيات الموقع كله ──
-  if (window._isBranchAdmin) { return _apLoadBranchDashboard(); }
+  if (window._isBranchAdmin && !window._isSuperAdmin) { return _apLoadBranchDashboard(); }
   try {
     var [usersRes, subsRes, msgsRes, contentRes] = await Promise.all([
       window.supabase.from('profiles').select('id', { count: 'exact', head: true }),
@@ -9942,6 +10702,67 @@ async function apCancelSub(subId, userId) {
 }
 
 // ────────────────────────────────────────────────────────────────
+// ✅ FIX (مراجعة إثبات الدفع — Payment Proof Review، أغسطس 2026):
+// apApproveReq / apRejectReq / apCancelSub كانت بتنادي على
+// window.approveSubscription / window.cancelSubscription، لكن الدالتين دول
+// ما كانوش متعرّفين إطلاقاً في أي مكان بالملف. لاحقاً، بلوك الحماية
+// "§2 PROTECTED ADMIN WRAPPERS" (تحت) كان بيلتقط:
+//     var _origApprove = window.approveSubscription || function(){};
+// وبما إن window.approveSubscription لسه undefined وقتها، _origApprove
+// بقت تساوي function فاضية بشكل دائم — يعني زرار "✅ قبول" في تابي
+// "الطلبات" و"المدفوعات" (والقديم في تاب "إدارة الاشتراكات") كانوا
+// بيغيّروا حالة التحميل ويعملوا toast نجاح، بس من غير أي UPDATE فعلي على
+// جدول subscriptions. نفس الأمر لـ"❌ رفض"/"🚫 إلغاء" مع cancelSubscription.
+// الحل: نضيف التنفيذ الحقيقي هنا (قبل بلوك الحماية في ترتيب الـ<script>
+// بالمستند، عشان الـwrapper يلتقط النسخة الحقيقية مش الفارغة)، بنفس منطق
+// apApproveDivisionSub/apCancelDivisionSub (تحديث + logAudit + مسح كاش
+// الحالة محلياً) بدل عمل مسار موافقة/رفض مواز جديد. الفرق الوحيد: الاشتراك
+// العام (بدون شعبة بالضرورة) بيحترم subscription_type (شهري=30 يوم،
+// سنوي=365 يوم) بدل تثبيت 30 يوم زي اشتراك الشعبة.
+// ────────────────────────────────────────────────────────────────
+async function approveSubscription(subId, userId) {
+  if (!window.supabase) return;
+  try {
+    var { data: row, error: fErr } = await window.supabase
+      .from('subscriptions')
+      .select('subscription_type')
+      .eq('id', subId)
+      .maybeSingle();
+    if (fErr) throw fErr;
+    var days = (row && row.subscription_type === 'yearly') ? 365 : 30;
+    var end = new Date(); end.setDate(end.getDate() + days);
+    var { error } = await window.supabase
+      .from('subscriptions')
+      .update({ payment_status: 'active', start_date: new Date().toISOString(), end_date: end.toISOString(), reject_reason: null, reviewed_at: new Date().toISOString() })
+      .eq('id', subId);
+    if (error) throw error;
+    window._subStatusCache = {}; // مسح الكاش المحلي حتى تنعكس الحالة فوراً للطالب
+    _showToast ? _showToast('✅ تم تفعيل الاشتراك', 'success') : null;
+    logAudit('approve_subscription', 'subscription', subId, null, null, 'success', { user_id: userId, end_date: end.toISOString() });
+  } catch(err) {
+    logAudit('approve_subscription', 'subscription', subId, null, null, 'failure', { user_id: userId, error: err.message });
+    _showToast ? _showToast('❌ خطأ: ' + err.message, 'error') : alert('خطأ: ' + err.message);
+  }
+}
+
+async function cancelSubscription(subId, userId, reason) {
+  if (!window.supabase) return;
+  try {
+    var { error } = await window.supabase
+      .from('subscriptions')
+      .update({ payment_status: 'cancelled', reject_reason: reason || null, reviewed_at: new Date().toISOString() })
+      .eq('id', subId);
+    if (error) throw error;
+    window._subStatusCache = {};
+    _showToast ? _showToast('🚫 تم رفض/إلغاء الطلب', 'success') : null;
+    logAudit('reject_subscription', 'subscription', subId, null, null, 'success', { user_id: userId, reason: reason });
+  } catch(err) {
+    logAudit('reject_subscription', 'subscription', subId, null, null, 'failure', { user_id: userId, error: err.message });
+    _showToast ? _showToast('❌ خطأ: ' + err.message, 'error') : alert('خطأ: ' + err.message);
+  }
+}
+
+// ────────────────────────────────────────────────────────────────
 // DIVISION SUBSCRIPTIONS TAB (subscriptions — اشتراك مستقل لكل شعبة عن طريق section_id)
 // ────────────────────────────────────────────────────────────────
 function _divSubStatusLabel(row) {
@@ -9962,7 +10783,7 @@ async function dsLoadGrades() {
   var wrap = document.getElementById('ds-sel-grade');
   if (!wrap) return;
   // أدمن الشعبة أصلاً مقيَّد بشعبته عبر RLS + window._branchAdminSectionIds — لا داعي لهذا الفلتر له
-  if (window._isBranchAdmin) {
+  if (window._isBranchAdmin && !window._isSuperAdmin) {
     ['ds-sel-grade','ds-sel-term','ds-sel-branch'].forEach(function(id){ var e = document.getElementById(id); if (e) e.style.display = 'none'; });
     return;
   }
@@ -10035,7 +10856,7 @@ async function apLoadDivisionSubs() {
     else if (sortVal === 'end_date_asc')     query = query.order('end_date', { ascending: true, nullsFirst: false });
     else                                     query = query.order('requested_at', { ascending: false });
     // ── أدمن الشعبة: يرى فقط طلبات شعبته (الأمان الفعلي عبر RLS في القاعدة) ──
-    if (window._isBranchAdmin) {
+    if (window._isBranchAdmin && !window._isSuperAdmin) {
       var scope = window._branchAdminSectionIds || [];
       query = query.in('section_id', scope.length ? scope : [-1]);
     } else if (window._dsSelectedBranchId) {
@@ -10159,11 +10980,22 @@ async function apCancelDivisionSub(id) {
 }
 
 // ── عرض صورة إيصال الدفع في نافذة منبثقة (يدعم مسارات Supabase Storage الخاصة) ──
+// ✅ FIX 1: سابقاً كان url (لو فشل _getSignedPdfUrl) يحتوي storage path الخام
+// ويُوضع مباشرة في img.src فيظهر الإيصال مكسوراً بصمت. الآن: لو رجعت null
+// (فشل موثّق ومسجّل داخل _getSignedPdfUrl نفسها) نعرض رسالة خطأ واضحة للأدمن
+// بدل صورة مكسورة، مع تسجيل إضافي هنا في console يوضّح المصدر (rawUrl).
 async function apViewReceipt(rawUrl) {
   var url = rawUrl;
+  var failed = false;
   try {
-    if (typeof _getSignedPdfUrl === 'function') url = await _getSignedPdfUrl(rawUrl);
-  } catch(e) {}
+    if (typeof _getSignedPdfUrl === 'function') {
+      url = await _getSignedPdfUrl(rawUrl);
+      if (!url) failed = true;
+    }
+  } catch(e) {
+    console.error('[apViewReceipt] استثناء غير متوقع أثناء توليد رابط الإيصال:', e && e.message, '| rawUrl:', rawUrl);
+    failed = true;
+  }
   var overlay = document.getElementById('ap-receipt-overlay');
   if (!overlay) {
     overlay = document.createElement('div');
@@ -10173,10 +11005,20 @@ async function apViewReceipt(rawUrl) {
     overlay.innerHTML = '<div style="max-width:92vw;max-height:90vh;position:relative;">'
       + '<button onclick="document.getElementById(\'ap-receipt-overlay\').remove()" style="position:absolute;top:-14px;right:-14px;width:34px;height:34px;border-radius:50%;background:#fff;border:none;font-weight:900;cursor:pointer;box-shadow:0 2px 10px rgba(0,0,0,.3);">✕</button>'
       + '<img id="ap-receipt-img" style="max-width:92vw;max-height:90vh;border-radius:10px;box-shadow:0 10px 40px rgba(0,0,0,.5);" />'
+      + '<div id="ap-receipt-error" style="display:none;background:#fff;color:#c0392b;padding:22px 26px;border-radius:10px;font-weight:800;font-size:.9rem;text-align:center;min-width:260px;"></div>'
       + '</div>';
     document.body.appendChild(overlay);
   }
-  document.getElementById('ap-receipt-img').src = url;
+  var imgEl = document.getElementById('ap-receipt-img');
+  var errEl = document.getElementById('ap-receipt-error');
+  if (failed) {
+    console.error('[apViewReceipt] تعذّر تحميل الإيصال — rawUrl (storage path):', rawUrl);
+    if (imgEl) imgEl.style.display = 'none';
+    if (errEl) { errEl.style.display = 'block'; errEl.textContent = '❌ تعذر تحميل الإيصال'; }
+  } else {
+    if (errEl) errEl.style.display = 'none';
+    if (imgEl) { imgEl.style.display = ''; imgEl.src = url; }
+  }
 }
 
 // ────────────────────────────────────────────────────────────────
@@ -11005,11 +11847,11 @@ function smRenderBreadcrumb() {
   var el = document.getElementById('sm-breadcrumb');
   if (!el) return;
   // ── أدمن الشعبة: ممنوع يطلع فوق جذر شعبته — مفيش رابط "الجذر (كل الشعب)" ──
-  var parts = window._isBranchAdmin
+  var parts = (window._isBranchAdmin && !window._isSuperAdmin)
     ? []
     : ['<span onclick="smGoToCrumb(-1)" style="cursor:pointer;color:#0a3d62;font-weight:800;">🏠 الجذر (كل الشعب)</span>'];
   _smStack.forEach(function(s, i) {
-    if (i > 0 || !window._isBranchAdmin) parts.push('<span style="opacity:.5;">›</span>');
+    if (i > 0 || !(window._isBranchAdmin && !window._isSuperAdmin)) parts.push('<span style="opacity:.5;">›</span>');
     parts.push('<span onclick="smGoToCrumb(' + i + ')" style="cursor:pointer;color:' + (i === _smStack.length-1 ? '#17a589;font-weight:800;' : '#0a3d62;') + '">' + _apEsc(s.title) + '</span>');
   });
   el.innerHTML = parts.join(' ');
@@ -11017,7 +11859,7 @@ function smRenderBreadcrumb() {
 
 function smGoToCrumb(index) {
   // ── أدمن الشعبة: أقل مستوى مسموح هو شعبته نفسها (index 0)، مينفعش يرجع لجذر كل الشعب ──
-  var minIndex = window._isBranchAdmin ? 0 : -1;
+  var minIndex = (window._isBranchAdmin && !window._isSuperAdmin) ? 0 : -1;
   if (index < minIndex) index = minIndex;
   if (index === -1) { _smStack = []; }
   else { _smStack = _smStack.slice(0, index + 1); }
@@ -11226,7 +12068,7 @@ async function lpLoad() {
       .select('*, learning_path_items(count)')
       .order('display_order', { ascending: true });
     // ── أدمن الشعبة: يرى فقط مسارات شعبته ──
-    if (window._isBranchAdmin) {
+    if (window._isBranchAdmin && !window._isSuperAdmin) {
       var scope = window._branchAdminSectionIds || [];
       if (!scope.length) { _lpCache = []; lpRenderList(); return; }
       query = query.in('section_id', scope);
@@ -11286,7 +12128,7 @@ async function _lpPopulateSectionSelect(selectedId) {
   var opts = list.map(function(s){
     return '<option value="' + s.id + '"' + (String(s.id) === String(selectedId) ? ' selected' : '') + '>' + _apEsc(s.title) + '</option>';
   }).join('');
-  if (window._isBranchAdmin) {
+  if (window._isBranchAdmin && !window._isSuperAdmin) {
     // أدمن الشعبة: لازم يختار شعبة داخل نطاقه — مفيش خيار "عام"
     sel.innerHTML = opts || '<option value="">— لا توجد شُعب متاحة —</option>';
     if (hint) hint.textContent = 'مسارك سيكون مرتبطاً بشعبتك فقط.';
@@ -11304,7 +12146,7 @@ function lpOpenAdd() {
   document.getElementById('lp-f-active').checked = true;
   document.getElementById('lp-f-id').value = '';
   document.getElementById('lp-edit-msg').textContent = '';
-  _lpPopulateSectionSelect(window._isBranchAdmin && window._branchAdminSectionIds ? window._branchAdminSectionIds[0] : '');
+  _lpPopulateSectionSelect(window._isBranchAdmin && !window._isSuperAdmin && window._branchAdminSectionIds ? window._branchAdminSectionIds[0] : '');
   document.getElementById('lp-edit-modal').style.display = 'flex';
 }
 
@@ -11332,7 +12174,7 @@ async function lpSave() {
   if (!title) { msgEl.textContent = '❌ عنوان المسار مطلوب'; msgEl.style.color = '#e74c3c'; return; }
   var id = document.getElementById('lp-f-id').value;
   var sectionVal = document.getElementById('lp-f-section').value;
-  if (window._isBranchAdmin && !sectionVal) {
+  if (window._isBranchAdmin && !window._isSuperAdmin && !sectionVal) {
     msgEl.textContent = '❌ اختر شعبتك أولاً'; msgEl.style.color = '#e74c3c'; return;
   }
   var payload = {
@@ -11428,7 +12270,7 @@ async function _lpPopulateCourseSelect(pathSectionId) {
   if (!sel || !window.supabase) return;
   try {
     var query = window.supabase.from('site_sections').select('id, title, icon').eq('type', 'course').order('title');
-    if (window._isBranchAdmin) {
+    if (window._isBranchAdmin && !window._isSuperAdmin) {
       var scope = window._branchAdminSectionIds || [];
       if (!scope.length) { sel.innerHTML = '<option value="">— لا توجد دورات متاحة —</option>'; return; }
       query = query.in('id', scope);
@@ -12331,9 +13173,23 @@ window._origWindowOpen = window.open;
 <script>
 
 // ==================== Supabase Signed URL Helper ====================
+// ✅ FIX 1 (إيصال الاشتراك يظهر مكسوراً للأدمن): سابقاً كانت الدالة عند فشل
+// createSignedUrl() (أو أي خطأ أثناء استخراج bucket/path) تُرجع storagePath
+// الخام (receipts/user/file.jpg) كأنه رابط صالح، فيُوضع مباشرة داخل img.src
+// ويظهر مكسوراً بدون أي تفسير. الآن: أي مسار فشل توليد Signed URL له تُرجع
+// الدالة null صراحةً، مع تسجيل واضح في console يوضّح bucket/path والسبب،
+// والمستدعي (apViewReceipt) هو من يقرر عرض رسالة الخطأ للمستخدم.
+// لا تغيير على أي Schema أو Bucket.
 async function _getSignedPdfUrl(storagePath) {
-  if (!window.supabase) return storagePath;
-  // إذا كان الرابط مباشر وليس Supabase storage path، نُرجعه كما هو
+  if (!storagePath) {
+    console.error('[SignedURL] لا يوجد storagePath (قيمة فارغة/فاضية) — تعذّر توليد رابط الإيصال.');
+    return null;
+  }
+  if (!window.supabase) {
+    console.error('[SignedURL] window.supabase غير جاهز — تعذّر توليد Signed URL لـ:', storagePath);
+    return null;
+  }
+  // إذا كان الرابط مباشر وليس Supabase storage path، نُرجعه كما هو (رابط خارجي صالح فعلاً)
   if (storagePath.startsWith('http') && !storagePath.includes('supabase')) return storagePath;
   try {
     // استخراج bucket وpath من الرابط
@@ -12347,12 +13203,23 @@ async function _getSignedPdfUrl(storagePath) {
       var bucket = bucketMatch[1];
       var filePath = bucketMatch[2].split('?')[0];
     }
+    if (!bucket || !filePath) {
+      console.error('[SignedURL] تعذّر استخراج bucket/path من:', storagePath);
+      return null;
+    }
     var result = await window.supabase.storage
       .from(bucket)
       .createSignedUrl(filePath, 300); // 5 دقائق
     if (result.data && result.data.signedUrl) return result.data.signedUrl;
-  } catch(e) { console.warn('[SignedURL]', e.message); }
-  return storagePath;
+    // ✅ FIX 1: هذه هي نقطة الفشل الأساسية — createSignedUrl() رجعت بدون
+    // signedUrl (خطأ من Supabase: ملف غير موجود، صلاحيات، bucket خاطئ...).
+    // سابقاً كان يصل هنا وبعد الـ try/catch يُرجع storagePath الخام. الآن نُرجع null.
+    console.error('[SignedURL] createSignedUrl() فشلت — bucket:', bucket, '| path:', filePath, '| error:', result.error && result.error.message);
+    return null;
+  } catch(e) {
+    console.error('[SignedURL] استثناء أثناء توليد Signed URL لـ:', storagePath, '| error:', e && e.message);
+    return null;
+  }
 }
 
 // ==================== NativePDFViewer (PDF.js — canvas only, no iframe/embed/object) ====================
@@ -13435,10 +14302,13 @@ if (typeof _origApLoadDashboard === 'function') {
 // § 3ب. Branch Admin UI — إخفاء التابات الخاصة بـ Super Admin فقط
 //    Branch Admin يرى فقط: Dashboard / الشعب والمواد / الاشتراكات والطلبات / إضافة محتوى
 // ════════════════════════════════════════════════════════════════
-var _SUPER_ADMIN_ONLY_TABS = ['requests', 'payments', 'ads', 'monthlystats', 'usermgmt', 'users', 'messages', 'branchadmins'];
+// ✅ (Aug 2026 — Phase 3): أُزيلت 'branchadmins' من هذه القائمة — إظهارها الآن
+// يعتمد على صلاحية can_manage_admins عبر _applyBranchAdminPanelGating()، مش
+// إخفاء مطلق. باقي التابات هنا لسه حصرية للسوبر أدمن زي ما هي.
+var _SUPER_ADMIN_ONLY_TABS = ['requests', 'payments', 'ads', 'monthlystats', 'usermgmt', 'users', 'messages'];
 
 function _applyBranchAdminPanelRestrictions() {
-  if (!window._isBranchAdmin) return;
+  if (!window._isBranchAdmin || window._isSuperAdmin) return;
   _SUPER_ADMIN_ONLY_TABS.forEach(function(tab) {
     var btn = document.getElementById('ap-tab-' + tab);
     if (btn) btn.style.display = 'none';
@@ -13595,6 +14465,25 @@ function _applyBranchAdminPanelRestrictions() {
       var panel = document.getElementById('admin-panel');
       if (panel) panel.classList.remove('ap-open');
       _secAlert('تم سحب صلاحياتك الإدارية');
+      return;
+    }
+    // ✅ FIX 2 (Aug 2026 — جزء من إصلاح "هذا القسم خارج نطاق شعبتك"): لو ظل
+    // status.isAdmin=true لكن *نوع* الصلاحية تغيّر أثناء الجلسة (مثلاً أدمن
+    // شعبة تمت ترقيته لسوبر أدمن، أو العكس)، كان window._isSuperAdmin/
+    // window._isBranchAdmin يفضلوا محتفظين بالقيمة القديمة لحد ما يعمل
+    // Logout/Login أو يعمل Refresh، فيستمر تطبيق قيود الفرع (أو غيابها) بشكل
+    // خاطئ حتى لو الفحص الدوري ده بيشتغل كل 5 دقائق. الآن نُعيد المزامنة دايماً.
+    if (status.isAdmin && (status.isSuperAdmin !== window._isSuperAdmin || status.isBranchAdmin !== window._isBranchAdmin)) {
+      window._isSuperAdmin = status.isSuperAdmin;
+      window._isBranchAdmin = status.isBranchAdmin;
+      window._isSectionAdmin = status.isBranchAdmin;
+      window._currentUserRole = status.role;
+      if (status.isBranchAdmin && !status.isSuperAdmin) {
+        await _loadBranchAdminScope(sess.user.id);
+      } else {
+        window._branchAdminSectionIds = [];
+      }
+      console.log('[AUTH-DEBUG] _sessionCheckOnce: admin type changed — resynced isSuperAdmin/isBranchAdmin', status);
     }
   }
 
@@ -14510,6 +15399,107 @@ GRANT EXECUTE ON FUNCTION log_audit_event TO authenticated;
   return sql;
 };
 console.log('%c[Audit] اكتب printAuditAndScopeSQL() في الـ Console لعرض + نسخ SQL سجل العمليات', 'color:#8e44ad;font-weight:bold;font-size:13px');
+
+// ════════════════════════════════════════════════════════════════
+// printSectionAdminsPermissionsFix() — (Aug 2026, Roles Phase 3)
+// يصلح: "new row violates row-level security policy for table section_admins"
+// السبب: section_admins_super_all كانت الوحيدة المسموح لها بالكتابة (is_admin()
+// فقط) — أي أدمن شعبة، حتى لو كان منطقياً مؤهل لتعيين أدمن آخر لنفس شعبته،
+// كان مرفوضاً بالكامل من RLS. هذا السكربت يضيف مسار كتابة ثانٍ آمن لأدمن
+// الشعبة صاحب صلاحية can_manage_admins، بدون المساس بمسار السوبر أدمن.
+// شغّله بعد printAuditAndScopeSQL() (يحتاج جدول section_admins موجوداً بالفعل).
+// ════════════════════════════════════════════════════════════════
+window.printSectionAdminsPermissionsFix = function() {
+  var sql = `
+-- ================================================================
+-- SECTION_ADMINS PERMISSIONS FIX — شغّله بعد printAuditAndScopeSQL()
+-- Supabase Dashboard → SQL Editor → New Query → Paste → Run
+-- ================================================================
+
+-- ────────────────────────────────────────────────────────────────
+-- 1) هل هذا المستخدم أدمن فعّال على هذه الشعبة تحديدًا، وله can_manage_admins؟
+--    (لاحظ: هذه شعبة واحدة بعينها section_id — مش subtree — عمداً، عشان
+--    أدمن الشعبة يقدر يدير أدمن شعبته هو فقط، مش شعب فرعية تانية معاه.)
+-- ────────────────────────────────────────────────────────────────
+CREATE OR REPLACE FUNCTION branch_admin_can_manage_admins(target_section_id BIGINT)
+RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER
+AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM section_admins sa
+    WHERE sa.user_id = auth.uid()
+      AND sa.section_id = target_section_id
+      AND sa.is_active = true
+      AND sa.role = 'admin'
+      AND COALESCE((sa.permissions->>'can_manage_admins')::boolean, false) = true
+  );
+$$;
+
+-- ────────────────────────────────────────────────────────────────
+-- 2) هل كل صلاحية true في new_perms موجودة أصلاً true عند الفاعل الحالي
+--    على نفس الشعبة؟ (يمنع منح صلاحيات أعلى من صلاحيات المستخدم الحالي)
+-- ────────────────────────────────────────────────────────────────
+CREATE OR REPLACE FUNCTION section_admins_perms_subset_of_caller(target_section_id BIGINT, new_perms JSONB)
+RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER
+AS $$
+  SELECT NOT EXISTS (
+    SELECT 1 FROM jsonb_each(COALESCE(new_perms, '{}'::jsonb)) AS kv(key, value)
+    WHERE COALESCE(kv.value::text::boolean, false) = true
+      AND NOT EXISTS (
+        SELECT 1 FROM section_admins mine
+        WHERE mine.user_id = auth.uid()
+          AND mine.section_id = target_section_id
+          AND mine.is_active = true
+          AND mine.role = 'admin'
+          AND COALESCE((mine.permissions->>kv.key)::boolean, false) = true
+      )
+  );
+$$;
+
+-- ────────────────────────────────────────────────────────────────
+-- 3) سياسات INSERT/UPDATE جديدة لأدمن الشعبة صاحب can_manage_admins —
+--    بجانب section_admins_super_all الموجودة (السوبر أدمن غير متأثر إطلاقاً)
+-- ────────────────────────────────────────────────────────────────
+DROP POLICY IF EXISTS "section_admins_branch_insert" ON section_admins;
+DROP POLICY IF EXISTS "section_admins_branch_update" ON section_admins;
+
+CREATE POLICY "section_admins_branch_insert" ON section_admins FOR INSERT
+  WITH CHECK (
+    NOT is_admin()  -- هذا المسار لأدمن الشعبة فقط؛ السوبر أدمن يمر من section_admins_super_all
+    AND branch_admin_can_manage_admins(section_id)
+    AND section_admins_perms_subset_of_caller(section_id, permissions)
+    -- role مقصور أصلاً على 'admin' بواسطة CHECK على الجدول نفسه —
+    -- لا يوجد أي مسار لإنشاء profiles.role='admin' (سوبر أدمن) من هذا الجدول إطلاقاً
+  );
+
+CREATE POLICY "section_admins_branch_update" ON section_admins FOR UPDATE
+  USING (NOT is_admin() AND branch_admin_can_manage_admins(section_id))
+  WITH CHECK (
+    NOT is_admin()
+    AND branch_admin_can_manage_admins(section_id)
+    -- لا يقدر يغيّر شعبة الصف لشعبة تانية عن طريق التعديل
+    AND section_id = (SELECT section_id FROM section_admins s2 WHERE s2.id = section_admins.id)
+    AND section_admins_perms_subset_of_caller(section_id, permissions)
+  );
+
+-- ────────────────────────────────────────────────────────────────
+-- تحقق من التطبيق:
+-- ────────────────────────────────────────────────────────────────
+-- SELECT * FROM pg_policies WHERE tablename = 'section_admins' ORDER BY cmd;
+`;
+  console.group('%c🔧 SECTION_ADMINS PERMISSIONS FIX — شغّله بعد printAuditAndScopeSQL()', 'color:#c0392b;font-size:1.1em;font-weight:bold');
+  console.log('%cافتح: Supabase Dashboard → SQL Editor → New Query → الصق الكود → Run', 'color:#17a589;font-weight:bold');
+  console.log(sql);
+  console.groupEnd();
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(sql).then(function() {
+      console.log('%c✅ تم نسخ الـ SQL للـ clipboard!', 'color:#17a589;font-weight:bold');
+    }).catch(function(){});
+  }
+  return sql;
+};
+console.log('%c[SectionAdmins] اكتب printSectionAdminsPermissionsFix() لإصلاح خطأ "new row violates row-level security policy for table section_admins"', 'color:#c0392b;font-weight:bold');
 
 // printCoursesMigration — إضافة عمود type لتمييز "الدورات" فقط (Additive, بدون أي حذف)
 window.printCoursesMigration = function() {
@@ -17440,7 +18430,7 @@ window.diagnose = async function() {
     var resultsEl  = document.getElementById('dm-picker-results');
     searchBox.value = '';
 
-    if (window._isBranchAdmin) {
+    if (window._isBranchAdmin && !window._isSuperAdmin) {
       searchBox.style.display = 'none';
       resultsEl.innerHTML = '<div class="chat-loading"><div class="spinner"></div> جاري تحميل المشتركين...</div>';
       await _dmLoadBranchAdminCandidates();
@@ -18554,17 +19544,21 @@ ON notifications FOR ALL
 USING (is_admin())
 WITH CHECK (is_admin());
 
--- أدمن الشعبة يستطيع الإرسال فقط لمستخدم لديه اشتراك فعال داخل نطاق شعبته.
+-- أدمن الشعبة يستطيع الإرسال لأي مستخدم له صف طلب/اشتراك (بأي حالة دفع)
+-- داخل نطاق شعبته — بما فيها "قبول" (active) و"رفض" (cancelled) على حد سواء.
+-- ✅ FIX (أغسطس 2026): كانت الدالة تشترط payment_status = 'active' فقط،
+-- فكان أدمن الشعبة يقدر يبلّغ الطالب بالموافقة لكن مش برسالة الرفض (لأن
+-- الحالة بعد الرفض بتبقى cancelled مش active). الشرط الوحيد المطلوب فعلاً
+-- هو إن صف الاشتراك يقع داخل نطاق شعبة الأدمن — بغض النظر عن حالته.
 CREATE OR REPLACE FUNCTION can_branch_admin_notify_user(target_user UUID)
 RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path TO 'public', 'pg_temp'
 AS $$
   SELECT EXISTS (
     SELECT 1
     FROM subscriptions sub
     WHERE sub.user_id = target_user
-      AND sub.payment_status = 'active'
-      AND (sub.end_date IS NULL OR sub.end_date >= NOW())
       AND is_branch_admin_of(sub.section_id)
   );
 $$;
@@ -18781,14 +19775,803 @@ window.__FIXED2_AUDIT = { version: 'FIXED-2', date: '2026-08-12' };
 
 
 <script>
-// Quiz guard: المنصة لا تعيد حساب نتيجة Google Forms من الواجهة؛ إن كان الاختبار خارجياً،
-// نترك scoring الأصلي كما هو ونمنع عرض نتيجة وهمية/قديمة. للاختبارات الداخلية مستقبلاً
-// يمكن ربط quiz_results بدون تغيير الـscoring الحالي.
-window.showQuizResultNotice = function(container){
-  var el=typeof container==='string'?document.getElementById(container):container;
-  if(!el) return;
-  el.innerHTML='<div style="padding:14px;border-radius:12px;background:#eef8ff;border:1px solid #cfe7f6;color:#31566f;font-size:.8rem;line-height:1.8;text-align:center">📝 نتيجة الاختبار تظهر من نظام الاختبار نفسه. لن نعرض نتيجة محلية إلا إذا كانت هناك نتيجة محفوظة فعلًا في <code>quiz_results</code>.</div>';
+// ════════════════════════════════════════════════════════════════
+// ✅ QUIZ SYSTEM — نظام الاختبارات الداخلي الكامل (Admin + Student)
+// يستخدم الجداول الموجودة فقط: quizzes / quiz_questions / quiz_results /
+// user_progress — بدون أي migration أو تعديل schema. يعتمد على نفس أنماط
+// الكود الموجودة (window.supabase, _waitForSupabase, _getSessionSafe,
+// loadSections, _showToast, ap-btn/ap-input/ap-modal...).
+//
+// ⚠️ ملاحظة أمان مهمة (راجع قسم "Security" في التسليمات):
+// الحماية الحقيقية للدرجات تتم عبر:
+//   1) RLS الموجودة بالفعل (quiz_results: auth.uid() = user_id فقط).
+//   2) عدم قبول أي درجة/نسبة قادمة من الواجهة — الدرجة تُحسب دائماً هنا
+//      من جديد قبل الحفظ مباشرة (qzSubmitQuiz) من بيانات مُجلَبة حديثاً
+//      من قاعدة البيانات وليس من أي حالة قديمة في المتصفح.
+//   3) عدد المحاولات يُعاد التحقق منه من القاعدة مباشرة قبل الإدراج.
+// لكن لأن Supabase RLS تعمل على مستوى الصفوف وليس الأعمدة، وبما أن هذا
+// الملف ممنوع من إنشاء أي RPC/migration جديدة، فإن عمود correct_answer/
+// accepted_answers/matching_data يبقى قابلاً للقراءة تقنياً عبر REST مباشرة
+// من أي مستخدم مسجّل دخول (نفس صلاحية قراءة الأسئلة نفسها). كحد أدنى من
+// التخفيف: لا تُطلب هذه الأعمدة إطلاقاً أثناء عرض الاختبار للطالب — فقط
+// تُجلب لحظة التصحيح النهائي. الحل الجذري (خارج نطاق هذه المهمة لعدم
+// السماح بـ migrations) هو عمل Postgres Function بصلاحية SECURITY DEFINER
+// تُرجع الأسئلة بدون أعمدة الإجابة، وتتولى هي التصحيح والإدراج بنفسها.
+// ════════════════════════════════════════════════════════════════
+
+window._qz = window._qz || {
+  currentQuizId: null,
+  currentSectionId: null,
+  quiz: null,
+  questions: [],       // أثناء الأداء: بدون أعمدة الإجابة
+  answers: {},          // { questionId: rawStudentAnswer }
+  currentIndex: 0,
+  timerInterval: null,
+  timeRemainingSec: 0,
+  attemptsCount: 0,
+  adminEditingQuizId: null,
+  adminEditingSectionId: null,
+  adminMaterials: [],
+  adminMatchLeftPick: {} // { questionId: leftValuePendingMatch }
 };
+
+function _qzToast(msg, type) {
+  if (typeof _showToast === 'function') _showToast(msg, type || 'info');
+  else alert(msg);
+}
+
+async function _qzDb() {
+  return (await _waitForSupabase()) ? window.supabase : null;
+}
+
+async function _qzCurrentUserId() {
+  try {
+    const { data: { session } } = await _getSessionSafe();
+    return session && session.user ? session.user.id : null;
+  } catch (e) { return null; }
+}
+
+// ════════════════════════════════════════════════════════════════
+// ADMIN — اختيار المادة / الشابتر / القسم النهائي
+// ════════════════════════════════════════════════════════════════
+async function qzLoadMaterialsForAdmin() {
+  var db = await _qzDb();
+  if (!db) return;
+  var sel = document.getElementById('qz-material-select');
+  try {
+    var materials = await loadSections(null);
+    window._qz.adminMaterials = materials || [];
+    if (sel) {
+      sel.innerHTML = '<option value="">— اختر المادة —</option>' +
+        (materials || []).map(function(m) { return '<option value="' + m.id + '">' + m.title + '</option>'; }).join('');
+    }
+  } catch (e) {
+    console.error('[qzLoadMaterialsForAdmin]', e);
+  }
+}
+
+async function qzOnMaterialChange() {
+  var matSel = document.getElementById('qz-material-select');
+  var chapWrap = document.getElementById('qz-chapter-wrap');
+  var secWrap = document.getElementById('qz-section-wrap');
+  var chapSel = document.getElementById('qz-chapter-select');
+  document.getElementById('qz-admin-body').style.display = 'none';
+  if (secWrap) secWrap.style.display = 'none';
+  var materialId = matSel ? matSel.value : '';
+  if (!materialId) { if (chapWrap) chapWrap.style.display = 'none'; return; }
+  try {
+    var children = await loadSections(materialId);
+    if (children && children.length) {
+      chapSel.innerHTML = '<option value="">— اختر الشابتر —</option>' +
+        children.map(function(c) { return '<option value="' + c.id + '">' + c.title + '</option>'; }).join('');
+      chapWrap.style.display = 'block';
+    } else {
+      // لا يوجد شباتر — المادة نفسها قسم نهائي
+      chapWrap.style.display = 'none';
+      await qzPopulateSectionOptions([{ id: materialId, title: matSel.options[matSel.selectedIndex].text }]);
+    }
+  } catch (e) { console.error('[qzOnMaterialChange]', e); }
+}
+
+async function qzOnChapterChange() {
+  var chapSel = document.getElementById('qz-chapter-select');
+  var chapterId = chapSel ? chapSel.value : '';
+  document.getElementById('qz-admin-body').style.display = 'none';
+  if (!chapterId) { document.getElementById('qz-section-wrap').style.display = 'none'; return; }
+  try {
+    var children = await loadSections(chapterId);
+    if (children && children.length) {
+      await qzPopulateSectionOptions(children);
+    } else {
+      // الشابتر نفسه قسم نهائي
+      await qzPopulateSectionOptions([{ id: chapterId, title: chapSel.options[chapSel.selectedIndex].text }]);
+    }
+  } catch (e) { console.error('[qzOnChapterChange]', e); }
+}
+
+async function qzPopulateSectionOptions(sections) {
+  var secWrap = document.getElementById('qz-section-wrap');
+  var secSel = document.getElementById('qz-section-select');
+  secSel.innerHTML = '<option value="">— اختر القسم —</option>' +
+    sections.map(function(s) { return '<option value="' + s.id + '">' + s.title + '</option>'; }).join('');
+  secWrap.style.display = 'block';
+}
+
+async function qzOnSectionChange() {
+  var secSel = document.getElementById('qz-section-select');
+  var sectionId = secSel ? secSel.value : '';
+  var bodyEl = document.getElementById('qz-admin-body');
+  if (!sectionId) { bodyEl.style.display = 'none'; return; }
+  bodyEl.style.display = 'block';
+  window._qz.adminEditingSectionId = sectionId;
+  window._qz.adminEditingQuizId = null;
+  document.getElementById('qz-questions-section').style.display = 'none';
+  document.getElementById('qz-delete-quiz-btn').style.display = 'none';
+  document.getElementById('qz-settings-msg').textContent = '⏳ جاري التحميل...';
+
+  var db = await _qzDb();
+  if (!db) { document.getElementById('qz-settings-msg').textContent = '❌ تعذر الاتصال بقاعدة البيانات'; return; }
+  try {
+    var { data: quiz, error } = await db.from('quizzes').select('*').eq('section_id', sectionId).maybeSingle();
+    if (error) throw error;
+    document.getElementById('qz-settings-msg').textContent = '';
+    if (quiz) {
+      window._qz.adminEditingQuizId = quiz.id;
+      document.getElementById('qz-title').value = quiz.title || '';
+      document.getElementById('qz-description').value = quiz.description || '';
+      document.getElementById('qz-time-limit').value = quiz.time_limit || 0;
+      document.getElementById('qz-passing-score').value = quiz.passing_score != null ? quiz.passing_score : 60;
+      document.getElementById('qz-allow-retry').value = quiz.allow_retry === false ? 'false' : 'true';
+      document.getElementById('qz-max-attempts').value = quiz.max_attempts || 0;
+      document.getElementById('qz-show-answers').value = quiz.show_answers_after_finish === false ? 'false' : 'true';
+      document.getElementById('qz-delete-quiz-btn').style.display = '';
+      qzToggleMaxAttemptsField();
+      document.getElementById('qz-questions-section').style.display = 'block';
+      await qzLoadQuestionsForAdmin(quiz.id);
+    } else {
+      document.getElementById('qz-title').value = '';
+      document.getElementById('qz-description').value = '';
+      document.getElementById('qz-time-limit').value = 0;
+      document.getElementById('qz-passing-score').value = 60;
+      document.getElementById('qz-allow-retry').value = 'true';
+      document.getElementById('qz-max-attempts').value = 0;
+      document.getElementById('qz-show-answers').value = 'true';
+      qzToggleMaxAttemptsField();
+      document.getElementById('qz-questions-section').style.display = 'none';
+    }
+  } catch (e) {
+    console.error('[qzOnSectionChange]', e);
+    document.getElementById('qz-settings-msg').textContent = '❌ خطأ: ' + e.message;
+  }
+}
+
+function qzToggleMaxAttemptsField() {
+  var allow = document.getElementById('qz-allow-retry').value === 'true';
+  document.getElementById('qz-max-attempts-wrap').style.display = allow ? '' : 'none';
+}
+
+async function qzSaveQuizSettings() {
+  var sectionId = window._qz.adminEditingSectionId;
+  if (!sectionId) return;
+  var msgEl = document.getElementById('qz-settings-msg');
+  var title = document.getElementById('qz-title').value.trim();
+  if (!title) { msgEl.textContent = '❌ عنوان الاختبار مطلوب'; return; }
+  var payload = {
+    section_id: sectionId,
+    title: title,
+    description: document.getElementById('qz-description').value.trim(),
+    time_limit: parseInt(document.getElementById('qz-time-limit').value, 10) || 0,
+    passing_score: parseInt(document.getElementById('qz-passing-score').value, 10) || 0,
+    allow_retry: document.getElementById('qz-allow-retry').value === 'true',
+    max_attempts: parseInt(document.getElementById('qz-max-attempts').value, 10) || 0,
+    show_answers_after_finish: document.getElementById('qz-show-answers').value === 'true'
+  };
+  var db = await _qzDb();
+  if (!db) { msgEl.textContent = '❌ تعذر الاتصال بقاعدة البيانات'; return; }
+  msgEl.textContent = '⏳ جاري الحفظ...';
+  try {
+    if (window._qz.adminEditingQuizId) {
+      var { error } = await db.from('quizzes').update(payload).eq('id', window._qz.adminEditingQuizId);
+      if (error) throw error;
+      _qzToast('✅ تم تحديث إعدادات الاختبار', 'success');
+    } else {
+      // ── قيد "اختبار واحد لكل قسم" — تحقق مرة أخيرة قبل الإدراج لمنع تكرار من تبويبين متزامنين ──
+      var { data: existing, error: chkErr } = await db.from('quizzes').select('id').eq('section_id', sectionId).maybeSingle();
+      if (chkErr) throw chkErr;
+      if (existing && existing.id) {
+        window._qz.adminEditingQuizId = existing.id;
+        var { error: updErr } = await db.from('quizzes').update(payload).eq('id', existing.id);
+        if (updErr) throw updErr;
+        _qzToast('✅ تم تحديث الاختبار الموجود لهذا القسم', 'success');
+      } else {
+        var { data: inserted, error: insErr } = await db.from('quizzes').insert(payload).select().single();
+        if (insErr) throw insErr;
+        window._qz.adminEditingQuizId = inserted.id;
+        _qzToast('✅ تم إنشاء الاختبار', 'success');
+      }
+    }
+    msgEl.textContent = '';
+    document.getElementById('qz-delete-quiz-btn').style.display = '';
+    document.getElementById('qz-questions-section').style.display = 'block';
+    await qzLoadQuestionsForAdmin(window._qz.adminEditingQuizId);
+  } catch (e) {
+    console.error('[qzSaveQuizSettings]', e);
+    msgEl.textContent = '❌ خطأ: ' + e.message;
+  }
+}
+
+async function qzDeleteQuiz() {
+  var quizId = window._qz.adminEditingQuizId;
+  if (!quizId) return;
+  if (!confirm('⚠️ سيتم حذف هذا الاختبار وكل أسئلته نهائياً. نتائج الطلاب السابقة (quiz_results) ستبقى محفوظة لكنها لن تكون مرتبطة باختبار ظاهر. هل تريد المتابعة؟')) return;
+  var db = await _qzDb();
+  if (!db) return;
+  try {
+    var { error: qErr } = await db.from('quiz_questions').delete().eq('quiz_id', quizId);
+    if (qErr) throw qErr;
+    var { error } = await db.from('quizzes').delete().eq('id', quizId);
+    if (error) throw error;
+    _qzToast('✅ تم حذف الاختبار', 'success');
+    window._qz.adminEditingQuizId = null;
+    document.getElementById('qz-delete-quiz-btn').style.display = 'none';
+    document.getElementById('qz-questions-section').style.display = 'none';
+    document.getElementById('qz-title').value = '';
+    document.getElementById('qz-description').value = '';
+  } catch (e) {
+    console.error('[qzDeleteQuiz]', e);
+    _qzToast('❌ خطأ: ' + e.message, 'error');
+  }
+}
+
+// ════════════════════════════════════════════════════════════════
+// ADMIN — الأسئلة (CRUD)
+// ════════════════════════════════════════════════════════════════
+async function qzLoadQuestionsForAdmin(quizId) {
+  var listEl = document.getElementById('qz-questions-list');
+  var db = await _qzDb();
+  if (!db) return;
+  try {
+    var { data, error } = await db.from('quiz_questions').select('*').eq('quiz_id', quizId).order('id', { ascending: true });
+    if (error) throw error;
+    window._qz.adminQuestions = data || [];
+    document.getElementById('qz-questions-count').textContent = (data || []).length;
+    if (!data || !data.length) {
+      listEl.innerHTML = '<div style="text-align:center;color:#999;padding:20px;">لا توجد أسئلة بعد</div>';
+      return;
+    }
+    var typeLabels = { multiple_choice: '🔘 اختيار من متعدد', true_false: '☑️ صح/خطأ', short_answer: '✍️ إجابة قصيرة', matching: '🔗 توصيل' };
+    listEl.innerHTML = data.map(function(q, i) {
+      return '<div style="padding:12px 14px;border:1px solid #e2edf5;border-radius:10px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">' +
+        '<div style="flex:1;min-width:180px;">' +
+        '<div style="font-weight:700;font-size:.85rem;">' + (i + 1) + '. ' + qzEsc(q.question) + '</div>' +
+        '<div style="font-size:.72rem;color:#888;margin-top:2px;">' + (typeLabels[q.question_type] || q.question_type) + ' · ' + (q.points || 1) + ' نقطة</div>' +
+        '</div>' +
+        '<div style="display:flex;gap:6px;">' +
+        '<button class="ap-btn ap-btn-ghost" style="padding:6px 10px;font-size:.76rem;" onclick="qzOpenQuestionEditor(' + q.id + ')">✏️ تعديل</button>' +
+        '<button class="ap-btn ap-btn-danger" style="padding:6px 10px;font-size:.76rem;" onclick="qzDeleteQuestion(' + q.id + ')">🗑️</button>' +
+        '</div></div>';
+    }).join('');
+  } catch (e) {
+    console.error('[qzLoadQuestionsForAdmin]', e);
+    listEl.innerHTML = '<div style="text-align:center;color:#c0392b;padding:20px;">❌ تعذر تحميل الأسئلة</div>';
+  }
+}
+
+function qzEsc(s) {
+  return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function qzOpenQuestionEditor(questionId) {
+  document.getElementById('qz-q-id').value = questionId || '';
+  document.getElementById('qz-question-msg').textContent = '';
+  if (questionId) {
+    var q = (window._qz.adminQuestions || []).find(function(x) { return String(x.id) === String(questionId); });
+    if (!q) return;
+    document.getElementById('qz-question-modal-title').textContent = '✏️ تعديل سؤال';
+    document.getElementById('qz-q-type').value = q.question_type;
+    document.getElementById('qz-q-text').value = q.question || '';
+    document.getElementById('qz-q-points').value = q.points || 1;
+    document.getElementById('qz-q-opt1').value = q.option_1 || '';
+    document.getElementById('qz-q-opt2').value = q.option_2 || '';
+    document.getElementById('qz-q-opt3').value = q.option_3 || '';
+    document.getElementById('qz-q-opt4').value = q.option_4 || '';
+    document.getElementById('qz-q-explanation').value = q.explanation || '';
+    if (q.question_type === 'multiple_choice') {
+      document.getElementById('qz-q-mc-correct').value = q.correct_answer || '1';
+    } else if (q.question_type === 'true_false') {
+      document.getElementById('qz-q-tf-correct').value = q.correct_answer === 'false' ? 'false' : 'true';
+    } else if (q.question_type === 'short_answer') {
+      document.getElementById('qz-q-sa-correct').value = q.correct_answer || '';
+      var accepted = [];
+      try { accepted = q.accepted_answers ? JSON.parse(typeof q.accepted_answers === 'string' ? q.accepted_answers : JSON.stringify(q.accepted_answers)) : []; } catch (e) { accepted = []; }
+      document.getElementById('qz-q-sa-accepted').value = Array.isArray(accepted) ? accepted.join(', ') : '';
+    } else if (q.question_type === 'matching') {
+      var pairs = [];
+      try { pairs = q.matching_data ? (typeof q.matching_data === 'string' ? JSON.parse(q.matching_data) : q.matching_data) : []; } catch (e) { pairs = []; }
+      document.getElementById('qz-q-match-pairs').value = (pairs || []).map(function(p) { return p.left + ' = ' + p.right; }).join('\n');
+    }
+  } else {
+    document.getElementById('qz-question-modal-title').textContent = '➕ إضافة سؤال';
+    document.getElementById('qz-q-type').value = 'multiple_choice';
+    ['qz-q-text', 'qz-q-opt1', 'qz-q-opt2', 'qz-q-opt3', 'qz-q-opt4', 'qz-q-explanation', 'qz-q-sa-correct', 'qz-q-sa-accepted', 'qz-q-match-pairs'].forEach(function(id) {
+      document.getElementById(id).value = '';
+    });
+    document.getElementById('qz-q-points').value = 1;
+    document.getElementById('qz-q-mc-correct').value = '1';
+    document.getElementById('qz-q-tf-correct').value = 'true';
+  }
+  qzToggleQuestionTypeFields();
+  document.getElementById('qz-question-overlay').classList.add('qz-open');
+}
+
+function qzCloseQuestionEditor() {
+  document.getElementById('qz-question-overlay').classList.remove('qz-open');
+}
+
+function qzToggleQuestionTypeFields() {
+  var type = document.getElementById('qz-q-type').value;
+  document.getElementById('qz-q-mc-fields').style.display = type === 'multiple_choice' ? '' : 'none';
+  document.getElementById('qz-q-tf-fields').style.display = type === 'true_false' ? '' : 'none';
+  document.getElementById('qz-q-sa-fields').style.display = type === 'short_answer' ? '' : 'none';
+  document.getElementById('qz-q-match-fields').style.display = type === 'matching' ? '' : 'none';
+}
+
+async function qzSaveQuestion() {
+  var msgEl = document.getElementById('qz-question-msg');
+  var quizId = window._qz.adminEditingQuizId;
+  var sectionId = window._qz.adminEditingSectionId;
+  if (!quizId) { msgEl.textContent = '❌ احفظ إعدادات الاختبار أولاً'; return; }
+  var type = document.getElementById('qz-q-type').value;
+  var text = document.getElementById('qz-q-text').value.trim();
+  var points = parseInt(document.getElementById('qz-q-points').value, 10) || 1;
+  if (!text) { msgEl.textContent = '❌ نص السؤال مطلوب'; return; }
+
+  var payload = {
+    quiz_id: quizId,
+    section_id: sectionId,
+    question: text,
+    question_type: type,
+    points: points,
+    explanation: document.getElementById('qz-q-explanation').value.trim(),
+    option_1: null, option_2: null, option_3: null, option_4: null,
+    correct_answer: null, accepted_answers: null, matching_data: null
+  };
+
+  if (type === 'multiple_choice') {
+    var o1 = document.getElementById('qz-q-opt1').value.trim();
+    var o2 = document.getElementById('qz-q-opt2').value.trim();
+    if (!o1 || !o2) { msgEl.textContent = '❌ يجب إدخال خيارين على الأقل'; return; }
+    payload.option_1 = o1;
+    payload.option_2 = o2;
+    payload.option_3 = document.getElementById('qz-q-opt3').value.trim() || null;
+    payload.option_4 = document.getElementById('qz-q-opt4').value.trim() || null;
+    payload.correct_answer = document.getElementById('qz-q-mc-correct').value;
+  } else if (type === 'true_false') {
+    payload.correct_answer = document.getElementById('qz-q-tf-correct').value;
+  } else if (type === 'short_answer') {
+    var correct = document.getElementById('qz-q-sa-correct').value.trim();
+    if (!correct) { msgEl.textContent = '❌ الإجابة الأساسية مطلوبة'; return; }
+    payload.correct_answer = correct;
+    var acceptedRaw = document.getElementById('qz-q-sa-accepted').value.trim();
+    var acceptedArr = acceptedRaw ? acceptedRaw.split(',').map(function(s) { return s.trim(); }).filter(Boolean) : [];
+    payload.accepted_answers = JSON.stringify(acceptedArr);
+  } else if (type === 'matching') {
+    var lines = document.getElementById('qz-q-match-pairs').value.split('\n').map(function(l) { return l.trim(); }).filter(Boolean);
+    var pairs = lines.map(function(l) {
+      var parts = l.split('=');
+      return { left: (parts[0] || '').trim(), right: (parts.slice(1).join('=') || '').trim() };
+    }).filter(function(p) { return p.left && p.right; });
+    if (pairs.length < 2) { msgEl.textContent = '❌ أدخل زوجين على الأقل بصيغة "العنصر = المطابق"'; return; }
+    payload.matching_data = JSON.stringify(pairs);
+  }
+
+  var db = await _qzDb();
+  if (!db) { msgEl.textContent = '❌ تعذر الاتصال بقاعدة البيانات'; return; }
+  var qId = document.getElementById('qz-q-id').value;
+  msgEl.textContent = '⏳ جاري الحفظ...';
+  try {
+    if (qId) {
+      var { error } = await db.from('quiz_questions').update(payload).eq('id', qId);
+      if (error) throw error;
+    } else {
+      var { error: insErr } = await db.from('quiz_questions').insert(payload);
+      if (insErr) throw insErr;
+    }
+    _qzToast('✅ تم حفظ السؤال', 'success');
+    qzCloseQuestionEditor();
+    await qzLoadQuestionsForAdmin(quizId);
+  } catch (e) {
+    console.error('[qzSaveQuestion]', e);
+    msgEl.textContent = '❌ خطأ: ' + e.message;
+  }
+}
+
+async function qzDeleteQuestion(id) {
+  if (!confirm('هل تريد حذف هذا السؤال نهائياً؟')) return;
+  var db = await _qzDb();
+  if (!db) return;
+  try {
+    var { error } = await db.from('quiz_questions').delete().eq('id', id);
+    if (error) throw error;
+    _qzToast('✅ تم حذف السؤال', 'success');
+    await qzLoadQuestionsForAdmin(window._qz.adminEditingQuizId);
+  } catch (e) {
+    console.error('[qzDeleteQuestion]', e);
+    _qzToast('❌ خطأ: ' + e.message, 'error');
+  }
+}
+
+// ════════════════════════════════════════════════════════════════
+// STUDENT — نقطة الدخول: بطاقة الاختبار داخل صفحة القسم
+// ════════════════════════════════════════════════════════════════
+async function qzRenderSectionEntry(sectionId, containerElOrId) {
+  var el = typeof containerElOrId === 'string' ? document.getElementById(containerElOrId) : containerElOrId;
+  if (!el || !sectionId) return;
+  var db = await _qzDb();
+  if (!db) return;
+  try {
+    var { data: quiz, error } = await db.from('quizzes').select('id,title,description,time_limit,passing_score').eq('section_id', sectionId).maybeSingle();
+    if (error || !quiz) return; // لا يوجد اختبار لهذا القسم — لا نعرض شيئاً
+    var card = document.createElement('div');
+    card.className = 'qz-entry-card';
+    card.innerHTML =
+      '<div class="qz-entry-icon">📝</div>' +
+      '<div class="qz-entry-info">' +
+      '<div class="qz-entry-title">' + qzEsc(quiz.title) + '</div>' +
+      '<div class="qz-entry-meta">' +
+      (quiz.time_limit ? '<span>⏱️ ' + quiz.time_limit + ' دقيقة</span>' : '<span>⏱️ بدون وقت محدد</span>') +
+      '<span>✅ درجة النجاح: ' + (quiz.passing_score != null ? quiz.passing_score : 60) + '%</span>' +
+      '</div></div>' +
+      '<button class="ap-btn ap-btn-primary" onclick="qzOpenStartScreen(' + quiz.id + ')">🚀 ابدأ الاختبار</button>';
+    el.appendChild(card);
+  } catch (e) { console.warn('[qzRenderSectionEntry]', e); }
+}
+window.qzRenderSectionEntry = qzRenderSectionEntry;
+
+// ════════════════════════════════════════════════════════════════
+// STUDENT — شاشة البدء
+// ════════════════════════════════════════════════════════════════
+async function qzOpenStartScreen(quizId) {
+  var overlay = document.getElementById('qz-student-overlay');
+  var body = document.getElementById('qz-student-body');
+  document.getElementById('qz-student-timer').style.display = 'none';
+  overlay.classList.add('qz-open');
+  body.innerHTML = '<div class="ap-loading" style="text-align:center;padding:30px;"><div class="spinner"></div> جاري التحميل...</div>';
+
+  var uid = await _qzCurrentUserId();
+  if (!uid) {
+    body.innerHTML = '<div style="text-align:center;padding:20px;">🔒 يجب تسجيل الدخول أولاً لبدء الاختبار</div>';
+    return;
+  }
+  var db = await _qzDb();
+  if (!db) { body.innerHTML = '<div style="text-align:center;padding:20px;">❌ تعذر الاتصال بقاعدة البيانات</div>'; return; }
+  try {
+    var { data: quiz, error } = await db.from('quizzes').select('*').eq('id', quizId).maybeSingle();
+    if (error || !quiz) { body.innerHTML = '<div style="text-align:center;padding:20px;">❌ تعذر تحميل الاختبار</div>'; return; }
+
+    var { count: qCount } = await db.from('quiz_questions').select('id', { count: 'exact', head: true }).eq('quiz_id', quizId);
+    var { data: pastResults, error: resErr } = await db.from('quiz_results')
+      .select('id,score,percentage,attempt_number,created_at')
+      .eq('user_id', uid).eq('quiz_id', quizId)
+      .order('attempt_number', { ascending: false });
+    if (resErr) throw resErr;
+    var attempts = pastResults || [];
+    var attemptsUsed = attempts.length;
+    var lastResult = attempts[0] || null;
+
+    var canRetry = quiz.allow_retry !== false;
+    var maxAttempts = quiz.max_attempts || 0;
+    var blocked = false, blockReason = '';
+    if (attemptsUsed > 0) {
+      if (!canRetry) { blocked = true; blockReason = 'لا يُسمح بإعادة المحاولة في هذا الاختبار.'; }
+      else if (maxAttempts > 0 && attemptsUsed >= maxAttempts) { blocked = true; blockReason = 'وصلت للحد الأقصى من المحاولات (' + maxAttempts + ').'; }
+    }
+
+    document.getElementById('qz-student-modal-title').textContent = '📝 ' + quiz.title;
+    window._qz.quiz = quiz;
+
+    var html = '<div style="text-align:center;">';
+    if (quiz.description) html += '<p style="color:#666;margin-bottom:16px;">' + qzEsc(quiz.description) + '</p>';
+    html += '<div style="display:flex;justify-content:center;gap:10px;flex-wrap:wrap;margin-bottom:18px;">';
+    html += '<div style="background:#eaf4fb;border-radius:10px;padding:10px 16px;font-size:.8rem;">❓ عدد الأسئلة<br><b>' + (qCount || 0) + '</b></div>';
+    html += '<div style="background:#eaf4fb;border-radius:10px;padding:10px 16px;font-size:.8rem;">⏱️ الوقت<br><b>' + (quiz.time_limit ? quiz.time_limit + ' د' : 'بدون حد') + '</b></div>';
+    html += '<div style="background:#eaf4fb;border-radius:10px;padding:10px 16px;font-size:.8rem;">✅ درجة النجاح<br><b>' + (quiz.passing_score != null ? quiz.passing_score : 60) + '%</b></div>';
+    html += '<div style="background:#eaf4fb;border-radius:10px;padding:10px 16px;font-size:.8rem;">🔁 المحاولات<br><b>' + attemptsUsed + (maxAttempts > 0 ? ' / ' + maxAttempts : '') + '</b></div>';
+    html += '</div>';
+
+    if (lastResult) {
+      html += '<div style="margin-bottom:16px;font-size:.85rem;color:#555;">آخر نتيجة: <b>' + lastResult.percentage + '%</b> (' + lastResult.score + ' نقطة)</div>';
+    }
+
+    if (blocked) {
+      html += '<div style="background:#fdecea;color:#b71c1c;border-radius:10px;padding:14px;margin-bottom:10px;font-size:.85rem;">🚫 ' + blockReason + '</div>';
+      if (quiz.show_answers_after_finish !== false && lastResult) {
+        html += '<button class="ap-btn ap-btn-ghost" style="width:100%;justify-content:center;" onclick="qzShowPastReview(' + lastResult.id + ')">📄 عرض مراجعة آخر محاولة</button>';
+      }
+    } else {
+      html += '<button class="ap-btn ap-btn-primary" style="width:100%;justify-content:center;padding:12px;font-size:.95rem;" onclick="qzBeginAttempt(' + quiz.id + ')">🚀 ' + (attemptsUsed > 0 ? 'إعادة المحاولة' : 'ابدأ الاختبار الآن') + '</button>';
+    }
+    html += '</div>';
+    body.innerHTML = html;
+  } catch (e) {
+    console.error('[qzOpenStartScreen]', e);
+    body.innerHTML = '<div style="text-align:center;padding:20px;color:#c0392b;">❌ حدث خطأ: ' + qzEsc(e.message) + '</div>';
+  }
+}
+window.qzOpenStartScreen = qzOpenStartScreen;
+
+function qzCloseStudentModal() {
+  document.getElementById('qz-student-overlay').classList.remove('qz-open');
+  if (window._qz.timerInterval) { clearInterval(window._qz.timerInterval); window._qz.timerInterval = null; }
+}
+window.qzCloseStudentModal = qzCloseStudentModal;
+
+// ════════════════════════════════════════════════════════════════
+// STUDENT — أداء الاختبار
+// ════════════════════════════════════════════════════════════════
+async function qzBeginAttempt(quizId) {
+  var body = document.getElementById('qz-student-body');
+  body.innerHTML = '<div class="ap-loading" style="text-align:center;padding:30px;"><div class="spinner"></div> جاري تجهيز الأسئلة...</div>';
+  var db = await _qzDb();
+  if (!db) return;
+  try {
+    // ✅ SECURITY: الأسئلة تُجلب حصرياً عبر RPC آمن (SECURITY DEFINER) يستبعد
+    // correct_answer / accepted_answers / matching_data من جذرها على السيرفر.
+    // بيانات المطابقة تصل كقائمتين منفصلتين (يسار/يمين) بدون أي ربط بينهما،
+    // فلا يوجد مفتاح إجابة داخل الاستجابة على الإطلاق — لا مباشرة الطلب
+    // ولا داخل window._qz بعد ذلك. لا يوجد SELECT مباشر على جدول
+    // quiz_questions من الطالب بعد الآن (راجع RLS hardening في الـ migration).
+    var { data: questions, error } = await db.rpc('get_quiz_questions_for_attempt', { p_quiz_id: quizId });
+    if (error) throw error;
+    if (!questions || !questions.length) {
+      body.innerHTML = '<div style="text-align:center;padding:20px;">هذا الاختبار لا يحتوي على أسئلة بعد.</div>';
+      return;
+    }
+    // لسؤال المطابقة: اليسار/اليمين جاهزان ومخلوطان من السيرفر بدون أي رابط بينهما
+    questions.forEach(function(q) {
+      if (q.question_type === 'matching') {
+        q._left = q.matching_left || [];
+        q._right = q.matching_right || [];
+      }
+    });
+
+    window._qz.currentQuizId = quizId;
+    window._qz.questions = questions;
+    window._qz.answers = {};
+    window._qz.currentIndex = 0;
+    window._qz.adminMatchLeftPick = {};
+
+    qzRenderQuestion();
+
+    if (window._qz.quiz && window._qz.quiz.time_limit) {
+      qzStartTimer(window._qz.quiz.time_limit * 60);
+    } else {
+      document.getElementById('qz-student-timer').style.display = 'none';
+    }
+  } catch (e) {
+    console.error('[qzBeginAttempt]', e);
+    body.innerHTML = '<div style="text-align:center;padding:20px;color:#c0392b;">❌ تعذر تحميل الأسئلة: ' + qzEsc(e.message) + '</div>';
+  }
+}
+window.qzBeginAttempt = qzBeginAttempt;
+
+function qzStartTimer(totalSeconds) {
+  window._qz.timeRemainingSec = totalSeconds;
+  var timerEl = document.getElementById('qz-student-timer');
+  var textEl = document.getElementById('qz-student-timer-text');
+  timerEl.style.display = 'inline-flex';
+  if (window._qz.timerInterval) clearInterval(window._qz.timerInterval);
+  function tick() {
+    var m = Math.floor(window._qz.timeRemainingSec / 60);
+    var s = window._qz.timeRemainingSec % 60;
+    textEl.textContent = (m < 10 ? '0' : '') + m + ':' + (s < 10 ? '0' : '') + s;
+    timerEl.classList.toggle('qz-timer-danger', window._qz.timeRemainingSec <= 60);
+    if (window._qz.timeRemainingSec <= 0) {
+      clearInterval(window._qz.timerInterval);
+      window._qz.timerInterval = null;
+      _qzToast('⏱️ انتهى الوقت — يتم تسليم الاختبار تلقائياً', 'warning');
+      qzSubmitQuiz(true);
+      return;
+    }
+    window._qz.timeRemainingSec--;
+  }
+  tick();
+  window._qz.timerInterval = setInterval(tick, 1000);
+}
+
+function qzRenderQuestion() {
+  var body = document.getElementById('qz-student-body');
+  var qs = window._qz.questions;
+  var idx = window._qz.currentIndex;
+  var q = qs[idx];
+  if (!q) return;
+
+  var pct = Math.round(((idx) / qs.length) * 100);
+  var html = '<div class="quiz-container">';
+  html += '<div class="qz-progress-bar"><div class="qz-progress-fill" style="width:' + pct + '%"></div></div>';
+  html += '<div class="qz-qnav">' + qs.map(function(qq, i) {
+    var cls = 'qz-qnav-dot' + (i === idx ? ' qz-current' : '') + (window._qz.answers[qq.id] !== undefined ? ' qz-answered' : '');
+    return '<div class="' + cls + '" onclick="qzGoTo(' + i + ')">' + (i + 1) + '</div>';
+  }).join('') + '</div>';
+
+  html += '<div class="qz-question-text">' + (idx + 1) + '. ' + qzEsc(q.question) + '</div>';
+  html += '<div class="qz-question-points">' + (q.points || 1) + ' نقطة</div>';
+
+  if (q.question_type === 'multiple_choice') {
+    [1, 2, 3, 4].forEach(function(n) {
+      var optText = q['option_' + n];
+      if (!optText) return;
+      var selected = window._qz.answers[q.id] === String(n);
+      html += '<div class="quiz-option' + (selected ? ' qz-selected' : '') + '" onclick="qzSelectAnswer(' + q.id + ',\'' + n + '\')">' +
+        '<span>' + (selected ? '🔘' : '⚪') + '</span><span>' + qzEsc(optText) + '</span></div>';
+    });
+  } else if (q.question_type === 'true_false') {
+    [['true', '✔️ صح'], ['false', '✖️ خطأ']].forEach(function(pair) {
+      var selected = window._qz.answers[q.id] === pair[0];
+      html += '<div class="quiz-option' + (selected ? ' qz-selected' : '') + '" onclick="qzSelectAnswer(' + q.id + ',\'' + pair[0] + '\')">' +
+        '<span>' + (selected ? '🔘' : '⚪') + '</span><span>' + pair[1] + '</span></div>';
+    });
+  } else if (q.question_type === 'short_answer') {
+    html += '<input type="text" class="ap-input" placeholder="اكتب إجابتك هنا" value="' + qzEsc(window._qz.answers[q.id] || '') + '" oninput="qzSelectAnswer(' + q.id + ',this.value)">';
+  } else if (q.question_type === 'matching') {
+    var current = window._qz.answers[q.id] || {};
+    (q._left || []).forEach(function(leftVal) {
+      var pickedRight = current[leftVal] || '';
+      html += '<div class="qz-match-row"><div class="qz-match-left">' + qzEsc(leftVal) + '</div>' +
+        '<select class="ap-select" style="flex:1;" onchange="qzSetMatch(' + q.id + ',\'' + qzAttr(leftVal) + '\',this.value)">' +
+        '<option value="">— اختر —</option>' +
+        (q._right || []).map(function(r) { return '<option value="' + qzAttr(r) + '"' + (pickedRight === r ? ' selected' : '') + '>' + qzEsc(r) + '</option>'; }).join('') +
+        '</select></div>';
+    });
+  }
+
+  html += '<div class="qz-nav-actions">';
+  html += '<button class="ap-btn ap-btn-ghost" style="flex:1;justify-content:center;" ' + (idx === 0 ? 'disabled' : '') + ' onclick="qzGoTo(' + (idx - 1) + ')">◀ السابق</button>';
+  if (idx < qs.length - 1) {
+    html += '<button class="ap-btn ap-btn-primary" style="flex:1;justify-content:center;" onclick="qzGoTo(' + (idx + 1) + ')">التالي ▶</button>';
+  } else {
+    html += '<button class="ap-btn ap-btn-success" style="flex:1;justify-content:center;" onclick="qzConfirmSubmit()">✅ تسليم الاختبار</button>';
+  }
+  html += '</div></div>';
+
+  body.innerHTML = html;
+}
+
+function qzAttr(s) { return String(s).replace(/'/g, "\\'"); }
+
+function qzGoTo(idx) {
+  if (idx < 0 || idx >= window._qz.questions.length) return;
+  window._qz.currentIndex = idx;
+  qzRenderQuestion();
+}
+window.qzGoTo = qzGoTo;
+
+function qzSelectAnswer(questionId, value) {
+  window._qz.answers[questionId] = value;
+  qzRenderQuestion();
+}
+window.qzSelectAnswer = qzSelectAnswer;
+
+function qzSetMatch(questionId, leftVal, rightVal) {
+  var cur = window._qz.answers[questionId] || {};
+  cur[leftVal] = rightVal;
+  window._qz.answers[questionId] = cur;
+}
+window.qzSetMatch = qzSetMatch;
+
+function qzConfirmSubmit() {
+  var total = window._qz.questions.length;
+  var answered = Object.keys(window._qz.answers).length;
+  var msg = answered < total
+    ? 'لم تجب على ' + (total - answered) + ' سؤال/أسئلة. هل تريد تسليم الاختبار الآن؟'
+    : 'هل أنت متأكد من تسليم الاختبار؟';
+  if (confirm(msg)) qzSubmitQuiz(false);
+}
+window.qzConfirmSubmit = qzConfirmSubmit;
+
+// ════════════════════════════════════════════════════════════════
+// STUDENT — التسليم والتصحيح (الأمان: كل التصحيح الآن على السيرفر فقط)
+// ════════════════════════════════════════════════════════════════
+// ✅ SECURITY: لا يوجد قدر واحد من كود التصحيح في المتصفح بعد الآن.
+// qzSubmitQuiz لا يفعل شيئاً سوى إرسال إجابات الطالب الخام إلى
+// submit_quiz_attempt() — دالة SECURITY DEFINER تعيد جلب الأسئلة
+// كاملة (مع مفاتيح التصحيح) من داخل قاعدة البيانات مباشرة، تتحقق من
+// allow_retry/max_attempts من جديد، تحسب الدرجة، تُدرج في quiz_results،
+// وتُحدّث user_progress — كل هذا دون أن يغادر أي عمود إجابة قاعدة
+// البيانات نحو المتصفح إطلاقاً. الاستجابة المُرجعة جاهزة للعرض
+// (نصوص منسّقة فقط)، ولا تحتوي على correct_answer/accepted_answers/
+// matching_data الخام بأي شكل.
+async function qzSubmitQuiz(isAutoSubmit) {
+  if (window._qz.timerInterval) { clearInterval(window._qz.timerInterval); window._qz.timerInterval = null; }
+  var body = document.getElementById('qz-student-body');
+  body.innerHTML = '<div class="ap-loading" style="text-align:center;padding:30px;"><div class="spinner"></div> جاري تصحيح الاختبار...</div>';
+
+  var quizId = window._qz.currentQuizId;
+  var db = await _qzDb();
+  var uid = await _qzCurrentUserId();
+  if (!db || !uid || !quizId) {
+    body.innerHTML = '<div style="text-align:center;padding:20px;color:#c0392b;">❌ تعذر إرسال الاختبار — تحقق من تسجيل الدخول</div>';
+    return;
+  }
+
+  try {
+    var { data: reviewPayload, error } = await db.rpc('submit_quiz_attempt', {
+      p_quiz_id: quizId,
+      p_answers: window._qz.answers
+    });
+    if (error) throw error;
+    qzRenderReview(reviewPayload);
+  } catch (e) {
+    console.error('[qzSubmitQuiz]', e);
+    var msg = e.message || '';
+    if (msg.indexOf('retry not allowed') > -1) msg = 'لا يُسمح بإعادة المحاولة في هذا الاختبار.';
+    else if (msg.indexOf('max attempts reached') > -1) msg = 'وصلت للحد الأقصى من المحاولات المسموح بها.';
+    body.innerHTML = '<div style="text-align:center;padding:20px;color:#c0392b;">❌ ' + qzEsc(msg) + '</div>';
+  }
+}
+window.qzSubmitQuiz = qzSubmitQuiz;
+
+// payload شكله: { result_id, attempt_number, score, percentage, total_questions,
+//   passed, show_answers, review: [{ id, question, question_type, explanation,
+//   points_earned, points_possible, is_correct, student_answer_display,
+//   correct_answer_display }] } — كله جاهز للعرض مباشرة من الـ RPC.
+function qzRenderReview(payload) {
+  document.getElementById('qz-student-timer').style.display = 'none';
+  var body = document.getElementById('qz-student-body');
+  var passed = payload.passed;
+  var review = payload.review || [];
+  var totalPossible = review.reduce(function(s, r) { return s + (Number(r.points_possible) || 0); }, 0);
+
+  var html = '<div style="text-align:center;">';
+  html += '<div style="font-size:2.6rem;margin-bottom:6px;">' + (passed ? '🎉' : '📊') + '</div>';
+  html += '<div class="qz-review-badge ' + (passed ? 'qz-pass' : 'qz-fail') + '">' + (passed ? '✅ ناجح' : '❌ لم تحقق درجة النجاح') + '</div>';
+  html += '<div style="margin:14px 0;font-size:1.1rem;font-weight:800;color:var(--primary);">' + payload.score + ' / ' + totalPossible + ' نقطة — ' + payload.percentage + '%</div>';
+  html += '<div style="font-size:.78rem;color:#888;margin-bottom:16px;">المحاولة رقم ' + payload.attempt_number + '</div>';
+
+  if (payload.show_answers && review.length) {
+    html += '<div style="text-align:right;">';
+    review.forEach(function(r, i) {
+      html += '<div style="border:1px solid #e2edf5;border-radius:12px;padding:12px 14px;margin-bottom:10px;">';
+      html += '<div style="font-weight:700;font-size:.86rem;margin-bottom:6px;">' + (i + 1) + '. ' + qzEsc(r.question) + ' <span style="float:left;font-size:.72rem;color:' + (r.is_correct ? '#2e7d32' : '#c62828') + '">' + (r.is_correct ? '✔️ ' + r.points_earned : '✖️ ' + r.points_earned) + '/' + r.points_possible + '</span></div>';
+      html += '<div style="font-size:.8rem;color:#555;">إجابتك: ' + qzEsc(r.student_answer_display || '(بدون إجابة)') + '</div>';
+      html += '<div style="font-size:.8rem;color:#1b5e20;">الإجابة الصحيحة: ' + qzEsc(r.correct_answer_display || '') + '</div>';
+      if (r.explanation) html += '<div style="font-size:.76rem;color:#888;margin-top:4px;">💡 ' + qzEsc(r.explanation) + '</div>';
+      html += '</div>';
+    });
+    html += '</div>';
+  } else {
+    html += '<div style="background:#eef8ff;border-radius:10px;padding:12px;font-size:.82rem;color:#31566f;">مراجعة الإجابات غير متاحة لهذا الاختبار.</div>';
+  }
+
+  html += '<button class="ap-btn ap-btn-ghost" style="width:100%;justify-content:center;margin-top:14px;" onclick="qzCloseStudentModal()">إغلاق</button>';
+  html += '</div>';
+  body.innerHTML = html;
+}
+
+// ════════════════════════════════════════════════════════════════
+// STUDENT — مراجعة محاولة سابقة (عند حظر إعادة المحاولة)
+// ════════════════════════════════════════════════════════════════
+// ✅ SECURITY: لا يوجد SELECT مباشر على quiz_questions/quiz_results هنا
+// بعد الآن. get_quiz_attempt_review() تتحقق من ملكية النتيجة
+// (auth.uid() = quiz_results.user_id) ومن show_answers_after_finish
+// من داخل السيرفر قبل إرجاع أي نص، فلا يمكن لطالب تمرير id نتيجة
+// طالب آخر أو نتيجة اختبار ممنوع عرض إجاباته.
+async function qzShowPastReview(resultId) {
+  var body = document.getElementById('qz-student-body');
+  body.innerHTML = '<div class="ap-loading" style="text-align:center;padding:30px;"><div class="spinner"></div> جاري التحميل...</div>';
+  var db = await _qzDb();
+  if (!db) return;
+  try {
+    var { data: payload, error } = await db.rpc('get_quiz_attempt_review', { p_result_id: resultId });
+    if (error) throw error;
+    qzRenderReview(payload);
+  } catch (e) {
+    console.error('[qzShowPastReview]', e);
+    body.innerHTML = '<div style="text-align:center;padding:20px;color:#c0392b;">❌ ' + qzEsc(e.message) + '</div>';
+  }
+}
+window.qzShowPastReview = qzShowPastReview;
+
 </script>
 
 <script>
