@@ -20249,7 +20249,13 @@ async function qzOpenStartScreen(quizId) {
     var { data: quiz, error } = await db.from('quizzes').select('*').eq('id', quizId).maybeSingle();
     if (error || !quiz) { body.innerHTML = '<div style="text-align:center;padding:20px;">❌ تعذر تحميل الاختبار</div>'; return; }
 
-    var { count: qCount } = await db.from('quiz_questions').select('id', { count: 'exact', head: true }).eq('quiz_id', quizId);
+    // ✅ SECURITY: لا يوجد SELECT مباشر على quiz_questions من الطالب بعد
+    // الآن (RLS تمنعه بالكامل). عدد الأسئلة يصل عبر RPC آمن مخصص.
+    var qCount = 0;
+    try {
+      var { data: qCountData, error: qCountErr } = await db.rpc('get_quiz_question_count', { p_quiz_id: quizId });
+      if (!qCountErr) qCount = qCountData || 0;
+    } catch (eCount) { console.warn('[qzOpenStartScreen] get_quiz_question_count', eCount); }
     var { data: pastResults, error: resErr } = await db.from('quiz_results')
       .select('id,score,percentage,attempt_number,created_at')
       .eq('user_id', uid).eq('quiz_id', quizId)
@@ -20316,11 +20322,13 @@ async function qzBeginAttempt(quizId) {
   if (!db) return;
   try {
     // ✅ SECURITY: الأسئلة تُجلب حصرياً عبر RPC آمن (SECURITY DEFINER) يستبعد
-    // correct_answer / accepted_answers / matching_data من جذرها على السيرفر.
-    // بيانات المطابقة تصل كقائمتين منفصلتين (يسار/يمين) بدون أي ربط بينهما،
-    // فلا يوجد مفتاح إجابة داخل الاستجابة على الإطلاق — لا مباشرة الطلب
-    // ولا داخل window._qz بعد ذلك. لا يوجد SELECT مباشر على جدول
-    // quiz_questions من الطالب بعد الآن (راجع RLS hardening في الـ migration).
+    // correct_answer / accepted_answers / matching_data / explanation من
+    // جذرها على السيرفر (explanation مستبعدة أيضاً لأن نصها قد يكشف الإجابة
+    // الصحيحة ضمنياً قبل التسليم). بيانات المطابقة تصل كقائمتين منفصلتين
+    // (يسار/يمين) بدون أي ربط بينهما، فلا يوجد مفتاح إجابة داخل الاستجابة
+    // على الإطلاق — لا مباشرة الطلب ولا داخل window._qz بعد ذلك. لا يوجد
+    // SELECT مباشر على جدول quiz_questions من الطالب بعد الآن — RLS تمنعه
+    // بالكامل (raise/0 rows)، وليس فقط استبعاد أعمدة من جهة العميل.
     var { data: questions, error } = await db.rpc('get_quiz_questions_for_attempt', { p_quiz_id: quizId });
     if (error) throw error;
     if (!questions || !questions.length) {
@@ -20528,8 +20536,12 @@ function qzRenderReview(payload) {
   html += '<div style="margin:14px 0;font-size:1.1rem;font-weight:800;color:var(--primary);">' + payload.score + ' / ' + totalPossible + ' نقطة — ' + payload.percentage + '%</div>';
   html += '<div style="font-size:.78rem;color:#888;margin-bottom:16px;">المحاولة رقم ' + payload.attempt_number + '</div>';
 
+  // ── ✅ زر "📖 عرض الحل" (يظهر فقط لو show_answers_after_finish = true
+  // على السيرفر، وليس تخمينًا في الواجهة). الضغط عليه يكشف لكل سؤال:
+  // إجابة الطالب، الإجابة الصحيحة، والـ Explanation دفعة واحدة. ──
   if (payload.show_answers && review.length) {
-    html += '<div style="text-align:right;">';
+    html += '<button class="ap-btn ap-btn-ghost" id="qz-reveal-btn" style="width:100%;justify-content:center;margin-bottom:10px;" onclick="qzToggleSolution()">📖 عرض الحل</button>';
+    html += '<div id="qz-solution-block" style="display:none;text-align:right;">';
     review.forEach(function(r, i) {
       html += '<div style="border:1px solid #e2edf5;border-radius:12px;padding:12px 14px;margin-bottom:10px;">';
       html += '<div style="font-weight:700;font-size:.86rem;margin-bottom:6px;">' + (i + 1) + '. ' + qzEsc(r.question) + ' <span style="float:left;font-size:.72rem;color:' + (r.is_correct ? '#2e7d32' : '#c62828') + '">' + (r.is_correct ? '✔️ ' + r.points_earned : '✖️ ' + r.points_earned) + '/' + r.points_possible + '</span></div>';
@@ -20540,6 +20552,8 @@ function qzRenderReview(payload) {
     });
     html += '</div>';
   } else {
+    // ✅ show_answers_after_finish = false ⇒ لا زر "عرض الحل" إطلاقاً،
+    // ولا توجد بيانات إجابات في payload.review أصلاً (فارغة من السيرفر).
     html += '<div style="background:#eef8ff;border-radius:10px;padding:12px;font-size:.82rem;color:#31566f;">مراجعة الإجابات غير متاحة لهذا الاختبار.</div>';
   }
 
@@ -20547,6 +20561,16 @@ function qzRenderReview(payload) {
   html += '</div>';
   body.innerHTML = html;
 }
+
+function qzToggleSolution() {
+  var block = document.getElementById('qz-solution-block');
+  var btn = document.getElementById('qz-reveal-btn');
+  if (!block) return;
+  var open = block.style.display !== 'none';
+  block.style.display = open ? 'none' : 'block';
+  if (btn) btn.textContent = open ? '📖 عرض الحل' : '🙈 إخفاء الحل';
+}
+window.qzToggleSolution = qzToggleSolution;
 
 // ════════════════════════════════════════════════════════════════
 // STUDENT — مراجعة محاولة سابقة (عند حظر إعادة المحاولة)
