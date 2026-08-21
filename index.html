@@ -2797,6 +2797,7 @@ window.qnRegister = function() {
     <button class="ms-nav-item" data-nav="branches" onclick="msNavigate('branches')"><span class="ms-nav-icon">🏥</span> الشعب</button>
     <button class="ms-nav-item" data-nav="subjects" onclick="msNavigate('subjects')"><span class="ms-nav-icon">📖</span> المواد</button>
     <button class="ms-nav-item" data-nav="paths" onclick="msNavigate('paths')"><span class="ms-nav-icon">🗺️</span> مساراتي</button>
+    <button class="ms-nav-item" data-nav="progress" onclick="msNavigate('progress')"><span class="ms-nav-icon">📊</span> تقدمي</button>
     <button class="ms-nav-item" data-nav="chat" onclick="msNavigate('chat')"><span class="ms-nav-icon">💬</span> المحادثات</button>
     <button class="ms-nav-item" data-nav="notifications" onclick="msNavigate('notifications')"><span class="ms-nav-icon">🔔</span> الإشعارات</button>
     <button class="ms-nav-item" onclick="toggleDarkMode()"><span class="ms-nav-icon" id="dark-mode-btn">🌙</span> الوضع الليلي / النهاري</button>
@@ -2879,6 +2880,58 @@ window.qnRegister = function() {
     </div>
   </div>
 </div>
+
+<!-- ==================== PAGE: STUDENT PROGRESS (📊 تقدمي — Phase 4) ==================== -->
+<!-- عرض فقط — لا SQL جديد، لا تعديل على الاشتراكات أو Learning Path (Phase 3)،
+     كل البيانات تُقرأ من Supabase مقيّدة بالمستخدم الحالي (auth.uid()) فقط. -->
+<div id="page-progress" class="page">
+  <div class="links-page">
+    <button class="back-btn" onclick="goHome()">← العودة للرئيسية</button>
+    <div class="page-header">
+      <h2>📊 تقدمي</h2>
+      <p style="color:#7a8a9a;font-size:.85rem;margin-top:4px;">اشتراكك، تقدمك في المسارات، ونتائج اختباراتك</p>
+    </div>
+    <div id="sp-progress-content">
+      <div class="loading" style="padding:60px 20px"><div class="spinner"></div> جاري تحميل بيانات تقدمك...</div>
+    </div>
+  </div>
+</div>
+<style>
+/* ── Phase 4: 📊 تقدمي — أنماط مخصصة بادئة sp- فقط، لا تمس أي CSS عام موجود ── */
+.sp-section{margin-bottom:26px;}
+.sp-section-title{font-size:1rem;font-weight:900;color:var(--primary,#0a3d62);margin-bottom:12px;}
+.sp-empty{text-align:center;padding:40px 20px;color:#8a9bab;background:#f9fbfd;border-radius:16px;border:1px dashed #dfe8ee;}
+.sp-empty-icon{font-size:2.2rem;margin-bottom:8px;}
+.sp-sub-list,.sp-path-list,.sp-quiz-list{display:flex;flex-direction:column;gap:12px;}
+.sp-sub-card,.sp-path-card,.sp-quiz-row{background:var(--bg-card,#fff);border:1px solid rgba(10,61,98,.10);border-radius:16px;padding:16px;box-shadow:0 6px 18px rgba(10,61,98,.06);}
+.sp-sub-top{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;}
+.sp-sub-icon{font-size:1.2rem;}
+.sp-sub-title{font-weight:800;color:#243342;flex:1;min-width:0;}
+.sp-badge{font-size:.68rem;font-weight:800;border-radius:20px;padding:4px 10px;white-space:nowrap;}
+.sp-badge-active{background:#e8f8ee;color:#1d8348;}
+.sp-badge-inactive{background:#fdecea;color:#b13a3a;}
+.sp-sub-meta{display:flex;flex-wrap:wrap;gap:10px 16px;font-size:.76rem;color:#63758a;}
+.sp-path-head{display:flex;align-items:center;gap:8px;margin-bottom:10px;}
+.sp-path-icon{font-size:1.3rem;}
+.sp-path-title{font-weight:900;color:#243342;font-size:.94rem;}
+.sp-progress-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;font-size:.78rem;font-weight:800;color:#0a3d62;}
+.sp-progress-blocks{font-family:monospace;letter-spacing:1px;color:#17a589;direction:ltr;}
+.sp-progress-bar{height:8px;background:#eaf4fb;border-radius:5px;overflow:hidden;margin-bottom:12px;}
+.sp-progress-fill{height:100%;background:linear-gradient(90deg,var(--teal,#17a589),var(--primary,#0a3d62));transition:width .3s ease;}
+.sp-path-stats{display:flex;flex-wrap:wrap;gap:8px 16px;font-size:.76rem;color:#5c6f81;margin-bottom:10px;}
+.sp-lec-details{margin-top:6px;}
+.sp-lec-details summary{cursor:pointer;font-size:.78rem;font-weight:800;color:#17689b;padding:6px 0;}
+.sp-lec-list{list-style:none;margin:6px 0 0;padding:0;display:flex;flex-direction:column;gap:5px;}
+.sp-lec-item{font-size:.76rem;padding:7px 10px;border-radius:9px;background:#f9fbfd;color:#405060;}
+.sp-lec-item.sp-lec-done{background:#e8f8ee;color:#1d8348;}
+.sp-lec-item.sp-lec-open{background:#e8f4ff;color:#17689b;}
+.sp-lec-item.sp-lec-locked{background:#f5f5f5;color:#8a8a8a;}
+.sp-lec-item.sp-lec-empty{background:transparent;color:#a2b0bd;text-align:center;}
+.sp-quiz-row{display:flex;flex-direction:column;gap:8px;}
+.sp-quiz-name{font-weight:900;color:#243342;font-size:.86rem;}
+.sp-quiz-cells{display:flex;flex-wrap:wrap;gap:8px 14px;font-size:.75rem;color:#5c6f81;align-items:center;}
+@media(max-width:600px){.sp-sub-meta,.sp-path-stats,.sp-quiz-cells{gap:6px 10px;}}
+</style>
 
 <!-- ==================== PAGE: LINKS ==================== -->
 <div id="page-links" class="page">
@@ -19537,7 +19590,7 @@ window.diagnose = async function() {
   function _msRefreshActiveFromPage() {
     var activePage = document.querySelector('.page.active');
     if (!activePage) { _msSetActive(null); return; }
-    var map = { 'page-home': 'home', 'page-courses': 'courses', 'page-paths': 'paths' };
+    var map = { 'page-home': 'home', 'page-courses': 'courses', 'page-paths': 'paths', 'page-progress': 'progress' };
     _msSetActive(map[activePage.id] || null);
   }
 
@@ -19564,6 +19617,10 @@ window.diagnose = async function() {
       case 'paths':
         if (typeof window.openLearningPathsPage === 'function') window.openLearningPathsPage();
         else if (typeof _showToast === 'function') _showToast('جاري تجهيز صفحة المسارات...', 'info');
+        break;
+      case 'progress':
+        if (typeof window.openStudentProgressPage === 'function') window.openStudentProgressPage();
+        else if (typeof _showToast === 'function') _showToast('جاري تجهيز صفحة التقدم...', 'info');
         break;
       case 'chat':
         // ✅ (Phase 3): كان مجرد رسالة توضيحية بدون أي فتح فعلي — الآن يفتح قائمة
@@ -21211,6 +21268,280 @@ window.qzShowPastReview = qzShowPastReview;
       return;
     }
   }, true);
+})();
+</script>
+
+<script>
+// ════════════════════════════════════════════════════════════════
+// ✅ PHASE 4 — 📊 تقدمي: متابعة مستوى وتقدم الطالب (عرض فقط)
+// لا SQL جديد، لا جداول جديدة، لا تعديل على الاشتراكات أو Learning Path
+// (Phase 3) أو submit_quiz_attempt. كل الاستعلامات مقيّدة بـ auth.uid()
+// عبر الجلسة الحالية فقط — لا يمكن لطالب رؤية بيانات طالب آخر لأن كل
+// استعلام هنا يستخدم uid المستخدم المسجّل دخوله حالياً حصراً، بالإضافة
+// إلى أن RLS على subscriptions/user_progress/quiz_results أصلاً تمنع أي
+// قراءة تخص مستخدماً آخر (auth.uid() = user_id) — هذا الملف لا يغيّرها.
+// ════════════════════════════════════════════════════════════════
+(function() {
+
+  function spEsc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function(c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+  function spDate(d) {
+    if (!d) return '—';
+    try { return new Date(d).toLocaleDateString('ar-EG', { year: 'numeric', month: 'short', day: 'numeric' }); }
+    catch (e) { return String(d); }
+  }
+  function spDateTime(d) {
+    if (!d) return '—';
+    try { return new Date(d).toLocaleString('ar-EG', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }); }
+    catch (e) { return String(d); }
+  }
+  function spEmptyBlock(icon, msg) {
+    return '<div class="sp-empty"><div class="sp-empty-icon">' + icon + '</div><p>' + spEsc(msg) + '</p></div>';
+  }
+  function spBlockBar(pct) {
+    var totalBlocks = 10;
+    var filled = Math.round((pct / 100) * totalBlocks);
+    if (filled > totalBlocks) filled = totalBlocks;
+    if (filled < 0) filled = 0;
+    return '█'.repeat(filled) + '░'.repeat(totalBlocks - filled);
+  }
+
+  // ── uid المستخدم الحالي فقط (نفس منطق الجلسة المستخدم في باقي الملف) ──
+  async function spCurrentUid() {
+    try {
+      var s = await _getSessionSafe();
+      var session = s && s.data && s.data.session;
+      return session && session.user ? session.user.id : null;
+    } catch (e) { return null; }
+  }
+
+  window.openStudentProgressPage = async function() {
+    document.querySelectorAll('.page').forEach(function(p) { p.classList.remove('active'); });
+    var page = document.getElementById('page-progress');
+    if (page) page.classList.add('active');
+    window.scrollTo(0, 0);
+    if (window.state && state.navigationStack) {
+      state.navigationStack.push({ label: '📊 تقدمي', restore: function() { return window.openStudentProgressPage(); } });
+    }
+    if (typeof updateBreadcrumb === 'function') updateBreadcrumb();
+    await spLoadProgress();
+  };
+
+  async function spLoadProgress() {
+    var host = document.getElementById('sp-progress-content');
+    if (!host) return;
+    host.innerHTML = '<div class="loading" style="padding:60px 20px"><div class="spinner"></div> جاري تحميل بيانات تقدمك...</div>';
+
+    var db = window.supabase;
+    if (!db) { host.innerHTML = spEmptyBlock('⚠️', 'تعذر الاتصال بقاعدة البيانات.'); return; }
+
+    var uid = await spCurrentUid();
+    if (!uid) {
+      host.innerHTML = spEmptyBlock('🔒', 'سجّل الدخول أولاً لعرض تقدمك الدراسي.');
+      return;
+    }
+
+    try {
+      var html = '';
+      html += await spRenderSubscriptions(db, uid);
+      html += await spRenderPathsProgress(db, uid);
+      html += await spRenderQuizResults(db, uid);
+      host.innerHTML = html;
+    } catch (e) {
+      console.error('[StudentProgress]', e);
+      host.innerHTML = spEmptyBlock('⚠️', 'حدث خطأ أثناء تحميل بيانات التقدم. حاول مرة أخرى.');
+    }
+  }
+
+  // ── 1) حالة الاشتراك — subscriptions مقيّدة بـ user_id = uid فقط ──
+  async function spRenderSubscriptions(db, uid) {
+    var res = await db.from('subscriptions')
+      .select('id,section_id,payment_status,start_date,end_date,created_at,site_sections(title,icon)')
+      .eq('user_id', uid)
+      .order('created_at', { ascending: false });
+    if (res.error) throw res.error;
+    var rows = res.data || [];
+
+    var body;
+    if (!rows.length) {
+      body = spEmptyBlock('📭', 'لا يوجد أي اشتراك مسجّل بعد.');
+    } else {
+      var nowMs = Date.now();
+      body = '<div class="sp-sub-list">' + rows.map(function(r) {
+        var sec = r.site_sections || {};
+        var isActive = r.payment_status === 'active' && (!r.end_date || new Date(r.end_date).getTime() >= nowMs);
+        var statusLabel = {
+          active: isActive ? 'نشط ✅' : 'منتهي ⏰',
+          pending: 'قيد المراجعة ⏳',
+          expired: 'منتهي ⏰',
+          cancelled: 'ملغى ❌',
+          rejected: 'مرفوض ❌'
+        }[r.payment_status] || (r.payment_status || '—');
+        return '<div class="sp-sub-card">' +
+          '<div class="sp-sub-top"><span class="sp-sub-icon">' + spEsc(sec.icon || '📚') + '</span>' +
+            '<span class="sp-sub-title">' + spEsc(sec.title || '—') + '</span>' +
+            '<span class="sp-badge ' + (isActive ? 'sp-badge-active' : 'sp-badge-inactive') + '">' + spEsc(statusLabel) + '</span></div>' +
+          '<div class="sp-sub-meta">' +
+            '<span>🟢 بداية الاشتراك: ' + spDate(r.start_date) + '</span>' +
+            '<span>🔴 نهاية الاشتراك: ' + spDate(r.end_date) + '</span>' +
+            '<span>' + (isActive ? '✅ الاشتراك فعّال' : '❌ الاشتراك غير فعّال') + '</span>' +
+          '</div></div>';
+      }).join('') + '</div>';
+    }
+    return '<div class="sp-section"><h3 class="sp-section-title">💳 حالة الاشتراك</h3>' + body + '</div>';
+  }
+
+  // ── 2) تقدم الطالب في المسارات — learning_paths + learning_path_items +
+  //      user_progress + quizzes/quiz_results (عبر window._pgItemDisplayState/
+  //      window._pgSectionCompleted الجاهزتين من Phase 3 — بدون تعديلهما) ──
+  async function spRenderPathsProgress(db, uid) {
+    var res = await db.from('learning_paths')
+      .select('id,title,icon,is_active,display_order,learning_path_items(id,section_id,display_order,site_sections(id,title,icon))')
+      .eq('is_active', true)
+      .order('display_order', { ascending: true });
+    if (res.error) throw res.error;
+    var paths = (res.data || []).filter(function(p) { return (p.learning_path_items || []).length; });
+
+    var bodyHtml;
+    if (!paths.length) {
+      bodyHtml = spEmptyBlock('🗺️', 'لا توجد مسارات تعليمية متاحة حالياً.');
+    } else {
+      var cards = [];
+      for (var pi = 0; pi < paths.length; pi++) {
+        var path = paths[pi];
+        var items = (path.learning_path_items || []).slice().sort(function(a, b) {
+          return Number(a.display_order || 0) - Number(b.display_order || 0) || Number(a.id || 0) - Number(b.id || 0);
+        });
+
+        var completed = 0, currentItem = null, openItems = [], lockedItems = [];
+        for (var ii = 0; ii < items.length; ii++) {
+          var it = items[ii], sec = it.site_sections || {};
+          if (!sec.id) continue;
+
+          var stt = null;
+          if (typeof window._pgItemDisplayState === 'function') {
+            stt = await window._pgItemDisplayState(uid, it, items[ii - 1] || null);
+          }
+          if (stt === null) {
+            // null = admin/branch_admin (غير مقيّدين بقفل التسلسل) أو الدالة غير متاحة —
+            // نعتمد فقط على الإكمال الفعلي دون قفل تسلسلي عليهم
+            var doneFallback = (typeof window._pgSectionCompleted === 'function') ? await window._pgSectionCompleted(uid, sec.id) : false;
+            stt = doneFallback ? 'completed' : 'open';
+          }
+
+          if (stt === 'completed') {
+            completed++;
+            openItems.push({ title: sec.title, state: 'completed' });
+          } else if (stt === 'open') {
+            openItems.push({ title: sec.title, state: 'open' });
+            if (!currentItem) currentItem = sec.title;
+          } else {
+            lockedItems.push(sec.title);
+          }
+        }
+        if (!currentItem && items.length && completed === items.length) currentItem = '🎉 أكملت هذا المسار بالكامل';
+
+        // آخر نشاط داخل هذا المسار — من user_progress.last_visited لأقسام المسار فقط
+        var lastActivity = null;
+        var sectionIds = items.map(function(it2) { return it2.site_sections && it2.site_sections.id; }).filter(Boolean);
+        if (sectionIds.length) {
+          var upRes = await db.from('user_progress')
+            .select('last_visited')
+            .eq('user_id', uid)
+            .in('section_id', sectionIds)
+            .order('last_visited', { ascending: false })
+            .limit(1);
+          if (!upRes.error && upRes.data && upRes.data.length) lastActivity = upRes.data[0].last_visited;
+        }
+
+        var total = items.length;
+        var pct = total ? Math.round((completed / total) * 100) : 0;
+
+        cards.push(spPathCard(path, completed, total, pct, currentItem, openItems, lockedItems, lastActivity));
+      }
+      bodyHtml = '<div class="sp-path-list">' + cards.join('') + '</div>';
+    }
+    return '<div class="sp-section"><h3 class="sp-section-title">🗺️ تقدمي في المسارات التعليمية</h3>' + bodyHtml + '</div>';
+  }
+
+  function spPathCard(path, completed, total, pct, currentItem, openItems, lockedItems, lastActivity) {
+    var openHtml = openItems.length ? openItems.map(function(o) {
+      return '<li class="sp-lec-item ' + (o.state === 'completed' ? 'sp-lec-done' : 'sp-lec-open') + '">' +
+        (o.state === 'completed' ? '✅' : '🟢') + ' ' + spEsc(o.title || '—') + '</li>';
+    }).join('') : '<li class="sp-lec-item sp-lec-empty">لا توجد محاضرات مفتوحة بعد</li>';
+    var lockedHtml = lockedItems.length ? lockedItems.map(function(t) {
+      return '<li class="sp-lec-item sp-lec-locked">🔒 ' + spEsc(t || '—') + '</li>';
+    }).join('') : '<li class="sp-lec-item sp-lec-empty">لا توجد محاضرات مغلقة 🎉</li>';
+
+    return '<div class="sp-path-card">' +
+      '<div class="sp-path-head"><span class="sp-path-icon">' + spEsc(path.icon || '🎯') + '</span>' +
+        '<span class="sp-path-title">' + spEsc(path.title || 'مسار تعليمي') + '</span></div>' +
+      '<div class="sp-progress-row"><span class="sp-progress-label">التقدم ' + pct + '%</span>' +
+        '<span class="sp-progress-blocks">' + spBlockBar(pct) + '</span></div>' +
+      '<div class="sp-progress-bar"><div class="sp-progress-fill" style="width:' + pct + '%"></div></div>' +
+      '<div class="sp-path-stats">' +
+        '<span>📚 المحاضرات المكتملة: <b>' + completed + '</b> / ' + total + '</span>' +
+        '<span>📍 المحاضرة الحالية: <b>' + spEsc(currentItem || '—') + '</b></span>' +
+        '<span>🕒 آخر نشاط: <b>' + (lastActivity ? spDateTime(lastActivity) : '—') + '</b></span>' +
+      '</div>' +
+      '<details class="sp-lec-details"><summary>🟢 المحاضرات المفتوحة (' + openItems.length + ')</summary><ul class="sp-lec-list">' + openHtml + '</ul></details>' +
+      '<details class="sp-lec-details"><summary>🔒 المحاضرات المغلقة (' + lockedItems.length + ')</summary><ul class="sp-lec-list">' + lockedHtml + '</ul></details>' +
+    '</div>';
+  }
+
+  // ── 3) نتائج الاختبارات — quiz_results (user_id = uid فقط) + quizzes للعناوين ──
+  async function spRenderQuizResults(db, uid) {
+    var res = await db.from('quiz_results')
+      .select('id,quiz_id,score,percentage,attempt_number,created_at')
+      .eq('user_id', uid)
+      .order('created_at', { ascending: false });
+    if (res.error) throw res.error;
+    var rows = res.data || [];
+
+    var body;
+    if (!rows.length) {
+      body = spEmptyBlock('📭', 'لم تدخل أي اختبار حتى الآن.');
+    } else {
+      var quizIds = Array.from(new Set(rows.map(function(r) { return r.quiz_id; }).filter(function(v) { return v !== null && v !== undefined; })));
+      var quizMap = {};
+      if (quizIds.length) {
+        var qRes = await db.from('quizzes').select('id,title,passing_score').in('id', quizIds);
+        if (!qRes.error && qRes.data) {
+          qRes.data.forEach(function(q) { quizMap[q.id] = q; });
+        }
+      }
+
+      var byQuiz = {};
+      rows.forEach(function(r) {
+        if (!byQuiz[r.quiz_id]) byQuiz[r.quiz_id] = [];
+        byQuiz[r.quiz_id].push(r);
+      });
+
+      var cardsArr = Object.keys(byQuiz).map(function(qid) {
+        var attempts = byQuiz[qid].slice().sort(function(a, b) { return new Date(b.created_at) - new Date(a.created_at); });
+        var last = attempts[0];
+        var quiz = quizMap[qid] || {};
+        var passingScore = quiz.passing_score != null ? quiz.passing_score : 60;
+        var lastPct = Number(last.percentage);
+        var passed = !isNaN(lastPct) && lastPct >= Number(passingScore);
+        return '<div class="sp-quiz-row">' +
+          '<div class="sp-quiz-name">📝 ' + spEsc(quiz.title || ('اختبار #' + qid)) + '</div>' +
+          '<div class="sp-quiz-cells">' +
+            '<span>🔁 المحاولات: <b>' + attempts.length + '</b></span>' +
+            '<span>🕒 آخر محاولة: <b>' + spDateTime(last.created_at) + '</b></span>' +
+            '<span>🎯 الدرجة: <b>' + (last.score != null ? last.score : '—') + '</b></span>' +
+            '<span>📊 النسبة: <b>' + (last.percentage != null ? last.percentage + '%' : '—') + '</b></span>' +
+            '<span class="sp-badge ' + (passed ? 'sp-badge-active' : 'sp-badge-inactive') + '">' + (passed ? 'ناجح ✅' : 'راسب ❌') + '</span>' +
+          '</div></div>';
+      });
+      body = '<div class="sp-quiz-list">' + cardsArr.join('') + '</div>';
+    }
+    return '<div class="sp-section"><h3 class="sp-section-title">📝 نتائج الاختبارات</h3>' + body + '</div>';
+  }
+
 })();
 </script>
 </body>
