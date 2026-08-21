@@ -35,7 +35,7 @@
 </script>
 <meta name="google-site-verification" content="my6dMoAsuc_97Jks_OQF75GK_f1PGWqz2Kng2obkIgE" />
 <meta charset="UTF-8">
-<meta name="app-build" content="2026-08-14-external-pdf-paths-v3">
+<meta name="app-build" content="2026-08-21-course-admin-stats-v1">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <!-- ==================== PWA: manifest + platform metadata ==================== -->
 <link rel="manifest" href="./manifest.json">
@@ -2798,6 +2798,7 @@ window.qnRegister = function() {
     <button class="ms-nav-item" data-nav="subjects" onclick="msNavigate('subjects')"><span class="ms-nav-icon">📖</span> المواد</button>
     <button class="ms-nav-item" data-nav="paths" onclick="msNavigate('paths')"><span class="ms-nav-icon">🗺️</span> مساراتي</button>
     <button class="ms-nav-item" data-nav="progress" onclick="msNavigate('progress')"><span class="ms-nav-icon">📊</span> تقدمي</button>
+    <button class="ms-nav-item" data-nav="schedule" onclick="msNavigate('schedule')"><span class="ms-nav-icon">🗓️</span> جدولي</button>
     <button class="ms-nav-item" data-nav="chat" onclick="msNavigate('chat')"><span class="ms-nav-icon">💬</span> المحادثات</button>
     <button class="ms-nav-item" data-nav="notifications" onclick="msNavigate('notifications')"><span class="ms-nav-icon">🔔</span> الإشعارات</button>
     <button class="ms-nav-item" onclick="toggleDarkMode()"><span class="ms-nav-icon" id="dark-mode-btn">🌙</span> الوضع الليلي / النهاري</button>
@@ -2897,6 +2898,43 @@ window.qnRegister = function() {
   </div>
 </div>
 
+<!-- ==================== PAGE: STUDENT SCHEDULE ==================== -->
+<div id="page-schedule" class="page">
+  <div class="links-page">
+    <button class="back-btn" onclick="goHome()">← العودة للرئيسية</button>
+    <div class="page-header"><h2>🗓️ جدولي</h2><p style="color:#7a8a9a;font-size:.85rem;margin-top:4px;">نظّم مهامك ومواعيدك الدراسية وتابع التزامك.</p></div>
+    <div id="sch-content"><div class="loading" style="padding:40px 20px"><div class="spinner"></div> جاري تحميل الجدول...</div></div>
+  </div>
+</div>
+<style>
+.sch-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}.sch-card{background:var(--card-bg,#fff);border:1px solid var(--border-c,#e6ecf1);border-radius:14px;padding:14px}.sch-row{display:grid;grid-template-columns:1.5fr 1fr 1fr;gap:8px}.sch-badge{display:inline-block;padding:3px 8px;border-radius:9px;font-size:.7rem;background:#eef5fb}.sch-overdue{color:#c0392b;font-weight:800}.sch-done{color:#16834a;font-weight:800}@media(max-width:600px){.sch-row{grid-template-columns:1fr}.sch-card .ap-btn{width:100%}}
+</style>
+<script>
+(function(){
+  function schEsc(v){return String(v==null?'':v).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+  window.openSchedulePage=async function(){
+    if(!window._currentAuthUser){ if(typeof _showToast==='function')_showToast('سجّل الدخول أولاً','info'); return; }
+    if(window._isSuperAdmin||window._isBranchAdmin){ if(typeof _showToast==='function')_showToast('الجدول الشخصي متاح للطالب فقط','info'); return; }
+    document.querySelectorAll('.page').forEach(function(x){x.classList.remove('active')}); var p=document.getElementById('page-schedule'); if(p)p.classList.add('active'); await schRender();
+  };
+  async function schRender(){
+    var el=document.getElementById('sch-content'); if(!el)return;
+    try{var r=await window.supabase.from('student_schedule').select('*').eq('user_id',window._currentAuthUser.id).order('start_at',{ascending:true}); if(r.error)throw r.error;
+      var rows=r.data||[]; var now=Date.now();
+      el.innerHTML='<div class="sch-card" style="margin-bottom:14px"><h3 style="margin:0 0 12px">➕ إضافة مهمة</h3><div class="sch-row">'+
+        '<input id="sch-title" class="ap-input" placeholder="اسم المهمة">'+
+        '<input id="sch-start" class="ap-input" type="datetime-local">'+
+        '<input id="sch-end" class="ap-input" type="datetime-local"></div><div class="sch-row" style="margin-top:8px"><select id="sch-repeat" class="ap-select"><option value="none">مرة واحدة</option><option value="daily">يومي</option><option value="weekly">أسبوعي</option><option value="monthly">شهري</option></select><input id="sch-notes" class="ap-input" placeholder="ملاحظات"><button class="ap-btn ap-btn-primary" onclick="schAdd()">💾 حفظ</button></div></div>'+
+        '<div class="sch-grid">'+(rows.length?rows.map(function(x){var overdue=x.end_at&&new Date(x.end_at).getTime()<now&&!x.completed;return '<div class="sch-card"><div style="font-weight:800">'+schEsc(x.title)+'</div><div class="sch-badge">'+schEsc(x.repeat_type||'none')+'</div><div style="margin-top:8px;font-size:.78rem">🕒 '+schEsc(x.start_at||'—')+' → '+schEsc(x.end_at||'—')+'</div><div style="font-size:.78rem;color:#7a8a9a;margin-top:5px">'+schEsc(x.notes||'')+'</div><div style="margin-top:10px" class="'+(x.completed?'sch-done':(overdue?'sch-overdue':''))+'">'+(x.completed?'✅ مكتملة':(overdue?'⚠️ متأخرة':'⏳ مجدولة'))+'</div><div style="display:flex;gap:6px;margin-top:10px"><button class="ap-btn ap-btn-ghost" onclick="schToggle(\''+x.id+'\','+(!x.completed)+')">'+(x.completed?'↩️ إعادة فتح':'✅ إكمال')+'</button><button class="ap-btn ap-btn-danger" onclick="schDelete(\''+x.id+'\')">🗑️ حذف</button></div></div>';}).join(''):'<div class="sch-card">لا توجد مهام بعد.</div>')+'</div>';
+    }catch(e){el.innerHTML='<div class="sch-card" style="color:#c0392b">❌ '+schEsc(e.message)+'<br><small>إذا كان جدول student_schedule غير موجود، شغّل printStudentScheduleAndAnalyticsSQL() من Console.</small></div>';}
+  }
+  window.schAdd=async function(){try{var u=window._currentAuthUser;if(!u)return;var p={user_id:u.id,title:document.getElementById('sch-title').value.trim(),start_at:new Date(document.getElementById('sch-start').value).toISOString(),end_at:document.getElementById('sch-end').value?new Date(document.getElementById('sch-end').value).toISOString():null,repeat_type:document.getElementById('sch-repeat').value,notes:document.getElementById('sch-notes').value.trim()};if(!p.title)throw new Error('اسم المهمة مطلوب');var r=await window.supabase.from('student_schedule').insert(p);if(r.error)throw r.error;schRender();}catch(e){_showToast&&_showToast('❌ '+e.message,'error');}};
+  window.schToggle=async function(id,v){var r=await window.supabase.from('student_schedule').update({completed:v,completed_at:v?new Date().toISOString():null}).eq('id',id).eq('user_id',window._currentAuthUser.id);if(r.error)_showToast&&_showToast('❌ '+r.error.message,'error');else schRender();};
+  window.schDelete=async function(id){if(!confirm('حذف المهمة؟'))return;var r=await window.supabase.from('student_schedule').delete().eq('id',id).eq('user_id',window._currentAuthUser.id);if(r.error)_showToast&&_showToast('❌ '+r.error.message,'error');else schRender();};
+  var oldMs=window.msNavigate; window.msNavigate=function(nav){if(nav==='schedule'){openSchedulePage();return;} return oldMs?oldMs.apply(this,arguments):undefined;};
+})();
+</script>
+
 <!-- ==================== PAGE: SETTINGS (⚙️ الإعدادات — صفحة إعدادات حقيقية) ==================== -->
 <!-- بديل عن زر "الإعدادات" اللي كان بيعمل toggleDarkMode() مباشرة فقط.
      كل قسم هنا مربوط بمصدر حقيقي (localStorage للمظهر، Supabase session/profiles
@@ -2955,7 +2993,7 @@ async function stRenderSettings() {
   var isAdmin = isSuperAdmin || isBranchAdmin;
   var theme = document.documentElement.getAttribute('data-theme') || 'light';
 
-  var roleLabel = isSuperAdmin ? 'سوبر أدمن' : (isBranchAdmin ? 'أدمن شعبة' : (user ? 'طالب' : 'زائر (غير مسجل)'));
+  var roleLabel = isSuperAdmin ? 'أدمن المنصة' : (isBranchAdmin ? 'أدمن الكورس' : (user ? 'طالب' : 'زائر (غير مسجل)'));
   var roleBadgeClass = isSuperAdmin ? 'super' : (isBranchAdmin ? 'branch' : 'student');
 
   var html = '';
@@ -2964,7 +3002,7 @@ async function stRenderSettings() {
   //    فبدل ما نعمل Inputs وهمية ونقول إنها اتحفظت (ممنوع)، بنوضح ده صراحة. ──
   if (isSuperAdmin) {
     html += '<div class="st-section"><h3>⚙️ إعدادات المنصة</h3>'
-      + '<div class="st-note">اسم المنصة، الوصف، والشعار غير قابلين للتعديل من هنا حاليًا — القاعدة لا تحتوي بعد على جدول إعدادات عامة للمنصة (يحتاج SQL جديد وليس ضمن هذه المرحلة). الواجهة ستُربط بمصدر حقيقي بمجرد إنشائه.</div>'
+      + '<div class="st-note">إعدادات المنصة مربوطة بجدول platform_settings في Supabase. إذا لم يكن الجدول موجودًا شغّل printPlatformSettingsSQL() مرة واحدة من Console.</div>'
       + '</div>';
   }
 
@@ -4138,18 +4176,18 @@ async function _renderDynamicSectionPage(sec) {
     }
   }
 
-  // ── زر دخول محادثة الشعبة — يظهر فقط على صفحة الشعبة نفسها ولمن يملك صلاحية ──
+  // ── زر دخول محادثة الكورس — يظهر فقط على صفحة الشعبة نفسها ولمن يملك صلاحية ──
   var chatEntryEl = document.getElementById('dynamic-section-chat-entry');
   if (chatEntryEl) chatEntryEl.innerHTML = '';
   if (window.getChatEligibility && sec && sec.id) {
     window.getChatEligibility(sec.id).then(function(elig) {
       if (elig && elig.anchor && chatEntryEl && document.getElementById('dynamic-section-title')) {
-        // ✅ FIX (Aug 2026 — طلب المستخدم): محادثة الشعبة الجماعية تظل مقفولة إلا
-        // لمن عنده اشتراك نشط (elig.allowed)، لكن زر "راسل أدمن الشعبة" لازم يفضل
+        // ✅ FIX (Aug 2026 — طلب المستخدم): محادثة الكورس الجماعية تظل مقفولة إلا
+        // لمن عنده اشتراك نشط (elig.allowed)، لكن زر "راسل أدمن الكورساتة" لازم يفضل
         // موجوداً دايماً طول ما القسم عنده anchor صحيح — حتى لو الطالب لسه مش
         // مشترك أو اشتراكه منتهي/معلّق — عشان يقدر يسأل الأدمن قبل/أثناء الاشتراك.
         chatEntryEl.innerHTML = elig.allowed ? window._renderChatEntryButtonHTML(elig.anchor) : '';
-        // ✅ Phase C — زر "راسل أدمن الشعبة" (محادثة ثنائية، منفصلة عن محادثة
+        // ✅ Phase C — زر "راسل أدمن الكورساتة" (محادثة ثنائية، منفصلة عن محادثة
         // الشعبة الجماعية أعلاه). يظهر طالما القسم عنده anchor (يتطلب اشتراكاً)،
         // بغض النظر عن حالة الاشتراك نفسها، ثم يتحقق داخليًا مرة أخرى عبر RPC آمنة
         // (get_section_admins_for_messaging) قبل إظهار أي بيانات عن الأدمن.
@@ -6811,7 +6849,7 @@ function _checkAndApplySubscription(userId) {
 // يرجع النتيجة "الأخيرة" فعليًا (مش اللي بدأ أخيرًا) هو اللي بيكسب ويكتب على
 // window._isSuperAdmin. على الموبايل والكمبيوتر التوقيت بيختلف حسب سرعة
 // الشبكة/الجهاز، فكان يحصل أحيانًا إن نتيجة قديمة/بطيئة توصل بعد نتيجة حديثة
-// وتمسحها — وده بالظبط سبب "تاب أدمن الشعب يظهر على الموبايل ومش ظاهر على
+// وتمسحها — وده بالظبط سبب "تاب أدمن الكورسات يظهر على الموبايل ومش ظاهر على
 // الكمبيوتر لنفس الحساب" رغم إن الكود نفسه مطابق 100% في الاتنين.
 // الحل: عداد تسلسل (sequence) — كل نداء بياخد رقم عند بدايته، ولو رجعت نتيجته
 // بعد ما نداء أحدث منه كان قد بدأ، نتجاهلها فورًا بدل ما نكتب فوق النتيجة
@@ -6884,7 +6922,7 @@ function _renderUserBoxGuarded(user, role, mySeq) {
 // INITIAL_SESSION + checkUser()'s getSession() المباشر — نفس السيناريو اللي
 // طلبت مراجعته بالظبط)، أبطأهم في إنهاء الشبكة (يختلف حسب سرعة/زمن استجابة
 // الجهاز والشبكة — ده اللي كان بيفرق بين Desktop وMobile لنفس الحساب) كان
-// يكتب فوق حالة صحيحة أحدث بنتيجة قديمة، فتختفي تابات زي "إدارة أدمن الشعب".
+// يكتب فوق حالة صحيحة أحدث بنتيجة قديمة، فتختفي تابات زي "إدارة أدمن الكورسات".
 async function _renderUserBox(user, role, mySeq) {
   console.log('[AUTH-DEBUG] _renderUserBox called — user:', user ? (user.id + ' / ' + user.email) : null, '| role:', role);
   const box = document.getElementById('user-box');
@@ -6910,7 +6948,7 @@ async function _renderUserBox(user, role, mySeq) {
   _setupOwnAdminStatusRealtime(user.id); // ✅ يستقبل تغييرات section_admins/profiles.role لهذا المستخدم بدون Logout/Login
   // role يأتي من profiles.role في Supabase — ليس من HTML
   // ✅ (Aug 2026): بنستخدم _resolveAdminStatus بدل الاعتماد على role وحده، عشان
-  // أدمن الشعبة المُعيّن عن طريق section_admins (بدون profiles.role='branch_admin')
+  // أدمن الكورساتة المُعيّن عن طريق section_admins (بدون profiles.role='branch_admin')
   // يظهر له الأدمن بردو، مش بس اللي معيّن بالطريقة القديمة
   var status = (role === 'admin') ? { isSuperAdmin: true, isBranchAdmin: false, isAdmin: true } : await _resolveAdminStatus(user.id);
   console.log('[AUTH-DEBUG] _renderUserBox: resolved admin status:', status);
@@ -7008,7 +7046,7 @@ async function _fetchUserRole(userId) {
 // ── _resolveAdminStatus: مصدر الحقيقة الموحّد لتحديد صلاحيات الأدمن ──
 // يجمع بين النظام القديم (profiles.role='branch_admin') والجديد (section_admins)
 // عشان أي مكان في الكود بيحتاج يعرف "هل هذا المستخدم أدمن؟" يستخدم نفس المنطق بالظبط —
-// ده اللي كان ناقص وسبب إن أدمن الشعبة المُعيّن عن طريق section_admins كان يدخل بنجاح
+// ده اللي كان ناقص وسبب إن أدمن الكورساتة المُعيّن عن طريق section_admins كان يدخل بنجاح
 // لكن لوحة التحكم متظهرش له، لأن كل الكود القديم كان بيفحص profiles.role فقط.
 async function _resolveAdminStatus(userId) {
   var role = await _fetchUserRole(userId);
@@ -7024,7 +7062,9 @@ async function _resolveAdminStatus(userId) {
       hasSectionAdminRows = !saCheck.error && (saCheck.count || 0) > 0;
     } catch(e) { console.warn('[section_admins] check failed:', e && e.message); }
   }
-  var isBranchAdmin = isLegacyBranchAdmin || hasSectionAdminRows;
+  // المصدر الرسمي للدور: profiles.role فقط.
+  // section_admins يُستخدم لتحديد الكورس المعيّن، وليس لمنح دور جديد لمستخدم student.
+  var isBranchAdmin = isLegacyBranchAdmin;
   // isSectionAdmin: اسم بديل مطابق تمامًا لـ isBranchAdmin — نفس القيمة، فقط للتوافق
   // مع أي كود جديد يتوقع هذا الاسم تحديدًا (المصطلح الرسمي الآن هو "Section Admin")
   return {
@@ -7040,7 +7080,7 @@ async function _resolveAdminStatus(userId) {
 // BRANCH ADMIN — مصدرين للتعيين، بدون أي جدول جديد ولا RPC إضافية:
 //   1) القديم:  profiles.managed_section_id + profiles.role='branch_admin'  (لسه شغال بدون كسر)
 //   2) الجديد:  section_admins (user_id, section_id, role='admin', is_active=true)
-//               — هذا هو المصدر الصحيح لتعيين أدمن الشعبة من الآن (✅ Aug 2026 fix)
+//               — هذا هو المصدر الصحيح لتعيين أدمن الكورساتة من الآن (✅ Aug 2026 fix)
 // المستخدم ممكن يظهر في المصدرين مع بعض؛ بنجمع كل الشعب المُسندة له من الاثنين
 // ونشيل التكرار، وإذا كان عنده أكثر من شعبة نديله Switcher يختار بيه.
 // ════════════════════════════════════════════════════════════════
@@ -7091,7 +7131,7 @@ async function _loadBranchAdminScope(userId) {
       });
     }
 
-    // 2) النظام الجديد — section_admins هو المصدر الصحيح الآن لتعيين أدمن الشعبة،
+    // 2) النظام الجديد — section_admins هو المصدر الصحيح الآن لتعيين أدمن الكورساتة،
     //    ويدعم أكثر من شعبة لنفس المستخدم (صف لكل شعبة)
     var saRes = await window.supabase
       .from('section_admins')
@@ -7120,7 +7160,7 @@ async function _loadBranchAdminScope(userId) {
   } catch(e) { console.warn('[BranchAdmin] خطأ:', e.message); }
 }
 
-// ── يبدّل الشعبة المعروضة حالياً في لوحة أدمن الشعبة (لمن يدير أكثر من شعبة) ──
+// ── يبدّل الشعبة المعروضة حالياً في لوحة أدمن الكورساتة (لمن يدير أكثر من شعبة) ──
 window._selectBranchAdminRoot = async function(rootId) {
   if (!window._branchAdminRoots.some(function(r) { return r.id === rootId; })) return;
   window._branchAdminActiveRoot = rootId;
@@ -7147,11 +7187,14 @@ window._selectBranchAdminRoot = async function(rootId) {
     // ⚠️ (Aug 2026 — Phase 3): can_manage_admins صلاحية جديدة وحساسة (تسمح
     // بتعيين أدمن آخر لنفس الشعبة) — بعكس كل الصلاحيات فوق، الافتراضي هنا
     // false دايمًا لو مش موجودة صراحةً في القاعدة، عشان مانمنحهاش تلقائيًا
-    // لكل أدمن شعبة قديم موجود بالفعل (لا نطبّق نفس قاعدة "null → true").
+    // لكل أدمن الكورس قديم موجود بالفعل (لا نطبّق نفس قاعدة "null → true").
     can_manage_admins:           _dbPerms.can_manage_admins           === true
   };
-  window._branchAdminSectionIds = await _computeSectionSubtree(rootId);
-  // أسماء بديلة مطابقة تمامًا (sectionIds/activeSectionId) — للتوافق مع تسمية section_admins
+  // branch_admin مسؤول عن COURSE واحد فقط. لا نوسّع النطاق إلى أبناء الكورس.
+  // section_id هو معرف الكورس المسؤول عنه.
+  window._branchAdminSectionIds = [Number(rootId)];
+  window._branchAdminCourseId = Number(rootId);
+  // أسماء بديلة مطابقة تمامًا.
   window._sectionAdminSectionIds = window._branchAdminSectionIds;
   window._activeSectionId = rootId;
   if (typeof _renderBranchAdminSwitcher === 'function') _renderBranchAdminSwitcher();
@@ -8147,8 +8190,11 @@ window.checkBanStatus = async function(email) {
       <button class="ap-nav-btn" onclick="apSwitchTab('messages')"  id="ap-tab-messages"  role="tab">💬 الرسائل</button>
       <button class="ap-nav-btn" onclick="apSwitchTab('content')"   id="ap-tab-content"   role="tab">➕ المحتوى</button>
       <button class="ap-nav-btn" onclick="apSwitchTab('quizzes')"   id="ap-tab-quizzes"   role="tab">📝 الاختبارات</button>
-      <button class="ap-nav-btn" onclick="apSwitchTab('sectionchat')" id="ap-tab-sectionchat" role="tab">💬 محادثة الشعبة</button>
-      <button class="ap-nav-btn" onclick="apSwitchTab('branchadmins')" id="ap-tab-branchadmins" role="tab">🛡️ أدمن الشعب</button>
+      <button class="ap-nav-btn" onclick="apSwitchTab('courseStudents')" id="ap-tab-courseStudents" role="tab">👥 الطلاب</button>
+      <button class="ap-nav-btn" onclick="apSwitchTab('courseStats')" id="ap-tab-courseStats" role="tab">📊 إحصائيات</button>
+      <button class="ap-nav-btn" onclick="apSwitchTab('platformSettings')" id="ap-tab-platformSettings" role="tab">⚙️ إعدادات المنصة</button>
+      <button class="ap-nav-btn" onclick="apSwitchTab('sectionchat')" id="ap-tab-sectionchat" role="tab">💬 محادثة الكورس</button>
+      <button class="ap-nav-btn" onclick="apSwitchTab('branchadmins')" id="ap-tab-branchadmins" role="tab">🛡️ أدمن الكورسات</button>
       <button class="ap-nav-btn" onclick="apSwitchTab('auditlog')" id="ap-tab-auditlog" role="tab">🧾 سجل العمليات</button>
     </nav>
 
@@ -8390,10 +8436,16 @@ window.checkBanStatus = async function(email) {
 
       <!-- ═══════════════════ TAB: MONTHLY STATS (إحصائيات شهرية) ═══════════════════ -->
       <div class="ap-tab-panel" id="ap-panel-monthlystats" role="tabpanel">
-        <div class="ap-section-heading">📈 مستخدمون جدد شهرياً (آخر 12 شهر)</div>
-        <div id="ms-users-chart" style="padding:10px 0 24px;"></div>
-        <div class="ap-section-heading">📈 طلبات اشتراك شهرياً (آخر 12 شهر)</div>
-        <div id="ms-subs-chart" style="padding:10px 0;"></div>
+        <div class="ap-section-heading">📊 إحصائيات الاشتراكات والطلبات</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+          <select id="msa-month" class="ap-select" style="width:auto"></select><select id="msa-year" class="ap-select" style="width:auto"></select><select id="msa-section" class="ap-select" style="min-width:180px;width:auto"><option value="">كل الكورسات</option></select>
+          <button class="ap-btn ap-btn-primary" onclick="msaLoad()">🔎 تطبيق</button><button class="ap-btn ap-btn-ghost" onclick="msaReset()">↺ إعادة ضبط</button><button class="ap-btn ap-btn-ghost" onclick="msaExportCSV()">📥 CSV</button>
+        </div>
+        <div id="msa-cards" class="ap-stats-grid"></div>
+        <div class="ap-section-heading" style="margin-top:18px">📈 مقارنة الشهر الحالي بالشهر السابق</div><div id="msa-compare"></div>
+        <div class="ap-section-heading" style="margin-top:18px">📋 تفصيل الكورسات</div><div id="msa-table" style="overflow:auto"></div>
+        <div class="ap-section-heading" style="margin-top:18px">📈 مستخدمون جدد شهرياً (آخر 12 شهر)</div><div id="ms-users-chart" style="padding:10px 0 24px;"></div>
+        <div class="ap-section-heading">📈 الطلبات المقبولة شهرياً (آخر 12 شهر)</div><div id="ms-subs-chart" style="padding:10px 0;"></div>
       </div>
 
       <!-- ═══════════════════ TAB: SUBSCRIPTIONS (legacy — غير مستخدم) ═══════════════════ -->
@@ -8524,11 +8576,11 @@ window.checkBanStatus = async function(email) {
                 <label class="ap-label">الصلاحية (Role)</label>
                 <select class="ap-select" id="um-edit-role">
                   <option value="student">🎓 طالب</option>
-                  <option value="branch_admin">🏷️ أدمن شعبة (قديم)</option>
+                  <option value="branch_admin">🏷️ أدمن الكورس (قديم)</option>
                   <option value="admin">👑 أدمن عام</option>
                 </select>
                 <div style="font-size:.72rem;color:var(--text-muted);margin-top:4px;">
-                  لتعيين أدمن شعبة، الأفضل استخدام "إدارة أدمن الشعب" (section_admins) — تعيين "أدمن شعبة" هنا وحده بدون ربطه بشعبة عبر تلك اللوحة لن يفعّل له أي صلاحية.
+                  لتعيين أدمن الكورس، الأفضل استخدام "إدارة أدمن الكورسات" (section_admins) — تعيين "أدمن الكورس" هنا وحده بدون ربطه بشعبة عبر تلك اللوحة لن يفعّل له أي صلاحية.
                 </div>
               </div>
               <div class="ap-field">
@@ -8648,6 +8700,37 @@ window.checkBanStatus = async function(email) {
             <div id="lp-items-list"><div class="ap-loading"><div class="spinner"></div> جاري التحميل...</div></div>
           </div>
         </div>
+      </div>
+
+
+      <!-- ═══════════════════ TAB: COURSE STUDENTS ═══════════════════ -->
+      <div class="ap-tab-panel" id="ap-panel-courseStudents" role="tabpanel">
+        <div class="ap-section-heading">👥 الطلاب</div>
+        <div id="cs-course-picker-wrap" style="margin-bottom:12px;">
+          <label class="ap-label">📚 الكورس</label>
+          <select id="cs-course-picker" class="ap-select" onchange="csLoadStudents()">
+            <option value="">— جاري التحميل —</option>
+          </select>
+        </div>
+        <div id="cs-students-body"><div class="ap-loading"><div class="spinner"></div> جاري التحميل...</div></div>
+      </div>
+
+      <!-- ═══════════════════ TAB: COURSE STATS ═══════════════════ -->
+      <div class="ap-tab-panel" id="ap-panel-courseStats" role="tabpanel">
+        <div class="ap-section-heading">📊 إحصائيات الطلاب</div>
+        <div id="cst-course-picker-wrap" style="margin-bottom:12px;">
+          <label class="ap-label">📚 الكورس</label>
+          <select id="cst-course-picker" class="ap-select" onchange="cstLoadStats()">
+            <option value="">— جاري التحميل —</option>
+          </select>
+        </div>
+        <div id="cst-stats-body"><div class="ap-loading"><div class="spinner"></div> جاري التحميل...</div></div>
+      </div>
+
+      <!-- ═══════════════════ TAB: PLATFORM SETTINGS ═══════════════════ -->
+      <div class="ap-tab-panel" id="ap-panel-platformSettings" role="tabpanel">
+        <div class="ap-section-heading">⚙️ إعدادات المنصة</div>
+        <div id="ps-settings-body"><div class="ap-loading"><div class="spinner"></div> جاري التحميل...</div></div>
       </div>
 
       <!-- ═══════════════════ TAB: CONTENT ═══════════════════ -->
@@ -8789,11 +8872,11 @@ window.checkBanStatus = async function(email) {
       </div>
       <!-- End Content Tab -->
 
-      <!-- ═══════════════════ TAB: SECTION CHAT (محادثة الشعبة) ═══════════════════ -->
+      <!-- ═══════════════════ TAB: SECTION CHAT (محادثة الكورس) ═══════════════════ -->
       <div class="ap-tab-panel" id="ap-panel-sectionchat" role="tabpanel">
-        <div class="ap-section-heading" style="margin:0 0 10px;border:none;padding:0;">💬 محادثة الشعبة</div>
+        <div class="ap-section-heading" style="margin:0 0 10px;border:none;padding:0;">💬 محادثة الكورس</div>
         <div style="font-size:.76rem;color:#888;margin-bottom:14px;">
-          أدمن الشعبة يقدر يقرأ ويرسل ويحذف الرسائل المسيئة في محادثة شعبته فقط. اضغط "فتح المحادثة" بجانب الشعبة.
+          أدمن الكورساتة يقدر يقرأ ويرسل ويحذف الرسائل المسيئة في محادثة شعبته فقط. اضغط "فتح المحادثة" بجانب الشعبة.
         </div>
         <div id="ap-sectionchat-body"><div class="ap-loading"><div class="spinner"></div> جاري التحميل...</div></div>
       </div>
@@ -8801,17 +8884,17 @@ window.checkBanStatus = async function(email) {
 
       <!-- ═══════════════════ TAB: BRANCH ADMINS (Super Admin only) ═══════════════════ -->
       <div class="ap-tab-panel" id="ap-panel-branchadmins" role="tabpanel">
-        <div class="ap-section-heading" style="margin:0 0 10px;border:none;padding:0;">👑 إدارة أدمن الشعب</div>
+        <div class="ap-section-heading" style="margin:0 0 10px;border:none;padding:0;">👑 إدارة أدمن الكورسات</div>
         <div style="font-size:.76rem;color:#888;margin-bottom:14px;">
-          هذه الشاشة فقط لسوبر أدمن. اختر الفرقة ثم الترم ثم الشعبة تحديداً — الأدمن يُعيَّن دائماً على مستوى
+          هذه الشاشة فقط لأدمن المنصة. اختر الفرقة ثم الترم ثم الشعبة تحديداً — الأدمن يُعيَّن دائماً على مستوى
           الشعبة فقط، وليس على فرقة أو ترم بالكامل، حتى لو تكرر اسم الشعبة بين الترمين (كل شعبة لها ID مستقل
           ويمكن أن يكون لها أدمن مختلف). عيّن حساباً موجوداً بالفعل (سجّل دخول مرة واحدة على الأقل) ليدير هذه
           الشعبة فقط، ويمكن لنفس الشخص أن يدير أكثر من شعبة إذا عيّنته على كل منها من هنا. تقدر تغيّر الأدمن أو
           تزيله في أي وقت — إزالته لا تحذف حسابه ولا اشتراكاته ولا رسائله ولا ملفه الشخصي، فقط تُلغي صلاحية
           إدارة هذه الشعبة تحديداً.
         </div>
-        <!-- اختيار الفرقة ← الترم ← الشعبة (site_sections عبر parent_id) — أدمن الشعبة يُعيَّن على مستوى الشعبة فقط -->
-        <!-- ✅ (Aug 2026 — Phase 3): مُخفي عن أدمن الشعبة (مش سوبر أدمن) — نطاقه محدود
+        <!-- اختيار الفرقة ← الترم ← الشعبة (site_sections عبر parent_id) — أدمن الكورساتة يُعيَّن على مستوى الشعبة فقط -->
+        <!-- ✅ (Aug 2026 — Phase 3): مُخفي عن أدمن الكورساتة (مش أدمن المنصة) — نطاقه محدود
              تلقائيًا لشعبته هو فقط، من غير تصفح باقي الشعب — انظر baLoadGrades() -->
         <div id="ba-tree-picker" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;">
           <div style="flex:1;min-width:150px;">
@@ -8828,7 +8911,7 @@ window.checkBanStatus = async function(email) {
           </div>
         </div>
         <div id="ba-table-wrap">
-          <div id="ba-list-body"><div class="ap-empty">اختر الفرقة ثم الترم ثم الشعبة لإدارة أدمن الشعبة.</div></div>
+          <div id="ba-list-body"><div class="ap-empty">اختر الفرقة ثم الترم ثم الشعبة لإدارة أدمن الكورساتة.</div></div>
         </div>
         <button onclick="baRefreshCurrent()" class="ap-btn ap-btn-ghost" style="margin-top:10px;">🔄 تحديث القائمة</button>
       </div>
@@ -8841,7 +8924,7 @@ window.checkBanStatus = async function(email) {
           يسجَّل هنا كل عملية إدارية حساسة: من قام بها، نوع العملية، العنصر المتأثر، الشعبة، الوقت، والنتيجة.
           هذا السجل غير قابل للتعديل أو الحذف من الواجهة — التسجيل يتم عبر دالة آمنة على قاعدة البيانات (SECURITY DEFINER)
           تحدد هوية الفاعل من الجلسة نفسها، بحيث لا يمكن لأي مستخدم تزوير سجل باسم غيره.
-          أدمن الشعبة يرى فقط سجل شعبته (مفروض عبر RLS، وليس فقط إخفاء بالواجهة).
+          أدمن الكورساتة يرى فقط سجل شعبته (مفروض عبر RLS، وليس فقط إخفاء بالواجهة).
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
           <input id="al-filter-search" class="ap-input" type="text" placeholder="🔍 بحث: اسم الفاعل، العنصر..." style="flex:1;min-width:180px;" oninput="alApplyFilters()">
@@ -8850,8 +8933,8 @@ window.checkBanStatus = async function(email) {
             <option value="create_section">إنشاء قسم/دورة</option>
             <option value="update_section">تعديل قسم/دورة</option>
             <option value="delete_section">حذف قسم/دورة</option>
-            <option value="assign_branch_admin">تعيين أدمن شعبة</option>
-            <option value="remove_branch_admin">إزالة أدمن شعبة</option>
+            <option value="assign_branch_admin">تعيين أدمن الكورس</option>
+            <option value="remove_branch_admin">إزالة أدمن الكورس</option>
             <option value="change_user_role">تغيير صلاحية مستخدم</option>
             <option value="approve_subscription">قبول اشتراك</option>
             <option value="reject_subscription">رفض اشتراك</option>
@@ -8871,7 +8954,7 @@ window.checkBanStatus = async function(email) {
       <div id="ba-assign-overlay" style="display:none;position:fixed;inset:0;z-index:9999998;background:rgba(10,20,40,.75);backdrop-filter:blur(4px);align-items:center;justify-content:center;padding:16px;">
         <div style="background:var(--card-bg,#fff);border-radius:16px;max-width:440px;width:100%;max-height:88vh;overflow-y:auto;padding:22px;box-shadow:0 20px 60px rgba(0,0,0,.4);">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-            <div id="ba-assign-title" style="font-weight:800;font-size:1.02rem;">➕ تعيين أدمن الشعبة</div>
+            <div id="ba-assign-title" style="font-weight:800;font-size:1.02rem;">➕ تعيين أدمن الكورساتة</div>
             <button onclick="baCloseAssignModal()" style="background:none;border:none;font-size:1.3rem;cursor:pointer;color:#888;line-height:1;">✕</button>
           </div>
           <div id="ba-assign-section-label" style="font-size:.8rem;color:#888;margin-bottom:14px;"></div>
@@ -8896,9 +8979,9 @@ window.checkBanStatus = async function(email) {
               <label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" data-perm="can_manage_chapters" checked> إدارة المحتوى</label>
               <label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" data-perm="can_manage_subscriptions" checked> إدارة الاشتراكات</label>
               <label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" data-perm="can_manage_payments" checked> إدارة المدفوعات</label>
-              <label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" data-perm="can_manage_section_chat" checked> إدارة محادثة الشعبة</label>
+              <label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" data-perm="can_manage_section_chat" checked> إدارة محادثة الكورس</label>
               <label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" data-perm="can_delete_section_messages" checked> حذف رسائل الشعبة</label>
-              <!-- ⚠️ (Aug 2026 — Phase 3): صلاحية حساسة — تسمح لأدمن الشعبة بتعيين/إزالة
+              <!-- ⚠️ (Aug 2026 — Phase 3): صلاحية حساسة — تسمح لأدمن الكورساتة بتعيين/إزالة
                    أدمن آخر لنفس شعبته. غير مفعّلة افتراضيًا (بعكس باقي الصلاحيات فوق) —
                    لازم Super Admin يفعّلها بنفسه صراحةً لكل أدمن على حدة. -->
               <label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" data-perm="can_manage_admins"> 🔐 تعيين أدمن آخر لنفس الشعبة</label>
@@ -9136,8 +9219,8 @@ window.checkBanStatus = async function(email) {
 <!-- ==================== BRANCH ADMIN PASSWORD LOGIN MODAL ==================== -->
 <div id="pw-login-overlay" style="display:none;position:fixed;inset:0;z-index:9999998;background:rgba(10,20,40,.75);backdrop-filter:blur(4px);align-items:center;justify-content:center;padding:16px;">
   <div style="background:var(--card-bg,#fff);border-radius:16px;max-width:360px;width:100%;padding:24px;box-shadow:0 20px 60px rgba(0,0,0,.4);">
-    <div style="font-weight:800;font-size:1.05rem;margin-bottom:4px;">🔑 دخول أدمن الشعبة</div>
-    <div style="font-size:.78rem;color:#888;margin-bottom:16px;">لحسابات أدمن الشعب (Branch Admin) — بيانات الدخول من مسؤول المنصة.</div>
+    <div style="font-weight:800;font-size:1.05rem;margin-bottom:4px;">🔑 دخول أدمن الكورساتة</div>
+    <div style="font-size:.78rem;color:#888;margin-bottom:16px;">لحسابات أدمن الكورسات (Branch Admin) — بيانات الدخول من مسؤول المنصة.</div>
     <input id="pw-login-username" type="text" placeholder="اسم المستخدم" autocomplete="username" style="width:100%;box-sizing:border-box;padding:10px 12px;border-radius:9px;border:1px solid #d5e2ee;margin-bottom:10px;font-family:inherit;direction:ltr;text-align:right;">
     <input id="pw-login-password" type="password" placeholder="كلمة المرور" autocomplete="current-password" style="width:100%;box-sizing:border-box;padding:10px 12px;border-radius:9px;border:1px solid #d5e2ee;margin-bottom:14px;font-family:inherit;direction:ltr;text-align:right;">
     <div id="pw-login-msg" style="font-size:.78rem;min-height:18px;margin-bottom:8px;color:#e74c3c;"></div>
@@ -9211,7 +9294,7 @@ async function adminLoadSections() {
   try {
     var { data } = await window.supabase.from('site_sections').select('id, title, parent_id, subtitle, requires_subscription, payment_method, payment_number, price').order('display_order');
     if (!data) return;
-    // ── أدمن الشعبة: يرى فقط أقسام شعبته (المحتوى نفسه قراءته عامة، لكن لوحة التحكم مقيَّدة) ──
+    // ── أدمن الكورساتة: يرى فقط أقسام شعبته (المحتوى نفسه قراءته عامة، لكن لوحة التحكم مقيَّدة) ──
     // ✅ FIX 2: أضيف !window._isSuperAdmin دفاعياً حتى لو تعارضت الأعلام مؤقتاً.
     if (window._isBranchAdmin && !window._isSuperAdmin && Array.isArray(window._branchAdminSectionIds) && window._branchAdminSectionIds.length) {
       var allowed = window._branchAdminSectionIds;
@@ -9260,7 +9343,7 @@ async function adminOnMaterialChange() {
       .order('display_order');
     if (error) throw error;
     var chapters = data || [];
-    // ── دفاعياً: لو أدمن شعبة (وليس سوبر أدمن)، اقصر الشباتر على نطاقه ──
+    // ── دفاعياً: لو أدمن الكورس (وليس أدمن المنصة)، اقصر الشباتر على نطاقه ──
     if (window._isBranchAdmin && !window._isSuperAdmin && Array.isArray(window._branchAdminSectionIds)) {
       var scope = window._branchAdminSectionIds;
       chapters = chapters.filter(function(c) { return scope.indexOf(c.id) > -1; });
@@ -9311,7 +9394,7 @@ function adminLoadSectionPath() {
   let guard = 0;
   while (cur && cur.parent_id != null && guard++ < 10) {
     const parent = window._adminSections.find(s => String(s.id) === String(cur.parent_id));
-    if (!parent) break; // (مثلاً أدمن شعبة لا يرى الجذر الأعلى ضمن window._adminSections المُقيَّدة بنطاقه)
+    if (!parent) break; // (مثلاً أدمن الكورس لا يرى الجذر الأعلى ضمن window._adminSections المُقيَّدة بنطاقه)
     chain.unshift(parent.title);
     cur = parent;
   }
@@ -9876,13 +9959,13 @@ function _applyBranchAdminPanelGating() {
 
   var perms = window._branchAdminPerms || {};
 
-  // تاب "أدمن الشعب" لسوبر أدمن دايمًا، أو لأدمن الشعبة لو معاه can_manage_admins
-  // (Aug 2026 — Phase 3: كان مقصور على سوبر أدمن فقط، الآن يدعم التفويض)
+  // تاب "أدمن الكورسات" لأدمن المنصة دايمًا، أو لأدمن الكورساتة لو معاه can_manage_admins
+  // (Aug 2026 — Phase 3: كان مقصور على أدمن المنصة فقط، الآن يدعم التفويض)
   var baTab = document.getElementById('ap-tab-branchadmins');
-  if (baTab) baTab.style.display = (isSuper || (isBranch && perms.can_manage_admins)) ? '' : 'none';
+  if (baTab) baTab.style.display = isSuper ? '' : 'none';
 
   if (!isBranch) {
-    // مستخدم عادي أو سوبر أدمن: أظهر كل التابات كما هي
+    // مستخدم عادي أو أدمن المنصة: أظهر كل التابات كما هي
     ['ap-tab-requests','ap-tab-usermgmt','ap-tab-users','ap-tab-messages','ap-tab-divsubs','ap-tab-content','ap-tab-dashboard',
      'ap-tab-payments','ap-tab-sectionsmgmt','ap-tab-paths','ap-tab-ads','ap-tab-monthlystats','ap-tab-sectionchat','ap-tab-auditlog','ap-tab-notifications']
       .forEach(function(id) { var el = document.getElementById(id); if (el) el.style.display = ''; });
@@ -9890,9 +9973,9 @@ function _applyBranchAdminPanelGating() {
   }
 
 
-  // أدمن الشعبة لا يرى: Requests العامة، إدارة المستخدمين، الحظر، Messages، المدفوعات العامة،
-  // إدارة الإعلانات، الإحصائيات الشهرية — كلها خارج نطاق شعبته (سوبر أدمن فقط)
-  ['ap-tab-requests','ap-tab-usermgmt','ap-tab-users','ap-tab-messages','ap-tab-payments','ap-tab-ads','ap-tab-monthlystats'].forEach(function(id) {
+  // أدمن الكورساتة لا يرى: Requests العامة، إدارة المستخدمين، الحظر، Messages، المدفوعات العامة،
+  // إدارة الإعلانات، الإحصائيات الشهرية — كلها خارج نطاق شعبته (أدمن المنصة فقط)
+  ['ap-tab-requests','ap-tab-usermgmt','ap-tab-users','ap-tab-messages','ap-tab-payments','ap-tab-ads','ap-tab-monthlystats','ap-tab-platformSettings'].forEach(function(id) {
     var el = document.getElementById(id); if (el) el.style.display = 'none';
   });
   var smTab = document.getElementById('ap-tab-sectionsmgmt');
@@ -9901,18 +9984,28 @@ function _applyBranchAdminPanelGating() {
   if (pathsTab) pathsTab.style.display = (perms.can_manage_materials || perms.can_manage_chapters) ? '' : 'none';
   var divsubsTab = document.getElementById('ap-tab-divsubs');
   if (divsubsTab) divsubsTab.style.display = (perms.can_manage_subscriptions || perms.can_manage_payments) ? '' : 'none';
+  var quizTab = document.getElementById('ap-tab-quizzes');
+  if (quizTab) quizTab.style.display = '';
+
   var contentTab = document.getElementById('ap-tab-content');
   if (contentTab) contentTab.style.display = (perms.can_manage_materials || perms.can_manage_chapters) ? '' : 'none';
   var dashTab = document.getElementById('ap-tab-dashboard');
   if (dashTab) dashTab.style.display = perms.can_view_stats ? '' : 'none';
-  // محادثة الشعبة: متاحة دائماً لأدمن الشعبة (جزء أساسي من الإدارة، غير مرتبطة بصلاحيات إضافية)
+  // محادثة الكورس: متاحة دائماً لأدمن الكورساتة (جزء أساسي من الإدارة، غير مرتبطة بصلاحيات إضافية)
+  var csTab = document.getElementById('ap-tab-courseStudents');
+  if (csTab) csTab.style.display = '';
+  var cstTab = document.getElementById('ap-tab-courseStats');
+  if (cstTab) cstTab.style.display = '';
+  var psTab = document.getElementById('ap-tab-platformSettings');
+  if (psTab) psTab.style.display = 'none';
+
   var notifTab = document.getElementById('ap-tab-notifications');
-  if (notifTab) notifTab.style.display = '';
+  if (notifTab) notifTab.style.display = 'none';
   var chatTab = document.getElementById('ap-tab-sectionchat');
   if (chatTab) chatTab.style.display = '';
-  // سجل العمليات: متاح دائماً لأدمن الشعبة، لكن RLS في القاعدة تعرض له سجل شعبته فقط (وليس باقي الشعب)
+  // سجل العمليات: متاح دائماً لأدمن الكورساتة، لكن RLS في القاعدة تعرض له سجل شعبته فقط (وليس باقي الشعب)
   var auditTab = document.getElementById('ap-tab-auditlog');
-  if (auditTab) auditTab.style.display = '';
+  if (auditTab) auditTab.style.display = 'none';
 
   // افتح أول تاب متاح تلقائياً
   var firstVisible = ['ap-tab-dashboard','ap-tab-divsubs','ap-tab-content'].find(function(id) {
@@ -9921,7 +10014,7 @@ function _applyBranchAdminPanelGating() {
   if (firstVisible) apSwitchTab(firstVisible.replace('ap-tab-',''));
 
   // ⏸️ TEMP: تجاوز أخير يخفي التابين بغض النظر عن الفرع اللي اتنفذ فوق (سوبر
-  // أدمن أو أدمن شعبة) — راجع الشرح في أول الدالة.
+  // أدمن أو أدمن الكورس) — راجع الشرح في أول الدالة.
   if (_TEMP_HIDE_PATHS_AUDIT) {
     ['ap-tab-paths', 'ap-tab-auditlog'].forEach(function(id) {
       var el = document.getElementById(id);
@@ -10024,7 +10117,7 @@ async function apLoadNotificationsPanel(){
     var roots=(window._branchAdminRoots||[]).map(function(r){return r.title;}).filter(Boolean);
     note.textContent='🛡️ يمكنك إرسال إشعارات فقط للمستخدمين المرتبطين بشعبتك: '+(roots.join('، ')||'نطاق الشعبة الحالي');
   }else{
-    note.textContent='👑 سوبر أدمن: يمكنك إرسال إشعار لكل المستخدمين أو لشعبة محددة أو لمستخدم محدد.';
+    note.textContent='👑 أدمن المنصة: يمكنك إرسال إشعار لكل المستخدمين أو لشعبة محددة أو لمستخدم محدد.';
   }
   apNotifTargetChanged();
   var input=document.getElementById('ap-notif-user');
@@ -10184,7 +10277,7 @@ function apSwitchTab(tab) {
   else if (tab === 'divsubs')  { dsLoadGrades(); apLoadDivisionSubs(); }
   else if (tab === 'payments') apLoadPayments();
   else if (tab === 'sectionsmgmt') {
-    // ── أدمن الشعبة: يدخل مباشرة على شعبته فقط، مش على جذر كل الشعب ──
+    // ── أدمن الكورساتة: يدخل مباشرة على شعبته فقط، مش على جذر كل الشعب ──
     if (window._isBranchAdmin && !window._isSuperAdmin) {
       var rootRow = window._branchAdminRows && window._branchAdminRows[0];
       var rootId  = rootRow ? rootRow.branch_section_id : null;
@@ -10211,7 +10304,7 @@ function apSwitchTab(tab) {
   else if (tab === 'branchadmins') { baLoadGrades(); }
 }
 
-// ── لوحة إحصائيات مقيَّدة بشعبة أدمن الشعبة فقط (تقرأ من site_sections + section_content + subscriptions) ──
+// ── لوحة إحصائيات مقيَّدة بشعبة أدمن الكورساتة فقط (تقرأ من site_sections + section_content + subscriptions) ──
 async function _apLoadBranchDashboard() {
   var heading = document.querySelector('#ap-panel-dashboard .ap-section-heading');
   var branchTitle = (window._branchAdminRows[0] && window._branchAdminRows[0].site_sections && window._branchAdminRows[0].site_sections.title) || 'شعبتك';
@@ -10231,7 +10324,7 @@ async function _apLoadBranchDashboard() {
     _apSetStat('ap-stat-content', contentRes.count || 0);
     var actEl = document.getElementById('ap-recent-activity');
     if (actEl) actEl.innerHTML = '<div style="font-size:.8rem;color:#888;">إحصائيات هذه اللوحة خاصة بشعبتك فقط.</div>';
-    // بدّل تسمية بطاقة "المستخدمين" لتناسب أدمن الشعبة
+    // بدّل تسمية بطاقة "المستخدمين" لتناسب أدمن الكورساتة
     var lbl = document.querySelector('#ap-stat-users')?.nextElementSibling;
     if (lbl) lbl.textContent = 'أقسام الشعبة';
   } catch(e) { console.warn('[BranchDashboard] error:', e.message); }
@@ -10239,7 +10332,7 @@ async function _apLoadBranchDashboard() {
 
 // ════════════════════════════════════════════════════════════════
 // SECTION CHAT TAB — يعتمد بالكامل على chat_rooms + get_or_create_chat_room()
-// أدمن الشعبة يرى شعبته فقط، سوبر أدمن يرى كل الشعب التي تتطلب اشتراكاً
+// أدمن الكورساتة يرى شعبته فقط، أدمن المنصة يرى كل الشعب التي تتطلب اشتراكاً
 // ════════════════════════════════════════════════════════════════
 async function apLoadSectionChatTab() {
   var el = document.getElementById('ap-sectionchat-body');
@@ -10252,13 +10345,13 @@ async function apLoadSectionChatTab() {
       var rootRow = window._branchAdminRows && window._branchAdminRows[0];
       var rootId  = rootRow ? rootRow.branch_section_id : null;
       if (!rootId) { el.innerHTML = '<div class="ap-empty">لا توجد شعبة مُسندة إليك بعد.</div>'; return; }
-      // ✅ FIX: أدمن الشعبة بيجيب شعبته هو بالـid مباشرة — من غير شرط
+      // ✅ FIX: أدمن الكورساتة بيجيب شعبته هو بالـid مباشرة — من غير شرط
       // requires_subscription=true، لأن علم "تتطلب اشتراك" ممكن يكون
       // موجود على أحد أجداد القسم مش على القسم نفسه، وكان ده بيفضّي
       // النتيجة تمامًا ويظهر "لا توجد شعب متاحة" رغم إن عنده شعبة فعلاً.
-      query = query.eq('id', rootId);
+      query = query.eq('id', rootId).eq('type', 'course');
     } else {
-      // السوبر أدمن يشوف القائمة العامة للشعب القابلة للاشتراك فقط
+      // الأدمن المنصة يشوف القائمة العامة للشعب القابلة للاشتراك فقط
       query = query.eq('requires_subscription', true);
     }
     var res = await query.order('title');
@@ -10281,15 +10374,15 @@ async function apLoadSectionChatTab() {
 
 // ════════════════════════════════════════════════════════════════
 // BRANCH ADMINS TAB (Super Admin only) — كل شيء مدفوع من قاعدة البيانات
-// أي أدمن شعبة جديد مستقبلاً يُنشأ من هنا فقط بدون أي تعديل بالكود
+// أي أدمن الكورس جديد مستقبلاً يُنشأ من هنا فقط بدون أي تعديل بالكود
 // ════════════════════════════════════════════════════════════════
 // ════════════════════════════════════════════════════════════════
-// إدارة أدمن الشعب — نظام مبسّط يعتمد على profiles.role + profiles.managed_section_id
+// إدارة أدمن الكورسات — نظام مبسّط يعتمد على profiles.role + profiles.managed_section_id
 // (لا يوجد جدول section_admins منفصل — هذا هو النظام الموجود بالفعل في المشروع
 //  وتم التوسّع فيه هنا بدل بناء نظام صلاحيات مواز يتعارض معه)
 // ════════════════════════════════════════════════════════════════
 // الهيكل: الفرقة (site_sections بدون parent_id) ← الترم (أبناء الفرقة) ← الشعبة (أبناء الترم)
-// أدمن الشعبة يُعيَّن دائماً على مستوى "الشعبة" (المستوى الثالث) فقط — أبداً على فرقة أو ترم كاملين.
+// أدمن الكورساتة يُعيَّن دائماً على مستوى "الشعبة" (المستوى الثالث) فقط — أبداً على فرقة أو ترم كاملين.
 // المصدر الوحيد للكتابة الآن هو جدول section_admins (يدعم أكثر من أدمن مستقل لكل شعبة، وأدمن واحد
 // لأكثر من شعبة). profiles.managed_section_id يبقى للقراءة فقط للتوافق مع أي كود قديم (انظر
 // _loadBranchAdminScope) ولا يُكتب فيه من هذه الشاشة إطلاقاً.
@@ -10306,7 +10399,7 @@ window._baRemoveCtx = null;        // { adminRowId, userId, name, sectionTitle }
 var _baSearchTimer = null;
 
 async function baLoadGrades() {
-  // ✅ (Aug 2026 — Phase 3): أدمن الشعبة (مش سوبر أدمن) مقصور تلقائيًا على شعبته
+  // ✅ (Aug 2026 — Phase 3): أدمن الكورساتة (مش أدمن المنصة) مقصور تلقائيًا على شعبته
   // النشطة حالياً فقط — بدون تصفح باقي شجرة الفرق/الترمات/الشعب. الحماية الحقيقية
   // في RLS (branch_admin_can_manage_admins) — هذا فقط لتجربة استخدام صحيحة.
   if (window._isBranchAdmin && !window._isSuperAdmin) {
@@ -10340,7 +10433,7 @@ async function baLoadGrades() {
   }
   document.getElementById('ba-sel-term').disabled = true;
   document.getElementById('ba-sel-branch').disabled = true;
-  document.getElementById('ba-list-body').innerHTML = '<div class="ap-empty">اختر الفرقة ثم الترم ثم الشعبة لإدارة أدمن الشعبة.</div>';
+  document.getElementById('ba-list-body').innerHTML = '<div class="ap-empty">اختر الفرقة ثم الترم ثم الشعبة لإدارة أدمن الكورساتة.</div>';
 }
 
 async function baOnGradeChange() {
@@ -10401,9 +10494,9 @@ function _baBreadcrumb() {
   return [g && g.title, t && t.title, b && b.title].filter(Boolean).join(' ﹥ ');
 }
 
-// ── يعرض كل أدمن الشعبة المختارة (من section_admins فقط — المصدر الحقيقي الآن) ──
+// ── يعرض كل أدمن الكورساتة المختارة (من section_admins فقط — المصدر الحقيقي الآن) ──
 // ملاحظة: عادةً أدمن واحد فعّال لكل شعبة، لكن الجدول لا يمنع تقنياً أكثر من أدمن فعّال
-// لنفس الشعبة إن احتاج سوبر أدمن ذلك؛ التعيين من هنا يستبدل تلقائياً أي أدمن فعّال سابق.
+// لنفس الشعبة إن احتاج أدمن المنصة ذلك؛ التعيين من هنا يستبدل تلقائياً أي أدمن فعّال سابق.
 async function baLoadBranchAdmins() {
   var el = document.getElementById('ba-list-body');
   var branchId = window._baSelectedBranchId;
@@ -10462,11 +10555,11 @@ async function baLoadBranchAdmins() {
 
 // ── فتح مودال تعيين/تغيير الأدمن ──
 function baOpenAssignModal(sectionId, sectionTitle, mode) {
-  // ✅ (Aug 2026 — Phase 3): حاجز واجهة إضافي — أدمن الشعبة (مش سوبر أدمن) يقدر
+  // ✅ (Aug 2026 — Phase 3): حاجز واجهة إضافي — أدمن الكورساتة (مش أدمن المنصة) يقدر
   // فقط يفتح المودال لشعبته النشطة هو. الحماية الحقيقية في RLS
   // (branch_admin_can_manage_admins) — هذا فقط لمنع محاولة عبث من الواجهة نفسها.
   if (window._isBranchAdmin && !window._isSuperAdmin && String(sectionId) !== String(window._activeSectionId)) {
-    _showToast ? _showToast('⛔ لا تملك صلاحية إدارة أدمن شعبة أخرى', 'error') : alert('⛔ غير مصرح');
+    _showToast ? _showToast('⛔ لا تملك صلاحية إدارة أدمن الكورس أخرى', 'error') : alert('⛔ غير مصرح');
     return;
   }
   window._baModalCtx = { sectionId: sectionId, sectionTitle: sectionTitle, mode: mode };
@@ -10481,7 +10574,7 @@ function baOpenAssignModal(sectionId, sectionTitle, mode) {
   var confirmBtn = document.getElementById('ba-confirm-btn');
   var msgEl = document.getElementById('ba-assign-msg');
 
-  titleEl.textContent = mode === 'change' ? '🔄 تغيير أدمن الشعبة' : '➕ تعيين أدمن الشعبة';
+  titleEl.textContent = mode === 'change' ? '🔄 تغيير أدمن الكورساتة' : '➕ تعيين أدمن الكورساتة';
   labelEl.textContent = 'الشعبة: ' + sectionTitle;
   searchInput.value = ''; resultsEl.innerHTML = ''; msgEl.textContent = '';
   selBox.style.display = 'none'; selBox.innerHTML = '';
@@ -10538,7 +10631,7 @@ async function baSearchUsers(q) {
       .from('profiles')
       .select('id, email, full_name, role')
       .or('email.ilike.%' + q + '%,full_name.ilike.%' + q + '%')
-      .neq('role', 'admin') // لا نعرض سوبر أدمن كخيار لتعيينه أدمن شعبة
+      .neq('role', 'admin') // لا نعرض أدمن المنصة كخيار لتعيينه أدمن الكورس
       .limit(8);
     if (error) throw error;
     if (!data || !data.length) {
@@ -10547,7 +10640,7 @@ async function baSearchUsers(q) {
     }
     resultsEl.innerHTML = data.map(function(u) {
       var short = (u.id || '').slice(0, 8);
-      var already = u.role === 'branch_admin' ? ' <span style="color:#f39c12;">(أدمن شعبة أخرى حاليًا)</span>' : '';
+      var already = u.role === 'branch_admin' ? ' <span style="color:#f39c12;">(أدمن الكورس أخرى حاليًا)</span>' : '';
       return '<div class="ba-user-result" style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;border:1px solid #eee;border-radius:8px;margin-bottom:6px;cursor:pointer;" '
         + 'onclick=\'baSelectUser(' + JSON.stringify(u.id) + ', ' + JSON.stringify(u.email || "") + ', ' + JSON.stringify(u.full_name || "") + ')\'>'
         + '<div><div style="font-weight:700;font-size:.82rem;">' + _apEsc(u.full_name || 'بدون اسم') + already + '</div>'
@@ -10665,7 +10758,7 @@ async function baDoRemove() {
 var _alCache = [];
 var _alActionLabels = {
   create_section: '➕ إنشاء قسم/دورة', update_section: '✏️ تعديل قسم/دورة', delete_section: '🗑️ حذف قسم/دورة',
-  assign_branch_admin: '🛡️ تعيين أدمن شعبة', remove_branch_admin: '🚫 إزالة أدمن شعبة',
+  assign_branch_admin: '🛡️ تعيين أدمن الكورس', remove_branch_admin: '🚫 إزالة أدمن الكورس',
   change_user_role: '👤 تغيير صلاحية مستخدم', update_user: '✏️ تعديل مستخدم',
   approve_subscription: '✅ قبول اشتراك', reject_subscription: '❌ رفض اشتراك'
 };
@@ -10748,7 +10841,7 @@ async function _apGetProfilesMap(userIds) {
 // ────────────────────────────────────────────────────────────────
 async function apLoadDashboard() {
   if (!window.supabase) return;
-  // ── أدمن الشعبة: إحصائيات شعبته فقط، وليس إحصائيات الموقع كله ──
+  // ── أدمن الكورساتة: إحصائيات شعبته فقط، وليس إحصائيات الموقع كله ──
   if (window._isBranchAdmin && !window._isSuperAdmin) { return _apLoadBranchDashboard(); }
   try {
     var [usersRes, subsRes, msgsRes, contentRes] = await Promise.all([
@@ -10840,12 +10933,12 @@ async function apLoadRequests() {
       .select('*')
       .eq('payment_status', 'pending')
       .order('requested_at', { ascending: false });
-    // ✅ FIX: نفس فكرة apLoadSubscriptions — نطاق أدمن الشعبة صريح في
+    // ✅ FIX: نفس فكرة apLoadSubscriptions — نطاق أدمن الكورساتة صريح في
     // الاستعلام نفسه، بدل الاعتماد فقط على RLS للفلترة.
     if (window._isBranchAdmin && !window._isSuperAdmin) {
       var scope = window._branchAdminSectionIds || [];
       if (!scope.length) { el.innerHTML = '<div class="ap-empty">لا توجد شعبة مُسندة إليك بعد.</div>'; return; }
-      query = query.in('section_id', scope);
+      query = query.in('section_id', [Number(window._branchAdminCourseId || scope[0])]);
     }
     var { data, error } = await query;
     if (error) throw error;
@@ -10902,14 +10995,14 @@ async function apLoadSubscriptions() {
       .from('subscriptions')
       .select('*')
       .order('created_at', { ascending: false });
-    // ✅ FIX: أدمن الشعبة لازم يستعلم بنطاقه صراحةً (مش يعتمد على RLS وحده) —
+    // ✅ FIX: أدمن الكورساتة لازم يستعلم بنطاقه صراحةً (مش يعتمد على RLS وحده) —
     // لو RLS للاشتراكات (subs_branch_admin_all) لسه متأخرة عن التطبيق على
-    // القاعدة الفعلية، كان بيرجع صف فاضي تمامًا لأدمن الشعبة بدون أي رسالة
+    // القاعدة الفعلية، كان بيرجع صف فاضي تمامًا لأدمن الكورساتة بدون أي رسالة
     // خطأ واضحة، فيبان الاشتراكات "مش موجودة" رغم إن الطالب بعتها فعلاً.
     if (window._isBranchAdmin && !window._isSuperAdmin) {
       var scope = window._branchAdminSectionIds || [];
       if (!scope.length) { el.innerHTML = '<div class="ap-empty">لا توجد شعبة مُسندة إليك بعد.</div>'; return; }
-      query = query.in('section_id', scope);
+      query = query.in('section_id', [Number(window._branchAdminCourseId || scope[0])]);
     }
     if (filterVal) query = query.eq('payment_status', filterVal);
     var { data, error } = await query;
@@ -11029,12 +11122,12 @@ function _divSubStatusLabel(row) {
   return _apEsc(row.payment_status);
 }
 
-// ── فلتر الفرقة/الترم/الشعبة لتاب "إدارة الاشتراكات" (سوبر أدمن فقط — أدمن الشعبة مقيَّد تلقائياً) ──
+// ── فلتر الفرقة/الترم/الشعبة لتاب "إدارة الاشتراكات" (أدمن المنصة فقط — أدمن الكورساتة مقيَّد تلقائياً) ──
 window._dsSelectedBranchId = null;
 async function dsLoadGrades() {
   var wrap = document.getElementById('ds-sel-grade');
   if (!wrap) return;
-  // أدمن الشعبة أصلاً مقيَّد بشعبته عبر RLS + window._branchAdminSectionIds — لا داعي لهذا الفلتر له
+  // أدمن الكورساتة أصلاً مقيَّد بشعبته عبر RLS + window._branchAdminSectionIds — لا داعي لهذا الفلتر له
   if (window._isBranchAdmin && !window._isSuperAdmin) {
     ['ds-sel-grade','ds-sel-term','ds-sel-branch'].forEach(function(id){ var e = document.getElementById(id); if (e) e.style.display = 'none'; });
     return;
@@ -11107,12 +11200,12 @@ async function apLoadDivisionSubs() {
     if (sortVal === 'requested_at_asc')      query = query.order('requested_at', { ascending: true });
     else if (sortVal === 'end_date_asc')     query = query.order('end_date', { ascending: true, nullsFirst: false });
     else                                     query = query.order('requested_at', { ascending: false });
-    // ── أدمن الشعبة: يرى فقط طلبات شعبته (الأمان الفعلي عبر RLS في القاعدة) ──
+    // ── أدمن الكورساتة: يرى فقط طلبات شعبته (الأمان الفعلي عبر RLS في القاعدة) ──
     if (window._isBranchAdmin && !window._isSuperAdmin) {
       var scope = window._branchAdminSectionIds || [];
       query = query.in('section_id', scope.length ? scope : [-1]);
     } else if (window._dsSelectedBranchId) {
-      // سوبر أدمن اختار شعبة محددة عبر فلتر الفرقة/الترم/الشعبة — الاشتراك مربوط بالشعبة فقط (id مطابق تماماً، وليس subtree)
+      // أدمن المنصة اختار شعبة محددة عبر فلتر الفرقة/الترم/الشعبة — الاشتراك مربوط بالشعبة فقط (id مطابق تماماً، وليس subtree)
       query = query.eq('section_id', window._dsSelectedBranchId);
     }
     if (filterVal === 'expired') {
@@ -11129,7 +11222,7 @@ async function apLoadDivisionSubs() {
     }
     var { data, error } = await query;
     if (error) throw error;
-    // ✅ FIX (Aug 2026 — طلب المستخدم): أدمن الشعبة (المُعيَّن عبر section_admins على
+    // ✅ FIX (Aug 2026 — طلب المستخدم): أدمن الكورساتة (المُعيَّن عبر section_admins على
     // نفس الشعبة) ما ينفعش يظهر في جدول اشتراكات الشعبة — هو أصلاً عنده دخول كامل
     // بدون اشتراك، فظهوره هنا بحالة/تاريخ بداية/تاريخ انتهاء كان مربكاً وغير صحيح.
     // بنجيب كل section_admins النشطين على نفس الشعب الظاهرة في النتيجة، ونستبعد أي
@@ -11290,12 +11383,12 @@ async function apLoadPayments() {
       .select('*, site_sections(title, payment_method, payment_number, price)')
       .not('receipt_image', 'is', null)
       .order('requested_at', { ascending: false });
-    // ✅ FIX: نفس فكرة apLoadSubscriptions/apLoadRequests — نطاق أدمن الشعبة
+    // ✅ FIX: نفس فكرة apLoadSubscriptions/apLoadRequests — نطاق أدمن الكورساتة
     // صريح في الاستعلام، بدل الاعتماد فقط على RLS.
     if (window._isBranchAdmin && !window._isSuperAdmin) {
       var scope = window._branchAdminSectionIds || [];
       if (!scope.length) { el.innerHTML = '<div class="ap-empty">لا توجد شعبة مُسندة إليك بعد.</div>'; return; }
-      query = query.in('section_id', scope);
+      query = query.in('section_id', [Number(window._branchAdminCourseId || scope[0])]);
     }
     if (filterVal) query = query.eq('payment_status', filterVal);
     if (searchVal) {
@@ -11723,7 +11816,7 @@ function _umRenderTable() {
   };
   var roleLabels = {
     admin:        '<span class="um-badge um-badge-admin">👑 أدمن</span>',
-    branch_admin: '<span class="um-badge um-badge-mod">🏷️ أدمن شعبة</span>',
+    branch_admin: '<span class="um-badge um-badge-mod">🏷️ أدمن الكورس</span>',
     student:      '<span class="um-badge um-badge-user">🎓 طالب</span>',
     // ⚠️ أدوار قديمة (قبل ترحيل Roles Phase 2) — تُعرض فقط لو لسه موجودة في القاعدة،
     // شغّل printRoleMigrationSQL() لترحيلها. لا تُستخدم في أي منطق صلاحيات.
@@ -12105,7 +12198,7 @@ function smApplySearch() {
 function smRenderBreadcrumb() {
   var el = document.getElementById('sm-breadcrumb');
   if (!el) return;
-  // ── أدمن الشعبة: ممنوع يطلع فوق جذر شعبته — مفيش رابط "الجذر (كل الشعب)" ──
+  // ── أدمن الكورساتة: ممنوع يطلع فوق جذر شعبته — مفيش رابط "الجذر (كل الشعب)" ──
   var parts = (window._isBranchAdmin && !window._isSuperAdmin)
     ? []
     : ['<span onclick="smGoToCrumb(-1)" style="cursor:pointer;color:#0a3d62;font-weight:800;">🏠 الجذر (كل الشعب)</span>'];
@@ -12117,7 +12210,7 @@ function smRenderBreadcrumb() {
 }
 
 function smGoToCrumb(index) {
-  // ── أدمن الشعبة: أقل مستوى مسموح هو شعبته نفسها (index 0)، مينفعش يرجع لجذر كل الشعب ──
+  // ── أدمن الكورساتة: أقل مستوى مسموح هو شعبته نفسها (index 0)، مينفعش يرجع لجذر كل الشعب ──
   var minIndex = (window._isBranchAdmin && !window._isSuperAdmin) ? 0 : -1;
   if (index < minIndex) index = minIndex;
   if (index === -1) { _smStack = []; }
@@ -12260,7 +12353,7 @@ async function smSave() {
     // أي قسم جديد بالكامل (فرقة/ترم/شعبة/محتوى) برسالة:
     // "Could not find the 'section_type' column of 'site_sections' in the schema cache"
   }
-  // ── أدمن الشعبة: حاجز واجهة إضافي — الحفظ فقط داخل نطاق شعبته (RLS هي الحماية الحقيقية) ──
+  // ── أدمن الكورساتة: حاجز واجهة إضافي — الحفظ فقط داخل نطاق شعبته (RLS هي الحماية الحقيقية) ──
   var targetScopeId = id ? Number(id) : payload.parent_id;
   var accessCheck = await requireBranchAccess(targetScopeId);
   if (!accessCheck.ok) return;
@@ -12326,11 +12419,11 @@ async function lpLoad() {
       .from('learning_paths')
       .select('*, learning_path_items(count)')
       .order('display_order', { ascending: true });
-    // ── أدمن الشعبة: يرى فقط مسارات شعبته ──
+    // ── أدمن الكورساتة: يرى فقط مسارات شعبته ──
     if (window._isBranchAdmin && !window._isSuperAdmin) {
       var scope = window._branchAdminSectionIds || [];
       if (!scope.length) { _lpCache = []; lpRenderList(); return; }
-      query = query.in('section_id', scope);
+      query = query.in('section_id', [Number(window._branchAdminCourseId || scope[0])]);
     }
     var { data, error } = await query;
     if (error) throw error;
@@ -12378,7 +12471,7 @@ function lpRenderList() {
     + '</tbody></table></div>';
 }
 
-// ── تحميل الشُّعب المتاحة لاختيارها كـ "الشعبة المرتبطة" بالمسار (مقيَّد لأدمن الشعبة) ──
+// ── تحميل الشُّعب المتاحة لاختيارها كـ "الشعبة المرتبطة" بالمسار (مقيَّد لأدمن الكورساتة) ──
 async function _lpPopulateSectionSelect(selectedId) {
   var sel  = document.getElementById('lp-f-section');
   var hint = document.getElementById('lp-f-section-hint');
@@ -12388,7 +12481,7 @@ async function _lpPopulateSectionSelect(selectedId) {
     return '<option value="' + s.id + '"' + (String(s.id) === String(selectedId) ? ' selected' : '') + '>' + _apEsc(s.title) + '</option>';
   }).join('');
   if (window._isBranchAdmin && !window._isSuperAdmin) {
-    // أدمن الشعبة: لازم يختار شعبة داخل نطاقه — مفيش خيار "عام"
+    // أدمن الكورساتة: لازم يختار شعبة داخل نطاقه — مفيش خيار "عام"
     sel.innerHTML = opts || '<option value="">— لا توجد شُعب متاحة —</option>';
     if (hint) hint.textContent = 'مسارك سيكون مرتبطاً بشعبتك فقط.';
   } else {
@@ -12523,7 +12616,7 @@ async function _lpLoadItemsList(pathId) {
   }
 }
 
-// قائمة الدورات (type='course') القابلة للإضافة — مقيَّدة بنطاق أدمن الشعبة لو لزم
+// قائمة الدورات (type='course') القابلة للإضافة — مقيَّدة بنطاق أدمن الكورساتة لو لزم
 async function _lpPopulateCourseSelect(pathSectionId) {
   var sel = document.getElementById('lp-add-course-select');
   if (!sel || !window.supabase) return;
@@ -12816,6 +12909,35 @@ async function msLoadMonthlyStats() {
 }
 
 // ════════════════════════════════════════════════════════════════
+// MONTHLY SUBSCRIPTION DECISION ANALYTICS — real Supabase data
+// يعتمد على approved_at / rejected_at، وليس created_at للقرار.
+// ════════════════════════════════════════════════════════════════
+(function(){
+  var _msaCache=[];
+  function e(v){return _apEsc(v==null?'':v);}
+  function monthRange(y,m){var a=new Date(Date.UTC(y,m,1)),b=new Date(Date.UTC(y,m+1,1));return [a.toISOString(),b.toISOString()];}
+  function pct(a,b){return b?Math.round((a/b)*10000)/100:0;}
+  function delta(a,b){var d=a-b;return {d:d,p:b?Math.round(d/b*10000)/100:null};}
+  window.msaInit=async function(){
+    var m=document.getElementById('msa-month'),y=document.getElementById('msa-year'),s=document.getElementById('msa-section');if(!m||!y||!s)return;
+    var now=new Date(),names=['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];m.innerHTML=names.map(function(n,i){return '<option value="'+i+'">'+n+'</option>'}).join('');m.value=now.getMonth();y.innerHTML='';for(var yy=now.getFullYear()-5;yy<=now.getFullYear()+2;yy++)y.innerHTML+='<option>'+yy+'</option>';y.value=now.getFullYear();
+    try{var r=await db().from('site_sections').select('id,title').order('title');if(!r.error)s.innerHTML='<option value="">كل الكورسات</option>'+(r.data||[]).map(function(x){return '<option value="'+x.id+'">'+e(x.title)+'</option>'}).join('');}catch(_){ }
+  };
+  window.msaLoad=async function(){
+    if(!window._isSuperAdmin)return;var m=Number(document.getElementById('msa-month').value),y=Number(document.getElementById('msa-year').value),sid=document.getElementById('msa-section').value||'';var [a,b]=monthRange(y,m),pm=monthRange(m?y:y-1,m?m-1:11),scope=sid?Number(sid):null;
+    try{var q=db().from('subscriptions').select('id,section_id,payment_status,created_at,approved_at,rejected_at');if(scope)q=q.eq('section_id',scope);var r=await q; if(r.error)throw r.error;var rows=r.data||[];var current=rows.filter(function(x){return (x.approved_at>=a&&x.approved_at<b)||(x.rejected_at>=a&&x.rejected_at<b)||(x.payment_status==='pending'&&x.created_at>=a&&x.created_at<b)});var prev=rows.filter(function(x){return (x.approved_at>=pm[0]&&x.approved_at<pm[1])||(x.rejected_at>=pm[0]&&x.rejected_at<pm[1])||(x.payment_status==='pending'&&x.created_at>=pm[0]&&x.created_at<pm[1])});
+      var agg=function(arr){var acc=arr.filter(x=>x.approved_at>=a&&x.approved_at<b).length,rej=arr.filter(x=>x.rejected_at>=a&&x.rejected_at<b).length,pen=arr.filter(x=>x.payment_status==='pending'&&x.created_at>=a&&x.created_at<b).length;return {total:acc+rej+pen,acc:acc,rej:rej,pen:pen,ar:pct(acc,acc+rej),rr:pct(rej,acc+rej)};};var c=agg(current),p0={acc:prev.filter(x=>x.approved_at>=pm[0]&&x.approved_at<pm[1]).length,rej:prev.filter(x=>x.rejected_at>=pm[0]&&x.rejected_at<pm[1]).length};_msaCache=rows;
+      document.getElementById('msa-cards').innerHTML=[['👥',c.total,'الطلبات'],['✅',c.acc,'المقبول'],['❌',c.rej,'المرفوض'],['⏳',c.pen,'المعلق'],['📈',c.ar+'%','نسبة القبول'],['📉',c.rr+'%','نسبة الرفض']].map(function(x){return '<div class="ap-stat-card"><div class="ap-stat-icon">'+x[0]+'</div><div class="ap-stat-num">'+x[1]+'</div><div class="ap-stat-lbl">'+x[2]+'</div></div>'}).join('');
+      var da=delta(c.acc,p0.acc),dr=delta(c.rej,p0.rej);document.getElementById('msa-compare').innerHTML='<div class="sch-grid"><div class="sch-card"><b>المقبول</b><div>الشهر الحالي: '+c.acc+' — السابق: '+p0.acc+'</div><div style="margin-top:5px">التغير: '+(da.d>=0?'+':'')+da.d+(da.p==null?'':' ('+(da.p>=0?'+':'')+da.p+'%)')+'</div></div><div class="sch-card"><b>المرفوض</b><div>الشهر الحالي: '+c.rej+' — السابق: '+p0.rej+'</div><div style="margin-top:5px">التغير: '+(dr.d>=0?'+':'')+dr.d+(dr.p==null?'':' ('+(dr.p>=0?'+':'')+dr.p+'%)')+'</div></div></div>';
+      var groups={};rows.forEach(function(x){var k=x.section_id||'none';if(!groups[k])groups[k]={id:k,total:0,acc:0,rej:0,pen:0};var g=groups[k];if((x.approved_at>=a&&x.approved_at<b)||(x.rejected_at>=a&&x.rejected_at<b)||(x.payment_status==='pending'&&x.created_at>=a&&x.created_at<b))g.total++;if(x.approved_at>=a&&x.approved_at<b)g.acc++;if(x.rejected_at>=a&&x.rejected_at<b)g.rej++;if(x.payment_status==='pending'&&x.created_at>=a&&x.created_at<b)g.pen++;});var ids=Object.keys(groups);var sec={};if(ids.length){var sr=await db().from('site_sections').select('id,title').in('id',ids.filter(x=>x!=='none').map(Number));(sr.data||[]).forEach(x=>sec[x.id]=x.title);}document.getElementById('msa-table').innerHTML='<table class="ap-table"><thead><tr><th>الكورس</th><th>الطلبات</th><th>المقبول</th><th>المرفوض</th><th>المعلق</th><th>نسبة القبول</th></tr></thead><tbody>'+ids.map(function(k){var g=groups[k];return '<tr><td>'+e(sec[g.id]||'—')+'</td><td>'+g.total+'</td><td>'+g.acc+'</td><td>'+g.rej+'</td><td>'+g.pen+'</td><td>'+pct(g.acc,g.acc+g.rej)+'%</td></tr>';}).join('')+'</tbody></table>';
+    }catch(err){document.getElementById('msa-table').innerHTML='<div class="ap-empty" style="color:#c0392b">❌ '+e(err.message)+'</div>';}
+  };
+  window.msaReset=function(){var now=new Date();document.getElementById('msa-month').value=now.getMonth();document.getElementById('msa-year').value=now.getFullYear();document.getElementById('msa-section').value='';msaLoad();};
+  window.msaExportCSV=function(){var table=document.querySelector('#msa-table table');if(!table)return;var rows=[].slice.call(table.querySelectorAll('tr')).map(function(tr){return [].slice.call(tr.children).map(function(td){return '"'+String(td.innerText).replace(/"/g,'""')+'"';}).join(',')});var blob=new Blob(['\ufeff'+rows.join('\n')],{type:'text/csv;charset=utf-8;'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='subscription-stats.csv';a.click();URL.revokeObjectURL(a.href);};
+  var oldLoad=window.msLoadMonthlyStats;window.msLoadMonthlyStats=async function(){if(window._isSuperAdmin){await msaInit();await msaLoad();}if(oldLoad)try{await oldLoad();}catch(_){} };
+})();
+
+// ════════════════════════════════════════════════════════════════
 // QUICK SEARCH — بحث سريع شامل (مستخدمين، أقسام، اشتراكات)
 // ════════════════════════════════════════════════════════════════
 var _apQuickSearchTimer = null;
@@ -12883,6 +13005,73 @@ document.addEventListener('click', function(e) {
   var input = document.getElementById('ap-quick-search');
   if (box && input && !box.contains(e.target) && e.target !== input) { box.style.display = 'none'; }
 });
+
+// ════════════════════════════════════════════════════════════════
+// Missing DB pieces requested: schedule + decision history + permissions + flexible question data
+// ════════════════════════════════════════════════════════════════
+window.printMissingFeaturesSQL=function(){var sql=`
+-- ADDITIVE MIGRATION — لا تحذف أي بيانات
+-- 1) صلاحيات branch_admin + قرار الاشتراك + history
+ALTER TABLE section_admins ADD COLUMN IF NOT EXISTS permissions JSONB NOT NULL DEFAULT '{}'::jsonb;
+-- section_admins.role يبقى admin كـ assignment role داخل الجدول؛ role الحقيقي للمستخدم هو profiles.role='branch_admin'.
+-- لا نغيّر constraint الحالي حتى لا نكسر الاستعلامات الموجودة.
+ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS approved_by UUID REFERENCES auth.users(id);
+ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS rejected_by UUID REFERENCES auth.users(id);
+ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMPTZ;
+CREATE TABLE IF NOT EXISTS subscription_status_history (
+ id BIGSERIAL PRIMARY KEY, subscription_id BIGINT NOT NULL REFERENCES subscriptions(id) ON DELETE CASCADE,
+ old_status TEXT, new_status TEXT, changed_by UUID REFERENCES auth.users(id), changed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+ branch_id BIGINT REFERENCES site_sections(id), notes TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_sub_status_history_sub ON subscription_status_history(subscription_id,changed_at DESC);
+ALTER TABLE subscription_status_history ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS subscription_history_admin_read ON subscription_status_history;
+CREATE POLICY subscription_history_admin_read ON subscription_status_history FOR SELECT USING (is_admin() OR is_branch_admin_of(branch_id));
+CREATE OR REPLACE FUNCTION record_subscription_status_history() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER AS $$
+BEGIN
+ IF NEW.payment_status IS DISTINCT FROM OLD.payment_status THEN
+   INSERT INTO subscription_status_history(subscription_id,old_status,new_status,changed_by,branch_id,notes)
+   VALUES(NEW.id,OLD.payment_status,NEW.payment_status,auth.uid(),NEW.section_id,NEW.reject_reason);
+ END IF;
+ IF NEW.payment_status='active' AND OLD.payment_status IS DISTINCT FROM 'active' THEN NEW.approved_at=COALESCE(NEW.approved_at,NOW()); NEW.approved_by=auth.uid(); NEW.reviewed_at=NOW();
+ ELSIF NEW.payment_status IN ('rejected','cancelled') AND OLD.payment_status IS DISTINCT FROM NEW.payment_status THEN NEW.rejected_at=COALESCE(NEW.rejected_at,NOW()); NEW.rejected_by=auth.uid(); NEW.reviewed_at=NOW(); END IF;
+ RETURN NEW;
+END; $$;
+DROP TRIGGER IF EXISTS trg_subscription_status_history ON subscriptions;
+CREATE TRIGGER trg_subscription_status_history BEFORE UPDATE OF payment_status ON subscriptions FOR EACH ROW EXECUTE FUNCTION record_subscription_status_history();
+
+-- 2) جدول جدول الطالب الشخصي
+CREATE TABLE IF NOT EXISTS student_schedule (
+ id BIGSERIAL PRIMARY KEY, user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+ title TEXT NOT NULL, start_at TIMESTAMPTZ NOT NULL, end_at TIMESTAMPTZ, repeat_type TEXT NOT NULL DEFAULT 'none' CHECK(repeat_type IN ('none','daily','weekly','monthly')),
+ notes TEXT, completed BOOLEAN NOT NULL DEFAULT false, completed_at TIMESTAMPTZ, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_student_schedule_user_time ON student_schedule(user_id,start_at);
+ALTER TABLE student_schedule ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS student_schedule_own ON student_schedule;
+CREATE POLICY student_schedule_own ON student_schedule FOR ALL USING(user_id=auth.uid()) WITH CHECK(user_id=auth.uid());
+
+-- 3) question_data المرن لأنواع الأسئلة المستقبلية + ترتيب الأسئلة
+ALTER TABLE quiz_questions ADD COLUMN IF NOT EXISTS question_data JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE quiz_questions ADD COLUMN IF NOT EXISTS display_order INT NOT NULL DEFAULT 0;
+CREATE INDEX IF NOT EXISTS idx_quiz_questions_order ON quiz_questions(quiz_id,display_order);
+
+-- 4) أمان branch_admin على section_admins: نفس الكورس فقط، ولا يمنح صلاحيات أعلى من caller
+CREATE OR REPLACE FUNCTION branch_admin_can_manage_admins(target_section_id BIGINT) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER AS $$
+ SELECT EXISTS(SELECT 1 FROM section_admins sa WHERE sa.user_id=auth.uid() AND sa.section_id=target_section_id AND sa.is_active=true AND sa.role='admin' AND EXISTS (SELECT 1 FROM profiles p WHERE p.id=sa.user_id AND p.role='branch_admin') AND COALESCE((sa.permissions->>'manage_admins')::boolean,false));
+$$;
+DROP POLICY IF EXISTS section_admins_branch_insert ON section_admins;
+CREATE POLICY section_admins_branch_insert ON section_admins FOR INSERT WITH CHECK(
+ NOT is_admin() AND role='admin' AND branch_admin_can_manage_admins(section_id)
+);
+DROP POLICY IF EXISTS section_admins_branch_update ON section_admins;
+CREATE POLICY section_admins_branch_update ON section_admins FOR UPDATE USING(
+ NOT is_admin() AND role='admin' AND branch_admin_can_manage_admins(section_id)
+) WITH CHECK(
+ NOT is_admin() AND role='admin' AND branch_admin_can_manage_admins(section_id)
+);
+NOTIFY pgrst,'reload schema';
+` ; console.log(sql); if(navigator.clipboard)navigator.clipboard.writeText(sql).catch(function(){});return sql;};
 
 // نهاية لوحة التحكم
 </script>
@@ -14563,7 +14752,7 @@ if (typeof _origApLoadDashboard === 'function') {
 // ════════════════════════════════════════════════════════════════
 // ✅ (Aug 2026 — Phase 3): أُزيلت 'branchadmins' من هذه القائمة — إظهارها الآن
 // يعتمد على صلاحية can_manage_admins عبر _applyBranchAdminPanelGating()، مش
-// إخفاء مطلق. باقي التابات هنا لسه حصرية للسوبر أدمن زي ما هي.
+// إخفاء مطلق. باقي التابات هنا لسه حصرية للأدمن المنصة زي ما هي.
 var _SUPER_ADMIN_ONLY_TABS = ['requests', 'payments', 'ads', 'monthlystats', 'usermgmt', 'users', 'messages'];
 
 function _applyBranchAdminPanelRestrictions() {
@@ -14572,7 +14761,7 @@ function _applyBranchAdminPanelRestrictions() {
     var btn = document.getElementById('ap-tab-' + tab);
     if (btn) btn.style.display = 'none';
   });
-  // لو التاب المفتوح حالياً واحد من تابات السوبر أدمن فقط، ارجع للداشبورد
+  // لو التاب المفتوح حالياً واحد من تابات الأدمن المنصة فقط، ارجع للداشبورد
   var activeBtn = document.querySelector('.ap-nav-btn.active');
   var activeTab = activeBtn && activeBtn.id ? activeBtn.id.replace('ap-tab-', '') : '';
   if (_SUPER_ADMIN_ONLY_TABS.indexOf(activeTab) > -1 && typeof apSwitchTab === 'function') {
@@ -14709,7 +14898,7 @@ function _applyBranchAdminPanelRestrictions() {
     }
     // تحقق من صلاحيات الأدمن بشكل دوري (كل 5 دقائق) — نفس منطق _resolveAdminStatus
     // ✅ (Aug 2026): كان هذا الفحص يقارن بـ role==='admin' بس، فكان بيسحب صلاحيات
-    // أي أدمن شعبة (branch_admin أو section_admins) تلقائياً كل 5 دقائق حتى لو
+    // أي أدمن الكورس (branch_admin أو section_admins) تلقائياً كل 5 دقائق حتى لو
     // صلاحيته سليمة فعلياً — دلوقتي بيستخدم نفس مصدر الحقيقة الموحّد
     var status = await _resolveAdminStatus(sess.user.id);
     if (!status.isAdmin && window._isAdminUser) {
@@ -14728,7 +14917,7 @@ function _applyBranchAdminPanelRestrictions() {
     }
     // ✅ FIX 2 (Aug 2026 — جزء من إصلاح "هذا القسم خارج نطاق شعبتك"): لو ظل
     // status.isAdmin=true لكن *نوع* الصلاحية تغيّر أثناء الجلسة (مثلاً أدمن
-    // شعبة تمت ترقيته لسوبر أدمن، أو العكس)، كان window._isSuperAdmin/
+    // شعبة تمت ترقيته لأدمن المنصة، أو العكس)، كان window._isSuperAdmin/
     // window._isBranchAdmin يفضلوا محتفظين بالقيمة القديمة لحد ما يعمل
     // Logout/Login أو يعمل Refresh، فيستمر تطبيق قيود الفرع (أو غيابها) بشكل
     // خاطئ حتى لو الفحص الدوري ده بيشتغل كل 5 دقائق. الآن نُعيد المزامنة دايماً.
@@ -14810,7 +14999,7 @@ CREATE POLICY "profiles_own_update" ON profiles FOR UPDATE USING (auth.uid() = i
     auth.uid() = id
     -- لا يسمح للمستخدم بتغيير الـ role لنفسه
     AND role = (SELECT role FROM profiles WHERE id = auth.uid())
-    -- ✅ (Aug 2026 — Roles Phase 2): ولا يسمح لأدمن الشعبة بتغيير الشعبة
+    -- ✅ (Aug 2026 — Roles Phase 2): ولا يسمح لأدمن الكورساتة بتغيير الشعبة
     -- المُسندة له لنفسه (managed_section_id) — كان هذا العمود غير محمي سابقًا
     AND managed_section_id IS NOT DISTINCT FROM (SELECT managed_section_id FROM profiles WHERE id = auth.uid())
   );
@@ -15214,12 +15403,12 @@ ALTER TABLE profiles DROP CONSTRAINT IF EXISTS profiles_role_check;
 ALTER TABLE profiles ADD CONSTRAINT profiles_role_check
   CHECK (role IN ('admin', 'branch_admin', 'student'));
 
--- 0.ب) عمود managed_section_id — الشعبة المُسندة لأدمن الشعبة
+-- 0.ب) عمود managed_section_id — الشعبة المُسندة لأدمن الكورساتة
 ALTER TABLE profiles ADD COLUMN IF NOT EXISTS managed_section_id BIGINT REFERENCES site_sections(id) ON DELETE SET NULL;
 CREATE INDEX IF NOT EXISTS idx_profiles_managed_section ON profiles(managed_section_id);
 
 -- 0.ج) is_branch_admin_of(target_id) — بيتأكد إن القسم المُستهدف (أو أي جد من أجداده)
---      هو نفس الشعبة المُسندة لأدمن الشعبة الحالي عبر managed_section_id
+--      هو نفس الشعبة المُسندة لأدمن الكورساتة الحالي عبر managed_section_id
 CREATE OR REPLACE FUNCTION is_branch_admin_of(target_id BIGINT)
 RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER
@@ -15296,7 +15485,7 @@ CREATE POLICY "profiles_own_update" ON profiles FOR UPDATE USING (auth.uid() = i
   WITH CHECK (
     auth.uid() = id
     AND role = (SELECT role FROM profiles WHERE id = auth.uid())
-    -- ✅ (Aug 2026 — Roles Phase 2): يمنع أدمن الشعبة من تغيير شعبته لنفسه
+    -- ✅ (Aug 2026 — Roles Phase 2): يمنع أدمن الكورساتة من تغيير شعبته لنفسه
     AND managed_section_id IS NOT DISTINCT FROM (SELECT managed_section_id FROM profiles WHERE id = auth.uid())
   );
 CREATE POLICY "profiles_insert_own" ON profiles FOR INSERT WITH CHECK (auth.uid() = id);
@@ -15537,9 +15726,9 @@ CREATE INDEX IF NOT EXISTS idx_section_admins_section ON section_admins(section_
 ALTER TABLE section_admins ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "section_admins_super_all"  ON section_admins;
 DROP POLICY IF EXISTS "section_admins_self_read"  ON section_admins;
--- سوبر أدمن فقط يقدر يعيّن/يزيل أدمن شعبة عبر هذا الجدول
+-- أدمن المنصة فقط يقدر يعيّن/يزيل أدمن الكورس عبر هذا الجدول
 CREATE POLICY "section_admins_super_all" ON section_admins FOR ALL USING (is_admin()) WITH CHECK (is_admin());
--- كل أدمن شعبة يقدر يقرأ صف نفسه فقط (يحتاجه لمعرفة كل الشعب المُسندة له)
+-- كل أدمن الكورس يقدر يقرأ صف نفسه فقط (يحتاجه لمعرفة كل الشعب المُسندة له)
 CREATE POLICY "section_admins_self_read" ON section_admins FOR SELECT USING (user_id = auth.uid());
 
 -- ────────────────────────────────────────────────────────────────
@@ -15597,9 +15786,9 @@ CREATE INDEX IF NOT EXISTS idx_audit_log_actor    ON audit_log(actor_id);
 ALTER TABLE audit_log ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "audit_log_super_read"  ON audit_log;
 DROP POLICY IF EXISTS "audit_log_branch_read" ON audit_log;
--- سوبر أدمن يرى كل السجل
+-- أدمن المنصة يرى كل السجل
 CREATE POLICY "audit_log_super_read" ON audit_log FOR SELECT USING (is_admin());
--- أدمن الشعبة يرى فقط السجلات التابعة لشعبته (أو بلا شعبة محددة وهو الفاعل نفسه)
+-- أدمن الكورساتة يرى فقط السجلات التابعة لشعبته (أو بلا شعبة محددة وهو الفاعل نفسه)
 CREATE POLICY "audit_log_branch_read" ON audit_log FOR SELECT
   USING (branch_id IS NOT NULL AND is_branch_admin_of(branch_id));
 -- ملاحظة: عمداً لا توجد أي سياسة INSERT/UPDATE/DELETE هنا — أي محاولة كتابة
@@ -15663,9 +15852,9 @@ console.log('%c[Audit] اكتب printAuditAndScopeSQL() في الـ Console لع
 // printSectionAdminsPermissionsFix() — (Aug 2026, Roles Phase 3)
 // يصلح: "new row violates row-level security policy for table section_admins"
 // السبب: section_admins_super_all كانت الوحيدة المسموح لها بالكتابة (is_admin()
-// فقط) — أي أدمن شعبة، حتى لو كان منطقياً مؤهل لتعيين أدمن آخر لنفس شعبته،
+// فقط) — أي أدمن الكورس، حتى لو كان منطقياً مؤهل لتعيين أدمن آخر لنفس شعبته،
 // كان مرفوضاً بالكامل من RLS. هذا السكربت يضيف مسار كتابة ثانٍ آمن لأدمن
-// الشعبة صاحب صلاحية can_manage_admins، بدون المساس بمسار السوبر أدمن.
+// الشعبة صاحب صلاحية can_manage_admins، بدون المساس بمسار الأدمن المنصة.
 // شغّله بعد printAuditAndScopeSQL() (يحتاج جدول section_admins موجوداً بالفعل).
 // ════════════════════════════════════════════════════════════════
 window.printSectionAdminsPermissionsFix = function() {
@@ -15678,7 +15867,7 @@ window.printSectionAdminsPermissionsFix = function() {
 -- ────────────────────────────────────────────────────────────────
 -- 1) هل هذا المستخدم أدمن فعّال على هذه الشعبة تحديدًا، وله can_manage_admins؟
 --    (لاحظ: هذه شعبة واحدة بعينها section_id — مش subtree — عمداً، عشان
---    أدمن الشعبة يقدر يدير أدمن شعبته هو فقط، مش شعب فرعية تانية معاه.)
+--    أدمن الكورساتة يقدر يدير أدمن شعبته هو فقط، مش شعب فرعية تانية معاه.)
 -- ────────────────────────────────────────────────────────────────
 CREATE OR REPLACE FUNCTION branch_admin_can_manage_admins(target_section_id BIGINT)
 RETURNS boolean
@@ -15717,19 +15906,19 @@ AS $$
 $$;
 
 -- ────────────────────────────────────────────────────────────────
--- 3) سياسات INSERT/UPDATE جديدة لأدمن الشعبة صاحب can_manage_admins —
---    بجانب section_admins_super_all الموجودة (السوبر أدمن غير متأثر إطلاقاً)
+-- 3) سياسات INSERT/UPDATE جديدة لأدمن الكورساتة صاحب can_manage_admins —
+--    بجانب section_admins_super_all الموجودة (الأدمن المنصة غير متأثر إطلاقاً)
 -- ────────────────────────────────────────────────────────────────
 DROP POLICY IF EXISTS "section_admins_branch_insert" ON section_admins;
 DROP POLICY IF EXISTS "section_admins_branch_update" ON section_admins;
 
 CREATE POLICY "section_admins_branch_insert" ON section_admins FOR INSERT
   WITH CHECK (
-    NOT is_admin()  -- هذا المسار لأدمن الشعبة فقط؛ السوبر أدمن يمر من section_admins_super_all
+    NOT is_admin()  -- هذا المسار لأدمن الكورساتة فقط؛ الأدمن المنصة يمر من section_admins_super_all
     AND branch_admin_can_manage_admins(section_id)
     AND section_admins_perms_subset_of_caller(section_id, permissions)
     -- role مقصور أصلاً على 'admin' بواسطة CHECK على الجدول نفسه —
-    -- لا يوجد أي مسار لإنشاء profiles.role='admin' (سوبر أدمن) من هذا الجدول إطلاقاً
+    -- لا يوجد أي مسار لإنشاء profiles.role='admin' (أدمن المنصة) من هذا الجدول إطلاقاً
   );
 
 CREATE POLICY "section_admins_branch_update" ON section_admins FOR UPDATE
@@ -15771,12 +15960,12 @@ console.log('%c[SectionAdmins] اكتب printSectionAdminsPermissionsFix() لإ�
 //      getDetailedSectionAccess في الواجهة (اشتراك نشط على القسم أو أي جد
 //      له)، ويعيد استخدامه لتقييد SELECT على quizzes/quiz_questions.
 //   2) يستبدل quizzes_read_auth / qquestions_read_auth بسياسات مبنية على
-//      has_active_access_to() للطالب + is_branch_admin_of() لأدمن الشعبة +
-//      is_admin() للسوبر أدمن — بدل auth.uid() IS NOT NULL المفتوحة للجميع.
+//      has_active_access_to() للطالب + is_branch_admin_of() لأدمن الكورساتة +
+//      is_admin() للأدمن المنصة — بدل auth.uid() IS NOT NULL المفتوحة للجميع.
 //   3) يضيف عمودي lecture_id (ربط الاختبار بعنصر مسار تعلّم) و display_order
 //      (ترتيب الاختبار) لجدول quizzes — Additive فقط، لا حذف لأي بيانات.
-//   4) يضيف نطاق أدمن الشعبة لـ quiz_results (كان مقصوراً على admin/الطالب
-//      نفسه فقط، فلم يكن أدمن الشعبة يقدر يشوف نتائج شعبته).
+//   4) يضيف نطاق أدمن الكورساتة لـ quiz_results (كان مقصوراً على admin/الطالب
+//      نفسه فقط، فلم يكن أدمن الكورساتة يقدر يشوف نتائج شعبته).
 //   5) يضيف approved_at / rejected_at لجدول subscriptions + Trigger يملأهما
 //      تلقائياً أول ما تتغيّر payment_status إلى approved/rejected (ويُبقي
 //      القيمة القديمة لو رجعت الحالة تاني لنفس القيمة أو تغيّرت لحالة تالتة)
@@ -15854,7 +16043,7 @@ CREATE POLICY "qquestions_student_read_own_section" ON quiz_questions FOR SELECT
   USING (has_active_access_to((SELECT section_id FROM quizzes WHERE id = quiz_questions.quiz_id)));
 
 -- ────────────────────────────────────────────────────────────────
--- 5) quiz_results — إضافة نطاق أدمن الشعبة (كان admin + الطالب نفسه فقط)
+-- 5) quiz_results — إضافة نطاق أدمن الكورساتة (كان admin + الطالب نفسه فقط)
 -- ────────────────────────────────────────────────────────────────
 DROP POLICY IF EXISTS "qresults_branch_admin_read" ON quiz_results;
 CREATE POLICY "qresults_branch_admin_read" ON quiz_results FOR SELECT
@@ -16038,7 +16227,7 @@ CREATE INDEX IF NOT EXISTS idx_lp_items_section ON learning_path_items(section_i
 ALTER TABLE learning_paths      ENABLE ROW LEVEL SECURITY;
 ALTER TABLE learning_path_items ENABLE ROW LEVEL SECURITY;
 
--- learning_paths: الطالب يرى المسارات النشطة فقط، الأدمن/أدمن الشعبة حسب نطاقه
+-- learning_paths: الطالب يرى المسارات النشطة فقط، الأدمن/أدمن الكورساتة حسب نطاقه
 DROP POLICY IF EXISTS "paths_read"          ON learning_paths;
 DROP POLICY IF EXISTS "paths_admin_write"   ON learning_paths;
 DROP POLICY IF EXISTS "paths_branch_insert" ON learning_paths;
@@ -16051,7 +16240,7 @@ CREATE POLICY "paths_read" ON learning_paths
 CREATE POLICY "paths_admin_write" ON learning_paths
   FOR ALL USING (is_admin()) WITH CHECK (is_admin());
 
--- أدمن الشعبة: يُنشئ فقط مسارات مربوطة بشعبته (section_id لازم يكون داخل نطاقه، مش NULL)
+-- أدمن الكورساتة: يُنشئ فقط مسارات مربوطة بشعبته (section_id لازم يكون داخل نطاقه، مش NULL)
 CREATE POLICY "paths_branch_insert" ON learning_paths
   FOR INSERT WITH CHECK (section_id IS NOT NULL AND is_branch_admin_of(section_id));
 CREATE POLICY "paths_branch_modify" ON learning_paths
@@ -16105,7 +16294,7 @@ CREATE POLICY "path_items_write" ON learning_path_items
 };
 console.log('%c[PATHS] اكتب printPathsMigration() لعرض/نسخ SQL نظام المسارات', 'color:#6c3483;font-weight:bold');
 
-// printChatSystemMigration — استكمال نظام محادثة الشعبة (Additive بالكامل)
+// printChatSystemMigration — استكمال نظام محادثة الكورس (Additive بالكامل)
 // لا ينشئ أي جدول جديد ولا يغيّر معمارية الأدمن الحالية (profiles.role / managed_section_id).
 // يعيد استخدام is_admin() و is_branch_admin_of() و has_active_subscription() الموجودين بالفعل.
 // يضيف فقط:
@@ -16114,11 +16303,11 @@ console.log('%c[PATHS] اكتب printPathsMigration() لعرض/نسخ SQL نظا
 //      التحقق من صلاحية الوصول (SECURITY DEFINER لأن إدخال الغرف بحد ذاته أدمن-only حالياً).
 //   3) Trigger على chat_messages يفرض user_id = auth.uid() ويجيب user_name من profiles
 //      دائماً من السيرفر — لا يثق بأي قيمة قادمة من الـ Frontend لتحديد صاحب الرسالة.
-//   4) سياسة DELETE جديدة لأدمن الشعبة على chat_messages (كانت الحذف قبل ذلك Super Admin فقط).
+//   4) سياسة DELETE جديدة لأدمن الكورساتة على chat_messages (كانت الحذف قبل ذلك Super Admin فقط).
 window.printChatSystemMigration = function() {
   var sql = `
 -- ================================================================
--- نظام محادثة الشعبة (Chat) — Additive فقط، يعتمد على chat_rooms/chat_messages
+-- نظام محادثة الكورس (Chat) — Additive فقط، يعتمد على chat_rooms/chat_messages
 -- الموجودين بالفعل ونفس دوال الصلاحيات الحالية (is_admin / is_branch_admin_of /
 -- has_active_subscription). لا ينشئ جدول section_admins ولا يغيّر نظام الأدمن الحالي.
 -- ================================================================
@@ -16142,7 +16331,7 @@ BEGIN
 END $$;
 
 -- 2) get_or_create_chat_room(p_section_id) — يُنشئ غرفة الشعبة أول مرة فقط
---    يتحقق من نفس شرط دخول الشات المستخدم في RLS (أدمن عام / أدمن الشعبة / مشترك فعّال)
+--    يتحقق من نفس شرط دخول الشات المستخدم في RLS (أدمن عام / أدمن الكورساتة / مشترك فعّال)
 --    قبل أي إنشاء أو قراءة — DENY ACCESS الصريح بدل أي fallback مسموح به بالخطأ.
 CREATE OR REPLACE FUNCTION get_or_create_chat_room(p_section_id BIGINT)
 RETURNS chat_rooms
@@ -16202,7 +16391,7 @@ CREATE TRIGGER trg_chat_messages_set_sender
   BEFORE INSERT ON chat_messages
   FOR EACH ROW EXECUTE FUNCTION _chat_messages_set_sender();
 
--- 4) أدمن الشعبة يقدر يحذف رسالة مسيئة من شعبته فقط (كانت هذه الصلاحية Super Admin فقط)
+-- 4) أدمن الكورساتة يقدر يحذف رسالة مسيئة من شعبته فقط (كانت هذه الصلاحية Super Admin فقط)
 DROP POLICY IF EXISTS "chatmsg_delete_branch_admin" ON chat_messages;
 CREATE POLICY "chatmsg_delete_branch_admin" ON chat_messages FOR DELETE
   USING (is_branch_admin_of((SELECT cr.section_id FROM chat_rooms cr WHERE cr.id = chat_messages.room_id)));
@@ -16376,7 +16565,7 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, pg_temp AS $$
     UNION ALL
     SELECT s.id, s.parent_id FROM site_sections s JOIN ancestors a ON s.id=a.parent_id
   )
-  SELECT sa.user_id, COALESCE(p.full_name, p.email, 'أدمن الشعبة')::TEXT, p.email::TEXT
+  SELECT sa.user_id, COALESCE(p.full_name, p.email, 'أدمن الكورساتة')::TEXT, p.email::TEXT
   FROM section_admins sa
   JOIN ancestors a ON a.id=sa.section_id
   LEFT JOIN profiles p ON p.id=sa.user_id
@@ -17087,15 +17276,15 @@ window.diagnose = async function() {
   window.checkSectionAccess = async function(sectionId) {
     sectionId = Number(sectionId);
     try {
-      if (window._isSuperAdmin) return null; // السوبر أدمن يرى كل شيء دائماً
+      if (window._isSuperAdmin) return null; // الأدمن المنصة يرى كل شيء دائماً
 
       var anchor = await _findSubscriptionAnchor(sectionId);
       if (!anchor) return null; // هذا القسم/الشعبة لا يتطلب اشتراكاً (requires_subscription = false)
 
-      // ✅ FIX: أدمن الشعبة (section_admins) يجب أن يكون له وصول كامل *فقط* للشعبة
+      // ✅ FIX: أدمن الكورساتة (section_admins) يجب أن يكون له وصول كامل *فقط* للشعبة
       // التي يديرها ولكل ما تحتها — وليس لكل الشعب. سابقًا كان الفحص يعتمد على
-      // window._isAdminUser وهو true لأي أدمن شعبة (isSuperAdmin || isBranchAdmin)
-      // بدون أي scoping، فكان أدمن شعبة "أ" يرى محتوى شعبة "ب" مقفولاً بالكامل
+      // window._isAdminUser وهو true لأي أدمن الكورس (isSuperAdmin || isBranchAdmin)
+      // بدون أي scoping، فكان أدمن الكورس "أ" يرى محتوى شعبة "ب" مقفولاً بالكامل
       // مجانًا رغم أنه غير مسؤول عنها إطلاقًا. الآن نتحقق أن anchor.id (الشعبة)
       // فعلاً ضمن الشعب/الأقسام الفرعية المُسندة لهذا الأدمن تحديدًا.
       if (window._isBranchAdmin && Array.isArray(window._branchAdminSectionIds) &&
@@ -17129,7 +17318,7 @@ window.diagnose = async function() {
     }
   };
 
-  // ── أهلية دخول محادثة الشعبة — تُستخدم فقط لإظهار/إخفاء زر "دخول المحادثة".
+  // ── أهلية دخول محادثة الكورس — تُستخدم فقط لإظهار/إخفاء زر "دخول المحادثة".
   //    الأمان الحقيقي دائماً من RLS على chat_rooms/chat_messages، وهذه الدالة
   //    fail-closed (أي شك = لا يظهر الزر) بعكس checkSectionAccess (fail-open).
   window.getChatEligibility = async function(sectionId) {
@@ -17138,8 +17327,8 @@ window.diagnose = async function() {
       // الشات فقط على صفحة الشعبة نفسها (site_sections.requires_subscription = true)
       if (!anchor || anchor.id !== sectionId) return null;
 
-      // ✅ FIX: نفس تصحيح checkSectionAccess — السوبر أدمن فقط يدخل بلا شرط،
-      // وأدمن الشعبة يدخل فقط لو anchor.id ضمن الشعب المُسندة له تحديدًا
+      // ✅ FIX: نفس تصحيح checkSectionAccess — الأدمن المنصة فقط يدخل بلا شرط،
+      // وأدمن الكورساتة يدخل فقط لو anchor.id ضمن الشعب المُسندة له تحديدًا
       // (الفحص التالي أصلاً كان موجودًا لكنه كان ميت الكود عمليًا لأن الشرط قبله
       // window._isAdminUser كان يشمل أدمن أي شعبة أخرى ويرجّع true قبل الوصول له).
       if (window._isSuperAdmin) return { anchor: anchor, allowed: true, isAdmin: true };
@@ -17470,7 +17659,7 @@ window.diagnose = async function() {
 }
 
 /* ============================================================ */
-/* محادثة الشعبة (Chat) — نفس نظام الألوان/الخطوط/المودال الحالي */
+/* محادثة الكورس (Chat) — نفس نظام الألوان/الخطوط/المودال الحالي */
 /* ============================================================ */
 .chat-entry-btn {
   width: 100%; border: none; cursor: pointer; text-align: center;
@@ -17551,7 +17740,7 @@ window.diagnose = async function() {
 
 /* ============================================================ */
 /* Direct Messaging (Phase 3) — يعيد استخدام نفس متغيرات ونظام   */
-/* ألوان/مودال محادثة الشعبة أعلاه (.chat-overlay/.chat-modal...) */
+/* ألوان/مودال محادثة الكورس أعلاه (.chat-overlay/.chat-modal...) */
 /* بدون أي تعديل على القيم الحالية، فقط عناصر إضافية جديدة.       */
 /* ============================================================ */
 .dm-conv-row {
@@ -17566,7 +17755,7 @@ window.diagnose = async function() {
 
 /* ============================================================ */
 /* DM2 — Messenger UI (WhatsApp/Telegram-inspired)                */
-/* معزول تمامًا عن محادثة الشعبة (.chat-overlay/.chat-modal لم    */
+/* معزول تمامًا عن محادثة الكورس (.chat-overlay/.chat-modal لم    */
 /* تُلمس). يستخدم نفس CSS variables الحالية للموقع (Light/Dark).  */
 /* لا يوجد أي جدول أو نظام موازٍ هنا — فقط واجهة جديدة فوق نفس     */
 /* الدوال الموجودة (openDirectChat/get_or_create_direct_room...). */
@@ -17934,7 +18123,7 @@ window.diagnose = async function() {
 </script>
 
 <!-- ============================================================ -->
-<!-- محادثة الشعبة (Chat) — تعتمد بالكامل على chat_rooms/chat_messages -->
+<!-- محادثة الكورس (Chat) — تعتمد بالكامل على chat_rooms/chat_messages -->
 <!-- الموجودين بالفعل + get_or_create_chat_room() و RLS الحالية.       -->
 <!-- الأمان الفعلي دائماً من RLS/الـ Trigger على قاعدة البيانات، وليس   -->
 <!-- من أي فحص هنا في الـ Frontend.                                    -->
@@ -17946,7 +18135,7 @@ window.diagnose = async function() {
 <div id="chat-modal-overlay" class="chat-overlay" onclick="if(event.target===this) closeSectionChat()">
   <div class="chat-modal" role="dialog" aria-modal="true" aria-labelledby="chat-header-title">
     <div class="chat-header">
-      <div class="chat-header-title" id="chat-header-title">💬 <span id="chat-header-name">محادثة الشعبة</span></div>
+      <div class="chat-header-title" id="chat-header-title">💬 <span id="chat-header-name">محادثة الكورس</span></div>
       <button class="chat-close" onclick="closeSectionChat()" aria-label="إغلاق">✕</button>
     </div>
     <div class="chat-body" id="chat-body">
@@ -17983,7 +18172,7 @@ window.diagnose = async function() {
 
   // ==================== Attachments (chat-attachments bucket — PRIVATE) ====================
   // نفس Bucket ونفس Storage Policies المستخدمة في DM (chat-attachments، مسار {room_id}/...)
-  // لم يُنشأ أو يُعدَّل أي Bucket/Policy/جدول هنا — فقط نفس نمط DM مطبّق هنا لمحادثة الشعبة.
+  // لم يُنشأ أو يُعدَّل أي Bucket/Policy/جدول هنا — فقط نفس نمط DM مطبّق هنا لمحادثة الكورس.
   var CHAT_ATTACH_BUCKET  = 'chat-attachments';
   var CHAT_MAX_FILE_SIZE  = 50 * 1024 * 1024; // ✅ 50MB (Aug 2026 — رُفع من 25MB لدعم الفيديو/الصوت)
   var CHAT_ALLOWED_EXT = {
@@ -18043,11 +18232,11 @@ window.diagnose = async function() {
     _chatScrollListenerAttached = true;
   }
 
-  // ── زر "دخول محادثة الشعبة" — يُستدعى من _renderDynamicSectionPage عند الأهلية ──
+  // ── زر "دخول محادثة الكورس" — يُستدعى من _renderDynamicSectionPage عند الأهلية ──
   window._renderChatEntryButtonHTML = function(anchor) {
     var titleEsc = _apEsc ? _apEsc(anchor.title || 'الشعبة') : (anchor.title || 'الشعبة');
     return '<button class="chat-entry-btn" onclick="openSectionChat(' + anchor.id + ', \'' +
-      titleEsc.replace(/'/g, "\\'") + '\')">💬 دخول محادثة الشعبة</button>';
+      titleEsc.replace(/'/g, "\\'") + '\')">💬 دخول محادثة الكورس</button>';
   };
 
   function _chatEsc(s) { return _apEsc ? _apEsc(s) : String(s == null ? '' : s).replace(/[&<>"']/g, function(c){
@@ -18062,7 +18251,7 @@ window.diagnose = async function() {
   // ── نقطة الدخول: تُستدعى بالضغط على زر الشات ──
   window.openSectionChat = async function(sectionId, sectionTitle) {
     _chatAnchor = { id: sectionId, title: sectionTitle };
-    document.getElementById('chat-header-name').textContent = sectionTitle || 'محادثة الشعبة';
+    document.getElementById('chat-header-name').textContent = sectionTitle || 'محادثة الكورس';
     document.getElementById('chat-modal-overlay').classList.add('chat-open');
     document.body.style.overflow = 'hidden';
     var bodyEl = document.getElementById('chat-body');
@@ -18089,8 +18278,8 @@ window.diagnose = async function() {
       _chatRoom = roomRes.data;
 
       // ✅ FIX: window._isAdminUser كان يشمل أدمن أي شعبة (isSuperAdmin || isBranchAdmin)
-      // بدون scoping، فكان أدمن شعبة "أ" يظهر له badge "أدمن" وصلاحية حذف رسائل
-      // داخل شات شعبة "ب" التي لا يديرها. الآن: سوبر أدمن دائمًا، أو أدمن هذه
+      // بدون scoping، فكان أدمن الكورس "أ" يظهر له badge "أدمن" وصلاحية حذف رسائل
+      // داخل شات شعبة "ب" التي لا يديرها. الآن: أدمن المنصة دائمًا، أو أدمن هذه
       // الشعبة تحديدًا (نفس الشرط الموجود بالفعل، لكنه الآن فعلي وليس ميت الكود).
       _chatIsAdmin = !!(window._isSuperAdmin ||
         (window._isBranchAdmin && Array.isArray(window._branchAdminSectionIds) &&
@@ -18445,7 +18634,7 @@ window.diagnose = async function() {
     }
   };
 
-  // ── حذف رسالة (أدمن الشعبة أو الأدمن العام فقط — RLS تفرض هذا في قاعدة البيانات) ──
+  // ── حذف رسالة (أدمن الكورساتة أو الأدمن العام فقط — RLS تفرض هذا في قاعدة البيانات) ──
   //    لو كانت الرسالة تحمل مرفقات، نحذف ملفاتها من Storage أولاً بأفضل محاولة ممكنة
   //    حتى لا تبقى ملفات يتيمة بعد حذف الرسالة (سجلات message_attachments تُحذف
   //    مع الرسالة عبر FK الموجودة أصلاً على الجدول — لم نُضف أو نُعدّل أي شيء هنا).
@@ -18500,7 +18689,7 @@ window.diagnose = async function() {
   }
 
   // ✅ يُستدعى من _cleanupRealtimeChannels() المركزية عند Logout — نفس منطق
-  // _chatStopRealtime تمامًا، بدون أي تغيير في سلوك محادثة الشعبة نفسها.
+  // _chatStopRealtime تمامًا، بدون أي تغيير في سلوك محادثة الكورس نفسها.
   window._closeSectionChatRealtime = function() { _chatStopRealtime(); };
 })();
 </script>
@@ -18768,7 +18957,7 @@ window.diagnose = async function() {
         } else if (window._isBranchAdmin || (window._isAdminUser && !window._isBranchAdmin)) {
           displayName = 'مستخدم';
         } else {
-          displayName = '🛡️ أدمن الشعبة';
+          displayName = '🛡️ أدمن الكورساتة';
         }
         var unread = !!(lastMsg && lastMsg.user_id !== _dmMe.id &&
           (!myReadMap[room.id] || new Date(lastMsg.created_at) > new Date(myReadMap[room.id])));
@@ -18830,7 +19019,7 @@ window.diagnose = async function() {
 
   // ════════════════════════════════════════════════════════════
   // بدء محادثة جديدة — Super Admin: بحث عام. Branch Admin: مشتركو
-  // نطاقه. طالب: عبر زر "راسل أدمن الشعبة" فقط (انظر
+  // نطاقه. طالب: عبر زر "راسل أدمن الكورساتة" فقط (انظر
   // _renderMessageAdminEntry أسفل)، وليس من هنا.
   // ════════════════════════════════════════════════════════════
   window._dmOpenNewConversationPicker = async function() {
@@ -18849,7 +19038,7 @@ window.diagnose = async function() {
       resultsEl.innerHTML = '<div class="chat-empty">اكتب اسمًا أو بريدًا للبحث...</div>';
     } else {
       searchBox.style.display = 'none';
-      resultsEl.innerHTML = '<div class="chat-empty">هذه الميزة متاحة حاليًا فقط عبر زر "راسل أدمن الشعبة" داخل صفحة شعبتك، أو عندما يبدأ أدمن الشعبة المحادثة معك.</div>';
+      resultsEl.innerHTML = '<div class="chat-empty">هذه الميزة متاحة حاليًا فقط عبر زر "راسل أدمن الكورساتة" داخل صفحة شعبتك، أو عندما يبدأ أدمن الكورساتة المحادثة معك.</div>';
     }
   };
 
@@ -18877,7 +19066,7 @@ window.diagnose = async function() {
       if (!scope.length) { resultsEl.innerHTML = '<div class="chat-empty">لا يوجد نطاق شعبة مُعيَّن لك بعد.</div>'; return; }
       // ✅ FIX (Aug 2026): لازم نجيب section_id مع كل اشتراك عشان نقدر نبعته
       // لـ get_or_create_direct_room (تتطلبه إجباريًا) — قبل كده كان بيتسقط
-      // فترفض كل محادثة يبدأها أدمن الشعبة مع أي مشترك عنده.
+      // فترفض كل محادثة يبدأها أدمن الكورساتة مع أي مشترك عنده.
       var subsRes = await db.from('subscriptions').select('user_id, section_id, payment_status, end_date')
         .in('section_id', scope).eq('payment_status', 'active');
       if (subsRes.error) throw subsRes.error;
@@ -18932,9 +19121,9 @@ window.diagnose = async function() {
     : _dmSearchUsers;
 
   // ════════════════════════════════════════════════════════════
-  // Phase C — "راسل أدمن الشعبة": يُستدعى من _renderDynamicSectionPage
+  // Phase C — "راسل أدمن الكورساتة": يُستدعى من _renderDynamicSectionPage
   // بجانب زر Section Chat، فقط عندما elig.allowed === true (نفس شرط
-  // محادثة الشعبة تمامًا). يستخدم RPC آمنة جديدة فقط — لا نقرأ
+  // محادثة الكورس تمامًا). يستخدم RPC آمنة جديدة فقط — لا نقرأ
   // section_admins أو profiles مباشرة من هنا.
   // ════════════════════════════════════════════════════════════
   window._renderMessageAdminEntry = async function(anchor, containerEl) {
@@ -18949,7 +19138,7 @@ window.diagnose = async function() {
       btn.type = 'button';
       btn.className = 'chat-entry-btn';
       btn.style.background = 'linear-gradient(135deg,#17a589,#0a3d62)';
-      btn.textContent = '✉️ راسل أدمن الشعبة';
+      btn.textContent = '✉️ راسل أدمن الكورساتة';
       btn.onclick = function() {
         if (admins.length === 1) {
           window.openDirectChat(admins[0].user_id, admins[0].full_name || admins[0].email, null, anchor.id);
@@ -18970,7 +19159,7 @@ window.diagnose = async function() {
     document.body.style.overflow = 'hidden';
     document.getElementById('dm-picker-search').style.display = 'none';
     document.getElementById('dm-picker-results').innerHTML = admins.map(function(a) {
-      var label = a.full_name || a.email || 'أدمن الشعبة';
+      var label = a.full_name || a.email || 'أدمن الكورساتة';
       return _dmPickRowHTML(a.user_id, label, a.email || '', ' <span class="chat-msg-admin-badge">🛡️ أدمن</span>', sectionId);
     }).join('');
   }
@@ -19783,7 +19972,7 @@ window.diagnose = async function() {
         // الرسائل المباشرة الفعلية لو كانت متاحة، مع نفس الرسالة الاحتياطية القديمة
         // كـ fallback لو تعذّر ذلك لأي سبب (مثلاً الصفحة لم تُحمَّل هذا الجزء بعد).
         if (typeof window.openDirectMessagesList === 'function') window.openDirectMessagesList();
-        else if (typeof _showToast === 'function') _showToast('ادخل شعبتك من الرئيسية لفتح محادثة الشعبة', 'info');
+        else if (typeof _showToast === 'function') _showToast('ادخل شعبتك من الرئيسية لفتح محادثة الكورس', 'info');
         break;
       case 'notifications':
         window.msNotificationsPlaceholder();
@@ -19963,10 +20152,10 @@ ON notifications FOR ALL
 USING (is_admin())
 WITH CHECK (is_admin());
 
--- أدمن الشعبة يستطيع الإرسال لأي مستخدم له صف طلب/اشتراك (بأي حالة دفع)
+-- أدمن الكورساتة يستطيع الإرسال لأي مستخدم له صف طلب/اشتراك (بأي حالة دفع)
 -- داخل نطاق شعبته — بما فيها "قبول" (active) و"رفض" (cancelled) على حد سواء.
 -- ✅ FIX (أغسطس 2026): كانت الدالة تشترط payment_status = 'active' فقط،
--- فكان أدمن الشعبة يقدر يبلّغ الطالب بالموافقة لكن مش برسالة الرفض (لأن
+-- فكان أدمن الكورساتة يقدر يبلّغ الطالب بالموافقة لكن مش برسالة الرفض (لأن
 -- الحالة بعد الرفض بتبقى cancelled مش active). الشرط الوحيد المطلوب فعلاً
 -- هو إن صف الاشتراك يقع داخل نطاق شعبة الأدمن — بغض النظر عن حالته.
 CREATE OR REPLACE FUNCTION can_branch_admin_notify_user(target_user UUID)
@@ -20441,7 +20630,7 @@ async function qzLoadMaterialsForAdmin() {
   var sel = document.getElementById('qz-material-select');
   try {
     // ✅ FIX ("لا توجد مواد ضمن نطاقك"): loadSections(null) كانت تجيب فقط
-    // أقسام المستوى الجذري (parent_id=null)، لكن نطاق أدمن الشعبة
+    // أقسام المستوى الجذري (parent_id=null)، لكن نطاق أدمن الكورساتة
     // (window._branchAdminSectionIds) هو subtree يبدأ من قسمه هو (غالباً
     // مش جذر). الفلترة القديمة كانت تقارن جذور الموقع بنطاق فرعي فمفيش
     // تقاطع أبداً. نفس النمط الصحيح المستخدم في adminLoadSections/lpLoad:
@@ -20520,7 +20709,7 @@ async function qzOnChapterChange() {
 async function qzPopulateSectionOptions(sections) {
   var secWrap = document.getElementById('qz-section-wrap');
   var secSel = document.getElementById('qz-section-select');
-  // ── أدمن الشعبة: يفلتر أي قسم برّه نطاقه حتى لو ظهر ضمن children ──
+  // ── أدمن الكورساتة: يفلتر أي قسم برّه نطاقه حتى لو ظهر ضمن children ──
   sections = (sections || []).filter(function(s) { return _qzInBranchScope(s.id); });
   if (!sections.length) {
     secSel.innerHTML = '<option value="">— لا توجد أقسام ضمن نطاقك —</option>';
@@ -21554,7 +21743,7 @@ window.qzShowPastReview = qzShowPastReview;
   }
 
   window.openStudentProgressPage = async function() {
-    // ✅ صفحة "📊 تقدمي" خاصة بالطالب فقط — الأدمن (سوبر أو أدمن شعبة) لا يرى
+    // ✅ صفحة "📊 تقدمي" خاصة بالطالب فقط — الأدمن (سوبر أو أدمن الكورس) لا يرى
     // بيانات طالب لأنه ببساطة مش طالب؛ الحماية هنا على مستوى الدالة نفسها
     // (مش بس إخفاء الزر) عشان تمنع الوصول حتى لو نودي من مكان تاني.
     if (window._isSuperAdmin || window._isBranchAdmin) {
@@ -21786,5 +21975,438 @@ window.qzShowPastReview = qzShowPastReview;
 
 })();
 </script>
+
+<script>
+/* ================================================================
+   COURSE ADMIN / PLATFORM ADMIN EXTENSION — AUG 2026
+   - branch_admin = one course only (section_id)
+   - admin = all courses
+   - real Supabase data only
+   - no new framework
+   ================================================================ */
+(function () {
+  'use strict';
+
+  function db() { return window.supabase; }
+  function esc(v) {
+    if (typeof _apEsc === 'function') return _apEsc(v == null ? '' : String(v));
+    return String(v == null ? '' : v).replace(/[&<>"']/g, function(c) {
+      return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+    });
+  }
+  function courseIdForBranch() {
+    var id = Number(window._branchAdminCourseId || window._activeSectionId || 0);
+    return id > 0 ? id : null;
+  }
+  async function guard(kind, sectionId) {
+    if (!db()) throw new Error('Supabase غير جاهز');
+    var sessionRes = typeof _getSessionSafe === 'function' ? await _getSessionSafe() : await db().auth.getSession();
+    var session = sessionRes && sessionRes.data && sessionRes.data.session;
+    if (!session || !session.user) throw new Error('يجب تسجيل الدخول أولاً');
+    var status = typeof _resolveAdminStatus === 'function'
+      ? await _resolveAdminStatus(session.user.id)
+      : {isSuperAdmin:false,isBranchAdmin:false};
+    if (kind === 'admin' && !status.isSuperAdmin) throw new Error('غير مصرح');
+    if (kind === 'branch') {
+      if (!status.isBranchAdmin && !status.isSuperAdmin) throw new Error('غير مصرح');
+      if (!status.isSuperAdmin && Number(sectionId) !== courseIdForBranch()) throw new Error('الكورس خارج نطاقك');
+    }
+    return status;
+  }
+
+  async function getCourses() {
+    var q = db().from('site_sections').select('id,title,icon,type').eq('type','course').order('title');
+    if (window._isBranchAdmin && !window._isSuperAdmin) {
+      var cid = courseIdForBranch();
+      if (!cid) return [];
+      q = q.eq('id', cid);
+    }
+    var r = await q;
+    if (r.error) throw r.error;
+    return r.data || [];
+  }
+
+  async function fillCoursePicker(id) {
+    var sel = document.getElementById(id);
+    if (!sel) return [];
+    var courses = await getCourses();
+    sel.innerHTML = courses.length
+      ? '<option value="">— اختر الكورس —</option>' + courses.map(function(c) {
+          return '<option value="' + c.id + '">' + esc(c.icon || '📚') + ' ' + esc(c.title) + '</option>';
+        }).join('')
+      : '<option value="">— لا يوجد كورس متاح —</option>';
+    if (courses.length === 1) {
+      sel.value = String(courses[0].id);
+    }
+    return courses;
+  }
+
+  function statCard(icon, value, label) {
+    return '<div class="ap-stat-card"><div class="ap-stat-icon">' + icon + '</div>' +
+      '<div class="ap-stat-num">' + esc(value) + '</div><div class="ap-stat-lbl">' + esc(label) + '</div></div>';
+  }
+
+  async function getCourseStats(sectionId) {
+    await guard(window._isSuperAdmin ? 'admin' : 'branch', sectionId);
+    var sid = Number(sectionId);
+
+    var subsRes = await db().from('subscriptions')
+      .select('id,user_id,payment_status,start_date,end_date,created_at')
+      .eq('section_id', sid);
+    if (subsRes.error) throw subsRes.error;
+    var subs = subsRes.data || [];
+
+    var activeUsers = {};
+    subs.forEach(function(s) {
+      if (s.payment_status === 'active' && (!s.end_date || new Date(s.end_date).getTime() >= Date.now())) {
+        activeUsers[s.user_id] = true;
+      }
+    });
+    var userIds = Array.from(new Set(subs.map(function(s){return s.user_id;}).filter(Boolean)));
+
+    var quizRes = await db().from('quizzes')
+      .select('id,title,passing_score,display_order')
+      .eq('section_id', sid);
+    if (quizRes.error) throw quizRes.error;
+    var quizzes = quizRes.data || [];
+    var quizIds = quizzes.map(function(q){return q.id;}).filter(Boolean);
+
+    var results = [];
+    if (quizIds.length && userIds.length) {
+      var qr = await db().from('quiz_results')
+        .select('id,user_id,quiz_id,score,percentage,attempt_number,created_at')
+        .in('quiz_id', quizIds)
+        .in('user_id', userIds);
+      if (qr.error) throw qr.error;
+      results = qr.data || [];
+    }
+
+    var progress = [];
+    if (userIds.length) {
+      var up = await db().from('user_progress')
+        .select('user_id,section_id,last_visited')
+        .in('user_id', userIds)
+        .eq('section_id', sid);
+      if (up.error) throw up.error;
+      progress = up.data || [];
+    }
+
+    var pathsRes = await db().from('learning_paths')
+      .select('id,learning_path_items(id,section_id,display_order)')
+      .eq('section_id', sid)
+      .eq('is_active', true);
+    if (pathsRes.error) throw pathsRes.error;
+    var pathItems = [];
+    (pathsRes.data || []).forEach(function(p){ pathItems = pathItems.concat(p.learning_path_items || []); });
+    var itemIds = pathItems.map(function(i){return i.section_id;}).filter(Boolean);
+
+    var completedMap = {};
+    if (itemIds.length && userIds.length) {
+      var cp = await db().from('user_progress')
+        .select('user_id,section_id,last_visited')
+        .in('user_id', userIds)
+        .in('section_id', itemIds);
+      if (!cp.error) {
+        (cp.data || []).forEach(function(r){
+          // Existing progress model does not expose a guaranteed completed_at flag.
+          // Treating a visited row as completion would be false data, so completion is
+          // derived only from the existing quiz/passing flow where possible.
+          if (!completedMap[r.user_id]) completedMap[r.user_id] = {};
+          completedMap[r.user_id][r.section_id] = true;
+        });
+      }
+    }
+
+    var byUser = {};
+    results.forEach(function(r){
+      if (!byUser[r.user_id]) byUser[r.user_id] = [];
+      byUser[r.user_id].push(r);
+    });
+
+    var passedUsers = {}, failedUsers = {};
+    var scoreValues = [];
+    results.forEach(function(r){
+      var pct = Number(r.percentage);
+      if (!isNaN(pct)) scoreValues.push(pct);
+      var q = quizzes.find(function(x){ return Number(x.id) === Number(r.quiz_id); });
+      var pass = q ? Number(q.passing_score == null ? 60 : q.passing_score) : 60;
+      if (!isNaN(pct) && pct >= pass) passedUsers[r.user_id] = true;
+      else if (!isNaN(pct)) failedUsers[r.user_id] = true;
+    });
+
+    var lastActivity = null;
+    progress.forEach(function(r){
+      if (r.last_visited && (!lastActivity || new Date(r.last_visited) > new Date(lastActivity))) lastActivity = r.last_visited;
+    });
+
+    var avg = scoreValues.length ? Math.round(scoreValues.reduce(function(a,b){return a+b;},0)/scoreValues.length) : 0;
+
+    // "completed" = all learning-path items have a progress row; this is the closest
+    // real-data signal available from the current schema without inventing columns.
+    var completedCount = 0;
+    if (pathItems.length) {
+      userIds.forEach(function(uid){
+        var seen = completedMap[uid] || {};
+        var allDone = pathItems.every(function(it){ return !!seen[it.section_id]; });
+        if (allDone) completedCount++;
+      });
+    }
+
+    return {
+      totalStudents: userIds.length,
+      activeStudents: Object.keys(activeUsers).length,
+      completedStudents: completedCount,
+      passedStudents: Object.keys(passedUsers).length,
+      failedStudents: Object.keys(failedUsers).length,
+      averageScore: avg,
+      successRate: results.length ? Math.round((Object.keys(passedUsers).length / Math.max(1, Object.keys(passedUsers).length + Object.keys(failedUsers).length)) * 100) : 0,
+      quizCount: quizzes.length,
+      lastActivity: lastActivity,
+      subscriptionCount: subs.length
+    };
+  }
+
+  window.csLoadStudents = async function() {
+    var el = document.getElementById('cs-students-body');
+    var sel = document.getElementById('cs-course-picker');
+    if (!el || !db()) return;
+    var sid = Number(sel && sel.value);
+    if (!sid) { el.innerHTML = '<div class="ap-empty">اختر الكورس أولاً.</div>'; return; }
+    try {
+      await guard(window._isSuperAdmin ? 'admin' : 'branch', sid);
+      el.innerHTML = '<div class="ap-loading"><div class="spinner"></div> جاري تحميل الطلاب...</div>';
+      var sr = await db().from('subscriptions')
+        .select('user_id,payment_status,start_date,end_date')
+        .eq('section_id', sid)
+        .order('created_at', {ascending:false});
+      if (sr.error) throw sr.error;
+      var subs = sr.data || [];
+      var ids = Array.from(new Set(subs.map(function(s){return s.user_id;}).filter(Boolean)));
+      if (!ids.length) { el.innerHTML = '<div class="ap-empty">لا يوجد طلاب لهذا الكورس.</div>'; return; }
+
+      var pr = await db().from('profiles').select('id,full_name,email,subscription_status').in('id', ids);
+      if (pr.error) throw pr.error;
+      var profs = {};
+      (pr.data || []).forEach(function(p){profs[p.id]=p;});
+
+      var up = await db().from('user_progress').select('user_id,last_visited').in('user_id',ids).eq('section_id',sid);
+      if (up.error) throw up.error;
+      var lastByUser = {};
+      (up.data || []).forEach(function(r){
+        if (!lastByUser[r.user_id] || new Date(r.last_visited||0)>new Date(lastByUser[r.user_id]||0)) lastByUser[r.user_id]=r.last_visited;
+      });
+
+      var qz = await db().from('quizzes').select('id,passing_score').eq('section_id',sid);
+      if (qz.error) throw qz.error;
+      var qids=(qz.data||[]).map(function(q){return q.id;});
+      var qmap={}; (qz.data||[]).forEach(function(q){qmap[q.id]=q;});
+      var qr=[];
+      if(qids.length){
+        var rr=await db().from('quiz_results').select('user_id,quiz_id,percentage').in('quiz_id',qids).in('user_id',ids);
+        if(rr.error) throw rr.error; qr=rr.data||[];
+      }
+      var by={};
+      qr.forEach(function(r){(by[r.user_id]||(by[r.user_id]=[])).push(r);});
+      var html='<div class="ap-table-wrap"><table class="ap-table"><thead><tr>' +
+        '<th>الاسم</th><th>البريد</th><th>الاشتراك</th><th>البداية</th><th>النهاية</th><th>آخر نشاط</th><th>التقدم</th><th>الاختبارات</th><th>الناجحة</th><th>المتوسط</th></tr></thead><tbody>';
+      html+=subs.map(function(s){
+        var p=profs[s.user_id]||{}, rows=by[s.user_id]||[];
+        var scores=rows.map(function(r){return Number(r.percentage);}).filter(function(n){return !isNaN(n);});
+        var passed=rows.filter(function(r){var q=qmap[r.quiz_id];return Number(r.percentage)>=Number(q&&q.passing_score!=null?q.passing_score:60);}).length;
+        var avg=scores.length?Math.round(scores.reduce(function(a,b){return a+b;},0)/scores.length):0;
+        var active=s.payment_status==='active'&&(!s.end_date||new Date(s.end_date)>=new Date());
+        return '<tr><td>'+esc(p.full_name||'—')+'</td><td class="ap-email-cell">'+esc(p.email||'—')+'</td>' +
+          '<td>'+esc(active?'نشط':'غير نشط')+'</td><td>'+esc(typeof _apDate==='function'?_apDate(s.start_date):'—')+'</td>' +
+          '<td>'+esc(typeof _apDate==='function'?_apDate(s.end_date):'—')+'</td><td>'+esc(lastByUser[s.user_id]||'—')+'</td>' +
+          '<td>—</td><td>'+rows.length+'</td><td>'+passed+'</td><td>'+avg+'%</td></tr>';
+      }).join('');
+      html+='</tbody></table></div>';
+      el.innerHTML=html;
+    } catch(e) {
+      el.innerHTML='<div class="ap-empty" style="color:#e74c3c;">❌ '+esc(e.message)+'</div>';
+    }
+  };
+
+  window.cstLoadStats = async function() {
+    var el=document.getElementById('cst-stats-body'), sel=document.getElementById('cst-course-picker');
+    if(!el||!db())return;
+    var sid=Number(sel&&sel.value);
+    if(!sid){el.innerHTML='<div class="ap-empty">اختر الكورس أولاً.</div>';return;}
+    try{
+      el.innerHTML='<div class="ap-loading"><div class="spinner"></div> جاري تحميل الإحصائيات...</div>';
+      var s=await getCourseStats(sid);
+      var activePct=s.totalStudents?Math.round((s.activeStudents/s.totalStudents)*100):0;
+      el.innerHTML='<div class="ap-stats-grid">'+
+        statCard('👥',s.totalStudents,'إجمالي الطلاب')+
+        statCard('🟢',s.activeStudents,'الطلاب النشطون')+
+        statCard('🏁',s.completedStudents,'الطلاب الذين أكملوا')+
+        statCard('🏆',s.passedStudents,'عدد الناجحين')+
+        statCard('❌',s.failedStudents,'عدد الراسبين')+
+        statCard('📊',s.averageScore+'%','متوسط الدرجات')+
+        statCard('✅',s.successRate+'%','نسبة النجاح')+
+        statCard('📝',s.quizCount,'عدد الاختبارات')+
+        statCard('🕒',s.lastActivity||'—','آخر نشاط')+
+        statCard('📈',activePct+'%','نسبة النشاط')+
+        '</div>';
+    }catch(e){el.innerHTML='<div class="ap-empty" style="color:#e74c3c;">❌ '+esc(e.message)+'</div>';}
+  };
+
+  async function loadCourseTabs() {
+    if (!db()) return;
+    try {
+      await Promise.all([fillCoursePicker('cs-course-picker'), fillCoursePicker('cst-course-picker')]);
+      var a=document.getElementById('cs-course-picker'), b=document.getElementById('cst-course-picker');
+      if(a&&a.value) await window.csLoadStudents();
+      if(b&&b.value) await window.cstLoadStats();
+    } catch(e) {
+      var x=document.getElementById('cs-students-body'); if(x)x.innerHTML='<div class="ap-empty" style="color:#e74c3c;">❌ '+esc(e.message)+'</div>';
+    }
+  }
+
+  // Settings: real DB-backed table, with an explicit SQL helper if the table is absent.
+  window.psLoadSettings = async function() {
+    var el=document.getElementById('ps-settings-body'); if(!el||!db())return;
+    try{
+      await guard('admin');
+      var r=await db().from('platform_settings').select('id,platform_name,platform_description,settings').limit(1).maybeSingle();
+      if(r.error){
+        el.innerHTML='<div class="ap-empty" style="color:#b9770e;">⚠️ جدول إعدادات المنصة غير موجود بعد.<br>شغّل <b>printPlatformSettingsSQL()</b> من Console ثم أعد فتح الصفحة.</div>';
+        return;
+      }
+      var row=r.data||{settings:{}}, settings=row.settings||{};
+      el.innerHTML='<div class="ap-section" style="padding:14px;border:1px solid #eee;border-radius:12px;">'+
+        '<div class="ap-field"><label class="ap-label">اسم المنصة</label><input id="ps-name" class="ap-input" value="'+esc(row.platform_name||'')+'"></div>'+
+        '<div class="ap-field"><label class="ap-label">وصف المنصة</label><textarea id="ps-desc" class="ap-textarea">'+esc(row.platform_description||'')+'</textarea></div>'+
+        '<div class="ap-field"><label class="ap-label">إعدادات عامة JSON</label><textarea id="ps-json" class="ap-textarea" style="direction:ltr;">'+esc(JSON.stringify(settings,null,2))+'</textarea></div>'+
+        '<button class="ap-btn ap-btn-primary" onclick="psSaveSettings()">💾 حفظ الإعدادات</button><div id="ps-msg" style="margin-top:8px;"></div></div>';
+    }catch(e){el.innerHTML='<div class="ap-empty" style="color:#e74c3c;">❌ '+esc(e.message)+'</div>';}
+  };
+  window.psSaveSettings=async function(){
+    var msg=document.getElementById('ps-msg');
+    try{
+      await guard('admin');
+      var settings={}; try{settings=JSON.parse(document.getElementById('ps-json').value||'{}');}catch(e){throw new Error('إعدادات JSON غير صحيحة');}
+      var payload={platform_name:document.getElementById('ps-name').value.trim(),platform_description:document.getElementById('ps-desc').value.trim(),settings:settings,updated_at:new Date().toISOString()};
+      var r=await db().from('platform_settings').select('id').limit(1).maybeSingle();
+      if(r.error)throw r.error;
+      var save=r.data ? await db().from('platform_settings').update(payload).eq('id',r.data.id)
+                       : await db().from('platform_settings').insert(payload);
+      if(save.error)throw save.error;
+      msg.textContent='✅ تم الحفظ من Supabase';
+    }catch(e){if(msg)msg.textContent='❌ '+e.message;}
+  };
+
+  window.printPlatformSettingsSQL=function(){
+    var sql=`CREATE TABLE IF NOT EXISTS platform_settings (
+      id BIGSERIAL PRIMARY KEY,
+      platform_name TEXT NOT NULL DEFAULT '',
+      platform_description TEXT DEFAULT '',
+      settings JSONB NOT NULL DEFAULT '{}'::jsonb,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    ALTER TABLE platform_settings ENABLE ROW LEVEL SECURITY;
+    DROP POLICY IF EXISTS platform_settings_admin_select ON platform_settings;
+    DROP POLICY IF EXISTS platform_settings_admin_write ON platform_settings;
+    CREATE POLICY platform_settings_admin_select ON platform_settings FOR SELECT USING (EXISTS (SELECT 1 FROM profiles WHERE id=auth.uid() AND role='admin'));
+    CREATE POLICY platform_settings_admin_write ON platform_settings FOR ALL USING (EXISTS (SELECT 1 FROM profiles WHERE id=auth.uid() AND role='admin')) WITH CHECK (EXISTS (SELECT 1 FROM profiles WHERE id=auth.uid() AND role='admin'));
+    INSERT INTO platform_settings(platform_name) SELECT '' WHERE NOT EXISTS (SELECT 1 FROM platform_settings);
+    NOTIFY pgrst, 'reload schema';`;
+    console.log(sql); if(navigator.clipboard)navigator.clipboard.writeText(sql).catch(function(){}); return sql;
+  };
+
+  // Exact course-admin security SQL. This does not delete data.
+  window.printCourseAdminSecuritySQL=function(){
+    var sql=`-- Course Admin: branch_admin can access ONLY the exact managed course section_id.
+    CREATE OR REPLACE FUNCTION is_branch_admin_of(target_id BIGINT)
+    RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER AS $$
+      SELECT EXISTS (
+        SELECT 1 FROM profiles p
+        WHERE p.id=auth.uid()
+          AND p.role='branch_admin'
+          AND p.managed_section_id=target_id
+      );
+    $$;
+    CREATE INDEX IF NOT EXISTS idx_subscriptions_section_user ON subscriptions(section_id,user_id);
+    CREATE INDEX IF NOT EXISTS idx_quizzes_section ON quizzes(section_id);
+    CREATE INDEX IF NOT EXISTS idx_user_progress_section_user ON user_progress(section_id,user_id);
+    CREATE INDEX IF NOT EXISTS idx_quiz_results_user_quiz ON quiz_results(user_id,quiz_id);
+    NOTIFY pgrst, 'reload schema';`;
+    console.log(sql); if(navigator.clipboard)navigator.clipboard.writeText(sql).catch(function(){}); return sql;
+  };
+
+  // Rename old navigation target to course-oriented wording and load new tabs.
+  var originalSwitch = window.apSwitchTab;
+  if (typeof originalSwitch === 'function') {
+    window.apSwitchTab = async function(tab) {
+      if (tab==='courseStudents') {
+        document.querySelectorAll('.ap-tab-panel').forEach(function(x){x.classList.remove('active');});
+        var p=document.getElementById('ap-panel-courseStudents'); if(p)p.classList.add('active');
+        document.querySelectorAll('.ap-nav-btn').forEach(function(x){x.classList.remove('active');});
+        var b=document.getElementById('ap-tab-courseStudents'); if(b)b.classList.add('active');
+        await loadCourseTabs(); return;
+      }
+      if (tab==='courseStats') {
+        document.querySelectorAll('.ap-tab-panel').forEach(function(x){x.classList.remove('active');});
+        var p2=document.getElementById('ap-panel-courseStats'); if(p2)p2.classList.add('active');
+        document.querySelectorAll('.ap-nav-btn').forEach(function(x){x.classList.remove('active');});
+        var b2=document.getElementById('ap-tab-courseStats'); if(b2)b2.classList.add('active');
+        await loadCourseTabs(); return;
+      }
+      if (tab==='platformSettings') {
+        if(!window._isSuperAdmin){return;}
+        document.querySelectorAll('.ap-tab-panel').forEach(function(x){x.classList.remove('active');});
+        var p3=document.getElementById('ap-panel-platformSettings'); if(p3)p3.classList.add('active');
+        document.querySelectorAll('.ap-nav-btn').forEach(function(x){x.classList.remove('active');});
+        var b3=document.getElementById('ap-tab-platformSettings'); if(b3)b3.classList.add('active');
+        await window.psLoadSettings(); return;
+      }
+      return originalSwitch.apply(this, arguments);
+    };
+  }
+
+  // Student "تقدمي" already has an admin-only UI gate; keep it explicit.
+  var originalProgress=window.openStudentProgressPage;
+  window.openStudentProgressPage=function(){
+    if(window._isAdminUser || window._isSuperAdmin || window._isBranchAdmin) return;
+    if(typeof originalProgress==='function') return originalProgress.apply(this,arguments);
+  };
+
+  // Enforce course scope before opening chat from an admin.
+  var originalOpenChat=window.openSectionChat;
+  if(typeof originalOpenChat==='function'){
+    window.openSectionChat=async function(sectionId,sectionTitle){
+      if(window._isBranchAdmin&&!window._isSuperAdmin&&Number(sectionId)!==courseIdForBranch()){
+        if(typeof _showToast==='function')_showToast('⛔ هذا الشات خارج نطاق كورسك','error');
+        return;
+      }
+      return originalOpenChat.apply(this,arguments);
+    };
+  }
+
+  // Hook panel load.
+  document.addEventListener('click', function(e){
+    var b=e.target.closest && e.target.closest('#ap-tab-courseStudents,#ap-tab-courseStats,#ap-tab-platformSettings');
+    if(!b)return;
+  });
+
+  // Make "quizzes" safe at the exact course boundary.
+  var originalQzSection=window.qzOnSectionChange;
+  if(typeof originalQzSection==='function'){
+    window.qzOnSectionChange=async function(){
+      var sid=Number((document.getElementById('qz-section-select')||{}).value||0);
+      if(window._isBranchAdmin&&!window._isSuperAdmin&&sid!==courseIdForBranch()){
+        var list=document.getElementById('qz-quiz-list'); if(list)list.innerHTML='<div class="ap-empty">⛔ الاختبارات خارج نطاق كورسك.</div>';
+        return;
+      }
+      return originalQzSection.apply(this,arguments);
+    };
+  }
+
+  // Ensure new tabs are included in initial gating even if role resolution happens later.
+  window._courseAdminExtensionReady=true;
+})();
+</script>
+
 </body>
 </html>
