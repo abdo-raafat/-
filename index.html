@@ -10421,7 +10421,13 @@ async function apLoadSectionChatTab() {
       // requires_subscription=true، لأن علم "تتطلب اشتراك" ممكن يكون
       // موجود على أحد أجداد القسم مش على القسم نفسه، وكان ده بيفضّي
       // النتيجة تمامًا ويظهر "لا توجد شعب متاحة" رغم إن عنده شعبة فعلاً.
-      query = query.eq('id', rootId).eq('type', 'course');
+      // ✅ FIX (Aug 2026): كان هنا شرط إضافي .eq('type','course') فوق .eq('id',
+      // rootId) — يعني حتى بعد التخلص من شرط requires_subscription، ظل الاستعلام
+      // يتطلب أن يكون عمود type لقسم الأدمن نفسه مضبوطاً حرفيًا على 'course'، وهو
+      // غير مضمون لكل شعبة/كورس موجود فعليًا. النتيجة: "لا توجد شعب متاحة" رغم أن
+      // rootId صحيح ومُسنَد للأدمن فعلاً. بما أن .eq('id', rootId) بيحصر النتيجة
+      // أصلاً على شعبة الأدمن نفسها بالتحديد، شرط type لا يضيف أي حماية إضافية.
+      query = query.eq('id', rootId);
     } else {
       // الأدمن المنصة يشوف القائمة العامة للشعب القابلة للاشتراك فقط
       query = query.eq('requires_subscription', true);
@@ -14673,6 +14679,33 @@ window.requireAdmin = async function(silent) {
  * الحماية الحقيقية النهائية تتم عبر RLS في قاعدة البيانات — هذا مجرد حاجز في الواجهة
  * يُرجع { ok, user, role, isSuperAdmin, isBranchAdmin, isSectionAdmin }
  */
+// ✅ FIX (Aug 2026 — "هذا القسم خارج نطاق شعبتك" رغم إن العنصر تابع فعلاً لشعبة الأدمن):
+// window._branchAdminSectionIds بيحتوي بس على subtree "الشعبة المختارة حاليًا" في
+// السويتشر (_selectBranchAdminRoot). لو الأدمن بيدير أكثر من شعبة، أو لو حساب الشجرة
+// الفرعية (_computeSectionSubtree) رجع ناقص (بسبب سياسات RLS بتمنع قراءة بعض الصفوف،
+// أو تجاوز حد العمق 8)، كان بيترفض حذف/تعديل عنصر هو أصلاً تابع لشعبته. الحل: قبل ما
+// نرفض، نطلع لأعلى في سلسلة الأنساب (parent_id) من العنصر ونتأكد هل أي جد له هو من ضمن
+// كل الشعب المُسندة فعليًا لهذا الأدمن (window._branchAdminOwnSectionIds — كل شعبه، مش
+// بس المختارة حاليًا). ده بيغطي الحالتين مع بعض بفحص خفيف (صف واحد لكل مستوى).
+async function _isSectionInBranchAdminScope(sid) {
+  var scope = window._branchAdminSectionIds || [];
+  if (scope.indexOf(sid) > -1) return true;
+  var ownRoots = window._branchAdminOwnSectionIds || [];
+  if (!ownRoots.length) return false;
+  var current = sid;
+  var depth = 0;
+  while (current !== null && current !== undefined && depth < 12) {
+    if (ownRoots.indexOf(Number(current)) > -1) return true;
+    try {
+      var r = await window.supabase.from('site_sections').select('parent_id').eq('id', current).maybeSingle();
+      if (r.error || !r.data) break;
+      current = r.data.parent_id;
+    } catch (e) { break; }
+    depth++;
+  }
+  return false;
+}
+
 window.requireBranchAccess = async function(sectionId, silent) {
   if (!window.supabase) {
     if (!silent) _secAlert('النظام غير جاهز');
@@ -14695,9 +14728,8 @@ window.requireBranchAccess = async function(sectionId, silent) {
     if (!Array.isArray(window._branchAdminSectionIds) || !window._branchAdminSectionIds.length) {
       await _loadBranchAdminScope(session.user.id);
     }
-    var scope = window._branchAdminSectionIds || [];
     var sid = (sectionId === null || sectionId === undefined || sectionId === '') ? null : Number(sectionId);
-    if (sid === null || scope.indexOf(sid) > -1) {
+    if (sid === null || await _isSectionInBranchAdminScope(sid)) {
       return { ok: true, user: session.user, role: status.role, isSuperAdmin: false, isBranchAdmin: true, isSectionAdmin: true };
     }
     if (!silent) _secAlert('⛔ هذا القسم خارج نطاق شعبتك');
@@ -22269,12 +22301,18 @@ window.qzShowPastReview = qzShowPastReview;
   }
 
   async function getCourses() {
-    var q = db().from('site_sections').select('id,title,icon,type').eq('type','course').order('title');
+    // ✅ FIX (Aug 2026): كان .eq('id', cid) بيتضاف فوق .eq('type','course') الموجودة
+    // بالفعل في q (شروط AND في Supabase)، فكان لازم يكون عمود type لقسم الأدمن نفسه
+    // = 'course' حرفيًا وإلا رجعت النتيجة فاضية — رغم أن cid معروف وصحيح ومُسنَد
+    // للأدمن فعلاً. الحل: لأدمن الكورس، استعلام مستقل بالـ id بس، بدون شرط type.
     if (window._isBranchAdmin && !window._isSuperAdmin) {
       var cid = courseIdForBranch();
       if (!cid) return [];
-      q = q.eq('id', cid);
+      var rq = await db().from('site_sections').select('id,title,icon,type').eq('id', cid);
+      if (rq.error) throw rq.error;
+      return rq.data || [];
     }
+    var q = db().from('site_sections').select('id,title,icon,type').eq('type','course').order('title');
     var r = await q;
     if (r.error) throw r.error;
     return r.data || [];
@@ -22808,7 +22846,14 @@ var labels=document.querySelectorAll('#admin-panel .ap-label');labels.forEach(fu
   function D(){ return (typeof db==='function') ? db() : window.supabase; }
   function E(v){ return typeof esc==='function' ? esc(v==null?'':String(v)) : String(v==null?'':v).replace(/[&<>\"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
   async function waitDB(){ try{ if(typeof _waitForSupabase==='function') await _waitForSupabase(); }catch(e){} return D(); }
-  async function getCourseId(){ try{ if(typeof courseId==='function') return Number(courseId()||0); }catch(e){} return Number(window._branchAdminSectionId||0); }
+  // ✅ FIX (Aug 2026 — السبب الجذري لـ"لا توجد مواد داخل الكورس" ومشاكل مشابهة):
+  // كانت الدالة تعتمد على courseId() المحلية داخل IIFE مختلف تمامًا (غير مرئية هنا
+  // إطلاقًا)، فكان typeof courseId==='function' يفشل دايمًا، وترجع القيمة الاحتياطية
+  // window._branchAdminSectionId (بدون s) التي لا تُضبط في أي مكان بالكود كله —
+  // فكانت النتيجة 0 دائمًا لأي أدمن كورس. الحل: نقرأ المتغيرات الصحيحة الفعلية التي
+  // تُضبط بالفعل في _selectBranchAdminRoot(): window._branchAdminCourseId ثم
+  // window._activeSectionId، بنفس ترتيب الأولوية المستخدم في باقي أنحاء الكود.
+  async function getCourseId(){ return Number(window._branchAdminCourseId || window._activeSectionId || 0) || 0; }
 
   /* ---------- CONTENT: course -> material -> chapter ---------- */
   async function finalCourseRoots(){
@@ -22818,23 +22863,28 @@ var labels=document.querySelectorAll('#admin-panel .ap-label');labels.forEach(fu
     // العمود غير مضبوط للقسم رغم أنه معيّن فعليًا كورس عبر section_admins).
     if(window._isBranchAdmin && !window._isSuperAdmin){
       var cid=await getCourseId(); if(!cid)return [];
-      var rB=await d.from('site_sections').select('id,title,subtitle,type,parent_id,display_order,requires_subscription').eq('id',cid);
+      var rB=await d.from('site_sections').select('id,title,subtitle,type,parent_id,display_order,requires_subscription,payment_method,payment_number,price').eq('id',cid);
       if(rB.error)throw rB.error; return rB.data||[];
     }
-    var q=d.from('site_sections').select('id,title,subtitle,type,parent_id,display_order,requires_subscription').eq('type','course').order('display_order').order('id');
+    var q=d.from('site_sections').select('id,title,subtitle,type,parent_id,display_order,requires_subscription,payment_method,payment_number,price').eq('type','course').order('display_order').order('id');
     var r=await q; if(r.error)throw r.error; return r.data||[];
   }
   async function finalMaterials(){
     var d=await waitDB(), roots=await finalCourseRoots(); if(!d||!roots.length)return [];
     var ids=roots.map(function(x){return Number(x.id);});
-    var r=await d.from('site_sections').select('id,title,subtitle,parent_id,type,display_order,requires_subscription').in('parent_id',ids).order('display_order').order('id');
+    var r=await d.from('site_sections').select('id,title,subtitle,parent_id,type,display_order,requires_subscription,payment_method,payment_number,price').in('parent_id',ids).order('display_order').order('id');
     if(r.error)throw r.error;
     var map={}; roots.forEach(function(x){map[x.id]=x;});
+    // ✅ FIX: لو الكورس المُسنَد للأدمن نفسه بلا أي أبناء (مادة واحدة فقط بلا
+    // تقسيم فرعي)، لا تظهر "لا توجد مواد داخل الكورس" — اعتبر الكورس نفسه هو
+    // "المادة" الوحيدة، وأي محتوى/اختبار يُحفظ عليه مباشرة (نفس منطق الشابتر
+    // بلا أبناء المطبَّق أصلاً في finalChapters/adminOnMaterialChange).
+    if(!r.data||!r.data.length) return roots.map(function(x){return {id:x.id,title:x.title,subtitle:x.subtitle,parent_id:x.parent_id,type:x.type,requires_subscription:x.requires_subscription,payment_method:x.payment_method,payment_number:x.payment_number,price:x.price,course_id:x.id,course_title:x.title,_isSelfMaterial:true};});
     return (r.data||[]).map(function(x){x.course_id=Number(x.parent_id);x.course_title=(map[x.parent_id]||{}).title||'';return x;});
   }
   async function finalChapters(materialId){
     var d=await waitDB(); if(!d)return [];
-    var r=await d.from('site_sections').select('id,title,subtitle,parent_id,type,display_order,requires_subscription').eq('parent_id',Number(materialId)).order('display_order').order('id');
+    var r=await d.from('site_sections').select('id,title,subtitle,parent_id,type,display_order,requires_subscription,payment_method,payment_number,price').eq('parent_id',Number(materialId)).order('display_order').order('id');
     if(r.error)throw r.error; return r.data||[];
   }
   window._finalMaterials=finalMaterials;
@@ -22847,16 +22897,46 @@ var labels=document.querySelectorAll('#admin-panel .ap-label');labels.forEach(fu
       var opts=mats.map(function(m){return '<option value="'+m.id+'">'+E(m.title)+(m.course_title?' — '+E(m.course_title):'')+'</option>';}).join('');
       if(mat)mat.innerHTML='<option value="">— اختر المادة —</option>'+opts;
       if(list)list.innerHTML='<option value="">اختر المادة لعرض محتواها</option>'+opts;
-      if(final)final.innerHTML='<option value="">— اختر الشابتر —</option>';
+      // ✅ FIX (السبب الجذري لعدم حفظ المحتوى أبداً): select.value = X لا تنجح
+      // في الفعل إلا لو كان فيه <option value="X"> موجود بالفعل داخل العنصر —
+      // وإلا فـ selectedIndex يصير -1 والقيمة الفعلية تفضل ''. admin-section-select
+      // (العنصر المخفي اللي بتقرأ منه adminSaveContent() فعليًا) كان يُصفَّر بخيار
+      // واحد فاضي بس، فأي محاولة لاحقة لضبط قيمته على معرّف مادة/شابتر كانت تفشل
+      // بصمت — فيتحفظ المحتوى دايمًا على قسم فاضي. الحل: نضيف نفس خيارات المواد
+      // هنا أيضًا (وخيارات الشباتر لاحقًا في adminOnMaterialChange) حتى يكون فيه
+      // دائمًا <option> مطابق قبل أي ضبط لقيمته.
+      if(final)final.innerHTML='<option value="">— اختر —</option>'+opts;
       var cw=document.getElementById('admin-chapter-wrap'); if(cw)cw.style.display='none';
     }catch(e){console.error('[FINAL CONTENT]',e);var m=document.getElementById('admin-msg');if(m)m.textContent='❌ تعذر تحميل المواد: '+E(e.message);}
   };
   window.adminOnMaterialChange=async function(){
     var mat=document.getElementById('admin-material-select'), chap=document.getElementById('admin-chapter-select'), final=document.getElementById('admin-section-select'), wrap=document.getElementById('admin-chapter-wrap');
     var mid=Number(mat&&mat.value||0); if(!mid){if(wrap)wrap.style.display='none';if(chap)chap.innerHTML='<option value="">— اختر الشابتر —</option>';if(final)final.value='';return;}
-    try{var rows=await finalChapters(mid);if(chap)chap.innerHTML='<option value="">— اختر الشابتر —</option>'+rows.map(function(x){return '<option value="'+x.id+'">'+E(x.title)+'</option>';}).join('');if(wrap)wrap.style.display=rows.length?'block':'none';if(final)final.value='';if(typeof adminLoadSectionPath==='function')adminLoadSectionPath();}catch(e){console.error('[FINAL CONTENT CHAPTERS]',e);}
+    try{
+      var rows=await finalChapters(mid);
+      var chapOpts=rows.map(function(x){return '<option value="'+x.id+'">'+E(x.title)+'</option>';}).join('');
+      if(chap)chap.innerHTML='<option value="">— اختر الشابتر —</option>'+chapOpts;
+      if(wrap)wrap.style.display=rows.length?'block':'none';
+      // ✅ FIX: نبني admin-section-select بحيث يحتوي دائمًا على <option> مطابق
+      // لأي قيمة قد نضبطها عليه لاحقًا — خيار المادة نفسها (تُستخدم لو مالهاش
+      // شباتر) + خيارات كل شابتر (تُستخدم بعد adminOnChapterChange).
+      var matOptText = mat.options[mat.selectedIndex] ? mat.options[mat.selectedIndex].textContent : '';
+      if(final){
+        final.innerHTML='<option value="">— اختر —</option><option value="'+mid+'">'+E(matOptText)+'</option>'+chapOpts;
+        final.value = rows.length ? '' : String(mid);
+        window._adminSections = (window._adminSections||[]).filter(function(s){return String(s.id)!==String(mid) || s._chapterParent;}).concat(rows.map(function(c){c._chapterParent=mid;return c;}));
+      }
+      if(typeof adminLoadSectionPath==='function')adminLoadSectionPath();
+    }catch(e){console.error('[FINAL CONTENT CHAPTERS]',e);}
   };
-  window.adminOnChapterChange=function(){var c=document.getElementById('admin-chapter-select'),f=document.getElementById('admin-section-select');if(f)f.value=c&&c.value?c.value:'';if(typeof adminLoadSectionPath==='function')adminLoadSectionPath();};
+  window.adminOnChapterChange=function(){
+    var c=document.getElementById('admin-chapter-select'), f=document.getElementById('admin-section-select');
+    if(f){
+      if(c && c.value){ f.value = c.value; } // الخيار مضاف بالفعل في adminOnMaterialChange أعلاه
+      else { f.value=''; }
+    }
+    if(typeof adminLoadSectionPath==='function')adminLoadSectionPath();
+  };
 
   /* ---------- QUIZ ADMIN: material -> chapter. Ownership stays on course; chapter stored in existing lecture_id column. ---------- */
   window.qzLoadMaterialsForAdmin=async function(){
