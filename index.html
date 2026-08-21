@@ -22769,13 +22769,13 @@ var labels=document.querySelectorAll('#admin-panel .ap-label');labels.forEach(fu
   window.csLoadStudents=async function(){
     var el=document.getElementById('cs-students-body'),sel=document.getElementById('cs-course-picker');if(!el)return;var sid=Number(sel&&sel.value||0);if(!sid){el.innerHTML='<div class="ap-empty">اختر الكورس أولاً.</div>';return;}var d=await waitDB();if(!d)return;
     try{
-      var sub=await d.from('subscriptions').select('id,user_id,payment_status,start_date,end_date,last_activity_at,requested_at').eq('section_id',sid);if(sub.error)throw sub.error;var subs=sub.data||[];var uids=[...new Set(subs.map(function(x){return x.user_id;}).filter(Boolean))];
+      var sub=await d.from('subscriptions').select('id,user_id,payment_status,start_date,end_date,requested_at').eq('section_id',sid);if(sub.error)throw sub.error;var subs=sub.data||[];var uids=[...new Set(subs.map(function(x){return x.user_id;}).filter(Boolean))];
       var prof=uids.length?await d.from('profiles').select('id,full_name,email').in('id',uids):{data:[],error:null};if(prof.error)throw prof.error;var pm={};(prof.data||[]).forEach(function(x){pm[x.id]=x;});
       var prog=uids.length?await d.from('user_progress').select('user_id,section_id,last_visited').in('user_id',uids):{data:[],error:null};if(prog.error)throw prog.error;
       var q=await d.from('quizzes').select('id,passing_score').eq('section_id',sid);if(q.error)throw q.error;var qids=(q.data||[]).map(function(x){return x.id;});
       var res=(uids.length&&qids.length)?await d.from('quiz_results').select('user_id,quiz_id,percentage').in('user_id',uids).in('quiz_id',qids):{data:[],error:null};if(res.error)throw res.error;
       var pm2={},rm={};(prog.data||[]).forEach(function(x){pm2[x.user_id]=pm2[x.user_id]||[];pm2[x.user_id].push(x);});(res.data||[]).forEach(function(x){rm[x.user_id]=rm[x.user_id]||[];rm[x.user_id].push(x);});
-      var rows=subs.map(function(s){var rr=rm[s.user_id]||[],pp=pm2[s.user_id]||[],avg=rr.length?Math.round(rr.reduce(function(a,x){return a+Number(x.percentage||0);},0)/rr.length):0,pass=rr.filter(function(x){var qq=(q.data||[]).find(function(z){return z.id===x.quiz_id;});return Number(x.percentage||0)>=(qq?Number(qq.passing_score||60):60);}).length,last=pp.map(function(x){return x.last_visited;}).filter(Boolean).sort().pop()||s.last_activity_at||'—';return {p:pm[s.user_id]||{},s:s,tests:rr.length,passed:pass,avg:avg,last:last};});
+      var rows=subs.map(function(s){var rr=rm[s.user_id]||[],pp=pm2[s.user_id]||[],avg=rr.length?Math.round(rr.reduce(function(a,x){return a+Number(x.percentage||0);},0)/rr.length):0,pass=rr.filter(function(x){var qq=(q.data||[]).find(function(z){return z.id===x.quiz_id;});return Number(x.percentage||0)>=(qq?Number(qq.passing_score||60):60);}).length,last=pp.map(function(x){return x.last_visited;}).filter(Boolean).sort().pop()||'—';return {p:pm[s.user_id]||{},s:s,tests:rr.length,passed:pass,avg:avg,last:last};});
       if(!rows.length){el.innerHTML='<div class="ap-empty">لا يوجد طلاب لهذا الكورس.</div>';return;}
       el.innerHTML='<div class="ap-table-wrap"><table class="ap-table"><thead><tr><th>الطالب</th><th>البريد</th><th>الاشتراك</th><th>البداية</th><th>النهاية</th><th>آخر نشاط</th><th>الاختبارات</th><th>ناجحة</th><th>المتوسط</th></tr></thead><tbody>'+rows.map(function(x){return '<tr><td>'+E(x.p.full_name||'—')+'</td><td>'+E(x.p.email||'—')+'</td><td>'+E(x.s.payment_status||'—')+'</td><td>'+E(x.s.start_date||'—')+'</td><td>'+E(x.s.end_date||'—')+'</td><td>'+E(x.last)+'</td><td>'+x.tests+'</td><td>'+x.passed+'</td><td>'+x.avg+'%</td></tr>';}).join('')+'</tbody></table></div>';
     }catch(e){console.error('[FINAL STUDENTS]',e);el.innerHTML='<div class="ap-empty" style="color:#c0392b">❌ '+E(e.message)+'</div>';}
@@ -23259,5 +23259,374 @@ var labels=document.querySelectorAll('#admin-panel .ap-label');labels.forEach(fu
     'Chat داخل الكورس + مراسلة الأدمن + الاشتراكات + الإحصائيات + المحتوى/الشباتر + الطلاب + الجدول');
 })();
 </script>
+
+<!-- ============================================================
+     BSM ULTIMATE ADMIN FIX PACK — 2026-08-21
+     إصلاحات نهائية: الطلاب / الاختبارات / الرسائل / أدمن الكورسات.
+     لا يعتمد على RPC admin_get_subscriptions القديم.
+============================================================ -->
+<script>
+(function(){
+  'use strict';
+  if (window.__BSM_ULTIMATE_ADMIN_FIX_20260821) return;
+  window.__BSM_ULTIMATE_ADMIN_FIX_20260821 = true;
+
+  function DB(){ return window.supabase; }
+  function escF(v){
+    if (typeof window._apEsc === 'function') return window._apEsc(v == null ? '' : String(v));
+    return String(v == null ? '' : v).replace(/[&<>"']/g,function(c){
+      return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+    });
+  }
+  async function ready(){
+    try { if(typeof _waitForSupabase==='function') await _waitForSupabase(); } catch(e){}
+    return DB();
+  }
+  function currentCourse(){
+    return Number(window._branchAdminCourseId || window._activeSectionId || window._branchAdminSectionId || 0) || 0;
+  }
+
+  /* ============================================================
+     1) الطلاب — لا last_activity_at إطلاقاً.
+        آخر نشاط = user_progress.last_visited فقط.
+  ============================================================ */
+  window.csLoadStudents = async function(){
+    var el=document.getElementById('cs-students-body');
+    var sel=document.getElementById('cs-course-picker');
+    if(!el) return;
+    var sid=Number(sel&&sel.value||0);
+    if(!sid){el.innerHTML='<div class="ap-empty">اختر الكورس أولاً.</div>';return;}
+    try{
+      var db=await ready();
+      if(!db) throw new Error('Supabase غير جاهز');
+      el.innerHTML='<div class="ap-loading"><div class="spinner"></div> جاري تحميل الطلاب...</div>';
+
+      var sub=await db.from('subscriptions')
+        .select('id,user_id,payment_status,start_date,end_date,requested_at,created_at')
+        .eq('section_id',sid).order('created_at',{ascending:false});
+      if(sub.error) throw sub.error;
+      var subs=sub.data||[];
+      var uids=Array.from(new Set(subs.map(function(x){return x.user_id;}).filter(Boolean)));
+      if(!uids.length){el.innerHTML='<div class="ap-empty">لا يوجد طلاب لهذا الكورس.</div>';return;}
+
+      var pm={}, progressMap={}, qrows=[], results=[];
+      var pr=await db.from('profiles').select('id,full_name,email').in('id',uids);
+      if(pr.error) throw pr.error;
+      (pr.data||[]).forEach(function(x){pm[x.id]=x;});
+
+      var pg=await db.from('user_progress').select('user_id,section_id,last_visited').in('user_id',uids);
+      if(!pg.error)(pg.data||[]).forEach(function(x){
+        progressMap[x.user_id]=progressMap[x.user_id]||[];
+        progressMap[x.user_id].push(x);
+      });
+
+      var q=await db.from('quizzes').select('id,passing_score').eq('section_id',sid);
+      if(!q.error){
+        qrows=q.data||[];
+        var qids=qrows.map(function(x){return x.id;});
+        if(qids.length){
+          var rr=await db.from('quiz_results').select('user_id,quiz_id,percentage').in('user_id',uids).in('quiz_id',qids);
+          if(!rr.error) results=rr.data||[];
+        }
+      }
+
+      var rows=subs.map(function(s){
+        var rr=results.filter(function(x){return x.user_id===s.user_id;});
+        var pp=progressMap[s.user_id]||[];
+        var avg=rr.length?Math.round(rr.reduce(function(a,x){return a+Number(x.percentage||0);},0)/rr.length):0;
+        var passed=rr.filter(function(x){
+          var qq=qrows.find(function(z){return z.id===x.quiz_id;});
+          return Number(x.percentage||0)>=(qq?Number(qq.passing_score||60):60);
+        }).length;
+        var last=pp.map(function(x){return x.last_visited;}).filter(Boolean).sort().pop()||'—';
+        return {p:pm[s.user_id]||{},s:s,tests:rr.length,passed:passed,avg:avg,last:last};
+      });
+
+      el.innerHTML='<div class="ap-table-wrap"><table class="ap-table"><thead><tr>'+
+        '<th>الطالب</th><th>البريد</th><th>الاشتراك</th><th>البداية</th><th>النهاية</th><th>آخر نشاط</th><th>الاختبارات</th><th>ناجحة</th><th>المتوسط</th>'+
+        '</tr></thead><tbody>'+
+        (rows.length?rows.map(function(x){return '<tr><td>'+escF(x.p.full_name||'—')+'</td><td>'+escF(x.p.email||'—')+
+        '</td><td>'+escF(x.s.payment_status||'—')+'</td><td>'+escF(x.s.start_date||'—')+
+        '</td><td>'+escF(x.s.end_date||'—')+'</td><td>'+escF(x.last)+'</td><td>'+x.tests+
+        '</td><td>'+x.passed+'</td><td>'+x.avg+'%</td></tr>';}).join(''):
+        '<tr><td colspan="9" style="text-align:center;color:#888;padding:24px">لا يوجد طلاب لهذا الكورس.</td></tr>')+
+        '</tbody></table></div>';
+    }catch(e){
+      console.error('[BSM ULTIMATE STUDENTS]',e);
+      el.innerHTML='<div class="ap-empty" style="color:#c0392b">❌ تعذر تحميل الطلاب: '+escF(e.message)+'</div>';
+    }
+  };
+
+  /* ============================================================
+     2) الاختبارات — الإدارة تعتمد على course -> material -> chapter.
+        ملكية الاختبار في course(section_id)، والشابتر في lecture_id.
+        لا نستخدم RPC الاشتراكات القديم هنا.
+  ============================================================ */
+  window.qzLoadMaterialsForAdmin = async function(){
+    var sel=document.getElementById('qz-material-select'); if(!sel)return;
+    try{
+      if(typeof window._finalMaterials==='function'){
+        var mats=await window._finalMaterials();
+        window._qz.adminMaterials=mats||[];
+        sel.innerHTML=mats&&mats.length?'<option value="">— اختر المادة —</option>'+mats.map(function(m){return '<option value="'+m.id+'">'+escF(m.title)+(m.course_title?' — '+escF(m.course_title):'')+'</option>';}).join(''):'<option value="">— لا توجد مواد داخل الكورس —</option>';
+      }
+    }catch(e){console.error('[BSM ULTIMATE QUIZ MATERIALS]',e);sel.innerHTML='<option value="">— تعذر تحميل المواد —</option>';}
+  };
+
+  window.qzOnMaterialChange = async function(){
+    var mid=Number((document.getElementById('qz-material-select')||{}).value||0);
+    var sel=document.getElementById('qz-chapter-select'),wrap=document.getElementById('qz-chapter-wrap');
+    var body=document.getElementById('qz-admin-body'),list=document.getElementById('qz-quiz-list-wrap');
+    if(body)body.style.display='none'; if(list)list.style.display='none';
+    if(!mid){if(wrap)wrap.style.display='none';return;}
+    try{
+      var rows=typeof window._finalChapters==='function'?await window._finalChapters(mid):[];
+      if(sel)sel.innerHTML='<option value="">— اختر الشابتر —</option>'+rows.map(function(c){return '<option value="'+c.id+'">'+escF(c.title)+'</option>';}).join('');
+      if(wrap)wrap.style.display=rows.length?'block':'none';
+    }catch(e){console.error('[BSM ULTIMATE QUIZ CHAPTERS]',e);if(sel)sel.innerHTML='<option value="">— تعذر تحميل الشباتر —</option>';}
+  };
+
+  window.qzOnChapterChange = async function(){
+    var cid=Number((document.getElementById('qz-chapter-select')||{}).value||0),mid=Number((document.getElementById('qz-material-select')||{}).value||0);
+    if(!cid||!mid)return;
+    window._qz.adminChapterId=cid;window._qz.adminMaterialId=mid;
+    var hidden=document.getElementById('qz-section-select');if(hidden)hidden.value=String(cid);
+    if(typeof window._finalLoadQuizByChapter==='function') await window._finalLoadQuizByChapter(cid,mid);
+  };
+
+  /* الطالب يرى اختبارات الشابتر من lecture_id. */
+  window.qzRenderSectionEntry = async function(sectionId,containerElOrId){
+    var el=typeof containerElOrId==='string'?document.getElementById(containerElOrId):containerElOrId;
+    if(!el||!sectionId)return;
+    try{
+      var db=await ready(); if(!db)return;
+      var r=await db.from('quizzes')
+        .select('id,title,description,time_limit,passing_score,lecture_id,section_id')
+        .eq('lecture_id',Number(sectionId))
+        .order('display_order',{ascending:true}).order('id',{ascending:true});
+      if(r.error){
+        // توافق مع قواعد لم تُضف إليها display_order بعد.
+        if(/display_order/i.test(r.error.message||'')){
+          r=await db.from('quizzes').select('id,title,description,time_limit,passing_score,lecture_id,section_id')
+            .eq('lecture_id',Number(sectionId)).order('id',{ascending:true});
+        }
+      }
+      if(r.error)throw r.error;
+      var rows=r.data||[];
+      if(!rows.length)return;
+      rows.forEach(function(q){
+        var card=document.createElement('div');card.className='qz-entry-card';
+        card.innerHTML='<div class="qz-entry-icon">📝</div><div class="qz-entry-info"><div class="qz-entry-title">'+escF(q.title)+'</div><div class="qz-entry-meta"><span>⏱️ '+(q.time_limit?(q.time_limit+' دقيقة'):'بدون وقت محدد')+'</span><span>✅ درجة النجاح: '+(q.passing_score==null?60:q.passing_score)+'%</span></div></div><button class="ap-btn ap-btn-primary" onclick="qzOpenStartScreen('+q.id+')">🚀 ابدأ الاختبار</button>';
+        el.appendChild(card);
+      });
+    }catch(e){console.warn('[BSM ULTIMATE QUIZ STUDENT]',e);}
+  };
+
+  /* ============================================================
+     2.5) إحصائيات الكورس — بدون admin_get_course_stats القديم.
+  ============================================================ */
+  window.cstLoadStats = async function(){
+    var el=document.getElementById('cst-stats-body'),sel=document.getElementById('cst-course-picker');
+    if(!el)return;
+    var sid=Number(sel&&sel.value||0);
+    if(!sid){el.innerHTML='<div class="ap-empty">اختر الكورس أولاً.</div>';return;}
+    try{
+      var db=await ready();if(!db)throw new Error('Supabase غير جاهز');
+      el.innerHTML='<div class="ap-loading"><div class="spinner"></div> جاري تحميل الإحصائيات...</div>';
+      var ids=[sid],queue=[sid];
+      for(var depth=0;depth<8&&queue.length;depth++){
+        var ch=await db.from('site_sections').select('id').in('parent_id',queue);
+        if(ch.error)throw ch.error;
+        var next=(ch.data||[]).map(function(x){return Number(x.id);}).filter(function(x){return ids.indexOf(x)<0;});
+        if(!next.length)break;ids=ids.concat(next);queue=next;
+      }
+      var sr=await db.from('subscriptions').select('id,user_id,payment_status,end_date').in('section_id',ids);
+      if(sr.error)throw sr.error;
+      var subs=sr.data||[],now=Date.now();
+      var totalStudents=new Set(subs.map(function(x){return x.user_id;}).filter(Boolean)).size;
+      var active=subs.filter(function(x){return x.payment_status==='active'&&(!x.end_date||new Date(x.end_date).getTime()>=now);}).length;
+      var pending=subs.filter(function(x){return x.payment_status==='pending';}).length;
+      var expired=subs.filter(function(x){return x.payment_status==='expired'||(x.payment_status==='active'&&x.end_date&&new Date(x.end_date).getTime()<now);}).length;
+      var qr=await db.from('quizzes').select('id,passing_score').in('section_id',ids);var quizzes=qr.error?[]:(qr.data||[]);
+      var qids=quizzes.map(function(q){return q.id;});
+      var rr=qids.length?await db.from('quiz_results').select('user_id,quiz_id,percentage').in('quiz_id',qids):{data:[],error:null};
+      var results=rr.error?[]:(rr.data||[]),passedStudents=new Set(),scores=[];
+      var qmap={};quizzes.forEach(function(q){qmap[q.id]=q;});
+      results.forEach(function(r){var pct=Number(r.percentage);if(!isNaN(pct)){scores.push(pct);if(pct>=Number((qmap[r.quiz_id]||{}).passing_score||60))passedStudents.add(r.user_id);}});
+      var cr=await db.from('section_content').select('id',{count:'exact',head:true}).in('section_id',ids);
+      var cards=[
+        ['👥',totalStudents,'إجمالي الطلاب'],['🟢',active,'الطلاب النشطون'],['⏳',pending,'طلبات معلقة'],['❌',expired,'الاشتراكات المنتهية'],
+        ['📝',quizzes.length,'عدد الاختبارات'],['🎯',results.length,'محاولات الاختبارات'],['🏆',passedStudents.size,'الناجحون'],
+        ['📊',scores.length?Math.round(scores.reduce(function(a,b){return a+b;},0)/scores.length):0,'% متوسط الدرجات'],['📚',cr.error?'—':(cr.count||0),'عناصر المحتوى']
+      ];
+      el.innerHTML='<div class="ap-stats-grid">'+cards.map(function(c){return '<div class="ap-stat-card"><div class="ap-stat-icon">'+c[0]+'</div><div class="ap-stat-num">'+escF(c[1])+(c[2].indexOf('%')>=0?'%':'')+'</div><div class="ap-stat-lbl">'+escF(c[2].replace(' %','').replace('% متوسط الدرجات','متوسط الدرجات'))+'</div></div>';}).join('')+'</div>';
+    }catch(e){console.error('[BSM ULTIMATE COURSE STATS]',e);el.innerHTML='<div class="ap-empty" style="color:#e74c3c">❌ تعذر تحميل الإحصائيات: '+escF(e.message)+'</div>';}
+  };
+
+  /* ============================================================
+     3) الرسائل — لا نترك 404 ظاهر. لو الجدول موجود نقرأه، ولو غير
+        موجود نعرض تعليمات SQL مرة واحدة فقط بدل رسالة Supabase الخام.
+  ============================================================ */
+  window.apLoadMessages = async function(){
+    var el=document.getElementById('ap-messages-body'); if(!el)return;
+    el.innerHTML='<div class="ap-loading"><div class="spinner"></div> جاري تحميل الرسائل...</div>';
+    try{
+      var db=await ready(); if(!db)throw new Error('Supabase غير جاهز');
+      var r=await db.from('contact_messages').select('*').order('created_at',{ascending:false});
+      if(r.error){
+        if(/contact_messages|schema cache|relation .* does not exist|not found/i.test(r.error.message||'')){
+          el.innerHTML='<div class="ap-empty" style="color:#b9770e">⚠️ جدول رسائل المستخدمين غير موجود في قاعدة البيانات بعد.<br><small>افتح Console ثم شغّل <b>printMessagesFixSQL()</b> مرة واحدة، وبعدها اضغط تحديث.</small></div>';
+          return;
+        }
+        throw r.error;
+      }
+      var data=r.data||[];
+      if(!data.length){el.innerHTML='<div class="ap-empty"><div class="ap-empty-icon">📭</div>لا توجد رسائل بعد</div>';return;}
+      el.innerHTML=data.map(function(m){
+        return '<div class="ap-msg-item"><div class="ap-msg-meta">'+
+          '<span>👤 '+escF(m.name||m.full_name||'مجهول')+'</span>'+'<span>📧 '+escF(m.email||'—')+'</span>'+
+          '<span>🕐 '+escF(typeof _apDate==='function'?_apDate(m.created_at):m.created_at||'—')+'</span>'+ (m.subject?'<span>📌 '+escF(m.subject)+'</span>':'')+
+          '</div><div class="ap-msg-text">'+escF(m.message||m.body||'—')+'</div><div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;">'+
+          '<button class="ap-btn ap-btn-danger" onclick="apDeleteMessage(' + JSON.stringify(String(m.id)) + ')">🗑️ حذف</button></div></div>';
+      }).join('');
+    }catch(e){console.error('[BSM ULTIMATE MESSAGES]',e);el.innerHTML='<div class="ap-empty" style="color:#c0392b">❌ تعذر تحميل الرسائل: '+escF(e.message)+'</div>';}
+  };
+
+  window.apDeleteMessage = async function(id){
+    if(!confirm('هل تريد حذف هذه الرسالة؟'))return;
+    try{
+      var db=await ready(); if(!db)throw new Error('Supabase غير جاهز');
+      var r=await db.from('contact_messages').delete().eq('id',id);
+      if(r.error)throw r.error;
+      await window.apLoadMessages();
+    }catch(e){alert('خطأ في حذف الرسالة: '+e.message);}
+  };
+
+  window.printAllFinalFixSQL = function(){
+    var sql=`
+-- ================================================================
+-- BSM FINAL DATABASE FIX — 2026-08-21
+-- شغّل هذا الجزء مرة واحدة في Supabase SQL Editor.
+-- لا يحذف أي بيانات.
+-- ================================================================
+
+-- 1) الاختبارات: ربط الاختبار بالكورس + الشابتر
+ALTER TABLE public.quizzes ADD COLUMN IF NOT EXISTS lecture_id BIGINT REFERENCES public.site_sections(id) ON DELETE SET NULL;
+ALTER TABLE public.quizzes ADD COLUMN IF NOT EXISTS display_order INT NOT NULL DEFAULT 0;
+CREATE INDEX IF NOT EXISTS idx_quizzes_lecture_order ON public.quizzes(lecture_id, display_order, id);
+
+-- 2) ترتيب وأسئلة الاختبارات (توافق مع النسخ الحالية)
+ALTER TABLE public.quiz_questions ADD COLUMN IF NOT EXISTS display_order INT NOT NULL DEFAULT 0;
+ALTER TABLE public.quiz_questions ADD COLUMN IF NOT EXISTS question_data JSONB NOT NULL DEFAULT '{}'::jsonb;
+CREATE INDEX IF NOT EXISTS idx_quiz_questions_order ON public.quiz_questions(quiz_id, display_order, id);
+
+-- 3) رسائل المستخدمين: إنشاء الجدول لو كان ناقصاً
+CREATE TABLE IF NOT EXISTS public.contact_messages (
+  id BIGSERIAL PRIMARY KEY,
+  user_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+  name TEXT,
+  full_name TEXT,
+  email TEXT,
+  subject TEXT,
+  message TEXT,
+  body TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+ALTER TABLE public.contact_messages ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES auth.users(id) ON DELETE SET NULL;
+ALTER TABLE public.contact_messages ADD COLUMN IF NOT EXISTS name TEXT;
+ALTER TABLE public.contact_messages ADD COLUMN IF NOT EXISTS full_name TEXT;
+ALTER TABLE public.contact_messages ADD COLUMN IF NOT EXISTS email TEXT;
+ALTER TABLE public.contact_messages ADD COLUMN IF NOT EXISTS subject TEXT;
+ALTER TABLE public.contact_messages ADD COLUMN IF NOT EXISTS message TEXT;
+ALTER TABLE public.contact_messages ADD COLUMN IF NOT EXISTS body TEXT;
+ALTER TABLE public.contact_messages ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE public.contact_messages ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS messages_insert_auth ON public.contact_messages;
+DROP POLICY IF EXISTS messages_admin_all ON public.contact_messages;
+CREATE POLICY messages_insert_auth ON public.contact_messages FOR INSERT WITH CHECK (auth.uid() IS NOT NULL);
+CREATE POLICY messages_admin_all ON public.contact_messages FOR ALL USING (is_admin()) WITH CHECK (is_admin());
+CREATE INDEX IF NOT EXISTS idx_contact_messages_created_at ON public.contact_messages(created_at DESC);
+
+-- 4) إعادة تحميل schema cache بعد التعديلات
+NOTIFY pgrst, 'reload schema';
+`;
+    console.log(sql);if(navigator.clipboard)navigator.clipboard.writeText(sql).catch(function(){});return sql;
+  };
+
+  window.printMessagesFixSQL = function(){
+    var sql=`
+-- ================================================================
+-- BSM FINAL FIX — contact_messages
+-- شغّل هذا الجزء مرة واحدة في Supabase SQL Editor.
+-- ================================================================
+CREATE TABLE IF NOT EXISTS public.contact_messages (
+  id BIGSERIAL PRIMARY KEY,
+  user_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+  name TEXT,
+  full_name TEXT,
+  email TEXT,
+  subject TEXT,
+  message TEXT,
+  body TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE public.contact_messages ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES auth.users(id) ON DELETE SET NULL;
+ALTER TABLE public.contact_messages ADD COLUMN IF NOT EXISTS name TEXT;
+ALTER TABLE public.contact_messages ADD COLUMN IF NOT EXISTS full_name TEXT;
+ALTER TABLE public.contact_messages ADD COLUMN IF NOT EXISTS email TEXT;
+ALTER TABLE public.contact_messages ADD COLUMN IF NOT EXISTS subject TEXT;
+ALTER TABLE public.contact_messages ADD COLUMN IF NOT EXISTS message TEXT;
+ALTER TABLE public.contact_messages ADD COLUMN IF NOT EXISTS body TEXT;
+ALTER TABLE public.contact_messages ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+ALTER TABLE public.contact_messages ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS messages_insert_auth ON public.contact_messages;
+DROP POLICY IF EXISTS messages_admin_all ON public.contact_messages;
+CREATE POLICY messages_insert_auth ON public.contact_messages
+  FOR INSERT WITH CHECK (auth.uid() IS NOT NULL);
+CREATE POLICY messages_admin_all ON public.contact_messages
+  FOR ALL USING (is_admin()) WITH CHECK (is_admin());
+
+CREATE INDEX IF NOT EXISTS idx_contact_messages_created_at ON public.contact_messages(created_at DESC);
+NOTIFY pgrst, 'reload schema';
+`;
+    console.log(sql); if(navigator.clipboard)navigator.clipboard.writeText(sql).catch(function(){}); return sql;
+  };
+
+  /* ============================================================
+     4) أدمن الكورسات — بعد اختيار الشعبة، اعرض الكورسات/الأقسام
+        الموجودة داخلها أيضاً، مع إبقاء صلاحية التعيين على الشعبة نفسها.
+  ============================================================ */
+  async function renderBranchChildren(){
+    var el=document.getElementById('ba-list-body');
+    var branchId=Number(window._baSelectedBranchId||0); if(!el||!branchId)return;
+    try{
+      var db=await ready(); if(!db)return;
+      var r=await db.from('site_sections').select('id,title,subtitle,type,parent_id,display_order').eq('parent_id',branchId).order('display_order').order('id');
+      if(r.error)throw r.error;
+      var rows=r.data||[];
+      var box=document.getElementById('ba-courses-inside-branch');
+      if(box)box.remove();
+      box=document.createElement('div');box.id='ba-courses-inside-branch';box.style.cssText='margin-top:14px;padding:12px;border:1px solid #e2edf5;border-radius:12px;background:#f9fcff;';
+      if(!rows.length){box.innerHTML='<div style="font-size:.8rem;color:#888">📚 لا توجد كورسات/أقسام فرعية داخل هذه الشعبة حالياً.</div>';}else{
+        box.innerHTML='<div style="font-weight:800;margin-bottom:8px">📚 الكورسات داخل الشعبة ('+rows.length+')</div><div style="display:flex;gap:7px;flex-wrap:wrap">'+rows.map(function(x){return '<span style="display:inline-flex;align-items:center;gap:5px;padding:7px 10px;border:1px solid #d9e8f2;border-radius:9px;background:#fff;font-size:.78rem">📘 '+escF(x.title)+(x.subtitle?' — '+escF(x.subtitle):'')+'</span>';}).join('')+'</div>';
+      }
+      el.appendChild(box);
+    }catch(e){console.warn('[BSM ULTIMATE BRANCH CHILDREN]',e);}
+  }
+  var oldBaLoad=window.baLoadBranchAdmins;
+  if(typeof oldBaLoad==='function'){
+    window.baLoadBranchAdmins=async function(){await oldBaLoad.apply(this,arguments);await renderBranchChildren();};
+  }
+
+  /* ============================================================
+     5) منع أي استدعاء قديم من إظهار last_activity_at مرة أخرى.
+        الوظائف النهائية أعلاه هي المصدر الوحيد للطلاب.
+  ============================================================ */
+  console.log('%c[BSM ULTIMATE FIX] students + quizzes + messages + course admins ready','color:#17a589;font-weight:800');
+})();
+</script>
+
 </body>
 </html>
