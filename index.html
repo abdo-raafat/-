@@ -33,9 +33,17 @@
   } catch (e) { /* لا نمنع الصفحة من الظهور في حال أي خطأ غير متوقع */ }
 })();
 </script>
+<!-- CACHE UPDATE GUARD: 2026-08-21-v3 -->
+<script>
+(function () {
+  try {
+    window.__APP_BUILD_VERSION = '2026-08-21-course-admin-stats-v2-sw-fix';
+  } catch (e) {}
+})();
+</script>
 <meta name="google-site-verification" content="my6dMoAsuc_97Jks_OQF75GK_f1PGWqz2Kng2obkIgE" />
 <meta charset="UTF-8">
-<meta name="app-build" content="2026-08-21-course-admin-stats-v1">
+<meta name="app-build" content="2026-08-21-course-admin-stats-v2-sw-fix">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <!-- ==================== PWA: manifest + platform metadata ==================== -->
 <link rel="manifest" href="./manifest.json">
@@ -17148,13 +17156,24 @@ window.diagnose = async function() {
 (function() {
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', function() {
-      navigator.serviceWorker.register('./service-worker.js', { scope: './' })
+      navigator.serviceWorker.register('./service-worker.js?v=20260821-v3', { scope: './' })
         .then(function(reg) {
-          console.log('[SW] ✅ Service Worker مسجَّل — التخزين المؤقت مفعَّل', reg.scope);
+          console.log('[SW] ✅ Service Worker مسجَّل/محدّث', reg.scope);
+          if (typeof reg.update === 'function') return reg.update().catch(function(){});
+        })
+        .then(function() {
+          if (window.caches && typeof window.caches.keys === 'function') {
+            return caches.keys().then(function(keys) {
+              return Promise.all(keys.map(function(k) {
+                return (/^health-platform-v[0-2]$/).test(k)
+                  ? caches.delete(k)
+                  : Promise.resolve(false);
+              }));
+            });
+          }
         })
         .catch(function(err) {
-          // SW غير ضروري — الموقع يعمل بدونه
-          console.log('[SW] ℹ️ تعذّر تسجيل Service Worker:', err.message);
+          console.log('[SW] ℹ️ تعذّر تحديث Service Worker:', err && err.message ? err.message : err);
         });
     });
   }
