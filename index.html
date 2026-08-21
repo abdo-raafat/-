@@ -22598,5 +22598,109 @@ window.qzShowPastReview = qzShowPastReview;
 })();
 </script>
 
+
+<script>
+(function(){
+'use strict';
+if(window.__BSM_FINAL_FIX_V3)return; window.__BSM_FINAL_FIX_V3=true;
+
+function db(){return window.supabase;}
+function esc(v){return typeof _apEsc==='function'?_apEsc(v==null?'':String(v)):String(v==null?'':v).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+function courseId(){return Number(window._branchAdminCourseId||window._activeSectionId||0)||null;}
+function isBranch(){return !!(window._isBranchAdmin&&!window._isSuperAdmin);}
+
+async function courseRoots(){
+  var q=db().from('site_sections').select('id,title,icon,type,parent_id,display_order,requires_subscription').eq('type','course').order('display_order').order('id');
+  if(isBranch()){var cid=courseId(); if(!cid)return []; q=q.eq('id',cid);}
+  var r=await q; if(r.error)throw r.error; return r.data||[];
+}
+async function materialsForCourses(){
+  var roots=await courseRoots(); if(!roots.length)return [];
+  var ids=roots.map(function(r){return r.id;});
+  var r=await db().from('site_sections').select('id,title,subtitle,parent_id,display_order,type,requires_subscription').in('parent_id',ids).order('display_order').order('id');
+  if(r.error)throw r.error;
+  var rootMap={}; roots.forEach(function(x){rootMap[x.id]=x;});
+  return (r.data||[]).map(function(m){m.course_id=m.parent_id;m.course_title=(rootMap[m.parent_id]||{}).title||'';return m;});
+}
+async function chapters(materialId){
+  var r=await db().from('site_sections').select('id,title,subtitle,parent_id,display_order,type').eq('parent_id',Number(materialId)).order('display_order').order('id');
+  if(r.error)throw r.error; return r.data||[];
+}
+
+// ---------- CONTENT ADMIN: المادة = ابن مباشر للكورس، لا تعرض الكورس نفسه ----------
+window.adminLoadSections=async function(){
+  if(!db())return;
+  try{
+    var materials=await materialsForCourses();
+    window._adminSections=materials;
+    var add=document.getElementById('admin-section-select'), mat=document.getElementById('admin-material-select'), list=document.getElementById('admin-list-section');
+    var opts=materials.map(function(m){return '<option value="'+m.id+'">'+esc(m.title)+(m.subtitle?' — '+esc(m.subtitle):'')+'</option>';}).join('');
+    if(add)add.innerHTML='<option value="">— اختر الشابتر —</option>'+opts;
+    if(mat)mat.innerHTML='<option value="">— اختر المادة —</option>'+opts;
+    if(list)list.innerHTML='<option value="">اختر المادة لعرض محتواها</option>'+opts;
+    var cw=document.getElementById('admin-chapter-wrap'); if(cw)cw.style.display='none';
+    var cp=document.getElementById('admin-section-path'); if(cp)cp.textContent='';
+  }catch(e){console.error('[FINAL CONTENT FIX]',e);var m=document.getElementById('admin-msg');if(m)m.textContent='❌ تعذر تحميل المواد: '+e.message;}
+};
+window.adminOnMaterialChange=async function(){
+  var mat=document.getElementById('admin-material-select'), chap=document.getElementById('admin-chapter-select'), wrap=document.getElementById('admin-chapter-wrap'), final=document.getElementById('admin-section-select');
+  var id=Number(mat&&mat.value||0); if(!id){if(wrap)wrap.style.display='none';if(final)final.value='';return;}
+  try{var rows=await chapters(id); if(rows.length){if(chap)chap.innerHTML='<option value="">— اختر الشابتر —</option>'+rows.map(function(c){return '<option value="'+c.id+'">'+esc(c.title)+'</option>';}).join('');if(wrap)wrap.style.display='block';if(final)final.value='';}else{if(wrap)wrap.style.display='none';if(final)final.value=String(id);} if(typeof adminLoadSectionPath==='function')adminLoadSectionPath();}catch(e){console.error('[FINAL CONTENT CHAPTER FIX]',e);}
+};
+window.adminOnChapterChange=function(){var c=document.getElementById('admin-chapter-select'),f=document.getElementById('admin-section-select');if(f)f.value=c&&c.value?c.value:'';if(typeof adminLoadSectionPath==='function')adminLoadSectionPath();};
+
+// ---------- QUIZZES: مادة -> شابتر فقط ----------
+window.qzLoadMaterialsForAdmin=async function(){
+  var sel=document.getElementById('qz-material-select'); if(!sel||!db())return;
+  try{var mats=await materialsForCourses();window._qz.adminMaterials=mats;sel.innerHTML=mats.length?'<option value="">— اختر المادة —</option>'+mats.map(function(m){return '<option value="'+m.id+'">'+esc(m.title)+(m.course_title?' — '+esc(m.course_title):'')+'</option>';}).join(''):'<option value="">— لا توجد مواد داخل الكورس —</option>';}catch(e){console.error('[FINAL QUIZ MATERIAL FIX]',e);sel.innerHTML='<option value="">— تعذر تحميل المواد —</option>';}
+};
+window.qzOnMaterialChange=async function(){
+  var materialId=Number((document.getElementById('qz-material-select')||{}).value||0), wrap=document.getElementById('qz-chapter-wrap'), sel=document.getElementById('qz-chapter-select');
+  var body=document.getElementById('qz-admin-body'), list=document.getElementById('qz-quiz-list-wrap'); if(body)body.style.display='none';if(list)list.style.display='none';
+  if(!materialId){if(wrap)wrap.style.display='none';return;}
+  try{var rows=await chapters(materialId);sel.innerHTML='<option value="">— اختر الشابتر —</option>'+rows.map(function(c){return '<option value="'+c.id+'">'+esc(c.title)+'</option>';}).join('');wrap.style.display='block';if(!rows.length)sel.innerHTML='<option value="">— لا توجد شباتر لهذه المادة —</option>';}catch(e){console.error('[FINAL QUIZ CHAPTER FIX]',e);}
+};
+window.qzOnChapterChange=async function(){
+  var chapterId=Number((document.getElementById('qz-chapter-select')||{}).value||0), materialId=Number((document.getElementById('qz-material-select')||{}).value||0); if(!chapterId)return;
+  var hidden=document.getElementById('qz-section-select');if(hidden)hidden.value=String(chapterId);window._qz.adminChapterId=chapterId;window._qz.adminMaterialId=materialId;
+  await qzLoadByChapter(chapterId,materialId);
+};
+
+// Hide lecture selector: quiz context is only material + chapter.
+function hideQuizLecture(){var x=document.getElementById('qz-lecture-select');if(x&&x.parentElement)x.parentElement.style.display='none';}
+setTimeout(hideQuizLecture,0);
+
+// ---------- SUBSCRIPTIONS: use secure RPC, not direct table/profile reads ----------
+async function loadAdminRequests(targetId, filter){
+  var r=await db().rpc('admin_get_subscription_requests',{p_section_id:targetId||null,p_status:filter||'pending'});if(r.error)throw r.error;return r.data||[];
+}
+function renderSubs(rows,el,showActions){
+  if(!rows.length){el.innerHTML='<div class="ap-empty"><div class="ap-empty-icon">🎉</div>لا توجد طلبات حالياً</div>';return;}
+  el.innerHTML='<div class="ap-table-wrap"><table class="ap-table"><thead><tr><th>الاسم</th><th>البريد</th><th>الكورس</th><th>الحالة</th><th>النوع</th><th>التاريخ</th><th>إجراء</th></tr></thead><tbody>'+rows.map(function(r){
+    var st=r.payment_status==='pending'?'<span class="ap-badge pending">⏳ معلق</span>':r.payment_status==='active'?'<span class="ap-badge active">✅ نشط</span>':'<span class="ap-badge cancelled">🚫 '+esc(r.payment_status||'ملغي')+'</span>';
+    var act=showActions&&r.payment_status==='pending'?'<button class="ap-btn ap-btn-success" onclick="apApproveReq(\''+r.id+'\',\''+r.user_id+'\')">✅ قبول</button> <button class="ap-btn ap-btn-danger" onclick="apRejectReq(\''+r.id+'\',\''+r.user_id+'\')">❌ رفض</button>':'—';
+    return '<tr><td>'+esc(r.full_name||'—')+'</td><td class="ap-email-cell">'+esc(r.email||'—')+'</td><td>'+esc(r.course_title||'—')+'</td><td>'+st+'</td><td>'+esc(r.subscription_type==='yearly'?'سنوي':'شهري')+'</td><td>'+esc(typeof _apDate==='function'?_apDate(r.requested_at||r.created_at):r.created_at||'—')+'</td><td style="white-space:nowrap">'+act+'</td></tr>';
+  }).join('')+'</tbody></table></div>';
+}
+window.apLoadRequests=async function(){var el=document.getElementById('ap-requests-body');if(!el||!db())return;el.innerHTML='<div class="ap-loading"><div class="spinner"></div> جاري التحميل...</div>';try{var rows=await loadAdminRequests(isBranch()?courseId():null,'pending');renderSubs(rows,el,true);}catch(e){console.error('[FINAL SUB REQUEST FIX]',e);el.innerHTML='<div class="ap-empty" style="color:#e74c3c">❌ تعذر تحميل طلبات الاشتراك: '+esc(e.message)+'</div>';}};
+window.apLoadSubscriptions=async function(){var el=document.getElementById('ap-subscriptions-body');if(!el||!db())return;var filter=(document.getElementById('ap-sub-filter')||{}).value||'';el.innerHTML='<div class="ap-loading"><div class="spinner"></div> جاري التحميل...</div>';try{var rows=await loadAdminRequests(isBranch()?courseId():null,filter||null);renderSubs(rows,el,filter==='pending'||!filter);}catch(e){console.error('[FINAL SUB FIX]',e);el.innerHTML='<div class="ap-empty" style="color:#e74c3c">❌ تعذر تحميل الاشتراكات: '+esc(e.message)+'</div>';}};
+window.apApproveReq=async function(id,userId){try{var r=await db().rpc('admin_decide_subscription',{p_subscription_id:id,p_decision:'approve',p_reason:null});if(r.error)throw r.error;_showToast&&_showToast('✅ تم قبول الاشتراك وتفعيله','success');window._subStatusCache={};await apLoadRequests();if(typeof apLoadDashboard==='function')await apLoadDashboard();}catch(e){console.error(e);_showToast&&_showToast('❌ '+e.message,'error');}};
+window.apRejectReq=async function(id,userId){var reason=prompt('سبب الرفض (اختياري):')||'';try{var r=await db().rpc('admin_decide_subscription',{p_subscription_id:id,p_decision:'reject',p_reason:reason});if(r.error)throw r.error;_showToast&&_showToast('🚫 تم رفض الطلب','success');window._subStatusCache={};await apLoadRequests();}catch(e){console.error(e);_showToast&&_showToast('❌ '+e.message,'error');}};
+window.apCancelSub=window.apRejectReq;
+
+// ---------- STATS: one secure RPC for the actual course tree ----------
+async function courseStatsRPC(sid){var r=await db().rpc('admin_get_course_stats',{p_section_id:Number(sid)});if(r.error)throw r.error;return r.data||{};}
+window.cstLoadStats=async function(){var el=document.getElementById('cst-stats-body'),sel=document.getElementById('cst-course-picker');if(!el||!db())return;var sid=Number(sel&&sel.value||0);if(!sid){el.innerHTML='<div class="ap-empty">اختر الكورس أولاً.</div>';return;}try{el.innerHTML='<div class="ap-loading"><div class="spinner"></div> جاري تحميل الإحصائيات...</div>';var s=await courseStatsRPC(sid);var cards=[['👥',s.total_students,'إجمالي الطلاب'],['🟢',s.active_students,'الطلاب النشطون'],['⏳',s.pending_students,'طلبات معلقة'],['❌',s.expired_students,'الاشتراكات المنتهية'],['📝',s.quiz_count,'عدد الاختبارات'],['🎯',s.result_count,'محاولات الاختبارات'],['🏆',s.passed_students,'الناجحون'],['📊',(s.average_score||0)+'%','متوسط الدرجات'],['✅',(s.success_rate||0)+'%','نسبة النجاح'],['📚',s.content_count,'عناصر المحتوى']];el.innerHTML='<div class="ap-stats-grid">'+cards.map(function(c){return '<div class="ap-stat-card"><div class="ap-stat-icon">'+c[0]+'</div><div class="ap-stat-num">'+esc(c[1]==null?0:c[1])+'</div><div class="ap-stat-lbl">'+esc(c[2])+'</div></div>';}).join('')+'</div>';}catch(e){console.error('[FINAL STATS FIX]',e);el.innerHTML='<div class="ap-empty" style="color:#e74c3c">❌ تعذر تحميل الإحصائيات: '+esc(e.message)+'</div>';}};
+window.csLoadStudents=async function(){var el=document.getElementById('cs-students-body'),sel=document.getElementById('cs-course-picker');if(!el||!db())return;var sid=Number(sel&&sel.value||0);if(!sid){el.innerHTML='<div class="ap-empty">اختر الكورس أولاً.</div>';return;}try{var r=await db().rpc('admin_get_course_students',{p_section_id:sid});if(r.error)throw r.error;var rows=r.data||[];if(!rows.length){el.innerHTML='<div class="ap-empty">لا يوجد طلاب لهذا الكورس.</div>';return;}el.innerHTML='<div class="ap-table-wrap"><table class="ap-table"><thead><tr><th>الاسم</th><th>البريد</th><th>الاشتراك</th><th>البداية</th><th>النهاية</th><th>آخر نشاط</th></tr></thead><tbody>'+rows.map(function(x){return '<tr><td>'+esc(x.full_name||'—')+'</td><td>'+esc(x.email||'—')+'</td><td>'+esc(x.payment_status||'—')+'</td><td>'+esc(x.start_date||'—')+'</td><td>'+esc(x.end_date||'—')+'</td><td>'+esc(x.last_visited||'—')+'</td></tr>';}).join('')+'</tbody></table></div>';}catch(e){el.innerHTML='<div class="ap-empty" style="color:#e74c3c">❌ '+esc(e.message)+'</div>';}};
+
+// Fix admin dashboard for branch admin: use same RPC-backed stats.
+window._apLoadBranchDashboard=async function(){var cid=courseId(),act=document.getElementById('ap-recent-activity');if(!cid){return;}try{var s=await courseStatsRPC(cid);_apSetStat('ap-stat-users',s.total_students||0);_apSetStat('ap-stat-active',s.active_students||0);_apSetStat('ap-stat-expired',s.expired_students||0);_apSetStat('ap-stat-newreq',s.pending_students||0);_apSetStat('ap-stat-pendingpay',s.pending_receipts||0);_apSetStat('ap-stat-content',s.content_count||0);_apSetStat('ap-stat-msgs',s.message_count||0);if(act)act.innerHTML='<div style="font-size:.82rem;color:#667;line-height:1.8">👥 الطلاب: '+(s.total_students||0)+' — 🟢 النشطون: '+(s.active_students||0)+' — ⏳ الطلبات المعلقة: '+(s.pending_students||0)+' — 📚 المحتوى: '+(s.content_count||0)+'</div>';}catch(e){if(act)act.innerHTML='<div class="ap-empty" style="color:#e74c3c">❌ '+esc(e.message)+'</div>';}};
+
+// ---------- Hide misleading legacy labels ----------
+var labels=document.querySelectorAll('#admin-panel .ap-label');labels.forEach(function(x){if((x.textContent||'').indexOf('اختر المادة')>=0)x.textContent='📁 اختر المادة';});
+
+})();
+
+</script>
 </body>
 </html>
