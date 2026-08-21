@@ -22786,5 +22786,478 @@ var labels=document.querySelectorAll('#admin-panel .ap-label');labels.forEach(fu
   document.addEventListener('DOMContentLoaded',finalHideLecture);setTimeout(finalHideLecture,50);setTimeout(finalHideLecture,500);
 })();
 </script>
+
+<!-- ============================================================
+     BSM DEBUG FIX PACK v2 — 2026-08-21
+     إصلاحات الواجهة/الاستعلامات بدون تغيير بيانات Supabase.
+     هذه النسخة للاختبار على الكمبيوتر فقط.
+============================================================ -->
+<script>
+(function(){
+  'use strict';
+  if (window.__BSM_DEBUG_FIX_PACK_V2) return;
+  window.__BSM_DEBUG_FIX_PACK_V2 = true;
+
+  function DB(){ return window.supabase; }
+  function esc2(v){
+    if (typeof window._apEsc === 'function') return window._apEsc(v == null ? '' : String(v));
+    return String(v == null ? '' : v).replace(/[&<>"']/g,function(c){
+      return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+    });
+  }
+  async function waitDb2(){
+    try { if (typeof _waitForSupabase === 'function') await _waitForSupabase(); } catch(e){}
+    return DB();
+  }
+  function courseId2(){
+    return Number(
+      window._branchAdminCourseId ||
+      window._activeSectionId ||
+      window._branchAdminSectionId ||
+      0
+    ) || 0;
+  }
+
+  /* ------------------------------------------------------------
+     1) CHAT: الشات داخل الكورس + راسل أدمن الشعبة
+     لا نعتمد على getChatEligibility لإظهار الأزرار.
+     صلاحية الدخول الفعلية تظل داخل RPC/RLS عند فتح الشات.
+  ------------------------------------------------------------ */
+  function renderCourseChatButtons(sec){
+    var box = document.getElementById('dynamic-section-chat-entry');
+    if (!box || !sec || !sec.id) return;
+
+    var title = esc2(sec.title || 'الكورس');
+    var id = Number(sec.id);
+    box.innerHTML =
+      '<div class="bsm-course-chat-actions" style="display:flex;gap:8px;flex-wrap:wrap;margin:12px 0;">' +
+        '<button class="chat-entry-btn" type="button" onclick="openSectionChat(' + id + ', \'' +
+          title.replace(/'/g,"\\'") + '\')">💬 دخول محادثة الكورس</button>' +
+      '</div>';
+
+    /* renderMessageAdminEntry يضيف زر "راسل أدمن الكورس/الشعبة" إذا كان
+       الـRPC يرى أدمن فعلياً، بدون كشف أي بيانات حساسة للطالب. */
+    if (typeof window._renderMessageAdminEntry === 'function') {
+      try {
+        window._renderMessageAdminEntry({id:id,title:sec.title || 'الكورس'}, box);
+      } catch(e) {
+        console.warn('[DEBUG FIX CHAT ADMIN]', e);
+      }
+    }
+  }
+
+  if (typeof window._renderDynamicSectionPage === 'function') {
+    var oldRenderDynamic = window._renderDynamicSectionPage;
+    window._renderDynamicSectionPage = async function(sec){
+      var result = await oldRenderDynamic.apply(this, arguments);
+      try { renderCourseChatButtons(sec); } catch(e){}
+      return result;
+    };
+  }
+
+  /* ------------------------------------------------------------
+     2) SUBSCRIPTIONS: قراءة مباشرة من subscriptions بدل RPC
+        غير متوفر/قديم. النطاق = الكورس الحالي + أبنائه.
+  ------------------------------------------------------------ */
+  async function subtreeIds(rootId){
+    var db = await waitDb2();
+    if (!db || !rootId) return [];
+    var all = [Number(rootId)], queue = [Number(rootId)];
+    for (var depth=0; depth<8 && queue.length; depth++){
+      var r = await db.from('site_sections').select('id').in('parent_id', queue);
+      if (r.error) throw r.error;
+      var next = (r.data || []).map(function(x){return Number(x.id);})
+        .filter(function(id){return all.indexOf(id) === -1;});
+      if (!next.length) break;
+      all = all.concat(next);
+      queue = next;
+    }
+    return all;
+  }
+
+  async function loadSubsDirect(filter){
+    var db = await waitDb2();
+    if (!db) throw new Error('Supabase غير جاهز');
+    var cid = courseId2();
+    if (!cid) return [];
+
+    var ids = await subtreeIds(cid);
+    if (!ids.length) return [];
+
+    var q = db.from('subscriptions')
+      .select('id,user_id,section_id,payment_status,subscription_type,start_date,end_date,receipt_image,created_at,requested_at')
+      .in('section_id', ids)
+      .order('requested_at', {ascending:false, nullsFirst:false})
+      .order('created_at', {ascending:false});
+
+    if (filter) q = q.eq('payment_status', filter);
+    var r = await q;
+    if (r.error) throw r.error;
+    return r.data || [];
+  }
+
+  async function renderDirectSubs(el, rows, showActions){
+    if (!rows.length){
+      el.innerHTML = '<div class="ap-empty"><div class="ap-empty-icon">📭</div>لا توجد اشتراكات/طلبات في هذا الكورس حالياً</div>';
+      return;
+    }
+    var db = await waitDb2();
+    var uids = Array.from(new Set(rows.map(function(x){return x.user_id;}).filter(Boolean)));
+    var profMap = {};
+    if (db && uids.length){
+      var pr = await db.from('profiles').select('id,full_name,email').in('id',uids);
+      if (!pr.error) (pr.data || []).forEach(function(p){ profMap[p.id]=p; });
+    }
+
+    function status(s){
+      if (s==='pending') return '<span class="ap-badge pending">⏳ معلق</span>';
+      if (s==='active') return '<span class="ap-badge active">✅ نشط</span>';
+      if (s==='expired') return '<span class="ap-badge expired">❌ منتهي</span>';
+      return '<span class="ap-badge cancelled">🚫 '+esc2(s||'غير معروف')+'</span>';
+    }
+
+    el.innerHTML =
+      '<div class="ap-table-wrap"><table class="ap-table"><thead><tr>' +
+      '<th>الاسم</th><th>البريد</th><th>الحالة</th><th>النوع</th><th>التاريخ</th><th>إجراء</th>' +
+      '</tr></thead><tbody>' +
+      rows.map(function(r){
+        var p=profMap[r.user_id]||{};
+        var actions='';
+        if (showActions && r.payment_status==='pending'){
+          actions += '<button class="ap-btn ap-btn-success" style="margin-left:4px" onclick="apApproveReq(\''+
+            esc2(r.id).replace(/'/g,"\\'")+'\',\''+esc2(r.user_id).replace(/'/g,"\\'")+'\')">✅ قبول</button>';
+          actions += '<button class="ap-btn ap-btn-danger" onclick="apRejectReq(\''+
+            esc2(r.id).replace(/'/g,"\\'")+'\',\''+esc2(r.user_id).replace(/'/g,"\\'")+'\')">❌ رفض</button>';
+        } else if (showActions && r.payment_status!=='cancelled'){
+          actions='<button class="ap-btn ap-btn-danger" onclick="apCancelSub(\''+
+            esc2(r.id).replace(/'/g,"\\'")+'\',\''+esc2(r.user_id).replace(/'/g,"\\'")+'\')">🚫 إلغاء</button>';
+        } else actions='—';
+        return '<tr><td>'+esc2(p.full_name||'—')+'</td><td class="ap-email-cell">'+esc2(p.email||'—')+
+          '</td><td>'+status(r.payment_status)+'</td><td>'+esc2(r.subscription_type==='yearly'?'سنوي':'شهري')+
+          '</td><td>'+esc2((typeof _apDate==='function'?_apDate(r.requested_at||r.created_at):r.requested_at||r.created_at||'—'))+
+          '</td><td style="white-space:nowrap">'+actions+'</td></tr>';
+      }).join('') +
+      '</tbody></table></div>';
+  }
+
+  window.apLoadRequests = async function(){
+    var el=document.getElementById('ap-requests-body');
+    if(!el) return;
+    el.innerHTML='<div class="ap-loading"><div class="spinner"></div> جاري تحميل الطلبات...</div>';
+    try{
+      var rows=await loadSubsDirect('pending');
+      await renderDirectSubs(el,rows,true);
+    }catch(e){
+      console.error('[DEBUG FIX REQUESTS]',e);
+      el.innerHTML='<div class="ap-empty" style="color:#e74c3c">❌ تعذر تحميل الطلبات: '+esc2(e.message)+'</div>';
+    }
+  };
+
+  window.apLoadSubscriptions = async function(){
+    var el=document.getElementById('ap-subscriptions-body');
+    if(!el) return;
+    var f=(document.getElementById('ap-sub-filter')||{}).value||'';
+    el.innerHTML='<div class="ap-loading"><div class="spinner"></div> جاري تحميل الاشتراكات...</div>';
+    try{
+      var rows=await loadSubsDirect(f);
+      await renderDirectSubs(el,rows,true);
+    }catch(e){
+      console.error('[DEBUG FIX SUBSCRIPTIONS]',e);
+      el.innerHTML='<div class="ap-empty" style="color:#e74c3c">❌ تعذر تحميل الاشتراكات: '+esc2(e.message)+'</div>';
+    }
+  };
+
+  /* ------------------------------------------------------------
+     3) DASHBOARD: لا نستخدم last_activity_at ولا RPC غير مضمون.
+        الطلبات المعلقة = subscriptions.payment_status='pending'
+  ------------------------------------------------------------ */
+  window._apLoadBranchDashboard = async function(){
+    var act=document.getElementById('ap-recent-activity');
+    try{
+      var db=await waitDb2(), cid=courseId2();
+      if(!db || !cid) throw new Error('تعذر تحديد الكورس الحالي');
+
+      var ids=await subtreeIds(cid);
+
+      var subR=await db.from('subscriptions')
+        .select('id,user_id,payment_status,end_date,receipt_image,requested_at,created_at')
+        .in('section_id',ids);
+      if(subR.error) throw subR.error;
+      var subs=subR.data||[];
+      var users=new Set(subs.map(function(x){return x.user_id;}).filter(Boolean));
+      var now=Date.now();
+
+      var active=subs.filter(function(x){return x.payment_status==='active' && (!x.end_date || new Date(x.end_date).getTime()>=now);}).length;
+      var expired=subs.filter(function(x){return x.payment_status==='expired' || (x.payment_status==='active' && x.end_date && new Date(x.end_date).getTime()<now);}).length;
+      var pending=subs.filter(function(x){return x.payment_status==='pending';}).length;
+      var pendingPay=subs.filter(function(x){return x.payment_status==='pending' && !!x.receipt_image;}).length;
+
+      var contentR=await db.from('section_content').select('id',{count:'exact',head:true}).in('section_id',ids);
+      var msgR=await db.from('chat_rooms').select('id',{count:'exact',head:true}).in('section_id',ids);
+
+      _apSetStat('ap-stat-users',users.size);
+      _apSetStat('ap-stat-active',active);
+      _apSetStat('ap-stat-expired',expired);
+      _apSetStat('ap-stat-newreq',pending);
+      _apSetStat('ap-stat-pendingpay',pendingPay);
+      _apSetStat('ap-stat-content',contentR.error?'—':(contentR.count||0));
+      _apSetStat('ap-stat-msgs',msgR.error?'—':(msgR.count||0));
+
+      if(act){
+        act.innerHTML='<div style="font-size:.82rem;color:#667;line-height:1.9">👥 الطلاب: '+users.size+
+          ' — 🟢 النشطون: '+active+' — ⏳ الطلبات المعلقة: '+pending+
+          ' — 💳 إيصالات معلقة: '+pendingPay+' — 📚 المحتوى: '+(contentR.error?'—':(contentR.count||0))+'</div>';
+      }
+    }catch(e){
+      console.error('[DEBUG FIX BRANCH DASHBOARD]',e);
+      if(act) act.innerHTML='<div class="ap-empty" style="color:#e74c3c">❌ تعذر تحميل إحصائيات الكورس: '+esc2(e.message)+'</div>';
+    }
+  };
+
+  /* ------------------------------------------------------------
+     4) STUDENTS: إزالة last_activity_at غير الموجود.
+        آخر نشاط يأتي من user_progress.last_visited فقط.
+  ------------------------------------------------------------ */
+  window.csLoadStudents = async function(){
+    var el=document.getElementById('cs-students-body');
+    var sel=document.getElementById('cs-course-picker');
+    if(!el) return;
+    var sid=Number(sel&&sel.value||0);
+    if(!sid){el.innerHTML='<div class="ap-empty">اختر الكورس أولاً.</div>';return;}
+
+    try{
+      var db=await waitDb2();
+      var sub=await db.from('subscriptions')
+        .select('id,user_id,payment_status,start_date,end_date,requested_at')
+        .eq('section_id',sid);
+      if(sub.error) throw sub.error;
+
+      var subs=sub.data||[];
+      var uids=Array.from(new Set(subs.map(function(x){return x.user_id;}).filter(Boolean)));
+      var pm={}, progressMap={};
+
+      if(uids.length){
+        var pr=await db.from('profiles').select('id,full_name,email').in('id',uids);
+        if(pr.error) throw pr.error;
+        (pr.data||[]).forEach(function(x){pm[x.id]=x;});
+
+        var pg=await db.from('user_progress').select('user_id,section_id,last_visited').in('user_id',uids);
+        if(!pg.error){
+          (pg.data||[]).forEach(function(x){
+            progressMap[x.user_id]=progressMap[x.user_id]||[];
+            progressMap[x.user_id].push(x);
+          });
+        }
+      }
+
+      var q=await db.from('quizzes').select('id,passing_score').eq('section_id',sid);
+      var qrows=q.error?[]:(q.data||[]);
+      var qids=qrows.map(function(x){return x.id;});
+      var results=[];
+      if(uids.length&&qids.length){
+        var rr=await db.from('quiz_results').select('user_id,quiz_id,percentage').in('user_id',uids).in('quiz_id',qids);
+        if(!rr.error) results=rr.data||[];
+      }
+
+      var rows=subs.map(function(s){
+        var rr=results.filter(function(x){return x.user_id===s.user_id;});
+        var pp=progressMap[s.user_id]||[];
+        var avg=rr.length?Math.round(rr.reduce(function(a,x){return a+Number(x.percentage||0);},0)/rr.length):0;
+        var passed=rr.filter(function(x){
+          var qq=qrows.find(function(z){return z.id===x.quiz_id;});
+          return Number(x.percentage||0)>=(qq?Number(qq.passing_score||60):60);
+        }).length;
+        var last=pp.map(function(x){return x.last_visited;}).filter(Boolean).sort().pop()||'—';
+        return {p:pm[s.user_id]||{},s:s,tests:rr.length,passed:passed,avg:avg,last:last};
+      });
+
+      if(!rows.length){el.innerHTML='<div class="ap-empty">لا يوجد طلاب لهذا الكورس.</div>';return;}
+      el.innerHTML='<div class="ap-table-wrap"><table class="ap-table"><thead><tr>'+
+        '<th>الطالب</th><th>البريد</th><th>الاشتراك</th><th>البداية</th><th>النهاية</th><th>آخر نشاط</th><th>الاختبارات</th><th>ناجحة</th><th>المتوسط</th>'+
+        '</tr></thead><tbody>'+
+        rows.map(function(x){return '<tr><td>'+esc2(x.p.full_name||'—')+'</td><td>'+esc2(x.p.email||'—')+
+          '</td><td>'+esc2(x.s.payment_status||'—')+'</td><td>'+esc2(x.s.start_date||'—')+
+          '</td><td>'+esc2(x.s.end_date||'—')+'</td><td>'+esc2(x.last)+'</td><td>'+x.tests+
+          '</td><td>'+x.passed+'</td><td>'+x.avg+'%</td></tr>';}).join('')+
+        '</tbody></table></div>';
+    }catch(e){
+      console.error('[DEBUG FIX STUDENTS]',e);
+      el.innerHTML='<div class="ap-empty" style="color:#c0392b">❌ '+esc2(e.message)+'</div>';
+    }
+  };
+
+  /* ------------------------------------------------------------
+     5) CONTENT + QUIZ: مادة -> شباترها فقط.
+        نحتفظ بالهيكل الحالي لكن نضمن إعادة التحميل عند فتح التاب.
+  ------------------------------------------------------------ */
+  window.bsmReloadCourseMaterials = async function(){
+    try{
+      if(typeof window.adminLoadSections==='function') await window.adminLoadSections();
+      if(typeof window.qzLoadMaterialsForAdmin==='function') await window.qzLoadMaterialsForAdmin();
+      console.log('[BSM DEBUG FIX] course materials reloaded');
+    }catch(e){ console.warn('[BSM DEBUG FIX MATERIALS]',e); }
+  };
+
+  /* ------------------------------------------------------------
+     6) SCHEDULE: يشتغل للطالب/الأدمن.
+        يستخدم Supabase إذا كان student_schedule موجوداً،
+        وإلا يستخدم localStorage حتى لا تظل الصفحة معطلة.
+  ------------------------------------------------------------ */
+  function schKey(){
+    var u=window._currentAuthUser;
+    return 'bsm_student_schedule_' + (u&&u.id ? u.id : 'guest');
+  }
+  function schLocalRead(){
+    try{return JSON.parse(localStorage.getItem(schKey())||'[]');}catch(e){return [];}
+  }
+  function schLocalWrite(rows){
+    try{localStorage.setItem(schKey(),JSON.stringify(rows));}catch(e){}
+  }
+  function schLocalId(){return 'local_'+Date.now()+'_'+Math.random().toString(36).slice(2);}
+  function schFormat(v){
+    try{return v ? new Date(v).toLocaleString('ar-EG',{dateStyle:'short',timeStyle:'short'}) : '—';}catch(e){return v||'—';}
+  }
+
+  window.openSchedulePage = async function(){
+    if(!window._currentAuthUser){
+      if(typeof _showToast==='function')_showToast('سجّل الدخول أولاً','info');
+      return;
+    }
+    document.querySelectorAll('.page').forEach(function(x){x.classList.remove('active');});
+    var p=document.getElementById('page-schedule'); if(p)p.classList.add('active');
+    await window.bsmRenderSchedule();
+  };
+
+  window.bsmRenderSchedule = async function(){
+    var el=document.getElementById('sch-content'); if(!el)return;
+    el.innerHTML='<div class="loading" style="padding:40px 20px"><div class="spinner"></div> جاري تحميل الجدول...</div>';
+
+    var rows=[], useDb=false;
+    try{
+      if(DB() && window._currentAuthUser){
+        var r=await DB().from('student_schedule').select('*').eq('user_id',window._currentAuthUser.id).order('start_at',{ascending:true});
+        if(!r.error){rows=r.data||[];useDb=true;}
+      }
+    }catch(e){}
+
+    if(!useDb) rows=schLocalRead();
+
+    var now=Date.now();
+    el.innerHTML=
+      '<div class="sch-card" style="margin-bottom:14px"><h3 style="margin:0 0 12px">➕ إضافة مهمة</h3>'+
+      '<div class="sch-row"><input id="sch-title" class="ap-input" placeholder="اسم المهمة">'+
+      '<input id="sch-start" class="ap-input" type="datetime-local">'+
+      '<input id="sch-end" class="ap-input" type="datetime-local"></div>'+
+      '<div class="sch-row" style="margin-top:8px"><select id="sch-repeat" class="ap-select">'+
+      '<option value="none">مرة واحدة</option><option value="daily">يومي</option><option value="weekly">أسبوعي</option><option value="monthly">شهري</option></select>'+
+      '<input id="sch-notes" class="ap-input" placeholder="ملاحظات">'+
+      '<button class="ap-btn ap-btn-primary" onclick="schAdd()">💾 حفظ</button></div></div>'+
+      '<div class="sch-grid">'+
+      (rows.length?rows.map(function(x){
+        var overdue=x.end_at&&new Date(x.end_at).getTime()<now&&!x.completed;
+        return '<div class="sch-card"><div style="font-weight:800">'+esc2(x.title)+'</div>'+
+          '<div class="sch-badge">'+esc2(x.repeat_type||'none')+'</div>'+
+          '<div style="margin-top:8px;font-size:.78rem">🕒 '+esc2(schFormat(x.start_at))+' → '+esc2(schFormat(x.end_at))+'</div>'+
+          '<div style="font-size:.78rem;color:#7a8a9a;margin-top:5px">'+esc2(x.notes||'')+'</div>'+
+          '<div style="margin-top:10px" class="'+(x.completed?'sch-done':(overdue?'sch-overdue':''))+'">'+
+          (x.completed?'✅ مكتملة':(overdue?'⚠️ متأخرة':'⏳ مجدولة'))+'</div>'+
+          '<div style="display:flex;gap:6px;margin-top:10px"><button class="ap-btn ap-btn-ghost" onclick="schToggle(\''+
+          esc2(x.id).replace(/'/g,"\\'")+'\','+(!x.completed)+')">'+(x.completed?'↩️ إعادة فتح':'✅ إكمال')+
+          '</button><button class="ap-btn ap-btn-danger" onclick="schDelete(\''+
+          esc2(x.id).replace(/'/g,"\\'")+'\')">🗑️ حذف</button></div></div>';
+      }).join(''):'<div class="sch-card">لا توجد مهام بعد.</div>')+
+      '</div>';
+  };
+
+  window.schAdd = async function(){
+    try{
+      var u=window._currentAuthUser;if(!u)return;
+      var title=(document.getElementById('sch-title')||{}).value.trim();
+      var startVal=(document.getElementById('sch-start')||{}).value;
+      var endVal=(document.getElementById('sch-end')||{}).value;
+      if(!title)throw new Error('اسم المهمة مطلوب');
+      if(!startVal)throw new Error('حدد موعد البداية');
+
+      var p={
+        user_id:u.id,id:schLocalId(),title:title,
+        start_at:new Date(startVal).toISOString(),
+        end_at:endVal?new Date(endVal).toISOString():null,
+        repeat_type:(document.getElementById('sch-repeat')||{}).value||'none',
+        notes:(document.getElementById('sch-notes')||{}).value.trim(),
+        completed:false
+      };
+
+      var saved=false;
+      try{
+        if(DB()){
+          var dbPayload=Object.assign({},p); delete dbPayload.id;
+          var r=await DB().from('student_schedule').insert(dbPayload);
+          if(!r.error)saved=true;
+        }
+      }catch(e){}
+
+      if(!saved){
+        var rows=schLocalRead(); rows.push(p); schLocalWrite(rows);
+      }
+      if(typeof _showToast==='function')_showToast('✅ تم حفظ المهمة','success');
+      await window.bsmRenderSchedule();
+    }catch(e){if(typeof _showToast==='function')_showToast('❌ '+e.message,'error');}
+  };
+
+  window.schToggle = async function(id,v){
+    var done=false;
+    try{
+      if(DB()){
+        var r=await DB().from('student_schedule').update({completed:v,completed_at:v?new Date().toISOString():null}).eq('id',id).eq('user_id',window._currentAuthUser.id);
+        done=!r.error;
+      }
+    }catch(e){}
+    if(!done){
+      var rows=schLocalRead(); rows.forEach(function(x){if(String(x.id)===String(id)){x.completed=v;x.completed_at=v?new Date().toISOString():null;}}); schLocalWrite(rows);
+    }
+    await window.bsmRenderSchedule();
+  };
+
+  window.schDelete = async function(id){
+    if(!confirm('حذف المهمة؟'))return;
+    var done=false;
+    try{
+      if(DB()){
+        var r=await DB().from('student_schedule').delete().eq('id',id).eq('user_id',window._currentAuthUser.id);
+        done=!r.error;
+      }
+    }catch(e){}
+    if(!done){
+      schLocalWrite(schLocalRead().filter(function(x){return String(x.id)!==String(id);}));
+    }
+    await window.bsmRenderSchedule();
+  };
+
+  /* إعادة ربط التنقل بالنسخة الجديدة */
+  try{
+    var oldMs2=window.msNavigate;
+    if(!window.__BSM_SCHEDULE_NAV_PATCH){
+      window.__BSM_SCHEDULE_NAV_PATCH=true;
+      window.msNavigate=function(nav){
+        if(nav==='schedule'){window.openSchedulePage();return;}
+        return oldMs2?oldMs2.apply(this,arguments):undefined;
+      };
+    }
+  }catch(e){}
+
+  /* عند فتح لوحة الأدمن/تبويب المحتوى أو الاختبارات، أعد تحميل المواد */
+  document.addEventListener('click',function(e){
+    var b=e.target&&e.target.closest?e.target.closest('[data-tab],.ap-nav-btn'):null;
+    if(!b)return;
+    var txt=(b.textContent||'').trim();
+    if(txt.indexOf('المحتوى')!==-1 || txt.indexOf('الاختبارات')!==-1){
+      setTimeout(window.bsmReloadCourseMaterials,100);
+    }
+  });
+
+  console.log('%c[BSM DEBUG FIX V2]','background:#111;color:#0f0;font-weight:bold;',
+    'Chat داخل الكورس + مراسلة الأدمن + الاشتراكات + الإحصائيات + المحتوى/الشباتر + الطلاب + الجدول');
+})();
+</script>
 </body>
 </html>
