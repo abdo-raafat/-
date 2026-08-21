@@ -1,36 +1,28 @@
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
-<!-- ==================== BSM App Gate — PRE-RENDER GUARD (سهل الإزالة: احذف هذه الكتلة + كتلة OVERLAY المقابلة قرب نهاية الملف — ابحث عن "BSM App Gate") ====================
-     يُخفي عرض الصفحة مؤقتاً (بدون إيقاف تحميل أي CSS/JS/Supabase) لحين التأكد من فتح الموقع
-     من التطبيق الرسمي (Android عبر BSMApp/1.0 أو iOS مستقبلاً عبر BSMIOSApp/1.0) أم من متصفح عادي. -->
+<!-- ==================== BSM DEBUG MODE ====================
+     وضع الاختبار على الكمبيوتر: App Gate معطل مؤقتاً.
+     لا تستخدم هذه النسخة كنسخة إنتاجية للمستخدمين.
+-->
 <script>
 (function () {
-  try {
-    window.isIOSDevice = function () {
-      var ua = navigator.userAgent || '';
-      return /iPhone|iPad|iPod/i.test(ua) ||
-             (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1); // iPadOS 13+
-    };
-    window.isIOSStandalone = function () {
-      try {
-        return window.navigator.standalone === true ||
-               (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
-      } catch (eStd) { return false; }
-    };
-    window.isOfficialApp = function () {
-      var ua = navigator.userAgent || '';
-      return ua.indexOf('BSMApp/1.0') !== -1 ||
-             ua.indexOf('BSMIOSApp/1.0') !== -1 ||
-             !!window.BSMAndroidBridge || // نفس الاحتياط المستخدم أصلاً في isAndroidApp
-             !!(window.BSMAndroidBridge && typeof window.BSMAndroidBridge.isOfficialApp === 'function' && window.BSMAndroidBridge.isOfficialApp()) ||
-             (window.isIOSDevice() && window.isIOSStandalone()); // iOS PWA مثبّتة على الشاشة الرئيسية
-    };
-    if (!window.isOfficialApp()) {
-      document.documentElement.style.visibility = 'hidden';
-      window.__bsmGateBlocked = true;
-    }
-  } catch (e) { /* لا نمنع الصفحة من الظهور في حال أي خطأ غير متوقع */ }
+  window.__BSM_DEBUG_MODE = true;
+  window.isIOSDevice = function () {
+    var ua = navigator.userAgent || '';
+    return /iPhone|iPad|iPod/i.test(ua) ||
+           (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  };
+  window.isIOSStandalone = function () {
+    try {
+      return window.navigator.standalone === true ||
+             (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
+    } catch (e) { return false; }
+  };
+  // في وضع الاختبار نعتبر المتصفح بيئة مسموحة.
+  window.isOfficialApp = function () { return true; };
+  window.__bsmGateBlocked = false;
+  try { document.documentElement.style.visibility = 'visible'; } catch (e) {}
 })();
 </script>
 <!-- CACHE UPDATE GUARD: 2026-08-21-v3 -->
@@ -43,7 +35,7 @@
 </script>
 <meta name="google-site-verification" content="my6dMoAsuc_97Jks_OQF75GK_f1PGWqz2Kng2obkIgE" />
 <meta charset="UTF-8">
-<meta name="app-build" content="2026-08-21-course-admin-stats-v2-sw-fix">
+<meta name="app-build" content="2026-08-21-course-admin-stats-v2-sw-fix-DEBUG">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <!-- ==================== PWA: manifest + platform metadata ==================== -->
 <link rel="manifest" href="./manifest.json">
@@ -2506,6 +2498,19 @@ img, video {
 </style>
 </head>
 <body>
+<script>
+(function(){
+  console.log('%c[BSM DEBUG MODE]','background:#111;color:#0f0;font-size:16px;font-weight:bold;',
+    'Protection/App Gate disabled for computer testing. Admin/Supabase logic remains enabled.');
+  window.addEventListener('error', function(e){
+    console.error('[BSM DEBUG ERROR]', e.message, e.filename, e.lineno, e.colno);
+  });
+  window.addEventListener('unhandledrejection', function(e){
+    console.error('[BSM DEBUG UNHANDLED PROMISE]', e.reason);
+  });
+})();
+</script>
+
 <!-- ==================== BSM App Gate — OVERLAY (الجزء المقابل لكتلة PRE-RENDER GUARD في <head>؛ احذف الكتلتين معاً لإلغاء الحماية) ==================== -->
 <div id="bsm-app-gate" style="display:none; position:fixed; inset:0; z-index:2147483647; background:#0a3d62; color:#fff; direction:rtl; align-items:center; justify-content:center; text-align:center; padding:24px; font-family:inherit;">
   <div>
@@ -14472,85 +14477,14 @@ var NativePDFViewer = (function() {
   return { open: open, close: close };
 })();
 
-// ==================== CONTENT PROTECTION SYSTEM ====================
-(function() {
-
-  // ── 1. الحماية الافتراضية لغير المسجّلين والطلاب ──────────────────
-  function applyProtection() {
-    // المحتوى مجاني للجميع — لا حماية
-    document.body.classList.remove('content-protected');
-  }
-
-  document.addEventListener('DOMContentLoaded', applyProtection);
-
-  // ── 2. منع Right Click للطلاب ─────────────────────────────────────
-  document.addEventListener('contextmenu', function(e) {
-    if (window._isAdminUser) return;
-    e.preventDefault();
-    e.stopPropagation();
-    return false;
-  }, true);
-
-  // ── 3. منع اختصارات لوحة المفاتيح الخطيرة ────────────────────────
-  document.addEventListener('keydown', function(e) {
-    if (window._isAdminUser) return;
-    var key = e.key.toLowerCase();
-    var ctrl = e.ctrlKey || e.metaKey;
-
-    // Ctrl+S, Ctrl+P, Ctrl+C, Ctrl+A, Ctrl+U (view source), F12
-    if (ctrl && (key === 's' || key === 'p' || key === 'c' || key === 'a' || key === 'u')) {
-      e.preventDefault(); e.stopPropagation(); return false;
-    }
-    if (e.key === 'F12' || (ctrl && e.shiftKey && (key === 'i' || key === 'j' || key === 'c'))) {
-      e.preventDefault(); e.stopPropagation(); return false;
-    }
-    // منع Print Screen
-    if (e.key === 'PrintScreen') {
-      e.preventDefault(); return false;
-    }
-  }, true);
-
-  // ── 4. منع سحب الملفات والصور ─────────────────────────────────────
-  document.addEventListener('dragstart', function(e) {
-    if (window._isAdminUser) return;
-    e.preventDefault(); return false;
-  }, true);
-
-  // ── 5. منع تحديد النص بالماوس ─────────────────────────────────────
-  document.addEventListener('selectstart', function(e) {
-    if (window._isAdminUser) return;
-    e.preventDefault(); return false;
-  }, true);
-
-  // ── 6. منع Copy من clipboard API ─────────────────────────────────
-  document.addEventListener('copy', function(e) {
-    if (window._isAdminUser) return;
-    e.preventDefault(); return false;
-  }, true);
-
-  // ── 7. منع أي محاولة طباعة ───────────────────────────────────────
-  window.addEventListener('beforeprint', function(e) {
-    if (window._isAdminUser) return;
-    e.preventDefault();
-    // غطّي كل الصفحة
-    var blocker = document.createElement('div');
-    blocker.id = '_print-block';
-    blocker.setAttribute('style','position:fixed;inset:0;z-index:2147483647;background:#fff;display:flex;align-items:center;justify-content:center;font-size:2rem;font-family:Cairo,sans-serif;');
-    blocker.textContent = '🔒 الطباعة غير مسموح بها';
-    document.body.appendChild(blocker);
-    setTimeout(function(){ var b=document.getElementById('_print-block'); if(b)b.remove(); }, 3000);
-  });
-
-  // ── 8. منع Long Press على الموبايل (يمنع Copy/Save) ───────────────
-  document.addEventListener('touchstart', function(e) {
-    if (window._isAdminUser) return;
-    if (e.target.tagName === 'CANVAS' || e.target.tagName === 'IMG') {
-      e.preventDefault();
-    }
-  }, { passive: false });
-
+// ==================== CONTENT PROTECTION — DEBUG DISABLED ====================
+(function () {
+  // Disabled intentionally in DEBUG mode so browser/console testing is unobstructed.
+  window.__BSM_CONTENT_PROTECTION_DISABLED = true;
+  try {
+    document.body && document.body.classList.remove('content-protected');
+  } catch (e) {}
 })();
-
 // ==================== الحماية تُطبَّق بعد تحديد حالة المستخدم ====================
 // _renderUserBox يضبط window._isAdminUser و document.body classes عند تسجيل الدخول
 // لو لم يكن مسجلاً نطبّق الحماية فوراً
@@ -17151,32 +17085,32 @@ window.diagnose = async function() {
 })();
 </script>
 
-<!-- ✅ PWA: تسجيل Service Worker خارجي حقيقي (service-worker.js) — مسار نسبي متوافق مع GitHub Pages -->
 <script>
-(function() {
-  if ('serviceWorker' in navigator) {
-    window.addEventListener('load', function() {
-      navigator.serviceWorker.register('./service-worker.js?v=20260821-v3', { scope: './' })
-        .then(function(reg) {
-          console.log('[SW] ✅ Service Worker مسجَّل/محدّث', reg.scope);
-          if (typeof reg.update === 'function') return reg.update().catch(function(){});
-        })
-        .then(function() {
-          if (window.caches && typeof window.caches.keys === 'function') {
-            return caches.keys().then(function(keys) {
-              return Promise.all(keys.map(function(k) {
-                return (/^health-platform-v[0-2]$/).test(k)
-                  ? caches.delete(k)
-                  : Promise.resolve(false);
-              }));
+(function () {
+  // DEBUG: disable/unregister Service Worker to prevent stale cache during testing.
+  window.__BSM_DEBUG_SW_DISABLED = true;
+  window.addEventListener('load', function () {
+    if (!window.__BSM_DEBUG_MODE) return;
+    try {
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then(function (regs) {
+          return Promise.all(regs.map(function (r) { return r.unregister(); }));
+        }).then(function () {
+          if (window.caches && caches.keys) {
+            return caches.keys().then(function (keys) {
+              return Promise.all(keys.map(function (k) { return caches.delete(k); }));
             });
           }
-        })
-        .catch(function(err) {
-          console.log('[SW] ℹ️ تعذّر تحديث Service Worker:', err && err.message ? err.message : err);
+        }).then(function () {
+          console.log('[BSM DEBUG] ✅ Service Worker registrations/cache cleared for testing');
+        }).catch(function (e) {
+          console.warn('[BSM DEBUG] Service Worker/cache cleanup warning:', e);
         });
-    });
-  }
+      }
+    } catch (e) {
+      console.warn('[BSM DEBUG] SW cleanup warning:', e);
+    }
+  });
 })();
 </script>
 
