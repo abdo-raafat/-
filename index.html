@@ -4429,6 +4429,35 @@ async function _openContentPage(sec, _preloadedContent, _preloadedResources) {
     }
   }
 
+  // ✅ Phase 3 — PATH GATE: قفل تسلسلي إضافي مستقل عن الاشتراك. لو هذه المحاضرة
+  // عنصر داخل مسار تعليمي ولم يُكمل الطالب المحاضرة السابقة واختبارها بنجاح،
+  // نمنع عرض المحتوى هنا مباشرة (قبل أي رسم للمحتوى) — وليس فقط بإخفاء الزر
+  // في صفحة المسار. يعمل فقط لو لم تكن الشعبة مقفولة أصلاً بالاشتراك (الأولوية
+  // للاشتراك)، ولا يؤثر إطلاقاً على admin/branch_admin (يتم تجاهله لهما داخلياً).
+  var pathLock = null;
+  if (!gate && sec && sec.id && typeof window._pgCheckPathLock === 'function') {
+    try { pathLock = await window._pgCheckPathLock(sec.id); } catch (pgErr) { pathLock = null; }
+  }
+  if (pathLock && pathLock.locked) {
+    window._currentContentSec = sec;
+    document.getElementById('content-icon').textContent = sec.icon || '🔒';
+    document.getElementById('content-title').textContent = sec.title || '';
+    document.getElementById('content-subtitle').textContent = sec.subtitle || '';
+    document.getElementById('content-area').innerHTML =
+      '<div class="sub-gate-card" style="grid-column:1/-1;max-width:480px;margin:30px auto;background:linear-gradient(180deg,#ffffff,#f7fbff);border-radius:22px;padding:34px 28px;text-align:center;box-shadow:0 14px 40px rgba(10,61,98,0.18);border:1px solid #e3edf7;">' +
+        '<div style="font-size:3rem;margin-bottom:6px;">🔒</div>' +
+        '<div style="font-size:1.12rem;font-weight:900;color:var(--primary);margin-bottom:10px;line-height:1.6;">هذه المحاضرة مغلقة حالياً</div>' +
+        '<p style="font-size:.88rem;color:#5a6b7d;line-height:1.9;margin-bottom:0;">أكمل المحاضرة السابقة في المسار التعليمي واجتز اختبارها بنجاح أولاً لتتمكن من فتح هذه المحاضرة.</p>' +
+      '</div>';
+    var _pgChResEl = document.getElementById('chapter-resources-container');
+    if (_pgChResEl) _pgChResEl.innerHTML = '';
+    document.querySelectorAll('.page').forEach(function(p) { p.classList.remove('active'); });
+    document.getElementById('page-content').classList.add('active');
+    window.scrollTo(0, 0);
+    if (typeof updateBreadcrumb === 'function') updateBreadcrumb();
+    return;
+  }
+
   // حفظ القسم الحالي لإعادة التحميل التلقائي
   window._currentContentSec = sec;
 
@@ -8717,9 +8746,9 @@ window.checkBanStatus = async function(email) {
 
       <!-- ═══════════════════ TAB: QUIZZES ═══════════════════ -->
       <div class="ap-tab-panel" id="ap-panel-quizzes" role="tabpanel">
-        <div class="ap-section-heading" style="margin:0 0 10px;border:none;padding:0;">📝 إدارة الاختبارات (اختبار واحد لكل قسم نهائي)</div>
+        <div class="ap-section-heading" style="margin:0 0 10px;border:none;padding:0;">📝 إدارة الاختبارات</div>
         <div style="font-size:.76rem;color:#888;margin-bottom:14px;">
-          اختر المادة ثم الشابتر ثم القسم النهائي (الشعبة/الفصل) لإنشاء أو تعديل اختباره. كل قسم نهائي يملك اختباراً واحداً كحد أقصى.
+          اختر المادة ثم الشابتر ثم القسم النهائي (الشعبة/الفصل) — يمكن إضافة أكثر من اختبار لنفس القسم، وربط كل اختبار بمحاضرة معينة وترتيبه.
         </div>
 
         <div class="ap-field">
@@ -8741,6 +8770,15 @@ window.checkBanStatus = async function(email) {
           </select>
         </div>
 
+        <div id="qz-quiz-list-wrap" style="display:none;">
+          <div style="border-top:1px dashed #d5e8f5;margin:14px 0;"></div>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+            <div class="ap-section-heading" style="margin:0;border:none;padding:0;">📋 اختبارات هذا القسم (<span id="qz-quiz-count">0</span>)</div>
+            <button class="ap-btn ap-btn-success" onclick="qzNewQuiz()">➕ اختبار جديد</button>
+          </div>
+          <div id="qz-quiz-list"><div style="text-align:center;color:#999;padding:14px;">لا توجد اختبارات بعد لهذا القسم</div></div>
+        </div>
+
         <div id="qz-admin-body" style="display:none;">
           <div style="border-top:1px dashed #d5e8f5;margin:18px 0;"></div>
 
@@ -8752,6 +8790,18 @@ window.checkBanStatus = async function(email) {
           <div class="ap-field">
             <label class="ap-label">📝 وصف (اختياري)</label>
             <textarea id="qz-description" class="ap-textarea" placeholder="وصف مختصر للاختبار"></textarea>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+            <div class="ap-field">
+              <label class="ap-label">🎬 المحاضرة المرتبطة (اختياري)</label>
+              <select id="qz-lecture-select" class="ap-select">
+                <option value="">— بدون ربط بمحاضرة معينة —</option>
+              </select>
+            </div>
+            <div class="ap-field">
+              <label class="ap-label">🔢 ترتيب الاختبار</label>
+              <input id="qz-display-order" type="number" min="0" class="ap-input" value="0">
+            </div>
           </div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
             <div class="ap-field">
@@ -15501,6 +15551,157 @@ CREATE POLICY "section_admins_branch_update" ON section_admins FOR UPDATE
 };
 console.log('%c[SectionAdmins] اكتب printSectionAdminsPermissionsFix() لإصلاح خطأ "new row violates row-level security policy for table section_admins"', 'color:#c0392b;font-weight:bold');
 
+// ════════════════════════════════════════════════════════════════
+// printQuizBranchSecurityAndAnalyticsSQL() — (Aug 2026, Quiz Branch Scoping + Analytics)
+// يعالج ثغرة أمان حقيقية: quizzes_read_auth و qquestions_read_auth الحاليتان
+// (printFullRLS) تسمحان لأي مستخدم مسجّل دخول بقراءة اختبار/أسئلة أي شعبة
+// أخرى مباشرة عبر REST API، بغض النظر عن اشتراكه أو شعبته — الحماية كانت
+// موجودة فقط في الواجهة (qzRenderSectionEntry لا يعرض الزر لو gate)، وهو
+// بالضبط ما طلب عدم الاعتماد عليه وحده. هذا السكربت:
+//   1) يضيف has_active_access_to(target_id) — helper بنفس منطق
+//      getDetailedSectionAccess في الواجهة (اشتراك نشط على القسم أو أي جد
+//      له)، ويعيد استخدامه لتقييد SELECT على quizzes/quiz_questions.
+//   2) يستبدل quizzes_read_auth / qquestions_read_auth بسياسات مبنية على
+//      has_active_access_to() للطالب + is_branch_admin_of() لأدمن الشعبة +
+//      is_admin() للسوبر أدمن — بدل auth.uid() IS NOT NULL المفتوحة للجميع.
+//   3) يضيف عمودي lecture_id (ربط الاختبار بعنصر مسار تعلّم) و display_order
+//      (ترتيب الاختبار) لجدول quizzes — Additive فقط، لا حذف لأي بيانات.
+//   4) يضيف نطاق أدمن الشعبة لـ quiz_results (كان مقصوراً على admin/الطالب
+//      نفسه فقط، فلم يكن أدمن الشعبة يقدر يشوف نتائج شعبته).
+//   5) يضيف approved_at / rejected_at لجدول subscriptions + Trigger يملأهما
+//      تلقائياً أول ما تتغيّر payment_status إلى approved/rejected (ويُبقي
+//      القيمة القديمة لو رجعت الحالة تاني لنفس القيمة أو تغيّرت لحالة تالتة)
+//      + Backfill آمن لمرة واحدة على الصفوف الحالية اعتماداً على أحدث حالة
+//      معروفة (created_at) حتى لا تظهر كل الإحصائيات التاريخية فارغة.
+// شغّله بعد printFullRLS() (يحتاج is_admin() و is_branch_admin_of() الموجودتين فيه).
+// ════════════════════════════════════════════════════════════════
+window.printQuizBranchSecurityAndAnalyticsSQL = function() {
+  var sql = `
+-- ================================================================
+-- QUIZ BRANCH SECURITY + LECTURE LINK + SUBSCRIPTION ANALYTICS
+-- شغّله بعد printFullRLS() — Supabase Dashboard → SQL Editor → Paste → Run
+-- ================================================================
+
+-- ────────────────────────────────────────────────────────────────
+-- 1) has_active_access_to(target_id) — هل عند المستخدم الحالي اشتراك
+--    نشط (payment_status='active' و end_date > الآن، أو end_date فارغ
+--    = بلا تاريخ انتهاء) على هذا القسم أو أي جد له؟ نفس منطق تسلسل
+--    site_sections المستخدم في is_branch_admin_of أعلاه.
+-- ────────────────────────────────────────────────────────────────
+CREATE OR REPLACE FUNCTION has_active_access_to(target_id BIGINT)
+RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER
+AS $$
+  WITH RECURSIVE ancestors AS (
+    SELECT id, parent_id FROM site_sections WHERE id = target_id
+    UNION ALL
+    SELECT s.id, s.parent_id FROM site_sections s
+    JOIN ancestors a ON s.id = a.parent_id
+  )
+  SELECT EXISTS (
+    SELECT 1 FROM subscriptions sub
+    WHERE sub.user_id = auth.uid()
+      AND sub.section_id IN (SELECT id FROM ancestors)
+      AND sub.payment_status = 'active'
+      AND (sub.end_date IS NULL OR sub.end_date > now())
+  );
+$$;
+
+-- ────────────────────────────────────────────────────────────────
+-- 2) quizzes — أعمدة جديدة (Additive) للربط بالمحاضرة والترتيب
+-- ────────────────────────────────────────────────────────────────
+ALTER TABLE quizzes ADD COLUMN IF NOT EXISTS lecture_id BIGINT REFERENCES site_sections(id) ON DELETE SET NULL;
+ALTER TABLE quizzes ADD COLUMN IF NOT EXISTS display_order INT NOT NULL DEFAULT 0;
+CREATE INDEX IF NOT EXISTS idx_quizzes_lecture ON quizzes(lecture_id);
+CREATE INDEX IF NOT EXISTS idx_quizzes_section_order ON quizzes(section_id, display_order);
+
+-- ────────────────────────────────────────────────────────────────
+-- 3) quizzes — استبدال قراءة "أي مسجّل دخول" بقراءة مقيّدة بالشعبة
+-- ────────────────────────────────────────────────────────────────
+DROP POLICY IF EXISTS "quizzes_read_auth" ON quizzes;
+DROP POLICY IF EXISTS "quizzes_admin_all" ON quizzes;
+DROP POLICY IF EXISTS "quizzes_branch_admin_all" ON quizzes;
+DROP POLICY IF EXISTS "quizzes_student_read_own_section" ON quizzes;
+
+CREATE POLICY "quizzes_admin_all" ON quizzes FOR ALL USING (is_admin());
+CREATE POLICY "quizzes_branch_admin_all" ON quizzes FOR ALL
+  USING (is_branch_admin_of(section_id)) WITH CHECK (is_branch_admin_of(section_id));
+CREATE POLICY "quizzes_student_read_own_section" ON quizzes FOR SELECT
+  USING (has_active_access_to(section_id));
+
+-- ────────────────────────────────────────────────────────────────
+-- 4) quiz_questions — نفس المبدأ، مقيّد عبر section_id الاختبار الأب
+-- ────────────────────────────────────────────────────────────────
+DROP POLICY IF EXISTS "qquestions_read_auth" ON quiz_questions;
+DROP POLICY IF EXISTS "qquestions_admin_all" ON quiz_questions;
+DROP POLICY IF EXISTS "qquestions_branch_admin_all" ON quiz_questions;
+DROP POLICY IF EXISTS "qquestions_student_read_own_section" ON quiz_questions;
+
+CREATE POLICY "qquestions_admin_all" ON quiz_questions FOR ALL USING (is_admin());
+CREATE POLICY "qquestions_branch_admin_all" ON quiz_questions FOR ALL
+  USING (is_branch_admin_of((SELECT section_id FROM quizzes WHERE id = quiz_questions.quiz_id)))
+  WITH CHECK (is_branch_admin_of((SELECT section_id FROM quizzes WHERE id = quiz_questions.quiz_id)));
+CREATE POLICY "qquestions_student_read_own_section" ON quiz_questions FOR SELECT
+  USING (has_active_access_to((SELECT section_id FROM quizzes WHERE id = quiz_questions.quiz_id)));
+
+-- ────────────────────────────────────────────────────────────────
+-- 5) quiz_results — إضافة نطاق أدمن الشعبة (كان admin + الطالب نفسه فقط)
+-- ────────────────────────────────────────────────────────────────
+DROP POLICY IF EXISTS "qresults_branch_admin_read" ON quiz_results;
+CREATE POLICY "qresults_branch_admin_read" ON quiz_results FOR SELECT
+  USING (is_branch_admin_of((SELECT section_id FROM quizzes WHERE id = quiz_results.quiz_id)));
+
+-- ────────────────────────────────────────────────────────────────
+-- 6) subscriptions — approved_at / rejected_at (Additive)
+-- ────────────────────────────────────────────────────────────────
+ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS approved_at TIMESTAMPTZ;
+ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS rejected_at TIMESTAMPTZ;
+
+CREATE OR REPLACE FUNCTION set_subscription_decision_timestamp()
+RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  IF NEW.payment_status = 'active' AND (OLD.payment_status IS DISTINCT FROM 'active') THEN
+    NEW.approved_at := now();
+  ELSIF NEW.payment_status = 'rejected' AND (OLD.payment_status IS DISTINCT FROM 'rejected') THEN
+    NEW.rejected_at := now();
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_subscription_decision_timestamp ON subscriptions;
+CREATE TRIGGER trg_subscription_decision_timestamp
+  BEFORE UPDATE ON subscriptions
+  FOR EACH ROW EXECUTE FUNCTION set_subscription_decision_timestamp();
+
+-- Backfill لمرة واحدة على الصفوف الحالية (لا يمسّ أي صف approved_at/rejected_at
+-- مملوء بالفعل) — بيستخدم created_at كأقرب تقدير للقرار التاريخي لحد ما
+-- تتوفر بيانات أدق. راجع مع فريقك قبل تشغيله لو عندك مصدر أدق لتاريخ القرار.
+UPDATE subscriptions SET approved_at = created_at
+  WHERE payment_status = 'active' AND approved_at IS NULL;
+UPDATE subscriptions SET rejected_at = created_at
+  WHERE payment_status = 'rejected' AND rejected_at IS NULL;
+
+-- ────────────────────────────────────────────────────────────────
+-- تحقق من التطبيق:
+-- ────────────────────────────────────────────────────────────────
+-- SELECT * FROM pg_policies WHERE tablename IN ('quizzes','quiz_questions','quiz_results') ORDER BY tablename, cmd;
+-- SELECT column_name FROM information_schema.columns WHERE table_name='quizzes' AND column_name IN ('lecture_id','display_order');
+-- SELECT column_name FROM information_schema.columns WHERE table_name='subscriptions' AND column_name IN ('approved_at','rejected_at');
+`;
+  console.group('%c🔐 QUIZ BRANCH SECURITY + ANALYTICS SQL — شغّله بعد printFullRLS()', 'color:#1abc9c;font-size:1.1em;font-weight:bold');
+  console.log('%cافتح: Supabase Dashboard → SQL Editor → New Query → الصق الكود → Run', 'color:#17a589;font-weight:bold');
+  console.log(sql);
+  console.groupEnd();
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(sql).then(function() {
+      console.log('%c✅ تم نسخ الـ SQL للـ clipboard!', 'color:#17a589;font-weight:bold');
+    }).catch(function(){});
+  }
+  return sql;
+};
+console.log('%c[QuizSecurity] اكتب printQuizBranchSecurityAndAnalyticsSQL() لعرض + نسخ SQL أمان الاختبارات والإحصائيات', 'color:#1abc9c;font-weight:bold;font-size:13px');
+
 // printCoursesMigration — إضافة عمود type لتمييز "الدورات" فقط (Additive, بدون أي حذف)
 window.printCoursesMigration = function() {
   var sql = `
@@ -19620,6 +19821,7 @@ window.__FIXED2_AUDIT = { version: 'FIXED-2', date: '2026-08-12' };
 .learning-path-badge.subscribed{background:#e8f4ff;color:#17689b;}
 .learning-path-badge.admin{background:#fff2cf;color:#8a6500;}
 .learning-path-badge.locked{background:#fdecec;color:#b13a3a;}
+.learning-path-badge.completed{background:#e8f8ee;color:#1d8348;}
 .learning-path-empty{grid-column:1/-1;text-align:center;padding:50px 20px;color:#8a9bab;}
 @media(max-width:600px){.learning-paths-grid{grid-template-columns:1fr;gap:12px}.learning-path-card{border-radius:16px;padding:14px}.learning-path-item{padding:9px}.learning-path-badge{font-size:.58rem;padding:3px 6px}}
 .rv-media-tools{display:flex;align-items:center;justify-content:center;gap:7px;flex-wrap:wrap;margin:10px auto 0;padding:9px 10px;background:rgba(0,0,0,.35);border-radius:12px;max-width:min(720px,94%);color:#fff;font-size:.72rem;}
@@ -19711,17 +19913,43 @@ window.__FIXED2_AUDIT = { version: 'FIXED-2', date: '2026-08-12' };
         return Number(a.display_order||0)-Number(b.display_order||0)||Number(a.id||0)-Number(b.id||0);
       });
 
+      // ✅ Phase 3: uid المستخدم الحالي — يُجلب مرة واحدة فقط لكل رسم للمسار
+      // (يُستخدم لفحص قفل التسلسل بين المحاضرات، بمعزل تام عن بوابة الاشتراك)
+      var _pgUidForRender = null;
+      if (typeof window._pgItemDisplayState === 'function' && typeof _getSessionSafe === 'function') {
+        try {
+          var _pgSessRes = await _getSessionSafe();
+          var _pgSess = _pgSessRes && _pgSessRes.data && _pgSessRes.data.session;
+          _pgUidForRender = _pgSess && _pgSess.user ? _pgSess.user.id : null;
+        } catch (e) { _pgUidForRender = null; }
+      }
+
       var itemHtml=[];
       for(var ii=0;ii<items.length;ii++){
         var it=items[ii], sec=it.site_sections||{};
         if(!sec.id) continue;
         var access=window.getDetailedSectionAccess?await window.getDetailedSectionAccess(sec.id):{state:sec.requires_subscription?'locked':'free'};
-        var stateLabel={free:'مجاني',subscribed:'مشترك',admin:'أدمن',locked:'مغلق'}[access.state]||'مغلق';
-        var meta=sec.requires_subscription?(access.state==='subscribed'?'اشتراكك فعّال':access.state==='admin'?'صلاحية أدمن':'يتطلب اشتراك'):'مجاني';
-        itemHtml.push('<div class="learning-path-item" data-path-section="'+Number(sec.id)+'" data-access-state="'+access.state+'">'+
+
+        // ✅ Phase 3: قفل التسلسل — يُفحص فقط لو الاشتراك مسموح به أصلاً (الاشتراك
+        // له الأولوية دائماً) ولمستخدم مسجّل دخول (الزائر لا تُفحص له محاضرات سابقة)
+        var finalState = access.state, lockReason = 'sub';
+        if (access.state !== 'admin' && access.state !== 'locked' && _pgUidForRender && typeof window._pgItemDisplayState === 'function') {
+          var pathState = await window._pgItemDisplayState(_pgUidForRender, it, items[ii-1] || null);
+          if (pathState === 'locked') { finalState = 'locked'; lockReason = 'sequence'; }
+          else if (pathState === 'completed') { finalState = 'completed'; }
+        }
+
+        var stateLabel={free:'مفتوحة',subscribed:'مفتوحة',admin:'أدمن',locked:'مغلقة',completed:'مكتملة'}[finalState]||'مغلقة';
+        var meta;
+        if (finalState==='completed') meta='أنهيت هذه المحاضرة بنجاح ✅';
+        else if (finalState==='locked' && lockReason==='sequence') meta='أكمل المحاضرة السابقة واختبارها بنجاح أولاً';
+        else if (finalState==='locked') meta=(access.access==='guest')?'سجّل الدخول أولاً':'يتطلب اشتراك';
+        else meta=sec.requires_subscription?(access.state==='subscribed'?'اشتراكك فعّال':access.state==='admin'?'صلاحية أدمن':'مجاني'):'مجاني';
+
+        itemHtml.push('<div class="learning-path-item" data-path-section="'+Number(sec.id)+'" data-access-state="'+finalState+'" data-lock-reason="'+lockReason+'">'+
           '<span class="learning-path-num">'+(ii+1)+'</span>'+
           '<div class="learning-path-item-main"><div class="learning-path-item-title">'+_lpEsc((sec.icon||'📚')+' '+(sec.title||'الدورة'))+'</div><div class="learning-path-item-meta">'+_lpEsc(meta)+'</div></div>'+
-          '<span class="learning-path-badge '+access.state+'">'+stateLabel+'</span></div>');
+          '<span class="learning-path-badge '+finalState+'">'+stateLabel+'</span></div>');
       }
 
       grid.innerHTML=
@@ -19748,20 +19976,42 @@ window.__FIXED2_AUDIT = { version: 'FIXED-2', date: '2026-08-12' };
         el.addEventListener('click',function(){
           var id=Number(el.getAttribute('data-path-section'));
           var stateVal=el.getAttribute('data-access-state');
+          var lockReason=el.getAttribute('data-lock-reason')||'sub';
           var openFull=function(){
             if(typeof _apFetchSectionById==='function') return _apFetchSectionById(id).then(function(full){
               if(full && typeof openDynamicSection==='function') return openDynamicSection(full);
             });
             if(typeof openDynamicSection==='function') return openDynamicSection({id:id});
           };
-          if(stateVal==='locked' && window.checkSectionAccess){
-            window.checkSectionAccess(id).then(function(g){
-              if(g && window._openLockNoticeModal) window._openLockNoticeModal(g);
-              else openFull();
-            });
-            return;
+          // ✅ Phase 3: إعادة تحقق طازجة من قفل التسلسل مباشرة قبل الفتح (دفاع
+          // إضافي غير معتمد على حالة الشارة المرسومة سابقاً في الواجهة)
+          var proceedIfUnlocked=function(){
+            if(typeof window._pgCheckPathLock==='function'){
+              window._pgCheckPathLock(id).then(function(lock){
+                if(lock && lock.locked){
+                  if(window._showToast) window._showToast('🔒 أكمل المحاضرة السابقة واختبارها بنجاح أولاً','warning');
+                  return;
+                }
+                openFull();
+              });
+              return;
+            }
+            openFull();
+          };
+          if(stateVal==='locked'){
+            if(lockReason==='sequence'){
+              if(window._showToast) window._showToast('🔒 أكمل المحاضرة السابقة واختبارها بنجاح أولاً','warning');
+              return;
+            }
+            if(window.checkSectionAccess){
+              window.checkSectionAccess(id).then(function(g){
+                if(g && window._openLockNoticeModal) window._openLockNoticeModal(g);
+                else proceedIfUnlocked();
+              });
+              return;
+            }
           }
-          openFull();
+          proceedIfUnlocked();
         });
       });
     }catch(err){
@@ -19773,6 +20023,137 @@ window.__FIXED2_AUDIT = { version: 'FIXED-2', date: '2026-08-12' };
 })();
 </script>
 
+<script>
+// ════════════════════════════════════════════════════════════════
+// ✅ PATH GATE (Phase 3) — قفل تسلسلي للمحاضرات داخل المسارات التعليمية
+// يستخدم الجداول الموجودة فقط: learning_paths / learning_path_items /
+// quizzes / quiz_results / user_progress — بدون أي SQL/migration جديد.
+// هذا قفل إضافي منفصل تمامًا عن بوابة الاشتراك (checkSectionAccess /
+// getDetailedSectionAccess) ولا يعدّل أياً منهما — الاشتراك يظل له
+// الأولوية دائماً (قسم مقفول بالاشتراك يبقى مقفولاً بغض النظر عن ترتيب
+// المسار). admin/branch_admin غير متأثرين إطلاقاً بهذا القفل.
+// ════════════════════════════════════════════════════════════════
+(function() {
+
+  function _pgIsPrivileged() {
+    return !!(window._isSuperAdmin || window._isBranchAdmin);
+  }
+
+  async function _pgUid() {
+    try {
+      var s = await _getSessionSafe();
+      var session = s && s.data && s.data.session;
+      return session && session.user ? session.user.id : null;
+    } catch (e) { return null; }
+  }
+
+  // ── هل زار الطالب هذا القسم (سجل موجود في user_progress)؟ ──
+  async function _pgVisited(uid, sectionId) {
+    try {
+      var db = window.supabase;
+      if (!db || !uid) return false;
+      var res = await db.from('user_progress')
+        .select('id').eq('user_id', uid).eq('section_id', sectionId).maybeSingle();
+      if (res.error) return false;
+      return !!(res.data && res.data.id);
+    } catch (e) { return false; }
+  }
+
+  // ── هل نجح الطالب في كل اختبارات هذا القسم (إن وُجدت)؟ النجاح = أفضل
+  // محاولة percentage >= quizzes.passing_score. لا يوجد اختبار = يُعتبر "نجاح".
+  async function _pgQuizzesPassed(uid, sectionId) {
+    try {
+      var db = window.supabase;
+      if (!db || !uid) return { hasQuiz: false, passed: true };
+      var qRes = await db.from('quizzes').select('id,passing_score').eq('section_id', sectionId);
+      if (qRes.error || !qRes.data || !qRes.data.length) return { hasQuiz: false, passed: true };
+      var quizzes = qRes.data;
+      var ids = quizzes.map(function(q) { return q.id; });
+      var rRes = await db.from('quiz_results').select('quiz_id,percentage').eq('user_id', uid).in('quiz_id', ids);
+      if (rRes.error) return { hasQuiz: true, passed: false };
+      var best = {};
+      (rRes.data || []).forEach(function(r) {
+        var p = Number(r.percentage) || 0;
+        if (best[r.quiz_id] === undefined || p > best[r.quiz_id]) best[r.quiz_id] = p;
+      });
+      var passed = quizzes.every(function(q) {
+        var b = best[q.id];
+        var need = (q.passing_score != null ? q.passing_score : 60);
+        return b !== undefined && b >= need;
+      });
+      return { hasQuiz: true, passed: passed };
+    } catch (e) { return { hasQuiz: false, passed: true }; }
+  }
+
+  // ── هل "أُنهيَت" هذه المحاضرة (زيارة + نجاح كل اختباراتها إن وُجدت)؟ ──
+  async function _pgSectionCompleted(uid, sectionId) {
+    if (!uid) return false;
+    var visited = await _pgVisited(uid, sectionId);
+    if (!visited) return false;
+    var q = await _pgQuizzesPassed(uid, sectionId);
+    return q.hasQuiz ? q.passed : true;
+  }
+  window._pgSectionCompleted = _pgSectionCompleted;
+
+  // ── كل سياقات المسارات المفعّلة التي تحوي هذا القسم، بترتيب display_order ──
+  async function _pgPathContextsForSection(sectionId) {
+    try {
+      var db = window.supabase;
+      if (!db) return [];
+      var res = await db.from('learning_paths')
+        .select('id,is_active,learning_path_items(id,section_id,display_order)')
+        .eq('is_active', true);
+      if (res.error || !res.data) return [];
+      var contexts = [];
+      res.data.forEach(function(p) {
+        var items = (p.learning_path_items || []).slice().sort(function(a, b) {
+          return Number(a.display_order || 0) - Number(b.display_order || 0) || Number(a.id || 0) - Number(b.id || 0);
+        });
+        var idx = items.findIndex(function(it) { return Number(it.section_id) === Number(sectionId); });
+        if (idx !== -1) contexts.push({ pathId: p.id, items: items, index: idx });
+      });
+      return contexts;
+    } catch (e) { return []; }
+  }
+
+  // ── الفحص المرجعي المستقل: هل هذا القسم مقفول حالياً بسبب ترتيب مسار؟ ──
+  // يُستدعى دائماً بجلب طازج من القاعدة (لا يعتمد على أي حالة مرسومة سابقاً في
+  // الواجهة) حتى لا يمكن تجاوزه بتغيير id في الرابط أو استدعاء الدوال من الـ
+  // console مباشرة. ترجع null = غير مقفول بهذا السبب، أو {locked:true} = مقفول.
+  window._pgCheckPathLock = async function(sectionId) {
+    sectionId = Number(sectionId);
+    if (!Number.isFinite(sectionId)) return null;
+    if (_pgIsPrivileged()) return null; // admin/branch_admin غير متأثرين
+
+    var uid = await _pgUid();
+    if (!uid) return null; // زائر غير مسجّل — تتكفل به بوابة الاشتراك أصلاً
+
+    var contexts = await _pgPathContextsForSection(sectionId);
+    if (!contexts.length) return null; // ليس عنصراً في أي مسار — لا قفل تسلسلي
+
+    for (var i = 0; i < contexts.length; i++) {
+      var ctx = contexts[i];
+      if (ctx.index === 0) return null; // أول محاضرة في هذا المسار — مسموح
+      var prev = ctx.items[ctx.index - 1];
+      var prevDone = await _pgSectionCompleted(uid, prev.section_id);
+      if (prevDone) return null; // مسموح عبر هذا المسار على الأقل
+    }
+    return { locked: true, reason: 'sequence' }; // مقفول في كل السياقات
+  };
+
+  // ── حالة عنصر داخل صفحة المسار للعرض: 'open' | 'locked' | 'completed' ──
+  // تُستدعى فقط لمستخدم مسجّل دخول وغير مقفول بالفعل بالاشتراك (يحددها المستدعي).
+  window._pgItemDisplayState = async function(uid, item, prevItem) {
+    if (!uid || _pgIsPrivileged()) return null;
+    var completed = await _pgSectionCompleted(uid, item.section_id);
+    if (completed) return 'completed';
+    if (!prevItem) return 'open'; // أول محاضرة في المسار
+    var prevDone = await _pgSectionCompleted(uid, prevItem.section_id);
+    return prevDone ? 'open' : 'locked';
+  };
+
+})();
+</script>
 
 <script>
 // ════════════════════════════════════════════════════════════════
@@ -19812,6 +20193,8 @@ window._qz = window._qz || {
   adminEditingQuizId: null,
   adminEditingSectionId: null,
   adminMaterials: [],
+  adminQuizList: [],   // كل اختبارات القسم المختار حالياً (يدعم أكثر من اختبار لكل قسم)
+  adminLectures: [],   // محاضرات (section_content) القسم المختار — لربط الاختبار بمحاضرة
   adminMatchLeftPick: {} // { questionId: leftValuePendingMatch }
 };
 
@@ -19840,8 +20223,17 @@ async function qzLoadMaterialsForAdmin() {
   var sel = document.getElementById('qz-material-select');
   try {
     var materials = await loadSections(null);
+    // ── أدمن الشعبة: يرى فقط المواد اللي داخل نطاق شعبته (نفس نمط lpLoad) ──
+    if (window._isBranchAdmin && !window._isSuperAdmin) {
+      var scope = window._branchAdminSectionIds || [];
+      materials = (materials || []).filter(function(m) { return scope.indexOf(m.id) > -1; });
+    }
     window._qz.adminMaterials = materials || [];
     if (sel) {
+      if (!materials || !materials.length) {
+        sel.innerHTML = '<option value="">— لا توجد مواد ضمن نطاقك —</option>';
+        return;
+      }
       sel.innerHTML = '<option value="">— اختر المادة —</option>' +
         (materials || []).map(function(m) { return '<option value="' + m.id + '">' + m.title + '</option>'; }).join('');
     }
@@ -19850,12 +20242,19 @@ async function qzLoadMaterialsForAdmin() {
   }
 }
 
+function _qzInBranchScope(id) {
+  if (!(window._isBranchAdmin && !window._isSuperAdmin)) return true;
+  var scope = window._branchAdminSectionIds || [];
+  return scope.indexOf(Number(id)) > -1 || scope.indexOf(id) > -1;
+}
+
 async function qzOnMaterialChange() {
   var matSel = document.getElementById('qz-material-select');
   var chapWrap = document.getElementById('qz-chapter-wrap');
   var secWrap = document.getElementById('qz-section-wrap');
   var chapSel = document.getElementById('qz-chapter-select');
   document.getElementById('qz-admin-body').style.display = 'none';
+  document.getElementById('qz-quiz-list-wrap').style.display = 'none';
   if (secWrap) secWrap.style.display = 'none';
   var materialId = matSel ? matSel.value : '';
   if (!materialId) { if (chapWrap) chapWrap.style.display = 'none'; return; }
@@ -19877,6 +20276,7 @@ async function qzOnChapterChange() {
   var chapSel = document.getElementById('qz-chapter-select');
   var chapterId = chapSel ? chapSel.value : '';
   document.getElementById('qz-admin-body').style.display = 'none';
+  document.getElementById('qz-quiz-list-wrap').style.display = 'none';
   if (!chapterId) { document.getElementById('qz-section-wrap').style.display = 'none'; return; }
   try {
     var children = await loadSections(chapterId);
@@ -19892,6 +20292,13 @@ async function qzOnChapterChange() {
 async function qzPopulateSectionOptions(sections) {
   var secWrap = document.getElementById('qz-section-wrap');
   var secSel = document.getElementById('qz-section-select');
+  // ── أدمن الشعبة: يفلتر أي قسم برّه نطاقه حتى لو ظهر ضمن children ──
+  sections = (sections || []).filter(function(s) { return _qzInBranchScope(s.id); });
+  if (!sections.length) {
+    secSel.innerHTML = '<option value="">— لا توجد أقسام ضمن نطاقك —</option>';
+    secWrap.style.display = 'block';
+    return;
+  }
   secSel.innerHTML = '<option value="">— اختر القسم —</option>' +
     sections.map(function(s) { return '<option value="' + s.id + '">' + s.title + '</option>'; }).join('');
   secWrap.style.display = 'block';
@@ -19900,50 +20307,103 @@ async function qzPopulateSectionOptions(sections) {
 async function qzOnSectionChange() {
   var secSel = document.getElementById('qz-section-select');
   var sectionId = secSel ? secSel.value : '';
-  var bodyEl = document.getElementById('qz-admin-body');
-  if (!sectionId) { bodyEl.style.display = 'none'; return; }
-  bodyEl.style.display = 'block';
+  var listWrap = document.getElementById('qz-quiz-list-wrap');
+  document.getElementById('qz-admin-body').style.display = 'none';
+  if (!sectionId || !_qzInBranchScope(sectionId)) { listWrap.style.display = 'none'; return; }
   window._qz.adminEditingSectionId = sectionId;
   window._qz.adminEditingQuizId = null;
-  document.getElementById('qz-questions-section').style.display = 'none';
-  document.getElementById('qz-delete-quiz-btn').style.display = 'none';
-  document.getElementById('qz-settings-msg').textContent = '⏳ جاري التحميل...';
+  listWrap.style.display = 'block';
+  document.getElementById('qz-quiz-list').innerHTML = '<div style="text-align:center;color:#999;padding:14px;">⏳ جاري التحميل...</div>';
 
   var db = await _qzDb();
-  if (!db) { document.getElementById('qz-settings-msg').textContent = '❌ تعذر الاتصال بقاعدة البيانات'; return; }
+  if (!db) return;
   try {
-    var { data: quiz, error } = await db.from('quizzes').select('*').eq('section_id', sectionId).maybeSingle();
+    // ── محاضرات هذا القسم (section_content) — لملء قائمة "المحاضرة المرتبطة" ──
+    var lecturesPromise = (typeof loadSectionContent === 'function') ? loadSectionContent(sectionId) : Promise.resolve([]);
+    var { data: quizzes, error } = await db.from('quizzes').select('*').eq('section_id', sectionId).order('display_order', { ascending: true }).order('id', { ascending: true });
     if (error) throw error;
-    document.getElementById('qz-settings-msg').textContent = '';
-    if (quiz) {
-      window._qz.adminEditingQuizId = quiz.id;
-      document.getElementById('qz-title').value = quiz.title || '';
-      document.getElementById('qz-description').value = quiz.description || '';
-      document.getElementById('qz-time-limit').value = quiz.time_limit || 0;
-      document.getElementById('qz-passing-score').value = quiz.passing_score != null ? quiz.passing_score : 60;
-      document.getElementById('qz-allow-retry').value = quiz.allow_retry === false ? 'false' : 'true';
-      document.getElementById('qz-max-attempts').value = quiz.max_attempts || 0;
-      document.getElementById('qz-show-answers').value = quiz.show_answers_after_finish === false ? 'false' : 'true';
-      document.getElementById('qz-delete-quiz-btn').style.display = '';
-      qzToggleMaxAttemptsField();
-      document.getElementById('qz-questions-section').style.display = 'block';
-      await qzLoadQuestionsForAdmin(quiz.id);
-    } else {
-      document.getElementById('qz-title').value = '';
-      document.getElementById('qz-description').value = '';
-      document.getElementById('qz-time-limit').value = 0;
-      document.getElementById('qz-passing-score').value = 60;
-      document.getElementById('qz-allow-retry').value = 'true';
-      document.getElementById('qz-max-attempts').value = 0;
-      document.getElementById('qz-show-answers').value = 'true';
-      qzToggleMaxAttemptsField();
-      document.getElementById('qz-questions-section').style.display = 'none';
-    }
+    window._qz.adminQuizList = quizzes || [];
+    var lectures = await lecturesPromise;
+    window._qz.adminLectures = lectures || [];
+    qzRenderQuizList();
   } catch (e) {
     console.error('[qzOnSectionChange]', e);
-    document.getElementById('qz-settings-msg').textContent = '❌ خطأ: ' + e.message;
+    document.getElementById('qz-quiz-list').innerHTML = '<div style="text-align:center;color:#e74c3c;padding:14px;">❌ خطأ: ' + qzEsc(e.message) + '</div>';
   }
 }
+
+function qzRenderQuizList() {
+  var list = window._qz.adminQuizList || [];
+  document.getElementById('qz-quiz-count').textContent = list.length;
+  var el = document.getElementById('qz-quiz-list');
+  if (!list.length) {
+    el.innerHTML = '<div style="text-align:center;color:#999;padding:14px;">لا توجد اختبارات بعد لهذا القسم — اضغط "➕ اختبار جديد"</div>';
+    return;
+  }
+  var lecturesById = {};
+  (window._qz.adminLectures || []).forEach(function(l) { lecturesById[l.id] = l.title; });
+  el.innerHTML = list.map(function(q) {
+    var active = window._qz.adminEditingQuizId === q.id;
+    var lectureLbl = q.lecture_id && lecturesById[q.lecture_id] ? ('🎬 ' + qzEsc(lecturesById[q.lecture_id])) : '— بدون محاضرة —';
+    return '<div style="display:flex;align-items:center;gap:8px;padding:9px 10px;border:1px solid ' + (active ? 'var(--teal)' : '#eee') + ';border-radius:10px;margin-bottom:6px;cursor:pointer;" onclick="qzSelectQuizForEdit(' + q.id + ')">'
+      + '<span style="font-weight:700;color:#999;min-width:24px;">#' + (q.display_order || 0) + '</span>'
+      + '<div style="flex:1;"><div style="font-weight:700;">' + qzEsc(q.title || '(بدون عنوان)') + '</div>'
+      + '<div style="font-size:.72rem;color:#888;">' + lectureLbl + '</div></div>'
+      + '<button class="ap-btn ap-btn-ghost" style="padding:4px 8px;color:#e74c3c;" title="حذف" onclick="event.stopPropagation();qzDeleteQuiz(' + q.id + ')">🗑️</button>'
+      + '</div>';
+  }).join('');
+}
+window.qzRenderQuizList = qzRenderQuizList;
+
+function qzNewQuiz() {
+  window._qz.adminEditingQuizId = null;
+  document.getElementById('qz-admin-body').style.display = 'block';
+  document.getElementById('qz-title').value = '';
+  document.getElementById('qz-description').value = '';
+  document.getElementById('qz-display-order').value = (window._qz.adminQuizList || []).length;
+  document.getElementById('qz-time-limit').value = 0;
+  document.getElementById('qz-passing-score').value = 60;
+  document.getElementById('qz-allow-retry').value = 'true';
+  document.getElementById('qz-max-attempts').value = 0;
+  document.getElementById('qz-show-answers').value = 'true';
+  qzPopulateLectureSelect(null);
+  qzToggleMaxAttemptsField();
+  document.getElementById('qz-delete-quiz-btn').style.display = 'none';
+  document.getElementById('qz-questions-section').style.display = 'none';
+  document.getElementById('qz-settings-msg').textContent = '';
+  qzRenderQuizList();
+}
+window.qzNewQuiz = qzNewQuiz;
+
+function qzPopulateLectureSelect(selectedId) {
+  var sel = document.getElementById('qz-lecture-select');
+  var lectures = window._qz.adminLectures || [];
+  sel.innerHTML = '<option value="">— بدون ربط بمحاضرة معينة —</option>' +
+    lectures.map(function(l) { return '<option value="' + l.id + '"' + (String(l.id) === String(selectedId) ? ' selected' : '') + '>' + qzEsc(l.title || ('#' + l.id)) + '</option>'; }).join('');
+}
+
+async function qzSelectQuizForEdit(quizId) {
+  var quiz = (window._qz.adminQuizList || []).find(function(q) { return q.id === quizId; });
+  if (!quiz) return;
+  window._qz.adminEditingQuizId = quiz.id;
+  document.getElementById('qz-admin-body').style.display = 'block';
+  document.getElementById('qz-title').value = quiz.title || '';
+  document.getElementById('qz-description').value = quiz.description || '';
+  document.getElementById('qz-display-order').value = quiz.display_order || 0;
+  document.getElementById('qz-time-limit').value = quiz.time_limit || 0;
+  document.getElementById('qz-passing-score').value = quiz.passing_score != null ? quiz.passing_score : 60;
+  document.getElementById('qz-allow-retry').value = quiz.allow_retry === false ? 'false' : 'true';
+  document.getElementById('qz-max-attempts').value = quiz.max_attempts || 0;
+  document.getElementById('qz-show-answers').value = quiz.show_answers_after_finish === false ? 'false' : 'true';
+  qzPopulateLectureSelect(quiz.lecture_id);
+  qzToggleMaxAttemptsField();
+  document.getElementById('qz-delete-quiz-btn').style.display = '';
+  document.getElementById('qz-settings-msg').textContent = '';
+  document.getElementById('qz-questions-section').style.display = 'block';
+  qzRenderQuizList();
+  await qzLoadQuestionsForAdmin(quiz.id);
+}
+window.qzSelectQuizForEdit = qzSelectQuizForEdit;
 
 function qzToggleMaxAttemptsField() {
   var allow = document.getElementById('qz-allow-retry').value === 'true';
@@ -19952,14 +20412,17 @@ function qzToggleMaxAttemptsField() {
 
 async function qzSaveQuizSettings() {
   var sectionId = window._qz.adminEditingSectionId;
-  if (!sectionId) return;
+  if (!sectionId || !_qzInBranchScope(sectionId)) return;
   var msgEl = document.getElementById('qz-settings-msg');
   var title = document.getElementById('qz-title').value.trim();
   if (!title) { msgEl.textContent = '❌ عنوان الاختبار مطلوب'; return; }
+  var lectureVal = document.getElementById('qz-lecture-select').value;
   var payload = {
     section_id: sectionId,
     title: title,
     description: document.getElementById('qz-description').value.trim(),
+    lecture_id: lectureVal ? Number(lectureVal) : null,
+    display_order: parseInt(document.getElementById('qz-display-order').value, 10) || 0,
     time_limit: parseInt(document.getElementById('qz-time-limit').value, 10) || 0,
     passing_score: parseInt(document.getElementById('qz-passing-score').value, 10) || 0,
     allow_retry: document.getElementById('qz-allow-retry').value === 'true',
@@ -19975,33 +20438,25 @@ async function qzSaveQuizSettings() {
       if (error) throw error;
       _qzToast('✅ تم تحديث إعدادات الاختبار', 'success');
     } else {
-      // ── قيد "اختبار واحد لكل قسم" — تحقق مرة أخيرة قبل الإدراج لمنع تكرار من تبويبين متزامنين ──
-      var { data: existing, error: chkErr } = await db.from('quizzes').select('id').eq('section_id', sectionId).maybeSingle();
-      if (chkErr) throw chkErr;
-      if (existing && existing.id) {
-        window._qz.adminEditingQuizId = existing.id;
-        var { error: updErr } = await db.from('quizzes').update(payload).eq('id', existing.id);
-        if (updErr) throw updErr;
-        _qzToast('✅ تم تحديث الاختبار الموجود لهذا القسم', 'success');
-      } else {
-        var { data: inserted, error: insErr } = await db.from('quizzes').insert(payload).select().single();
-        if (insErr) throw insErr;
-        window._qz.adminEditingQuizId = inserted.id;
-        _qzToast('✅ تم إنشاء الاختبار', 'success');
-      }
+      var { data: inserted, error: insErr } = await db.from('quizzes').insert(payload).select().single();
+      if (insErr) throw insErr;
+      window._qz.adminEditingQuizId = inserted.id;
+      _qzToast('✅ تم إنشاء الاختبار', 'success');
     }
     msgEl.textContent = '';
     document.getElementById('qz-delete-quiz-btn').style.display = '';
     document.getElementById('qz-questions-section').style.display = 'block';
-    await qzLoadQuestionsForAdmin(window._qz.adminEditingQuizId);
+    await qzOnSectionChange(); // إعادة تحميل القائمة والاختيار الحالي محفوظ في adminEditingQuizId
+    var reselected = (window._qz.adminQuizList || []).find(function(q) { return q.id === window._qz.adminEditingQuizId; });
+    if (reselected) await qzSelectQuizForEdit(reselected.id);
   } catch (e) {
     console.error('[qzSaveQuizSettings]', e);
     msgEl.textContent = '❌ خطأ: ' + e.message;
   }
 }
 
-async function qzDeleteQuiz() {
-  var quizId = window._qz.adminEditingQuizId;
+async function qzDeleteQuiz(quizIdArg) {
+  var quizId = quizIdArg || window._qz.adminEditingQuizId;
   if (!quizId) return;
   if (!confirm('⚠️ سيتم حذف هذا الاختبار وكل أسئلته نهائياً. نتائج الطلاب السابقة (quiz_results) ستبقى محفوظة لكنها لن تكون مرتبطة باختبار ظاهر. هل تريد المتابعة؟')) return;
   var db = await _qzDb();
@@ -20012,11 +20467,15 @@ async function qzDeleteQuiz() {
     var { error } = await db.from('quizzes').delete().eq('id', quizId);
     if (error) throw error;
     _qzToast('✅ تم حذف الاختبار', 'success');
-    window._qz.adminEditingQuizId = null;
-    document.getElementById('qz-delete-quiz-btn').style.display = 'none';
-    document.getElementById('qz-questions-section').style.display = 'none';
-    document.getElementById('qz-title').value = '';
-    document.getElementById('qz-description').value = '';
+    if (window._qz.adminEditingQuizId === quizId) {
+      window._qz.adminEditingQuizId = null;
+      document.getElementById('qz-admin-body').style.display = 'none';
+      document.getElementById('qz-delete-quiz-btn').style.display = 'none';
+      document.getElementById('qz-questions-section').style.display = 'none';
+      document.getElementById('qz-title').value = '';
+      document.getElementById('qz-description').value = '';
+    }
+    await qzOnSectionChange();
   } catch (e) {
     console.error('[qzDeleteQuiz]', e);
     _qzToast('❌ خطأ: ' + e.message, 'error');
@@ -20210,20 +20669,29 @@ async function qzRenderSectionEntry(sectionId, containerElOrId) {
   var db = await _qzDb();
   if (!db) return;
   try {
-    var { data: quiz, error } = await db.from('quizzes').select('id,title,description,time_limit,passing_score').eq('section_id', sectionId).maybeSingle();
-    if (error || !quiz) return; // لا يوجد اختبار لهذا القسم — لا نعرض شيئاً
-    var card = document.createElement('div');
-    card.className = 'qz-entry-card';
-    card.innerHTML =
-      '<div class="qz-entry-icon">📝</div>' +
-      '<div class="qz-entry-info">' +
-      '<div class="qz-entry-title">' + qzEsc(quiz.title) + '</div>' +
-      '<div class="qz-entry-meta">' +
-      (quiz.time_limit ? '<span>⏱️ ' + quiz.time_limit + ' دقيقة</span>' : '<span>⏱️ بدون وقت محدد</span>') +
-      '<span>✅ درجة النجاح: ' + (quiz.passing_score != null ? quiz.passing_score : 60) + '%</span>' +
-      '</div></div>' +
-      '<button class="ap-btn ap-btn-primary" onclick="qzOpenStartScreen(' + quiz.id + ')">🚀 ابدأ الاختبار</button>';
-    el.appendChild(card);
+    // ✅ يدعم أكثر من اختبار لكل قسم الآن — يُعرض كل اختبار مرتبط بهذا القسم
+    // كبطاقة منفصلة، مرتبة بحسب display_order. RLS (has_active_access_to)
+    // تمنع وصول أي طالب لاختبارات شعبة أخرى حتى لو استُدعيت هذه الدالة يدوياً.
+    var { data: quizList, error } = await db.from('quizzes')
+      .select('id,title,description,time_limit,passing_score,lecture_id')
+      .eq('section_id', sectionId)
+      .order('display_order', { ascending: true })
+      .order('id', { ascending: true });
+    if (error || !quizList || !quizList.length) return; // لا توجد اختبارات لهذا القسم — لا نعرض شيئاً
+    quizList.forEach(function(quiz) {
+      var card = document.createElement('div');
+      card.className = 'qz-entry-card';
+      card.innerHTML =
+        '<div class="qz-entry-icon">📝</div>' +
+        '<div class="qz-entry-info">' +
+        '<div class="qz-entry-title">' + qzEsc(quiz.title) + '</div>' +
+        '<div class="qz-entry-meta">' +
+        (quiz.time_limit ? '<span>⏱️ ' + quiz.time_limit + ' دقيقة</span>' : '<span>⏱️ بدون وقت محدد</span>') +
+        '<span>✅ درجة النجاح: ' + (quiz.passing_score != null ? quiz.passing_score : 60) + '%</span>' +
+        '</div></div>' +
+        '<button class="ap-btn ap-btn-primary" onclick="qzOpenStartScreen(' + quiz.id + ')">🚀 ابدأ الاختبار</button>';
+      el.appendChild(card);
+    });
   } catch (e) { console.warn('[qzRenderSectionEntry]', e); }
 }
 window.qzRenderSectionEntry = qzRenderSectionEntry;
