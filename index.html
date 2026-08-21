@@ -2896,6 +2896,131 @@ window.qnRegister = function() {
     </div>
   </div>
 </div>
+
+<!-- ==================== PAGE: SETTINGS (⚙️ الإعدادات — صفحة إعدادات حقيقية) ==================== -->
+<!-- بديل عن زر "الإعدادات" اللي كان بيعمل toggleDarkMode() مباشرة فقط.
+     كل قسم هنا مربوط بمصدر حقيقي (localStorage للمظهر، Supabase session/profiles
+     للحساب والأمان) — لا يوجد Input وهمي يُعرض على أنه "محفوظ" بدون مصدر فعلي. -->
+<div id="page-settings" class="page">
+  <div class="links-page">
+    <button class="back-btn" onclick="goHome()">← العودة للرئيسية</button>
+    <div class="page-header">
+      <h2>⚙️ الإعدادات</h2>
+      <p style="color:#7a8a9a;font-size:.85rem;margin-top:4px;">إعدادات المنصة، المظهر، والحساب</p>
+    </div>
+    <div id="st-settings-content">
+      <div class="loading" style="padding:60px 20px"><div class="spinner"></div> جاري تحميل الإعدادات...</div>
+    </div>
+  </div>
+</div>
+<style>
+/* ── الإعدادات: أنماط بادئة st- فقط، لا تمس أي CSS عام موجود ── */
+.st-section { background:var(--card-bg,#fff); border:1px solid var(--border-c,#e6ecf1); border-radius:14px; padding:18px; margin-bottom:16px; }
+.st-section h3 { margin:0 0 12px; font-size:1rem; display:flex; align-items:center; gap:8px; }
+.st-row { display:flex; align-items:center; justify-content:space-between; padding:10px 0; border-top:1px solid var(--border-c,#eef2f5); }
+.st-row:first-of-type { border-top:none; }
+.st-row-label { font-size:.88rem; }
+.st-row-sub { font-size:.75rem; color:#7a8a9a; margin-top:2px; }
+.st-switch { position:relative; width:46px; height:26px; border-radius:14px; background:#c7d2da; border:none; cursor:pointer; flex-shrink:0; }
+.st-switch.on { background:#0a3d62; }
+.st-switch .knob { position:absolute; top:3px; right:3px; width:20px; height:20px; border-radius:50%; background:#fff; transition:transform .15s; }
+.st-switch.on .knob { transform:translateX(-20px); }
+.st-badge { display:inline-block; padding:3px 10px; border-radius:10px; font-size:.72rem; font-weight:700; }
+.st-badge.super { background:#fff4d6; color:#9a6b00; }
+.st-badge.branch { background:#e3f2ff; color:#0a5aa8; }
+.st-badge.student { background:#e8f7ee; color:#1a8a4a; }
+.st-note { font-size:.75rem; color:#7a8a9a; background:var(--soft-bg,#f4f7f9); border-radius:8px; padding:8px 10px; margin-top:8px; }
+</style>
+<script>
+// ==================== SETTINGS PAGE ====================
+window.openSettingsPage = async function() {
+  document.querySelectorAll('.page').forEach(function(p) { p.classList.remove('active'); });
+  var page = document.getElementById('page-settings');
+  if (page) page.classList.add('active');
+  window.scrollTo(0, 0);
+  if (window.state && state.navigationStack) {
+    state.navigationStack.push({ label: '⚙️ الإعدادات', restore: function() { return window.openSettingsPage(); } });
+  }
+  if (typeof updateBreadcrumb === 'function') updateBreadcrumb();
+  await stRenderSettings();
+};
+
+async function stRenderSettings() {
+  var host = document.getElementById('st-settings-content');
+  if (!host) return;
+  var user = window._currentAuthUser || null;
+  var role = window._currentUserRole || (user ? 'student' : null);
+  var isSuperAdmin = window._isSuperAdmin === true;
+  var isBranchAdmin = window._isBranchAdmin === true;
+  var isAdmin = isSuperAdmin || isBranchAdmin;
+  var theme = document.documentElement.getAttribute('data-theme') || 'light';
+
+  var roleLabel = isSuperAdmin ? 'سوبر أدمن' : (isBranchAdmin ? 'أدمن شعبة' : (user ? 'طالب' : 'زائر (غير مسجل)'));
+  var roleBadgeClass = isSuperAdmin ? 'super' : (isBranchAdmin ? 'branch' : 'student');
+
+  var html = '';
+
+  // ── ⚙️ إعدادات المنصة العامة — لا يوجد جدول إعدادات منصة في القاعدة حاليًا،
+  //    فبدل ما نعمل Inputs وهمية ونقول إنها اتحفظت (ممنوع)، بنوضح ده صراحة. ──
+  if (isSuperAdmin) {
+    html += '<div class="st-section"><h3>⚙️ إعدادات المنصة</h3>'
+      + '<div class="st-note">اسم المنصة، الوصف، والشعار غير قابلين للتعديل من هنا حاليًا — القاعدة لا تحتوي بعد على جدول إعدادات عامة للمنصة (يحتاج SQL جديد وليس ضمن هذه المرحلة). الواجهة ستُربط بمصدر حقيقي بمجرد إنشائه.</div>'
+      + '</div>';
+  }
+
+  // ── 🎨 المظهر — حقيقي بالكامل، مربوط بـ localStorage + data-theme الموجودين فعلاً ──
+  html += '<div class="st-section"><h3>🎨 المظهر</h3>'
+    + '<div class="st-row"><div><div class="st-row-label">الوضع الداكن</div><div class="st-row-sub">يُحفظ في متصفحك ويُطبَّق تلقائيًا في زياراتك القادمة</div></div>'
+    + '<button class="st-switch ' + (theme === 'dark' ? 'on' : '') + '" onclick="stToggleTheme(this)" aria-label="تبديل الوضع الداكن"><span class="knob"></span></button></div>'
+    + '</div>';
+
+  // ── 🔔 الإشعارات — لا يوجد جدول تفضيلات إشعارات حاليًا، فلا نعرض مفاتيح وهمية ──
+  html += '<div class="st-section"><h3>🔔 الإشعارات</h3>'
+    + '<div class="st-note">لا توجد إعدادات إشعارات قابلة للتخصيص حاليًا في المنصة — تظهر الإشعارات كما هي من قسم "🔔 الإشعارات". أي تفضيلات (تفعيل/تعطيل نوع معيّن) تحتاج جدول جديد في القاعدة.</div>'
+    + '</div>';
+
+  if (user) {
+    // ── 🔐 الأمان — معلومات حقيقية من الجلسة/البروفايل الحالي، قراءة فقط ──
+    html += '<div class="st-section"><h3>🔐 الأمان</h3>'
+      + '<div class="st-row"><div class="st-row-label">الدور الحالي</div><span class="st-badge ' + roleBadgeClass + '">' + roleLabel + '</span></div>'
+      + (isBranchAdmin && !isSuperAdmin && Array.isArray(window._branchAdminRoots) && window._branchAdminRoots.length
+          ? '<div class="st-row"><div class="st-row-label">نطاق الإدارة</div><div class="st-row-sub">' + window._branchAdminRoots.map(function(r){ return r.title; }).join('، ') + '</div></div>'
+          : '')
+      + '<div class="st-row"><div class="st-row-label">تسجيل الدخول</div><div class="st-row-sub">عبر Google (' + (user.email || '') + ')</div></div>'
+      + '</div>';
+
+    // ── ⚙️ إعدادات الحساب — بيانات المستخدم الحالي الحقيقية + تسجيل خروج فعلي ──
+    var meta = user.user_metadata || {};
+    var name = meta.full_name || meta.name || user.email || 'مستخدم';
+    var avatarUrl = meta.avatar_url || meta.picture || '';
+    html += '<div class="st-section"><h3>👤 إعدادات الحساب</h3>'
+      + '<div class="st-row"><div style="display:flex;align-items:center;gap:10px;">'
+      +   (avatarUrl ? '<img src="' + avatarUrl + '" alt="" style="width:36px;height:36px;border-radius:50%;" decoding="async">' : '')
+      +   '<div><div class="st-row-label">' + name + '</div><div class="st-row-sub">' + (user.email || '') + '</div></div>'
+      + '</div></div>'
+      + '<div class="st-row"><button class="ap-btn ap-btn-ghost" style="color:#e74c3c;" onclick="stLogout()">🚪 تسجيل الخروج</button></div>'
+      + '</div>';
+  } else {
+    html += '<div class="st-section"><h3>👤 الحساب</h3>'
+      + '<div class="st-note">سجّل الدخول لعرض إعدادات حسابك.</div>'
+      + '<div class="st-row"><button class="ap-btn" onclick="loginWithGoogle()">🔐 تسجيل الدخول</button></div>'
+      + '</div>';
+  }
+
+  host.innerHTML = html;
+}
+
+function stToggleTheme(btn) {
+  toggleDarkMode();
+  if (btn) btn.classList.toggle('on');
+}
+
+function stLogout() {
+  var logoutBtn = document.querySelector('#user-box .logout-btn');
+  if (logoutBtn) logoutBtn.click();
+  else if (typeof logoutUser === 'function') logoutUser();
+}
+</script>
 <style>
 /* ── Phase 4: 📊 تقدمي — أنماط مخصصة بادئة sp- فقط، لا تمس أي CSS عام موجود ── */
 .sp-section{margin-bottom:26px;}
@@ -19590,7 +19715,7 @@ window.diagnose = async function() {
   function _msRefreshActiveFromPage() {
     var activePage = document.querySelector('.page.active');
     if (!activePage) { _msSetActive(null); return; }
-    var map = { 'page-home': 'home', 'page-courses': 'courses', 'page-paths': 'paths', 'page-progress': 'progress' };
+    var map = { 'page-home': 'home', 'page-courses': 'courses', 'page-paths': 'paths', 'page-progress': 'progress', 'page-settings': 'settings' };
     _msSetActive(map[activePage.id] || null);
   }
 
@@ -19636,7 +19761,8 @@ window.diagnose = async function() {
         if (typeof toggleAdminPanel === 'function') toggleAdminPanel();
         break;
       case 'settings':
-        if (typeof toggleDarkMode === 'function') toggleDarkMode();
+        if (typeof window.openSettingsPage === 'function') window.openSettingsPage();
+        else if (typeof toggleDarkMode === 'function') toggleDarkMode();
         break;
       case 'logout':
         var logoutBtn = document.querySelector('#user-box .logout-btn');
@@ -19693,6 +19819,10 @@ window.diagnose = async function() {
       if (adminLabel) adminLabel.textContent = isSuperAdmin ? 'لوحة التحكم' : 'لوحة تحكم الشعبة';
     }
     if (adminSep) adminSep.hidden = !isAdmin;
+
+    // ✅ "📊 تقدمي" للطالب فقط — تُخفى عن أي نوع أدمن (سوبر أو شعبة)
+    var progressBtn = document.querySelector('.ms-nav-item[data-nav="progress"]');
+    if (progressBtn) progressBtn.hidden = !!isAdmin;
   };
 })();
 
@@ -20279,11 +20409,21 @@ async function qzLoadMaterialsForAdmin() {
   if (!db) return;
   var sel = document.getElementById('qz-material-select');
   try {
-    var materials = await loadSections(null);
-    // ── أدمن الشعبة: يرى فقط المواد اللي داخل نطاق شعبته (نفس نمط lpLoad) ──
+    // ✅ FIX ("لا توجد مواد ضمن نطاقك"): loadSections(null) كانت تجيب فقط
+    // أقسام المستوى الجذري (parent_id=null)، لكن نطاق أدمن الشعبة
+    // (window._branchAdminSectionIds) هو subtree يبدأ من قسمه هو (غالباً
+    // مش جذر). الفلترة القديمة كانت تقارن جذور الموقع بنطاق فرعي فمفيش
+    // تقاطع أبداً. نفس النمط الصحيح المستخدم في adminLoadSections/lpLoad:
+    // نجيب كل site_sections المسطّحة ثم نفلتر بالنطاق الفعلي.
+    var materials;
     if (window._isBranchAdmin && !window._isSuperAdmin) {
       var scope = window._branchAdminSectionIds || [];
-      materials = (materials || []).filter(function(m) { return scope.indexOf(m.id) > -1; });
+      materials = (window._adminSections && window._adminSections.length)
+        ? window._adminSections.slice()
+        : (scope.length ? (await db.from('site_sections').select('id, title').in('id', scope).order('display_order')).data || [] : []);
+      materials = materials.filter(function(m) { return scope.indexOf(m.id) > -1; });
+    } else {
+      materials = await loadSections(null);
     }
     window._qz.adminMaterials = materials || [];
     if (sel) {
@@ -21319,6 +21459,13 @@ window.qzShowPastReview = qzShowPastReview;
   }
 
   window.openStudentProgressPage = async function() {
+    // ✅ صفحة "📊 تقدمي" خاصة بالطالب فقط — الأدمن (سوبر أو أدمن شعبة) لا يرى
+    // بيانات طالب لأنه ببساطة مش طالب؛ الحماية هنا على مستوى الدالة نفسها
+    // (مش بس إخفاء الزر) عشان تمنع الوصول حتى لو نودي من مكان تاني.
+    if (window._isSuperAdmin || window._isBranchAdmin) {
+      if (typeof goHome === 'function') goHome();
+      return;
+    }
     document.querySelectorAll('.page').forEach(function(p) { p.classList.remove('active'); });
     var page = document.getElementById('page-progress');
     if (page) page.classList.add('active');
