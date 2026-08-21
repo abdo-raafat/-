@@ -22702,5 +22702,136 @@ var labels=document.querySelectorAll('#admin-panel .ap-label');labels.forEach(fu
 })();
 
 </script>
+<script>
+/* FINAL RUNTIME FIX — subscriptions / course content / chapter quizzes / students */
+(function(){
+  'use strict';
+  function D(){ return (typeof db==='function') ? db() : window.supabase; }
+  function E(v){ return typeof esc==='function' ? esc(v==null?'':String(v)) : String(v==null?'':v).replace(/[&<>\"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+  async function waitDB(){ try{ if(typeof _waitForSupabase==='function') await _waitForSupabase(); }catch(e){} return D(); }
+  async function getCourseId(){ try{ if(typeof courseId==='function') return Number(courseId()||0); }catch(e){} return Number(window._branchAdminSectionId||0); }
+
+  /* ---------- CONTENT: course -> material -> chapter ---------- */
+  async function finalCourseRoots(){
+    var d=await waitDB(); if(!d) return [];
+    var q=d.from('site_sections').select('id,title,subtitle,type,parent_id,display_order,requires_subscription').eq('type','course').order('display_order').order('id');
+    if(window._isBranchAdmin && !window._isSuperAdmin){ var cid=await getCourseId(); if(!cid)return []; q=q.eq('id',cid); }
+    var r=await q; if(r.error)throw r.error; return r.data||[];
+  }
+  async function finalMaterials(){
+    var d=await waitDB(), roots=await finalCourseRoots(); if(!d||!roots.length)return [];
+    var ids=roots.map(function(x){return Number(x.id);});
+    var r=await d.from('site_sections').select('id,title,subtitle,parent_id,type,display_order,requires_subscription').in('parent_id',ids).order('display_order').order('id');
+    if(r.error)throw r.error;
+    var map={}; roots.forEach(function(x){map[x.id]=x;});
+    return (r.data||[]).map(function(x){x.course_id=Number(x.parent_id);x.course_title=(map[x.parent_id]||{}).title||'';return x;});
+  }
+  async function finalChapters(materialId){
+    var d=await waitDB(); if(!d)return [];
+    var r=await d.from('site_sections').select('id,title,subtitle,parent_id,type,display_order,requires_subscription').eq('parent_id',Number(materialId)).order('display_order').order('id');
+    if(r.error)throw r.error; return r.data||[];
+  }
+  window._finalMaterials=finalMaterials;
+  window._finalChapters=finalChapters;
+  window.adminLoadSections=async function(){
+    var d=await waitDB(); if(!d)return;
+    try{
+      var mats=await finalMaterials(); window._adminSections=mats;
+      var mat=document.getElementById('admin-material-select'), list=document.getElementById('admin-list-section'), final=document.getElementById('admin-section-select');
+      var opts=mats.map(function(m){return '<option value="'+m.id+'">'+E(m.title)+(m.course_title?' — '+E(m.course_title):'')+'</option>';}).join('');
+      if(mat)mat.innerHTML='<option value="">— اختر المادة —</option>'+opts;
+      if(list)list.innerHTML='<option value="">اختر المادة لعرض محتواها</option>'+opts;
+      if(final)final.innerHTML='<option value="">— اختر الشابتر —</option>';
+      var cw=document.getElementById('admin-chapter-wrap'); if(cw)cw.style.display='none';
+    }catch(e){console.error('[FINAL CONTENT]',e);var m=document.getElementById('admin-msg');if(m)m.textContent='❌ تعذر تحميل المواد: '+E(e.message);}
+  };
+  window.adminOnMaterialChange=async function(){
+    var mat=document.getElementById('admin-material-select'), chap=document.getElementById('admin-chapter-select'), final=document.getElementById('admin-section-select'), wrap=document.getElementById('admin-chapter-wrap');
+    var mid=Number(mat&&mat.value||0); if(!mid){if(wrap)wrap.style.display='none';if(chap)chap.innerHTML='<option value="">— اختر الشابتر —</option>';if(final)final.value='';return;}
+    try{var rows=await finalChapters(mid);if(chap)chap.innerHTML='<option value="">— اختر الشابتر —</option>'+rows.map(function(x){return '<option value="'+x.id+'">'+E(x.title)+'</option>';}).join('');if(wrap)wrap.style.display=rows.length?'block':'none';if(final)final.value='';if(typeof adminLoadSectionPath==='function')adminLoadSectionPath();}catch(e){console.error('[FINAL CONTENT CHAPTERS]',e);}
+  };
+  window.adminOnChapterChange=function(){var c=document.getElementById('admin-chapter-select'),f=document.getElementById('admin-section-select');if(f)f.value=c&&c.value?c.value:'';if(typeof adminLoadSectionPath==='function')adminLoadSectionPath();};
+
+  /* ---------- QUIZ ADMIN: material -> chapter. Ownership stays on course; chapter stored in existing lecture_id column. ---------- */
+  window.qzLoadMaterialsForAdmin=async function(){
+    var sel=document.getElementById('qz-material-select'); if(!sel)return;
+    try{var mats=await finalMaterials();window._qz.adminMaterials=mats;sel.innerHTML=mats.length?'<option value="">— اختر المادة —</option>'+mats.map(function(m){return '<option value="'+m.id+'">'+E(m.title)+'</option>';}).join(''):'<option value="">— لا توجد مواد داخل الكورس —</option>';}catch(e){console.error('[FINAL QUIZ MATERIALS]',e);sel.innerHTML='<option value="">— تعذر تحميل المواد —</option>';}
+  };
+  window.qzOnMaterialChange=async function(){
+    var mid=Number((document.getElementById('qz-material-select')||{}).value||0), sel=document.getElementById('qz-chapter-select'),wrap=document.getElementById('qz-chapter-wrap');
+    var body=document.getElementById('qz-admin-body'),list=document.getElementById('qz-quiz-list-wrap');if(body)body.style.display='none';if(list)list.style.display='none';
+    if(!mid){if(wrap)wrap.style.display='none';return;}
+    try{var rows=await finalChapters(mid);if(sel)sel.innerHTML='<option value="">— اختر الشابتر —</option>'+rows.map(function(c){return '<option value="'+c.id+'">'+E(c.title)+'</option>';}).join('');if(wrap)wrap.style.display='block';}catch(e){console.error('[FINAL QUIZ CHAPTERS]',e);}
+  };
+  window.qzOnChapterChange=async function(){
+    var cid=Number((document.getElementById('qz-chapter-select')||{}).value||0),mid=Number((document.getElementById('qz-material-select')||{}).value||0);if(!cid||!mid)return;
+    window._qz.adminChapterId=cid;window._qz.adminMaterialId=mid;
+    var hidden=document.getElementById('qz-section-select');if(hidden)hidden.value=String(cid);
+    await window._finalLoadQuizByChapter(cid,mid);
+  };
+  window._finalLoadQuizByChapter=async function(chapterId,materialId){
+    var d=await waitDB(),listWrap=document.getElementById('qz-quiz-list-wrap'),listEl=document.getElementById('qz-quiz-list');if(!d||!listEl)return;
+    listWrap.style.display='block';listEl.innerHTML='<div style="text-align:center;padding:14px;color:#888">⏳ جاري تحميل اختبارات الشابتر...</div>';
+    var course=window._isBranchAdmin&&!window._isSuperAdmin?await getCourseId():0;
+    try{
+      /* New records: section_id=course, lecture_id=chapter. Legacy records with section_id=chapter are still shown to super admin. */
+      var q=d.from('quizzes').select('*').eq('lecture_id',Number(chapterId)).order('display_order').order('id');
+      if(window._isSuperAdmin && !window._isBranchAdmin){
+        var a=await q; if(a.error)throw a.error;
+        var legacy=await d.from('quizzes').select('*').eq('section_id',Number(chapterId)).order('display_order').order('id');
+        if(!legacy.error){var seen={};(a.data||[]).forEach(function(x){seen[x.id]=1;});a.data=(a.data||[]).concat((legacy.data||[]).filter(function(x){return !seen[x.id];}));}
+        window._qz.adminQuizList=a.data||[];
+      }else{
+        if(!course)throw new Error('تعذر تحديد الكورس الحالي');
+        q=q.eq('section_id',course);var r=await q;if(r.error)throw r.error;window._qz.adminQuizList=r.data||[];
+      }
+      window._qz.adminEditingSectionId=String(course||chapterId);window._qz.adminEditingQuizId=null;
+      if(typeof qzRenderQuizList==='function')qzRenderQuizList();
+    }catch(e){console.error('[FINAL QUIZ LOAD]',e);listEl.innerHTML='<div style="color:#c0392b;text-align:center;padding:14px">❌ '+E(e.message)+'</div>';}
+  };
+  /* Replace the old save so section_id is always the managed course and lecture_id is the selected chapter. */
+  window.qzSaveQuizSettings=async function(){
+    var d=await waitDB(),msg=document.getElementById('qz-settings-msg');if(!d)return;
+    var title=(document.getElementById('qz-title')||{}).value||'',mid=Number(window._qz.adminMaterialId||0),cid=Number(window._qz.adminChapterId||0),course=await getCourseId();
+    if(!title.trim()){if(msg)msg.textContent='❌ عنوان الاختبار مطلوب';return;}
+    if(!mid||!cid){if(msg)msg.textContent='❌ اختر المادة ثم الشابتر أولاً';return;}
+    if(!course){if(msg)msg.textContent='❌ تعذر تحديد الكورس';return;}
+    var payload={section_id:course,lecture_id:cid,title:title.trim(),description:(document.getElementById('qz-description')||{}).value||'',display_order:parseInt((document.getElementById('qz-display-order')||{}).value,10)||0,time_limit:parseInt((document.getElementById('qz-time-limit')||{}).value,10)||0,passing_score:parseInt((document.getElementById('qz-passing-score')||{}).value,10)||60,allow_retry:(document.getElementById('qz-allow-retry')||{}).value==='true',max_attempts:parseInt((document.getElementById('qz-max-attempts')||{}).value,10)||0,show_answers_after_finish:(document.getElementById('qz-show-answers')||{}).value==='true'};
+    try{if(msg)msg.textContent='⏳ جاري الحفظ...';var r=window._qz.adminEditingQuizId?await d.from('quizzes').update(payload).eq('id',window._qz.adminEditingQuizId):await d.from('quizzes').insert(payload).select().single();if(r.error)throw r.error;if(!window._qz.adminEditingQuizId)window._qz.adminEditingQuizId=r.data.id;window._qz.adminEditingSectionId=String(course);if(msg)msg.textContent='';if(typeof _qzToast==='function')_qzToast('✅ تم حفظ الاختبار','success');await window._finalLoadQuizByChapter(cid,mid);if(typeof qzSelectQuizForEdit==='function')await qzSelectQuizForEdit(window._qz.adminEditingQuizId);}catch(e){console.error('[FINAL QUIZ SAVE]',e);if(msg)msg.textContent='❌ '+E(e.message);}
+  };
+  window.qzNewQuiz=function(){window._qz.adminEditingQuizId=null;var b=document.getElementById('qz-admin-body');if(b)b.style.display='block';['qz-title','qz-description'].forEach(function(id){var x=document.getElementById(id);if(x)x.value='';});var ids=[['qz-display-order',(window._qz.adminQuizList||[]).length],['qz-time-limit',0],['qz-passing-score',60],['qz-max-attempts',0]];ids.forEach(function(a){var x=document.getElementById(a[0]);if(x)x.value=a[1];});var ar=document.getElementById('qz-allow-retry');if(ar)ar.value='true';var sa=document.getElementById('qz-show-answers');if(sa)sa.value='true';var del=document.getElementById('qz-delete-quiz-btn');if(del)del.style.display='none';var qs=document.getElementById('qz-questions-section');if(qs)qs.style.display='none';if(typeof qzRenderQuizList==='function')qzRenderQuizList();};
+
+  /* ---------- STUDENT: quizzes are displayed by chapter (lecture_id), but access is inherited from course section_id ---------- */
+  window.qzRenderSectionEntry=async function(sectionId,containerElOrId){
+    var el=typeof containerElOrId==='string'?document.getElementById(containerElOrId):containerElOrId;if(!el||!sectionId)return;var d=await waitDB();if(!d)return;
+    try{var r=await d.from('quizzes').select('id,title,description,time_limit,passing_score,lecture_id,section_id').eq('lecture_id',Number(sectionId)).order('display_order').order('id');if(r.error)throw r.error;var rows=r.data||[];if(!rows.length)return;rows.forEach(function(q){var card=document.createElement('div');card.className='qz-entry-card';card.innerHTML='<div class="qz-entry-icon">📝</div><div class="qz-entry-info"><div class="qz-entry-title">'+E(q.title)+'</div><div class="qz-entry-meta"><span>⏱️ '+(q.time_limit?(q.time_limit+' دقيقة'):'بدون وقت محدد')+'</span><span>✅ درجة النجاح: '+(q.passing_score==null?60:q.passing_score)+'%</span></div></div><button class="ap-btn ap-btn-primary" onclick="qzOpenStartScreen('+q.id+')">🚀 ابدأ الاختبار</button>';el.appendChild(card);});}catch(e){console.warn('[FINAL QUIZ STUDENT]',e);}
+  };
+
+  /* ---------- SUBSCRIPTIONS: empty filter means ALL, pending means pending ---------- */
+  window._finalLoadAdminRequests=async function(targetId,filter){var d=await waitDB();if(!d)throw new Error('Supabase غير متاح');var r=await d.rpc('admin_get_subscription_requests',{p_section_id:targetId||null,p_status:filter||null});if(r.error)throw r.error;return Array.isArray(r.data)?r.data:[];};
+  window.apLoadRequests=async function(){var el=document.getElementById('ap-requests-body');if(!el)return;el.innerHTML='<div class="ap-loading"><div class="spinner"></div> جاري التحميل...</div>';try{var rows=await window._finalLoadAdminRequests(window._isBranchAdmin&&!window._isSuperAdmin?await getCourseId():null,'pending');if(typeof renderSubs==='function')renderSubs(rows,el,true);else el.innerHTML='<div class="ap-empty">'+rows.length+' طلب</div>';}catch(e){console.error('[FINAL REQUESTS]',e);el.innerHTML='<div class="ap-empty" style="color:#c0392b">❌ تعذر تحميل الطلبات: '+E(e.message)+'</div>';}};
+  window.apLoadSubscriptions=async function(){var el=document.getElementById('ap-subscriptions-body');if(!el)return;var filter=(document.getElementById('ap-sub-filter')||{}).value||'';el.innerHTML='<div class="ap-loading"><div class="spinner"></div> جاري التحميل...</div>';try{var rows=await window._finalLoadAdminRequests(window._isBranchAdmin&&!window._isSuperAdmin?await getCourseId():null,filter||null);if(typeof renderSubs==='function')renderSubs(rows,el,filter==='pending'||!filter);else el.innerHTML='<div class="ap-empty">'+rows.length+' اشتراك</div>';}catch(e){console.error('[FINAL SUBSCRIPTIONS]',e);el.innerHTML='<div class="ap-empty" style="color:#c0392b">❌ '+E(e.message)+'</div>';}};
+
+  /* ---------- STUDENTS: richer dashboard data without new tables ---------- */
+  window.csLoadStudents=async function(){
+    var el=document.getElementById('cs-students-body'),sel=document.getElementById('cs-course-picker');if(!el)return;var sid=Number(sel&&sel.value||0);if(!sid){el.innerHTML='<div class="ap-empty">اختر الكورس أولاً.</div>';return;}var d=await waitDB();if(!d)return;
+    try{
+      var sub=await d.from('subscriptions').select('id,user_id,payment_status,start_date,end_date,last_activity_at,requested_at').eq('section_id',sid);if(sub.error)throw sub.error;var subs=sub.data||[];var uids=[...new Set(subs.map(function(x){return x.user_id;}).filter(Boolean))];
+      var prof=uids.length?await d.from('profiles').select('id,full_name,email').in('id',uids):{data:[],error:null};if(prof.error)throw prof.error;var pm={};(prof.data||[]).forEach(function(x){pm[x.id]=x;});
+      var prog=uids.length?await d.from('user_progress').select('user_id,section_id,last_visited').in('user_id',uids):{data:[],error:null};if(prog.error)throw prog.error;
+      var q=await d.from('quizzes').select('id,passing_score').eq('section_id',sid);if(q.error)throw q.error;var qids=(q.data||[]).map(function(x){return x.id;});
+      var res=(uids.length&&qids.length)?await d.from('quiz_results').select('user_id,quiz_id,percentage').in('user_id',uids).in('quiz_id',qids):{data:[],error:null};if(res.error)throw res.error;
+      var pm2={},rm={};(prog.data||[]).forEach(function(x){pm2[x.user_id]=pm2[x.user_id]||[];pm2[x.user_id].push(x);});(res.data||[]).forEach(function(x){rm[x.user_id]=rm[x.user_id]||[];rm[x.user_id].push(x);});
+      var rows=subs.map(function(s){var rr=rm[s.user_id]||[],pp=pm2[s.user_id]||[],avg=rr.length?Math.round(rr.reduce(function(a,x){return a+Number(x.percentage||0);},0)/rr.length):0,pass=rr.filter(function(x){var qq=(q.data||[]).find(function(z){return z.id===x.quiz_id;});return Number(x.percentage||0)>=(qq?Number(qq.passing_score||60):60);}).length,last=pp.map(function(x){return x.last_visited;}).filter(Boolean).sort().pop()||s.last_activity_at||'—';return {p:pm[s.user_id]||{},s:s,tests:rr.length,passed:pass,avg:avg,last:last};});
+      if(!rows.length){el.innerHTML='<div class="ap-empty">لا يوجد طلاب لهذا الكورس.</div>';return;}
+      el.innerHTML='<div class="ap-table-wrap"><table class="ap-table"><thead><tr><th>الطالب</th><th>البريد</th><th>الاشتراك</th><th>البداية</th><th>النهاية</th><th>آخر نشاط</th><th>الاختبارات</th><th>ناجحة</th><th>المتوسط</th></tr></thead><tbody>'+rows.map(function(x){return '<tr><td>'+E(x.p.full_name||'—')+'</td><td>'+E(x.p.email||'—')+'</td><td>'+E(x.s.payment_status||'—')+'</td><td>'+E(x.s.start_date||'—')+'</td><td>'+E(x.s.end_date||'—')+'</td><td>'+E(x.last)+'</td><td>'+x.tests+'</td><td>'+x.passed+'</td><td>'+x.avg+'%</td></tr>';}).join('')+'</tbody></table></div>';
+    }catch(e){console.error('[FINAL STUDENTS]',e);el.innerHTML='<div class="ap-empty" style="color:#c0392b">❌ '+E(e.message)+'</div>';}
+  };
+
+  /* Ensure quiz lecture selector never appears. */
+  function finalHideLecture(){var x=document.getElementById('qz-lecture-select');if(x&&x.parentElement)x.parentElement.style.display='none';}
+  document.addEventListener('DOMContentLoaded',finalHideLecture);setTimeout(finalHideLecture,50);setTimeout(finalHideLecture,500);
+})();
+</script>
 </body>
 </html>
