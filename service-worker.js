@@ -1,6 +1,6 @@
-const CACHE_NAME = "health-platform-v3";
+const CACHE_NAME = "health-platform-v4";
 
-const FILES_TO_CACHE = [
+const APP_SHELL = [
   "./",
   "./index.html",
   "./manifest.json",
@@ -8,21 +8,23 @@ const FILES_TO_CACHE = [
   "./icon-512.png"
 ];
 
-// تثبيت Service Worker
+// تثبيت النسخة الجديدة
 self.addEventListener("install", (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      return Promise.all(
-        FILES_TO_CACHE.map((file) => {
-          return cache.add(file).catch(() => {
+    caches.open(CACHE_NAME).then(async (cache) => {
+      await Promise.all(
+        APP_SHELL.map(async (file) => {
+          try {
+            await cache.add(file);
+          } catch (error) {
             // تجاهل الملف إذا لم يكن موجودًا
-          });
+          }
         })
       );
+    }).then(() => {
+      return self.skipWaiting();
     })
   );
-
-  self.skipWaiting();
 });
 
 // تفعيل النسخة الجديدة وحذف الكاش القديم
@@ -31,77 +33,114 @@ self.addEventListener("activate", (event) => {
     caches.keys().then((cacheNames) => {
       return Promise.all(
         cacheNames
-          .filter((name) => name !== CACHE_NAME)
+          .filter((name) => {
+            return (
+              name !== CACHE_NAME &&
+              name.startsWith("health-platform-v")
+            );
+          })
           .map((name) => caches.delete(name))
       );
+    }).then(() => {
+      return self.clients.claim();
     })
   );
-
-  self.clients.claim();
 });
 
 // التعامل مع الطلبات
 self.addEventListener("fetch", (event) => {
   const request = event.request;
 
-  // لا نتعامل إلا مع GET
+  // GET فقط
   if (request.method !== "GET") {
     return;
   }
 
   const url = new URL(request.url);
 
-  // لا نخزن أي طلب يحتوي على Query Parameters
-  // مثل ?utm_source= أو أي معاملات أخرى.
-  if (url.search) {
-    return;
-  }
-
-  // لا نتدخل في أي موقع أو خدمة خارج موقعنا
-  // مثل Supabase أو Google أو أي خدمة خارجية.
+  // لا نتدخل في المواقع الخارجية
   if (url.origin !== self.location.origin) {
     return;
   }
 
-  // لا نتدخل في مسارات API
+  // لا نتعامل مع API
   if (url.pathname.includes("/api/")) {
     return;
   }
 
-  // الملفات التي نسمح بتخزينها في الكاش فقط
-  const isStaticFile =
+  /*
+   * مهم جدًا:
+   * index.html والصفحة الرئيسية لازم Network First
+   * علشان أي تحديث على GitHub يظهر للمستخدم.
+   */
+  const isHTML =
+    request.mode === "navigate" ||
     url.pathname.endsWith("/") ||
-    url.pathname.endsWith("/index.html") ||
+    url.pathname.endsWith("/index.html");
+
+  if (isHTML) {
+    event.respondWith(
+      fetch(request, {
+        cache: "no-store"
+      })
+        .then((response) => {
+          if (response && response.ok) {
+            const clone = response.clone();
+
+            caches.open(CACHE_NAME).then((cache) => {
+              cache.put(request, clone);
+            });
+          }
+
+          return response;
+        })
+        .catch(() => {
+          return caches.match(request).then((cached) => {
+            return cached || caches.match("./index.html");
+          });
+        })
+    );
+
+    return;
+  }
+
+  /*
+   * الملفات الثابتة:
+   * لو موجودة في الكاش نستخدمها.
+   * ولو مش موجودة نحملها ونخزنها.
+   */
+  const isStaticFile =
     url.pathname.endsWith("/manifest.json") ||
     url.pathname.endsWith("/icon-192.png") ||
     url.pathname.endsWith("/icon-512.png");
 
-  // أي ملف ديناميكي آخر:
-  // نتركه يذهب للشبكة فقط ولا نخزنه.
-  if (!isStaticFile) {
+  if (isStaticFile) {
+    event.respondWith(
+      caches.match(request).then((cachedResponse) => {
+        if (cachedResponse) {
+          return cachedResponse;
+        }
+
+        return fetch(request).then((response) => {
+          if (response && response.ok) {
+            const clone = response.clone();
+
+            caches.open(CACHE_NAME).then((cache) => {
+              cache.put(request, clone);
+            });
+          }
+
+          return response;
+        });
+      })
+    );
+
     return;
   }
 
-  // Network First:
-  // نحاول الحصول على النسخة الجديدة من الإنترنت أولًا،
-  // وإذا لم يوجد إنترنت نستخدم الكاش.
-  event.respondWith(
-    fetch(request)
-      .then((response) => {
-        if (response && response.ok) {
-          const responseClone = response.clone();
-
-          caches.open(CACHE_NAME).then((cache) => {
-            cache.put(request, responseClone);
-          });
-        }
-
-        return response;
-      })
-      .catch(() => {
-        return caches.match(request).then((cachedResponse) => {
-          return cachedResponse || caches.match("./");
-        });
-      })
-  );
+  /*
+   * أي ملفات أو خدمات أخرى:
+   * لا نتدخل فيها.
+   * خصوصًا Supabase.
+   */
 });
