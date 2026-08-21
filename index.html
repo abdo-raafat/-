@@ -10247,12 +10247,19 @@ async function apLoadSectionChatTab() {
   el.innerHTML = '<div class="ap-loading"><div class="spinner"></div> جاري التحميل...</div>';
   _apWatchLoading('ap-sectionchat-body', 'apLoadSectionChatTab()');
   try {
-    var query = window.supabase.from('site_sections').select('id, title, icon').eq('requires_subscription', true);
+    var query = window.supabase.from('site_sections').select('id, title, icon');
     if (window._isBranchAdmin && !window._isSuperAdmin) {
       var rootRow = window._branchAdminRows && window._branchAdminRows[0];
       var rootId  = rootRow ? rootRow.branch_section_id : null;
       if (!rootId) { el.innerHTML = '<div class="ap-empty">لا توجد شعبة مُسندة إليك بعد.</div>'; return; }
+      // ✅ FIX: أدمن الشعبة بيجيب شعبته هو بالـid مباشرة — من غير شرط
+      // requires_subscription=true، لأن علم "تتطلب اشتراك" ممكن يكون
+      // موجود على أحد أجداد القسم مش على القسم نفسه، وكان ده بيفضّي
+      // النتيجة تمامًا ويظهر "لا توجد شعب متاحة" رغم إن عنده شعبة فعلاً.
       query = query.eq('id', rootId);
+    } else {
+      // السوبر أدمن يشوف القائمة العامة للشعب القابلة للاشتراك فقط
+      query = query.eq('requires_subscription', true);
     }
     var res = await query.order('title');
     if (res.error) throw res.error;
@@ -10828,11 +10835,19 @@ async function apLoadRequests() {
   el.innerHTML = '<div class="ap-loading"><div class="spinner"></div> جاري التحميل...</div>';
   _apWatchLoading('ap-requests-body', 'apLoadRequests()');
   try {
-    var { data, error } = await window.supabase
+    var query = window.supabase
       .from('subscriptions')
       .select('*')
       .eq('payment_status', 'pending')
       .order('requested_at', { ascending: false });
+    // ✅ FIX: نفس فكرة apLoadSubscriptions — نطاق أدمن الشعبة صريح في
+    // الاستعلام نفسه، بدل الاعتماد فقط على RLS للفلترة.
+    if (window._isBranchAdmin && !window._isSuperAdmin) {
+      var scope = window._branchAdminSectionIds || [];
+      if (!scope.length) { el.innerHTML = '<div class="ap-empty">لا توجد شعبة مُسندة إليك بعد.</div>'; return; }
+      query = query.in('section_id', scope);
+    }
+    var { data, error } = await query;
     if (error) throw error;
     if (!data || data.length === 0) {
       el.innerHTML = '<div class="ap-empty"><div class="ap-empty-icon">🎉</div>لا توجد طلبات معلقة</div>';
@@ -10887,6 +10902,15 @@ async function apLoadSubscriptions() {
       .from('subscriptions')
       .select('*')
       .order('created_at', { ascending: false });
+    // ✅ FIX: أدمن الشعبة لازم يستعلم بنطاقه صراحةً (مش يعتمد على RLS وحده) —
+    // لو RLS للاشتراكات (subs_branch_admin_all) لسه متأخرة عن التطبيق على
+    // القاعدة الفعلية، كان بيرجع صف فاضي تمامًا لأدمن الشعبة بدون أي رسالة
+    // خطأ واضحة، فيبان الاشتراكات "مش موجودة" رغم إن الطالب بعتها فعلاً.
+    if (window._isBranchAdmin && !window._isSuperAdmin) {
+      var scope = window._branchAdminSectionIds || [];
+      if (!scope.length) { el.innerHTML = '<div class="ap-empty">لا توجد شعبة مُسندة إليك بعد.</div>'; return; }
+      query = query.in('section_id', scope);
+    }
     if (filterVal) query = query.eq('payment_status', filterVal);
     var { data, error } = await query;
     if (error) throw error;
@@ -11266,6 +11290,13 @@ async function apLoadPayments() {
       .select('*, site_sections(title, payment_method, payment_number, price)')
       .not('receipt_image', 'is', null)
       .order('requested_at', { ascending: false });
+    // ✅ FIX: نفس فكرة apLoadSubscriptions/apLoadRequests — نطاق أدمن الشعبة
+    // صريح في الاستعلام، بدل الاعتماد فقط على RLS.
+    if (window._isBranchAdmin && !window._isSuperAdmin) {
+      var scope = window._branchAdminSectionIds || [];
+      if (!scope.length) { el.innerHTML = '<div class="ap-empty">لا توجد شعبة مُسندة إليك بعد.</div>'; return; }
+      query = query.in('section_id', scope);
+    }
     if (filterVal) query = query.eq('payment_status', filterVal);
     if (searchVal) {
       var matchProfPay = await window.supabase.from('profiles').select('id')
@@ -20518,7 +20549,23 @@ async function qzOnSectionChange() {
     // ── محاضرات هذا القسم (section_content) — لملء قائمة "المحاضرة المرتبطة" ──
     var lecturesPromise = (typeof loadSectionContent === 'function') ? loadSectionContent(sectionId) : Promise.resolve([]);
     var { data: quizzes, error } = await db.from('quizzes').select('*').eq('section_id', sectionId).order('display_order', { ascending: true }).order('id', { ascending: true });
-    if (error) throw error;
+    if (error) {
+      // ✅ FIX: لو عمود display_order لسه مش موجود في القاعدة الفعلية (Migration
+      // لم يُشغَّل بعد رغم إنه مكتوب جاهز في printQuizBranchSecurityAndAnalyticsSQL())،
+      // كان الخطأ ده بيوقف تحميل الاختبارات بالكامل. هنا نعيد المحاولة بدون الترتيب
+      // بهذا العمود (fallback مؤقت) بدل ما تنكسر الشاشة، مع تنبيه واضح للأدمن.
+      if (error.message && /display_order/i.test(error.message)) {
+        console.warn('[qzOnSectionChange] عمود display_order غير موجود — استخدم fallback مؤقت. شغّل printQuizBranchSecurityAndAnalyticsSQL() في Supabase SQL Editor.');
+        var fb = await db.from('quizzes').select('*').eq('section_id', sectionId).order('id', { ascending: true });
+        if (fb.error) throw fb.error;
+        quizzes = fb.data;
+        if (typeof _showToast === 'function') {
+          _showToast('⚠️ قاعدة البيانات محتاجة تحديث (عمود display_order) — شغّل printQuizBranchSecurityAndAnalyticsSQL() في Supabase', 'error');
+        }
+      } else {
+        throw error;
+      }
+    }
     window._qz.adminQuizList = quizzes || [];
     var lectures = await lecturesPromise;
     window._qz.adminLectures = lectures || [];
@@ -20632,10 +20679,19 @@ async function qzSaveQuizSettings() {
   try {
     if (window._qz.adminEditingQuizId) {
       var { error } = await db.from('quizzes').update(payload).eq('id', window._qz.adminEditingQuizId);
+      if (error) {
+        var r1 = await _qzRetryWithoutMissingColumns(db, 'update', payload, error, { id: window._qz.adminEditingQuizId });
+        error = r1.error;
+      }
       if (error) throw error;
       _qzToast('✅ تم تحديث إعدادات الاختبار', 'success');
     } else {
       var { data: inserted, error: insErr } = await db.from('quizzes').insert(payload).select().single();
+      if (insErr) {
+        var r2 = await _qzRetryWithoutMissingColumns(db, 'insert', payload, insErr, null);
+        insErr = r2.error;
+        inserted = r2.data;
+      }
       if (insErr) throw insErr;
       window._qz.adminEditingQuizId = inserted.id;
       _qzToast('✅ تم إنشاء الاختبار', 'success');
@@ -20650,6 +20706,45 @@ async function qzSaveQuizSettings() {
     console.error('[qzSaveQuizSettings]', e);
     msgEl.textContent = '❌ خطأ: ' + e.message;
   }
+}
+
+// ✅ FIX ("column quizzes.display_order does not exist" عند إنشاء/تعديل اختبار):
+// السبب الحقيقي هو أن عمود display_order (وربما lecture_id) مكتوبين بالفعل في
+// migration جاهزة (printQuizBranchSecurityAndAnalyticsSQL) لكنها لم تُشغَّل بعد
+// على قاعدة البيانات الفعلية. بدل ما تفشل عملية إنشاء الاختبار بالكامل، نعيد
+// المحاولة مرة واحدة بعد حذف أي عمود يظهر في رسالة الخطأ كـ"غير موجود"،
+// مع تنبيه واضح للأدمن إنه لازم يشغّل الـSQL عشان الترتيب يشتغل فعليًا.
+// يرجع دائمًا بنفس الشكل: { data, error } — error=null يعني نجاح.
+async function _qzRetryWithoutMissingColumns(db, mode, payload, error, whereEq) {
+  if (!error || !error.message || !/column .* does not exist/i.test(error.message)) {
+    return { data: null, error: error };
+  }
+  var missingCol = null;
+  var m = /column "?(?:quizzes\.)?([a-zA-Z_]+)"?\s+.*does not exist/i.exec(error.message);
+  if (m) missingCol = m[1];
+  if (!missingCol || !(missingCol in payload)) return { data: null, error: error };
+  var cleaned = {};
+  for (var k in payload) { if (k !== missingCol) cleaned[k] = payload[k]; }
+  console.warn('[qzSaveQuizSettings] العمود "' + missingCol + '" غير موجود في قاعدة البيانات — أُعيدت المحاولة بدونه. شغّل printQuizBranchSecurityAndAnalyticsSQL() في Supabase SQL Editor لإضافته.');
+  if (typeof _showToast === 'function') {
+    _showToast('⚠️ عمود "' + missingCol + '" غير موجود في القاعدة — تم الحفظ بدونه مؤقتًا. شغّل printQuizBranchSecurityAndAnalyticsSQL() في Supabase', 'error');
+  }
+  try {
+    if (mode === 'update') {
+      var upd = await db.from('quizzes').update(cleaned).eq('id', whereEq.id);
+      // لو فيه عمود تاني ناقص برضو، حاول تنضيفه مرة واحدة كمان (حد أقصى مرتين إجمالاً)
+      if (upd.error && /column .* does not exist/i.test(upd.error.message || '')) {
+        return await _qzRetryWithoutMissingColumns(db, 'update', cleaned, upd.error, whereEq);
+      }
+      return { data: null, error: upd.error || null };
+    } else {
+      var ins = await db.from('quizzes').insert(cleaned).select().single();
+      if (ins.error && /column .* does not exist/i.test(ins.error.message || '')) {
+        return await _qzRetryWithoutMissingColumns(db, 'insert', cleaned, ins.error, null);
+      }
+      return { data: ins.data || null, error: ins.error || null };
+    }
+  } catch (e2) { return { data: null, error: e2 }; }
 }
 
 async function qzDeleteQuiz(quizIdArg) {
