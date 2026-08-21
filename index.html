@@ -22697,8 +22697,20 @@ function courseId(){return Number(window._branchAdminCourseId||window._activeSec
 function isBranch(){return !!(window._isBranchAdmin&&!window._isSuperAdmin);}
 
 async function courseRoots(){
+  // ✅ FIX (أدمن الكورس — "لا توجد مواد داخل الكورس"): كان الشرط .eq('type','course')
+  // يُطبَّق حتى لو الأدمن معروف بالضبط أنه معيّن على courseId() (631 مثلاً) عبر
+  // section_admins — فلو عمود type لهذا القسم في قاعدة البيانات مش مضبوط حرفيًا
+  // على 'course' (مثلاً لسه فاضي أو مختلف)، كانت النتيجة ترجع فاضية تمامًا، فتختفي
+  // كل المواد/الاختبارات رغم إن الأدمن معيّن فعليًا وله صلاحية كاملة على هذا القسم.
+  // الحل: لو أدمن الكورس ومعروف الـ id بالضبط من نطاقه (section_admins)، اجلب
+  // الصف بالـ id مباشرة بدون شرط type — الثقة هنا في تعيين section_admins نفسه،
+  // مش في وسم type الذي يديره أدمن المنصة يدويًا وقد يُنسى.
+  if(isBranch()){
+    var cid=courseId(); if(!cid)return [];
+    var rBranch=await db().from('site_sections').select('id,title,icon,type,parent_id,display_order,requires_subscription').eq('id',cid);
+    if(rBranch.error)throw rBranch.error; return rBranch.data||[];
+  }
   var q=db().from('site_sections').select('id,title,icon,type,parent_id,display_order,requires_subscription').eq('type','course').order('display_order').order('id');
-  if(isBranch()){var cid=courseId(); if(!cid)return []; q=q.eq('id',cid);}
   var r=await q; if(r.error)throw r.error; return r.data||[];
 }
 async function materialsForCourses(){
@@ -22801,8 +22813,15 @@ var labels=document.querySelectorAll('#admin-panel .ap-label');labels.forEach(fu
   /* ---------- CONTENT: course -> material -> chapter ---------- */
   async function finalCourseRoots(){
     var d=await waitDB(); if(!d) return [];
+    // ✅ FIX (نفس مشكلة "لا توجد مواد داخل الكورس"): لو أدمن كورس ومعروف الـ id
+    // بالضبط من نطاقه، اجلب الصف مباشرة بدون اشتراط type='course' (قد يكون
+    // العمود غير مضبوط للقسم رغم أنه معيّن فعليًا كورس عبر section_admins).
+    if(window._isBranchAdmin && !window._isSuperAdmin){
+      var cid=await getCourseId(); if(!cid)return [];
+      var rB=await d.from('site_sections').select('id,title,subtitle,type,parent_id,display_order,requires_subscription').eq('id',cid);
+      if(rB.error)throw rB.error; return rB.data||[];
+    }
     var q=d.from('site_sections').select('id,title,subtitle,type,parent_id,display_order,requires_subscription').eq('type','course').order('display_order').order('id');
-    if(window._isBranchAdmin && !window._isSuperAdmin){ var cid=await getCourseId(); if(!cid)return []; q=q.eq('id',cid); }
     var r=await q; if(r.error)throw r.error; return r.data||[];
   }
   async function finalMaterials(){
