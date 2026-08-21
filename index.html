@@ -23628,5 +23628,165 @@ NOTIFY pgrst, 'reload schema';
 })();
 </script>
 
+
+<!-- ============================================================
+     FINAL USER REQUEST PATCH — 2026-08-21
+     1) شات الكورسات المدفوعة فقط
+     2) أدمن الشعبة المعيّن له دخول للشات بدون اشتراك
+     3) إدارة الاشتراكات تعمل داخل لوحة أدمن الكورس
+     4) إضافة المحتوى والاختبارات: مادة -> شابتر
+============================================================ -->
+<script>
+(function(){
+'use strict';
+if(window.__FINAL_USER_REQUEST_PATCH__) return;
+window.__FINAL_USER_REQUEST_PATCH__=true;
+
+function _uEsc(v){
+  return typeof window._apEsc==='function'
+    ? window._apEsc(v==null?'':String(v))
+    : String(v==null?'':v).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});
+}
+function _uBranchIds(){
+  var a=Array.isArray(window._branchAdminSectionIds)?window._branchAdminSectionIds:[];
+  if(!a.length && window._branchAdminCourseId) a=[Number(window._branchAdminCourseId)];
+  return a.map(Number).filter(Boolean);
+}
+function _uIsScopedAdmin(sectionId){
+  return !!(window._isSuperAdmin ||
+    (window._isBranchAdmin && _uBranchIds().indexOf(Number(sectionId))!==-1));
+}
+
+/* ── الشات: يظهر فقط على الشعبة/الكورس المدفوع نفسه، وليس على الفرقة أو الترم أو المادة/الشابتر ── */
+var _oldEligibility=window.getChatEligibility;
+window.getChatEligibility=async function(sectionId){
+  var db=window.supabase;
+  if(!db || !sectionId) return null;
+  try{
+    var r=await db.from('site_sections')
+      .select('id,title,icon,type,requires_subscription,parent_id')
+      .eq('id',Number(sectionId)).maybeSingle();
+    if(r.error || !r.data) return null;
+    var sec=r.data;
+
+    // شرط صريح: المحادثة تخص الكورس/الشعبة المدفوعة فقط.
+    if(sec.type!=='course' || sec.requires_subscription!==true) return null;
+
+    // أدمن المنصة أو أدمن هذه الشعبة بالذات يدخل مباشرة.
+    if(_uIsScopedAdmin(sec.id)) return {anchor:sec,allowed:true,isAdmin:true};
+
+    // الطالب يحتاج اشتراكاً نشطاً.
+    if(typeof _oldEligibility==='function'){
+      var x=await _oldEligibility.call(this,sec.id);
+      if(x && x.allowed) return x;
+    }
+    return {anchor:sec,allowed:false};
+  }catch(e){
+    console.warn('[FINAL PATCH chat eligibility]',e);
+    return null;
+  }
+};
+
+/* منع أي زر شات عام/قديم من الظهور خارج الكورس المدفوع */
+var _oldRenderChatButton=window._renderChatEntryButtonHTML;
+window._renderChatEntryButtonHTML=function(anchor){
+  if(!anchor || anchor.type!=='course' || anchor.requires_subscription!==true) return '';
+  return typeof _oldRenderChatButton==='function' ? _oldRenderChatButton(anchor) : '';
+};
+
+/* فتح الشات بعد تحقق نطاق الأدمن قبل استدعاء الكود الأصلي */
+var _oldOpenSectionChat=window.openSectionChat;
+if(typeof _oldOpenSectionChat==='function'){
+  window.openSectionChat=async function(sectionId,sectionTitle){
+    if(window._isBranchAdmin && !window._isSuperAdmin && !_uIsScopedAdmin(sectionId)){
+      if(typeof window._showToast==='function') window._showToast('⛔ هذه المحادثة خارج نطاق الكورس المعيّن لك','error');
+      return;
+    }
+    return _oldOpenSectionChat.apply(this,arguments);
+  };
+}
+
+/* ── إدارة الاشتراكات: fallback مباشر لو RPC غير موجودة/لم تُنشر بعد ── */
+window.apLoadDivisionSubs=async function(){
+  var el=document.getElementById('ap-divsubs-body');
+  if(!el || !window.supabase) return;
+  el.innerHTML='<div class="ap-loading"><div class="spinner"></div> جاري تحميل اشتراكات الكورس...</div>';
+  try{
+    var q=window.supabase.from('subscriptions')
+      .select('id,user_id,section_id,payment_status,start_date,end_date,requested_at,created_at,reject_reason,receipt_image');
+    if(window._isBranchAdmin && !window._isSuperAdmin){
+      var ids=_uBranchIds();
+      if(!ids.length) throw new Error('لم يتم تحديد الكورس المعيّن لهذا الأدمن');
+      q=q.in('section_id',ids);
+    }else if(window._dsSelectedBranchId){
+      q=q.eq('section_id',Number(window._dsSelectedBranchId));
+    }
+    var status=(document.getElementById('ap-divsubs-filter')||{}).value||'';
+    if(status) q=q.eq('payment_status',status);
+    var res=await q.order('requested_at',{ascending:false});
+    if(res.error) throw res.error;
+    var rows=res.data||[];
+    if(!rows.length){
+      el.innerHTML='<div class="ap-empty"><div class="ap-empty-icon">📭</div>لا توجد اشتراكات لهذا الكورس حالياً</div>';
+      return;
+    }
+
+    var uids=[...new Set(rows.map(function(x){return x.user_id;}).filter(Boolean))];
+    var sids=[...new Set(rows.map(function(x){return x.section_id;}).filter(Boolean))];
+    var [pr,sr,ar]=await Promise.all([
+      uids.length?window.supabase.from('profiles').select('id,full_name,email').in('id',uids):Promise.resolve({data:[]}),
+      sids.length?window.supabase.from('site_sections').select('id,title').in('id',sids):Promise.resolve({data:[]}),
+      sids.length?window.supabase.from('section_admins').select('user_id,section_id').eq('is_active',true).in('section_id',sids):Promise.resolve({data:[]})
+    ]);
+    if(pr.error) console.warn('[subs profiles]',pr.error);
+    if(sr.error) console.warn('[subs sections]',sr.error);
+    var pm={},sm={},admins={};
+    (pr.data||[]).forEach(function(x){pm[x.id]=x;});
+    (sr.data||[]).forEach(function(x){sm[x.id]=x;});
+    (ar.data||[]).forEach(function(x){admins[x.user_id+'|'+x.section_id]=true;});
+    rows=rows.filter(function(x){return !admins[x.user_id+'|'+x.section_id];});
+
+    var date=function(v){return typeof window._apDate==='function'?window._apDate(v):(v?new Date(v).toLocaleDateString('ar-EG'):'—');};
+    var badge=function(st){
+      return st==='active'?'✅ نشط':st==='pending'?'⏳ معلّق':st==='cancelled'?'❌ مرفوض':st==='expired'?'⌛ منتهي':_uEsc(st||'—');
+    };
+    el.innerHTML='<div class="ap-table-wrap"><table class="ap-table"><thead><tr><th>الطالب</th><th>الكورس</th><th>الحالة</th><th>البداية</th><th>الانتهاء</th><th>إجراء</th></tr></thead><tbody>'+
+      rows.map(function(r){
+        var p=pm[r.user_id]||{}, c=sm[r.section_id]||{};
+        var actions='<button class="ap-btn ap-btn-primary" onclick="apApproveDivisionSub('+Number(r.id)+')">🔄 تجديد 30 يوم</button> '+
+                    '<button class="ap-btn ap-btn-danger" onclick="apCancelDivisionSub('+Number(r.id)+')">🚫 إلغاء</button>';
+        if(r.payment_status==='pending') actions='<button class="ap-btn ap-btn-success" onclick="apApproveDivisionSub('+Number(r.id)+')">✅ قبول</button> '+
+                                                   '<button class="ap-btn ap-btn-danger" onclick="apCancelDivisionSub('+Number(r.id)+')">❌ رفض</button>';
+        return '<tr><td><b>'+_uEsc(p.full_name||'—')+'</b><div class="ap-email-cell">'+_uEsc(p.email||'—')+'</div></td>'+
+          '<td>'+_uEsc(c.title||'#'+r.section_id)+'</td><td>'+badge(r.payment_status)+'</td>'+
+          '<td>'+date(r.start_date)+'</td><td>'+date(r.end_date)+'</td><td>'+actions+'</td></tr>';
+      }).join('')+'</tbody></table></div>';
+  }catch(e){
+    console.error('[FINAL PATCH subscriptions]',e);
+    el.innerHTML='<div class="ap-empty" style="color:#e74c3c">❌ تعذر تحميل الاشتراكات: '+_uEsc(e.message)+'</div>';
+  }
+};
+
+/* عند فتح تبويب إدارة الاشتراكات نحمّله فوراً */
+var _oldSwitch=window.apSwitchTab;
+if(typeof _oldSwitch==='function'){
+  window.apSwitchTab=function(tab){
+    var out=_oldSwitch.apply(this,arguments);
+    if(tab==='divsubs') setTimeout(function(){window.apLoadDivisionSubs&&window.apLoadDivisionSubs();},0);
+    return out;
+  };
+}
+
+/* إعادة فرض تسلسل مادة -> شابتر عند كل فتح للوحة */
+document.addEventListener('click',function(e){
+  var b=e.target.closest&&e.target.closest('#ap-tab-content,#ap-tab-quizzes');
+  if(!b) return;
+  setTimeout(function(){
+    if(b.id==='ap-tab-content' && typeof window.adminLoadSections==='function') window.adminLoadSections();
+    if(b.id==='ap-tab-quizzes' && typeof window.qzLoadMaterialsForAdmin==='function') window.qzLoadMaterialsForAdmin();
+  },50);
+});
+})();
+</script>
 </body>
 </html>
