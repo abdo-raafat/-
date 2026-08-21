@@ -4183,11 +4183,11 @@ async function _renderDynamicSectionPage(sec) {
     window.getChatEligibility(sec.id).then(function(elig) {
       if (elig && elig.anchor && chatEntryEl && document.getElementById('dynamic-section-title')) {
         // ✅ FIX (Aug 2026 — طلب المستخدم): محادثة الكورس الجماعية تظل مقفولة إلا
-        // لمن عنده اشتراك نشط (elig.allowed)، لكن زر "راسل أدمن الكورساتة" لازم يفضل
+        // لمن عنده اشتراك نشط (elig.allowed)، لكن زر "راسل أدمن الكورس" لازم يفضل
         // موجوداً دايماً طول ما القسم عنده anchor صحيح — حتى لو الطالب لسه مش
         // مشترك أو اشتراكه منتهي/معلّق — عشان يقدر يسأل الأدمن قبل/أثناء الاشتراك.
         chatEntryEl.innerHTML = elig.allowed ? window._renderChatEntryButtonHTML(elig.anchor) : '';
-        // ✅ Phase C — زر "راسل أدمن الكورساتة" (محادثة ثنائية، منفصلة عن محادثة
+        // ✅ Phase C — زر "راسل أدمن الكورس" (محادثة ثنائية، منفصلة عن محادثة
         // الشعبة الجماعية أعلاه). يظهر طالما القسم عنده anchor (يتطلب اشتراكاً)،
         // بغض النظر عن حالة الاشتراك نفسها، ثم يتحقق داخليًا مرة أخرى عبر RPC آمنة
         // (get_section_admins_for_messaging) قبل إظهار أي بيانات عن الأدمن.
@@ -6948,7 +6948,7 @@ async function _renderUserBox(user, role, mySeq) {
   _setupOwnAdminStatusRealtime(user.id); // ✅ يستقبل تغييرات section_admins/profiles.role لهذا المستخدم بدون Logout/Login
   // role يأتي من profiles.role في Supabase — ليس من HTML
   // ✅ (Aug 2026): بنستخدم _resolveAdminStatus بدل الاعتماد على role وحده، عشان
-  // أدمن الكورساتة المُعيّن عن طريق section_admins (بدون profiles.role='branch_admin')
+  // أدمن الكورس المُعيّن عن طريق section_admins (بدون profiles.role='branch_admin')
   // يظهر له الأدمن بردو، مش بس اللي معيّن بالطريقة القديمة
   var status = (role === 'admin') ? { isSuperAdmin: true, isBranchAdmin: false, isAdmin: true } : await _resolveAdminStatus(user.id);
   console.log('[AUTH-DEBUG] _renderUserBox: resolved admin status:', status);
@@ -7046,7 +7046,7 @@ async function _fetchUserRole(userId) {
 // ── _resolveAdminStatus: مصدر الحقيقة الموحّد لتحديد صلاحيات الأدمن ──
 // يجمع بين النظام القديم (profiles.role='branch_admin') والجديد (section_admins)
 // عشان أي مكان في الكود بيحتاج يعرف "هل هذا المستخدم أدمن؟" يستخدم نفس المنطق بالظبط —
-// ده اللي كان ناقص وسبب إن أدمن الكورساتة المُعيّن عن طريق section_admins كان يدخل بنجاح
+// ده اللي كان ناقص وسبب إن أدمن الكورس المُعيّن عن طريق section_admins كان يدخل بنجاح
 // لكن لوحة التحكم متظهرش له، لأن كل الكود القديم كان بيفحص profiles.role فقط.
 async function _resolveAdminStatus(userId) {
   var role = await _fetchUserRole(userId);
@@ -7080,7 +7080,7 @@ async function _resolveAdminStatus(userId) {
 // BRANCH ADMIN — مصدرين للتعيين، بدون أي جدول جديد ولا RPC إضافية:
 //   1) القديم:  profiles.managed_section_id + profiles.role='branch_admin'  (لسه شغال بدون كسر)
 //   2) الجديد:  section_admins (user_id, section_id, role='admin', is_active=true)
-//               — هذا هو المصدر الصحيح لتعيين أدمن الكورساتة من الآن (✅ Aug 2026 fix)
+//               — هذا هو المصدر الصحيح لتعيين أدمن الكورس من الآن (✅ Aug 2026 fix)
 // المستخدم ممكن يظهر في المصدرين مع بعض؛ بنجمع كل الشعب المُسندة له من الاثنين
 // ونشيل التكرار، وإذا كان عنده أكثر من شعبة نديله Switcher يختار بيه.
 // ════════════════════════════════════════════════════════════════
@@ -7131,7 +7131,7 @@ async function _loadBranchAdminScope(userId) {
       });
     }
 
-    // 2) النظام الجديد — section_admins هو المصدر الصحيح الآن لتعيين أدمن الكورساتة،
+    // 2) النظام الجديد — section_admins هو المصدر الصحيح الآن لتعيين أدمن الكورس،
     //    ويدعم أكثر من شعبة لنفس المستخدم (صف لكل شعبة)
     var saRes = await window.supabase
       .from('section_admins')
@@ -7160,7 +7160,7 @@ async function _loadBranchAdminScope(userId) {
   } catch(e) { console.warn('[BranchAdmin] خطأ:', e.message); }
 }
 
-// ── يبدّل الشعبة المعروضة حالياً في لوحة أدمن الكورساتة (لمن يدير أكثر من شعبة) ──
+// ── يبدّل الشعبة المعروضة حالياً في لوحة أدمن الكورس (لمن يدير أكثر من شعبة) ──
 window._selectBranchAdminRoot = async function(rootId) {
   if (!window._branchAdminRoots.some(function(r) { return r.id === rootId; })) return;
   window._branchAdminActiveRoot = rootId;
@@ -8876,7 +8876,7 @@ window.checkBanStatus = async function(email) {
       <div class="ap-tab-panel" id="ap-panel-sectionchat" role="tabpanel">
         <div class="ap-section-heading" style="margin:0 0 10px;border:none;padding:0;">💬 محادثة الكورس</div>
         <div style="font-size:.76rem;color:#888;margin-bottom:14px;">
-          أدمن الكورساتة يقدر يقرأ ويرسل ويحذف الرسائل المسيئة في محادثة شعبته فقط. اضغط "فتح المحادثة" بجانب الشعبة.
+          أدمن الكورس يقدر يقرأ ويرسل ويحذف الرسائل المسيئة في محادثة شعبته فقط. اضغط "فتح المحادثة" بجانب الشعبة.
         </div>
         <div id="ap-sectionchat-body"><div class="ap-loading"><div class="spinner"></div> جاري التحميل...</div></div>
       </div>
@@ -8893,8 +8893,8 @@ window.checkBanStatus = async function(email) {
           تزيله في أي وقت — إزالته لا تحذف حسابه ولا اشتراكاته ولا رسائله ولا ملفه الشخصي، فقط تُلغي صلاحية
           إدارة هذه الشعبة تحديداً.
         </div>
-        <!-- اختيار الفرقة ← الترم ← الشعبة (site_sections عبر parent_id) — أدمن الكورساتة يُعيَّن على مستوى الشعبة فقط -->
-        <!-- ✅ (Aug 2026 — Phase 3): مُخفي عن أدمن الكورساتة (مش أدمن المنصة) — نطاقه محدود
+        <!-- اختيار الفرقة ← الترم ← الشعبة (site_sections عبر parent_id) — أدمن الكورس يُعيَّن على مستوى الشعبة فقط -->
+        <!-- ✅ (Aug 2026 — Phase 3): مُخفي عن أدمن الكورس (مش أدمن المنصة) — نطاقه محدود
              تلقائيًا لشعبته هو فقط، من غير تصفح باقي الشعب — انظر baLoadGrades() -->
         <div id="ba-tree-picker" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;">
           <div style="flex:1;min-width:150px;">
@@ -8911,7 +8911,7 @@ window.checkBanStatus = async function(email) {
           </div>
         </div>
         <div id="ba-table-wrap">
-          <div id="ba-list-body"><div class="ap-empty">اختر الفرقة ثم الترم ثم الشعبة لإدارة أدمن الكورساتة.</div></div>
+          <div id="ba-list-body"><div class="ap-empty">اختر الفرقة ثم الترم ثم الشعبة لإدارة أدمن الكورس.</div></div>
         </div>
         <button onclick="baRefreshCurrent()" class="ap-btn ap-btn-ghost" style="margin-top:10px;">🔄 تحديث القائمة</button>
       </div>
@@ -8924,7 +8924,7 @@ window.checkBanStatus = async function(email) {
           يسجَّل هنا كل عملية إدارية حساسة: من قام بها، نوع العملية، العنصر المتأثر، الشعبة، الوقت، والنتيجة.
           هذا السجل غير قابل للتعديل أو الحذف من الواجهة — التسجيل يتم عبر دالة آمنة على قاعدة البيانات (SECURITY DEFINER)
           تحدد هوية الفاعل من الجلسة نفسها، بحيث لا يمكن لأي مستخدم تزوير سجل باسم غيره.
-          أدمن الكورساتة يرى فقط سجل شعبته (مفروض عبر RLS، وليس فقط إخفاء بالواجهة).
+          أدمن الكورس يرى فقط سجل شعبته (مفروض عبر RLS، وليس فقط إخفاء بالواجهة).
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
           <input id="al-filter-search" class="ap-input" type="text" placeholder="🔍 بحث: اسم الفاعل، العنصر..." style="flex:1;min-width:180px;" oninput="alApplyFilters()">
@@ -8954,7 +8954,7 @@ window.checkBanStatus = async function(email) {
       <div id="ba-assign-overlay" style="display:none;position:fixed;inset:0;z-index:9999998;background:rgba(10,20,40,.75);backdrop-filter:blur(4px);align-items:center;justify-content:center;padding:16px;">
         <div style="background:var(--card-bg,#fff);border-radius:16px;max-width:440px;width:100%;max-height:88vh;overflow-y:auto;padding:22px;box-shadow:0 20px 60px rgba(0,0,0,.4);">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-            <div id="ba-assign-title" style="font-weight:800;font-size:1.02rem;">➕ تعيين أدمن الكورساتة</div>
+            <div id="ba-assign-title" style="font-weight:800;font-size:1.02rem;">➕ تعيين أدمن الكورس</div>
             <button onclick="baCloseAssignModal()" style="background:none;border:none;font-size:1.3rem;cursor:pointer;color:#888;line-height:1;">✕</button>
           </div>
           <div id="ba-assign-section-label" style="font-size:.8rem;color:#888;margin-bottom:14px;"></div>
@@ -8981,7 +8981,7 @@ window.checkBanStatus = async function(email) {
               <label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" data-perm="can_manage_payments" checked> إدارة المدفوعات</label>
               <label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" data-perm="can_manage_section_chat" checked> إدارة محادثة الكورس</label>
               <label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" data-perm="can_delete_section_messages" checked> حذف رسائل الشعبة</label>
-              <!-- ⚠️ (Aug 2026 — Phase 3): صلاحية حساسة — تسمح لأدمن الكورساتة بتعيين/إزالة
+              <!-- ⚠️ (Aug 2026 — Phase 3): صلاحية حساسة — تسمح لأدمن الكورس بتعيين/إزالة
                    أدمن آخر لنفس شعبته. غير مفعّلة افتراضيًا (بعكس باقي الصلاحيات فوق) —
                    لازم Super Admin يفعّلها بنفسه صراحةً لكل أدمن على حدة. -->
               <label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" data-perm="can_manage_admins"> 🔐 تعيين أدمن آخر لنفس الشعبة</label>
@@ -9009,7 +9009,7 @@ window.checkBanStatus = async function(email) {
       <div class="ap-tab-panel" id="ap-panel-quizzes" role="tabpanel">
         <div class="ap-section-heading" style="margin:0 0 10px;border:none;padding:0;">📝 إدارة الاختبارات</div>
         <div style="font-size:.76rem;color:#888;margin-bottom:14px;">
-          اختر المادة ثم الشابتر ثم القسم النهائي (الشعبة/الفصل) — يمكن إضافة أكثر من اختبار لنفس القسم، وربط كل اختبار بمحاضرة معينة وترتيبه.
+          اختر المادة ثم الشابتر الخاص بها، وبعد اختيار الشابتر تظهر اختبارات هذا الشابتر ويمكنك إنشاء أكثر من اختبار وربط كل اختبار بمحاضرة وترتيبه.
         </div>
 
         <div class="ap-field">
@@ -9024,17 +9024,17 @@ window.checkBanStatus = async function(email) {
             <option value="">— اختر الشابتر —</option>
           </select>
         </div>
+        <!-- لم يعد هناك اختيار قسم نهائي: الشابتر هو سياق إنشاء الاختبار. -->
         <div class="ap-field" id="qz-section-wrap" style="display:none;">
-          <label class="ap-label">📄 اختر القسم النهائي (الشعبة/الفصل)</label>
-          <select id="qz-section-select" class="ap-select" onchange="qzOnSectionChange()">
-            <option value="">— اختر القسم —</option>
+          <select id="qz-section-select" class="ap-select" aria-hidden="true" tabindex="-1" style="display:none;">
+            <option value="">—</option>
           </select>
         </div>
 
         <div id="qz-quiz-list-wrap" style="display:none;">
           <div style="border-top:1px dashed #d5e8f5;margin:14px 0;"></div>
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
-            <div class="ap-section-heading" style="margin:0;border:none;padding:0;">📋 اختبارات هذا القسم (<span id="qz-quiz-count">0</span>)</div>
+            <div class="ap-section-heading" style="margin:0;border:none;padding:0;">📋 اختبارات هذا الشابتر (<span id="qz-quiz-count">0</span>)</div>
             <button class="ap-btn ap-btn-success" onclick="qzNewQuiz()">➕ اختبار جديد</button>
           </div>
           <div id="qz-quiz-list"><div style="text-align:center;color:#999;padding:14px;">لا توجد اختبارات بعد لهذا القسم</div></div>
@@ -9219,7 +9219,7 @@ window.checkBanStatus = async function(email) {
 <!-- ==================== BRANCH ADMIN PASSWORD LOGIN MODAL ==================== -->
 <div id="pw-login-overlay" style="display:none;position:fixed;inset:0;z-index:9999998;background:rgba(10,20,40,.75);backdrop-filter:blur(4px);align-items:center;justify-content:center;padding:16px;">
   <div style="background:var(--card-bg,#fff);border-radius:16px;max-width:360px;width:100%;padding:24px;box-shadow:0 20px 60px rgba(0,0,0,.4);">
-    <div style="font-weight:800;font-size:1.05rem;margin-bottom:4px;">🔑 دخول أدمن الكورساتة</div>
+    <div style="font-weight:800;font-size:1.05rem;margin-bottom:4px;">🔑 دخول أدمن الكورس</div>
     <div style="font-size:.78rem;color:#888;margin-bottom:16px;">لحسابات أدمن الكورسات (Branch Admin) — بيانات الدخول من مسؤول المنصة.</div>
     <input id="pw-login-username" type="text" placeholder="اسم المستخدم" autocomplete="username" style="width:100%;box-sizing:border-box;padding:10px 12px;border-radius:9px;border:1px solid #d5e2ee;margin-bottom:10px;font-family:inherit;direction:ltr;text-align:right;">
     <input id="pw-login-password" type="password" placeholder="كلمة المرور" autocomplete="current-password" style="width:100%;box-sizing:border-box;padding:10px 12px;border-radius:9px;border:1px solid #d5e2ee;margin-bottom:14px;font-family:inherit;direction:ltr;text-align:right;">
@@ -9294,7 +9294,7 @@ async function adminLoadSections() {
   try {
     var { data } = await window.supabase.from('site_sections').select('id, title, parent_id, subtitle, requires_subscription, payment_method, payment_number, price').order('display_order');
     if (!data) return;
-    // ── أدمن الكورساتة: يرى فقط أقسام شعبته (المحتوى نفسه قراءته عامة، لكن لوحة التحكم مقيَّدة) ──
+    // ── أدمن الكورس: يرى فقط أقسام شعبته (المحتوى نفسه قراءته عامة، لكن لوحة التحكم مقيَّدة) ──
     // ✅ FIX 2: أضيف !window._isSuperAdmin دفاعياً حتى لو تعارضت الأعلام مؤقتاً.
     if (window._isBranchAdmin && !window._isSuperAdmin && Array.isArray(window._branchAdminSectionIds) && window._branchAdminSectionIds.length) {
       var allowed = window._branchAdminSectionIds;
@@ -9959,7 +9959,7 @@ function _applyBranchAdminPanelGating() {
 
   var perms = window._branchAdminPerms || {};
 
-  // تاب "أدمن الكورسات" لأدمن المنصة دايمًا، أو لأدمن الكورساتة لو معاه can_manage_admins
+  // تاب "أدمن الكورسات" لأدمن المنصة دايمًا، أو لأدمن الكورس لو معاه can_manage_admins
   // (Aug 2026 — Phase 3: كان مقصور على أدمن المنصة فقط، الآن يدعم التفويض)
   var baTab = document.getElementById('ap-tab-branchadmins');
   if (baTab) baTab.style.display = isSuper ? '' : 'none';
@@ -9973,7 +9973,7 @@ function _applyBranchAdminPanelGating() {
   }
 
 
-  // أدمن الكورساتة لا يرى: Requests العامة، إدارة المستخدمين، الحظر، Messages، المدفوعات العامة،
+  // أدمن الكورس لا يرى: Requests العامة، إدارة المستخدمين، الحظر، Messages، المدفوعات العامة،
   // إدارة الإعلانات، الإحصائيات الشهرية — كلها خارج نطاق شعبته (أدمن المنصة فقط)
   ['ap-tab-requests','ap-tab-usermgmt','ap-tab-users','ap-tab-messages','ap-tab-payments','ap-tab-ads','ap-tab-monthlystats','ap-tab-platformSettings'].forEach(function(id) {
     var el = document.getElementById(id); if (el) el.style.display = 'none';
@@ -9991,7 +9991,7 @@ function _applyBranchAdminPanelGating() {
   if (contentTab) contentTab.style.display = (perms.can_manage_materials || perms.can_manage_chapters) ? '' : 'none';
   var dashTab = document.getElementById('ap-tab-dashboard');
   if (dashTab) dashTab.style.display = perms.can_view_stats ? '' : 'none';
-  // محادثة الكورس: متاحة دائماً لأدمن الكورساتة (جزء أساسي من الإدارة، غير مرتبطة بصلاحيات إضافية)
+  // محادثة الكورس: متاحة دائماً لأدمن الكورس (جزء أساسي من الإدارة، غير مرتبطة بصلاحيات إضافية)
   var csTab = document.getElementById('ap-tab-courseStudents');
   if (csTab) csTab.style.display = '';
   var cstTab = document.getElementById('ap-tab-courseStats');
@@ -10003,7 +10003,7 @@ function _applyBranchAdminPanelGating() {
   if (notifTab) notifTab.style.display = 'none';
   var chatTab = document.getElementById('ap-tab-sectionchat');
   if (chatTab) chatTab.style.display = '';
-  // سجل العمليات: متاح دائماً لأدمن الكورساتة، لكن RLS في القاعدة تعرض له سجل شعبته فقط (وليس باقي الشعب)
+  // سجل العمليات: متاح دائماً لأدمن الكورس، لكن RLS في القاعدة تعرض له سجل شعبته فقط (وليس باقي الشعب)
   var auditTab = document.getElementById('ap-tab-auditlog');
   if (auditTab) auditTab.style.display = 'none';
 
@@ -10277,7 +10277,7 @@ function apSwitchTab(tab) {
   else if (tab === 'divsubs')  { dsLoadGrades(); apLoadDivisionSubs(); }
   else if (tab === 'payments') apLoadPayments();
   else if (tab === 'sectionsmgmt') {
-    // ── أدمن الكورساتة: يدخل مباشرة على شعبته فقط، مش على جذر كل الشعب ──
+    // ── أدمن الكورس: يدخل مباشرة على شعبته فقط، مش على جذر كل الشعب ──
     if (window._isBranchAdmin && !window._isSuperAdmin) {
       var rootRow = window._branchAdminRows && window._branchAdminRows[0];
       var rootId  = rootRow ? rootRow.branch_section_id : null;
@@ -10304,35 +10304,51 @@ function apSwitchTab(tab) {
   else if (tab === 'branchadmins') { baLoadGrades(); }
 }
 
-// ── لوحة إحصائيات مقيَّدة بشعبة أدمن الكورساتة فقط (تقرأ من site_sections + section_content + subscriptions) ──
+// ── لوحة إحصائيات مقيَّدة بشعبة أدمن الكورس فقط (تقرأ من site_sections + section_content + subscriptions) ──
 async function _apLoadBranchDashboard() {
   var heading = document.querySelector('#ap-panel-dashboard .ap-section-heading');
-  var branchTitle = (window._branchAdminRows[0] && window._branchAdminRows[0].site_sections && window._branchAdminRows[0].site_sections.title) || 'شعبتك';
-  if (heading) heading.textContent = '📊 إحصائيات شعبة "' + branchTitle + '" فقط';
-  var scope = window._branchAdminSectionIds || [];
-  if (!scope.length) { scope = [-1]; }
+  var branchTitle = (window._branchAdminRows[0] && window._branchAdminRows[0].site_sections && window._branchAdminRows[0].site_sections.title) || 'كورسك';
+  if (heading) heading.textContent = '📊 إحصائيات الكورس "' + branchTitle + '" فقط';
+  var courseId = Number(window._branchAdminCourseId || (window._branchAdminSectionIds || [])[0] || 0);
+  if (!courseId) {
+    _apSetStat('ap-stat-users',0); _apSetStat('ap-stat-active',0); _apSetStat('ap-stat-expired',0); _apSetStat('ap-stat-newreq',0); _apSetStat('ap-stat-pendingpay',0);
+    return;
+  }
   try {
-    var [contentRes, subsRes] = await Promise.all([
-      window.supabase.from('section_content').select('id', { count: 'exact', head: true }).in('section_id', scope),
-      window.supabase.from('subscriptions').select('id, payment_status').in('section_id', scope)
+    var [contentRes, subsRes, msgRes] = await Promise.all([
+      window.supabase.from('section_content').select('id', { count: 'exact', head: true }).eq('section_id', courseId),
+      window.supabase.from('subscriptions').select('id,user_id,payment_status,end_date').eq('section_id', courseId),
+      window.supabase.from('chat_rooms').select('id', {count:'exact',head:true}).eq('section_id',courseId)
     ]);
+    if (contentRes.error) throw contentRes.error;
+    if (subsRes.error) throw subsRes.error;
     var allSubs = subsRes.data || [];
-    _apSetStat('ap-stat-users',   scope.length);       // عدد أقسام الشعبة (فصول/مواد)
-    _apSetStat('ap-stat-pending', allSubs.filter(function(s){ return s.payment_status === 'pending'; }).length);
-    _apSetStat('ap-stat-active',  allSubs.filter(function(s){ return s.payment_status === 'active';  }).length);
-    _apSetStat('ap-stat-msgs',    '—');
+    var uniqueStudents = Array.from(new Set(allSubs.map(function(x){return x.user_id;}).filter(Boolean))).length;
+    var now=Date.now();
+    var active=allSubs.filter(function(x){return x.payment_status==='active' && (!x.end_date || new Date(x.end_date).getTime()>=now);}).length;
+    var expired=allSubs.filter(function(x){return x.payment_status==='expired' || (x.payment_status==='active' && x.end_date && new Date(x.end_date).getTime()<now);}).length;
+    var pending=allSubs.filter(function(x){return x.payment_status==='pending';}).length;
+    _apSetStat('ap-stat-users', uniqueStudents);
+    _apSetStat('ap-stat-active', active);
+    _apSetStat('ap-stat-expired', expired);
+    _apSetStat('ap-stat-newreq', pending);
+    _apSetStat('ap-stat-pendingpay', pending);
+    _apSetStat('ap-stat-msgs', msgRes && !msgRes.error ? (msgRes.count || 0) : '—');
     _apSetStat('ap-stat-content', contentRes.count || 0);
-    var actEl = document.getElementById('ap-recent-activity');
-    if (actEl) actEl.innerHTML = '<div style="font-size:.8rem;color:#888;">إحصائيات هذه اللوحة خاصة بشعبتك فقط.</div>';
-    // بدّل تسمية بطاقة "المستخدمين" لتناسب أدمن الكورساتة
     var lbl = document.querySelector('#ap-stat-users')?.nextElementSibling;
-    if (lbl) lbl.textContent = 'أقسام الشعبة';
-  } catch(e) { console.warn('[BranchDashboard] error:', e.message); }
+    if (lbl) lbl.textContent = 'طلاب الكورس';
+    var actEl=document.getElementById('ap-recent-activity');
+    if(actEl) actEl.innerHTML='<div style="font-size:.82rem;color:#667;line-height:1.8;">👥 الطلاب: '+uniqueStudents+' — 🟢 النشطون: '+active+' — ⏳ الطلبات المعلقة: '+pending+' — 📚 المحتوى: '+(contentRes.count||0)+'</div>';
+  } catch(e) {
+    console.error('[BranchDashboard] error:',e);
+    var actEl=document.getElementById('ap-recent-activity');
+    if(actEl) actEl.innerHTML='<div class="ap-empty" style="color:#e74c3c;">❌ تعذر تحميل إحصائيات الكورس: '+_apEsc(e.message)+'</div>';
+  }
 }
 
 // ════════════════════════════════════════════════════════════════
 // SECTION CHAT TAB — يعتمد بالكامل على chat_rooms + get_or_create_chat_room()
-// أدمن الكورساتة يرى شعبته فقط، أدمن المنصة يرى كل الشعب التي تتطلب اشتراكاً
+// أدمن الكورس يرى شعبته فقط، أدمن المنصة يرى كل الشعب التي تتطلب اشتراكاً
 // ════════════════════════════════════════════════════════════════
 async function apLoadSectionChatTab() {
   var el = document.getElementById('ap-sectionchat-body');
@@ -10345,7 +10361,7 @@ async function apLoadSectionChatTab() {
       var rootRow = window._branchAdminRows && window._branchAdminRows[0];
       var rootId  = rootRow ? rootRow.branch_section_id : null;
       if (!rootId) { el.innerHTML = '<div class="ap-empty">لا توجد شعبة مُسندة إليك بعد.</div>'; return; }
-      // ✅ FIX: أدمن الكورساتة بيجيب شعبته هو بالـid مباشرة — من غير شرط
+      // ✅ FIX: أدمن الكورس بيجيب شعبته هو بالـid مباشرة — من غير شرط
       // requires_subscription=true، لأن علم "تتطلب اشتراك" ممكن يكون
       // موجود على أحد أجداد القسم مش على القسم نفسه، وكان ده بيفضّي
       // النتيجة تمامًا ويظهر "لا توجد شعب متاحة" رغم إن عنده شعبة فعلاً.
@@ -10382,7 +10398,7 @@ async function apLoadSectionChatTab() {
 //  وتم التوسّع فيه هنا بدل بناء نظام صلاحيات مواز يتعارض معه)
 // ════════════════════════════════════════════════════════════════
 // الهيكل: الفرقة (site_sections بدون parent_id) ← الترم (أبناء الفرقة) ← الشعبة (أبناء الترم)
-// أدمن الكورساتة يُعيَّن دائماً على مستوى "الشعبة" (المستوى الثالث) فقط — أبداً على فرقة أو ترم كاملين.
+// أدمن الكورس يُعيَّن دائماً على مستوى "الشعبة" (المستوى الثالث) فقط — أبداً على فرقة أو ترم كاملين.
 // المصدر الوحيد للكتابة الآن هو جدول section_admins (يدعم أكثر من أدمن مستقل لكل شعبة، وأدمن واحد
 // لأكثر من شعبة). profiles.managed_section_id يبقى للقراءة فقط للتوافق مع أي كود قديم (انظر
 // _loadBranchAdminScope) ولا يُكتب فيه من هذه الشاشة إطلاقاً.
@@ -10399,7 +10415,7 @@ window._baRemoveCtx = null;        // { adminRowId, userId, name, sectionTitle }
 var _baSearchTimer = null;
 
 async function baLoadGrades() {
-  // ✅ (Aug 2026 — Phase 3): أدمن الكورساتة (مش أدمن المنصة) مقصور تلقائيًا على شعبته
+  // ✅ (Aug 2026 — Phase 3): أدمن الكورس (مش أدمن المنصة) مقصور تلقائيًا على شعبته
   // النشطة حالياً فقط — بدون تصفح باقي شجرة الفرق/الترمات/الشعب. الحماية الحقيقية
   // في RLS (branch_admin_can_manage_admins) — هذا فقط لتجربة استخدام صحيحة.
   if (window._isBranchAdmin && !window._isSuperAdmin) {
@@ -10433,7 +10449,7 @@ async function baLoadGrades() {
   }
   document.getElementById('ba-sel-term').disabled = true;
   document.getElementById('ba-sel-branch').disabled = true;
-  document.getElementById('ba-list-body').innerHTML = '<div class="ap-empty">اختر الفرقة ثم الترم ثم الشعبة لإدارة أدمن الكورساتة.</div>';
+  document.getElementById('ba-list-body').innerHTML = '<div class="ap-empty">اختر الفرقة ثم الترم ثم الشعبة لإدارة أدمن الكورس.</div>';
 }
 
 async function baOnGradeChange() {
@@ -10494,7 +10510,7 @@ function _baBreadcrumb() {
   return [g && g.title, t && t.title, b && b.title].filter(Boolean).join(' ﹥ ');
 }
 
-// ── يعرض كل أدمن الكورساتة المختارة (من section_admins فقط — المصدر الحقيقي الآن) ──
+// ── يعرض كل أدمن الكورس المختارة (من section_admins فقط — المصدر الحقيقي الآن) ──
 // ملاحظة: عادةً أدمن واحد فعّال لكل شعبة، لكن الجدول لا يمنع تقنياً أكثر من أدمن فعّال
 // لنفس الشعبة إن احتاج أدمن المنصة ذلك؛ التعيين من هنا يستبدل تلقائياً أي أدمن فعّال سابق.
 async function baLoadBranchAdmins() {
@@ -10555,7 +10571,7 @@ async function baLoadBranchAdmins() {
 
 // ── فتح مودال تعيين/تغيير الأدمن ──
 function baOpenAssignModal(sectionId, sectionTitle, mode) {
-  // ✅ (Aug 2026 — Phase 3): حاجز واجهة إضافي — أدمن الكورساتة (مش أدمن المنصة) يقدر
+  // ✅ (Aug 2026 — Phase 3): حاجز واجهة إضافي — أدمن الكورس (مش أدمن المنصة) يقدر
   // فقط يفتح المودال لشعبته النشطة هو. الحماية الحقيقية في RLS
   // (branch_admin_can_manage_admins) — هذا فقط لمنع محاولة عبث من الواجهة نفسها.
   if (window._isBranchAdmin && !window._isSuperAdmin && String(sectionId) !== String(window._activeSectionId)) {
@@ -10574,7 +10590,7 @@ function baOpenAssignModal(sectionId, sectionTitle, mode) {
   var confirmBtn = document.getElementById('ba-confirm-btn');
   var msgEl = document.getElementById('ba-assign-msg');
 
-  titleEl.textContent = mode === 'change' ? '🔄 تغيير أدمن الكورساتة' : '➕ تعيين أدمن الكورساتة';
+  titleEl.textContent = mode === 'change' ? '🔄 تغيير أدمن الكورس' : '➕ تعيين أدمن الكورس';
   labelEl.textContent = 'الشعبة: ' + sectionTitle;
   searchInput.value = ''; resultsEl.innerHTML = ''; msgEl.textContent = '';
   selBox.style.display = 'none'; selBox.innerHTML = '';
@@ -10841,7 +10857,7 @@ async function _apGetProfilesMap(userIds) {
 // ────────────────────────────────────────────────────────────────
 async function apLoadDashboard() {
   if (!window.supabase) return;
-  // ── أدمن الكورساتة: إحصائيات شعبته فقط، وليس إحصائيات الموقع كله ──
+  // ── أدمن الكورس: إحصائيات شعبته فقط، وليس إحصائيات الموقع كله ──
   if (window._isBranchAdmin && !window._isSuperAdmin) { return _apLoadBranchDashboard(); }
   try {
     var [usersRes, subsRes, msgsRes, contentRes] = await Promise.all([
@@ -10932,8 +10948,8 @@ async function apLoadRequests() {
       .from('subscriptions')
       .select('*')
       .eq('payment_status', 'pending')
-      .order('requested_at', { ascending: false });
-    // ✅ FIX: نفس فكرة apLoadSubscriptions — نطاق أدمن الكورساتة صريح في
+      .order('created_at', { ascending: false });
+    // ✅ FIX: نفس فكرة apLoadSubscriptions — نطاق أدمن الكورس صريح في
     // الاستعلام نفسه، بدل الاعتماد فقط على RLS للفلترة.
     if (window._isBranchAdmin && !window._isSuperAdmin) {
       var scope = window._branchAdminSectionIds || [];
@@ -10957,7 +10973,7 @@ async function apLoadRequests() {
           + '<td class="ap-email-cell" style="font-size:.72rem;">' + _apEsc(prof.email || '—') + '</td>'
           + '<td>' + _apEsc(r.specialty || '—') + '</td>'
           + '<td><span class="ap-badge pending">' + (r.subscription_type === 'yearly' ? '📅 سنوي' : '📆 شهري') + '</span></td>'
-          + '<td>' + _apDate(r.requested_at) + '</td>'
+          + '<td>' + _apDate(r.requested_at || r.created_at) + '</td>'
           + '<td style="white-space:nowrap;">'
           + '<button class="ap-btn ap-btn-success" style="margin-left:4px;" onclick="apApproveReq(\'' + r.id + '\',\'' + r.user_id + '\')">✅ قبول</button>'
           + '<button class="ap-btn ap-btn-danger" onclick="apRejectReq(\'' + r.id + '\',\'' + r.user_id + '\')">❌ رفض</button>'
@@ -10995,9 +11011,9 @@ async function apLoadSubscriptions() {
       .from('subscriptions')
       .select('*')
       .order('created_at', { ascending: false });
-    // ✅ FIX: أدمن الكورساتة لازم يستعلم بنطاقه صراحةً (مش يعتمد على RLS وحده) —
+    // ✅ FIX: أدمن الكورس لازم يستعلم بنطاقه صراحةً (مش يعتمد على RLS وحده) —
     // لو RLS للاشتراكات (subs_branch_admin_all) لسه متأخرة عن التطبيق على
-    // القاعدة الفعلية، كان بيرجع صف فاضي تمامًا لأدمن الكورساتة بدون أي رسالة
+    // القاعدة الفعلية، كان بيرجع صف فاضي تمامًا لأدمن الكورس بدون أي رسالة
     // خطأ واضحة، فيبان الاشتراكات "مش موجودة" رغم إن الطالب بعتها فعلاً.
     if (window._isBranchAdmin && !window._isSuperAdmin) {
       var scope = window._branchAdminSectionIds || [];
@@ -11076,10 +11092,13 @@ async function approveSubscription(subId, userId) {
     if (fErr) throw fErr;
     var days = (row && row.subscription_type === 'yearly') ? 365 : 30;
     var end = new Date(); end.setDate(end.getDate() + days);
-    var { error } = await window.supabase
-      .from('subscriptions')
-      .update({ payment_status: 'active', start_date: new Date().toISOString(), end_date: end.toISOString(), reject_reason: null, reviewed_at: new Date().toISOString() })
-      .eq('id', subId);
+    var decisionNow = new Date().toISOString();
+    var updatePayload = { payment_status: 'active', start_date: decisionNow, end_date: end.toISOString(), reject_reason: null, reviewed_at: decisionNow, approved_at: decisionNow, approved_by: (await _getSessionSafe()).data.session.user.id, rejected_at: null, rejected_by: null };
+    var { error } = await window.supabase.from('subscriptions').update(updatePayload).eq('id', subId);
+    if (error && /column .*does not exist|schema cache/i.test(error.message || '')) {
+      delete updatePayload.approved_at; delete updatePayload.approved_by; delete updatePayload.rejected_at; delete updatePayload.rejected_by;
+      var retry = await window.supabase.from('subscriptions').update(updatePayload).eq('id', subId); error=retry.error;
+    }
     if (error) throw error;
     window._subStatusCache = {}; // مسح الكاش المحلي حتى تنعكس الحالة فوراً للطالب
     _showToast ? _showToast('✅ تم تفعيل الاشتراك', 'success') : null;
@@ -11093,10 +11112,14 @@ async function approveSubscription(subId, userId) {
 async function cancelSubscription(subId, userId, reason) {
   if (!window.supabase) return;
   try {
-    var { error } = await window.supabase
-      .from('subscriptions')
-      .update({ payment_status: 'cancelled', reject_reason: reason || null, reviewed_at: new Date().toISOString() })
-      .eq('id', subId);
+    var decisionNow = new Date().toISOString();
+    var sess = await _getSessionSafe();
+    var updatePayload = { payment_status: 'cancelled', reject_reason: reason || null, reviewed_at: decisionNow, rejected_at: decisionNow, rejected_by: sess && sess.data && sess.data.session ? sess.data.session.user.id : null, approved_at: null, approved_by: null };
+    var { error } = await window.supabase.from('subscriptions').update(updatePayload).eq('id', subId);
+    if (error && /column .*does not exist|schema cache/i.test(error.message || '')) {
+      delete updatePayload.rejected_at; delete updatePayload.rejected_by; delete updatePayload.approved_at; delete updatePayload.approved_by;
+      var retry = await window.supabase.from('subscriptions').update(updatePayload).eq('id', subId); error=retry.error;
+    }
     if (error) throw error;
     window._subStatusCache = {};
     _showToast ? _showToast('🚫 تم رفض/إلغاء الطلب', 'success') : null;
@@ -11122,12 +11145,12 @@ function _divSubStatusLabel(row) {
   return _apEsc(row.payment_status);
 }
 
-// ── فلتر الفرقة/الترم/الشعبة لتاب "إدارة الاشتراكات" (أدمن المنصة فقط — أدمن الكورساتة مقيَّد تلقائياً) ──
+// ── فلتر الفرقة/الترم/الشعبة لتاب "إدارة الاشتراكات" (أدمن المنصة فقط — أدمن الكورس مقيَّد تلقائياً) ──
 window._dsSelectedBranchId = null;
 async function dsLoadGrades() {
   var wrap = document.getElementById('ds-sel-grade');
   if (!wrap) return;
-  // أدمن الكورساتة أصلاً مقيَّد بشعبته عبر RLS + window._branchAdminSectionIds — لا داعي لهذا الفلتر له
+  // أدمن الكورس أصلاً مقيَّد بشعبته عبر RLS + window._branchAdminSectionIds — لا داعي لهذا الفلتر له
   if (window._isBranchAdmin && !window._isSuperAdmin) {
     ['ds-sel-grade','ds-sel-term','ds-sel-branch'].forEach(function(id){ var e = document.getElementById(id); if (e) e.style.display = 'none'; });
     return;
@@ -11200,7 +11223,7 @@ async function apLoadDivisionSubs() {
     if (sortVal === 'requested_at_asc')      query = query.order('requested_at', { ascending: true });
     else if (sortVal === 'end_date_asc')     query = query.order('end_date', { ascending: true, nullsFirst: false });
     else                                     query = query.order('requested_at', { ascending: false });
-    // ── أدمن الكورساتة: يرى فقط طلبات شعبته (الأمان الفعلي عبر RLS في القاعدة) ──
+    // ── أدمن الكورس: يرى فقط طلبات شعبته (الأمان الفعلي عبر RLS في القاعدة) ──
     if (window._isBranchAdmin && !window._isSuperAdmin) {
       var scope = window._branchAdminSectionIds || [];
       query = query.in('section_id', scope.length ? scope : [-1]);
@@ -11222,7 +11245,7 @@ async function apLoadDivisionSubs() {
     }
     var { data, error } = await query;
     if (error) throw error;
-    // ✅ FIX (Aug 2026 — طلب المستخدم): أدمن الكورساتة (المُعيَّن عبر section_admins على
+    // ✅ FIX (Aug 2026 — طلب المستخدم): أدمن الكورس (المُعيَّن عبر section_admins على
     // نفس الشعبة) ما ينفعش يظهر في جدول اشتراكات الشعبة — هو أصلاً عنده دخول كامل
     // بدون اشتراك، فظهوره هنا بحالة/تاريخ بداية/تاريخ انتهاء كان مربكاً وغير صحيح.
     // بنجيب كل section_admins النشطين على نفس الشعب الظاهرة في النتيجة، ونستبعد أي
@@ -11383,7 +11406,7 @@ async function apLoadPayments() {
       .select('*, site_sections(title, payment_method, payment_number, price)')
       .not('receipt_image', 'is', null)
       .order('requested_at', { ascending: false });
-    // ✅ FIX: نفس فكرة apLoadSubscriptions/apLoadRequests — نطاق أدمن الكورساتة
+    // ✅ FIX: نفس فكرة apLoadSubscriptions/apLoadRequests — نطاق أدمن الكورس
     // صريح في الاستعلام، بدل الاعتماد فقط على RLS.
     if (window._isBranchAdmin && !window._isSuperAdmin) {
       var scope = window._branchAdminSectionIds || [];
@@ -12198,7 +12221,7 @@ function smApplySearch() {
 function smRenderBreadcrumb() {
   var el = document.getElementById('sm-breadcrumb');
   if (!el) return;
-  // ── أدمن الكورساتة: ممنوع يطلع فوق جذر شعبته — مفيش رابط "الجذر (كل الشعب)" ──
+  // ── أدمن الكورس: ممنوع يطلع فوق جذر شعبته — مفيش رابط "الجذر (كل الشعب)" ──
   var parts = (window._isBranchAdmin && !window._isSuperAdmin)
     ? []
     : ['<span onclick="smGoToCrumb(-1)" style="cursor:pointer;color:#0a3d62;font-weight:800;">🏠 الجذر (كل الشعب)</span>'];
@@ -12210,7 +12233,7 @@ function smRenderBreadcrumb() {
 }
 
 function smGoToCrumb(index) {
-  // ── أدمن الكورساتة: أقل مستوى مسموح هو شعبته نفسها (index 0)، مينفعش يرجع لجذر كل الشعب ──
+  // ── أدمن الكورس: أقل مستوى مسموح هو شعبته نفسها (index 0)، مينفعش يرجع لجذر كل الشعب ──
   var minIndex = (window._isBranchAdmin && !window._isSuperAdmin) ? 0 : -1;
   if (index < minIndex) index = minIndex;
   if (index === -1) { _smStack = []; }
@@ -12353,7 +12376,7 @@ async function smSave() {
     // أي قسم جديد بالكامل (فرقة/ترم/شعبة/محتوى) برسالة:
     // "Could not find the 'section_type' column of 'site_sections' in the schema cache"
   }
-  // ── أدمن الكورساتة: حاجز واجهة إضافي — الحفظ فقط داخل نطاق شعبته (RLS هي الحماية الحقيقية) ──
+  // ── أدمن الكورس: حاجز واجهة إضافي — الحفظ فقط داخل نطاق شعبته (RLS هي الحماية الحقيقية) ──
   var targetScopeId = id ? Number(id) : payload.parent_id;
   var accessCheck = await requireBranchAccess(targetScopeId);
   if (!accessCheck.ok) return;
@@ -12419,7 +12442,7 @@ async function lpLoad() {
       .from('learning_paths')
       .select('*, learning_path_items(count)')
       .order('display_order', { ascending: true });
-    // ── أدمن الكورساتة: يرى فقط مسارات شعبته ──
+    // ── أدمن الكورس: يرى فقط مسارات شعبته ──
     if (window._isBranchAdmin && !window._isSuperAdmin) {
       var scope = window._branchAdminSectionIds || [];
       if (!scope.length) { _lpCache = []; lpRenderList(); return; }
@@ -12471,7 +12494,7 @@ function lpRenderList() {
     + '</tbody></table></div>';
 }
 
-// ── تحميل الشُّعب المتاحة لاختيارها كـ "الشعبة المرتبطة" بالمسار (مقيَّد لأدمن الكورساتة) ──
+// ── تحميل الشُّعب المتاحة لاختيارها كـ "الشعبة المرتبطة" بالمسار (مقيَّد لأدمن الكورس) ──
 async function _lpPopulateSectionSelect(selectedId) {
   var sel  = document.getElementById('lp-f-section');
   var hint = document.getElementById('lp-f-section-hint');
@@ -12481,7 +12504,7 @@ async function _lpPopulateSectionSelect(selectedId) {
     return '<option value="' + s.id + '"' + (String(s.id) === String(selectedId) ? ' selected' : '') + '>' + _apEsc(s.title) + '</option>';
   }).join('');
   if (window._isBranchAdmin && !window._isSuperAdmin) {
-    // أدمن الكورساتة: لازم يختار شعبة داخل نطاقه — مفيش خيار "عام"
+    // أدمن الكورس: لازم يختار شعبة داخل نطاقه — مفيش خيار "عام"
     sel.innerHTML = opts || '<option value="">— لا توجد شُعب متاحة —</option>';
     if (hint) hint.textContent = 'مسارك سيكون مرتبطاً بشعبتك فقط.';
   } else {
@@ -12616,7 +12639,7 @@ async function _lpLoadItemsList(pathId) {
   }
 }
 
-// قائمة الدورات (type='course') القابلة للإضافة — مقيَّدة بنطاق أدمن الكورساتة لو لزم
+// قائمة الدورات (type='course') القابلة للإضافة — مقيَّدة بنطاق أدمن الكورس لو لزم
 async function _lpPopulateCourseSelect(pathSectionId) {
   var sel = document.getElementById('lp-add-course-select');
   if (!sel || !window.supabase) return;
@@ -14999,7 +15022,7 @@ CREATE POLICY "profiles_own_update" ON profiles FOR UPDATE USING (auth.uid() = i
     auth.uid() = id
     -- لا يسمح للمستخدم بتغيير الـ role لنفسه
     AND role = (SELECT role FROM profiles WHERE id = auth.uid())
-    -- ✅ (Aug 2026 — Roles Phase 2): ولا يسمح لأدمن الكورساتة بتغيير الشعبة
+    -- ✅ (Aug 2026 — Roles Phase 2): ولا يسمح لأدمن الكورس بتغيير الشعبة
     -- المُسندة له لنفسه (managed_section_id) — كان هذا العمود غير محمي سابقًا
     AND managed_section_id IS NOT DISTINCT FROM (SELECT managed_section_id FROM profiles WHERE id = auth.uid())
   );
@@ -15403,12 +15426,12 @@ ALTER TABLE profiles DROP CONSTRAINT IF EXISTS profiles_role_check;
 ALTER TABLE profiles ADD CONSTRAINT profiles_role_check
   CHECK (role IN ('admin', 'branch_admin', 'student'));
 
--- 0.ب) عمود managed_section_id — الشعبة المُسندة لأدمن الكورساتة
+-- 0.ب) عمود managed_section_id — الشعبة المُسندة لأدمن الكورس
 ALTER TABLE profiles ADD COLUMN IF NOT EXISTS managed_section_id BIGINT REFERENCES site_sections(id) ON DELETE SET NULL;
 CREATE INDEX IF NOT EXISTS idx_profiles_managed_section ON profiles(managed_section_id);
 
 -- 0.ج) is_branch_admin_of(target_id) — بيتأكد إن القسم المُستهدف (أو أي جد من أجداده)
---      هو نفس الشعبة المُسندة لأدمن الكورساتة الحالي عبر managed_section_id
+--      هو نفس الشعبة المُسندة لأدمن الكورس الحالي عبر managed_section_id
 CREATE OR REPLACE FUNCTION is_branch_admin_of(target_id BIGINT)
 RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER
@@ -15485,7 +15508,7 @@ CREATE POLICY "profiles_own_update" ON profiles FOR UPDATE USING (auth.uid() = i
   WITH CHECK (
     auth.uid() = id
     AND role = (SELECT role FROM profiles WHERE id = auth.uid())
-    -- ✅ (Aug 2026 — Roles Phase 2): يمنع أدمن الكورساتة من تغيير شعبته لنفسه
+    -- ✅ (Aug 2026 — Roles Phase 2): يمنع أدمن الكورس من تغيير شعبته لنفسه
     AND managed_section_id IS NOT DISTINCT FROM (SELECT managed_section_id FROM profiles WHERE id = auth.uid())
   );
 CREATE POLICY "profiles_insert_own" ON profiles FOR INSERT WITH CHECK (auth.uid() = id);
@@ -15788,7 +15811,7 @@ DROP POLICY IF EXISTS "audit_log_super_read"  ON audit_log;
 DROP POLICY IF EXISTS "audit_log_branch_read" ON audit_log;
 -- أدمن المنصة يرى كل السجل
 CREATE POLICY "audit_log_super_read" ON audit_log FOR SELECT USING (is_admin());
--- أدمن الكورساتة يرى فقط السجلات التابعة لشعبته (أو بلا شعبة محددة وهو الفاعل نفسه)
+-- أدمن الكورس يرى فقط السجلات التابعة لشعبته (أو بلا شعبة محددة وهو الفاعل نفسه)
 CREATE POLICY "audit_log_branch_read" ON audit_log FOR SELECT
   USING (branch_id IS NOT NULL AND is_branch_admin_of(branch_id));
 -- ملاحظة: عمداً لا توجد أي سياسة INSERT/UPDATE/DELETE هنا — أي محاولة كتابة
@@ -15867,7 +15890,7 @@ window.printSectionAdminsPermissionsFix = function() {
 -- ────────────────────────────────────────────────────────────────
 -- 1) هل هذا المستخدم أدمن فعّال على هذه الشعبة تحديدًا، وله can_manage_admins؟
 --    (لاحظ: هذه شعبة واحدة بعينها section_id — مش subtree — عمداً، عشان
---    أدمن الكورساتة يقدر يدير أدمن شعبته هو فقط، مش شعب فرعية تانية معاه.)
+--    أدمن الكورس يقدر يدير أدمن شعبته هو فقط، مش شعب فرعية تانية معاه.)
 -- ────────────────────────────────────────────────────────────────
 CREATE OR REPLACE FUNCTION branch_admin_can_manage_admins(target_section_id BIGINT)
 RETURNS boolean
@@ -15906,7 +15929,7 @@ AS $$
 $$;
 
 -- ────────────────────────────────────────────────────────────────
--- 3) سياسات INSERT/UPDATE جديدة لأدمن الكورساتة صاحب can_manage_admins —
+-- 3) سياسات INSERT/UPDATE جديدة لأدمن الكورس صاحب can_manage_admins —
 --    بجانب section_admins_super_all الموجودة (الأدمن المنصة غير متأثر إطلاقاً)
 -- ────────────────────────────────────────────────────────────────
 DROP POLICY IF EXISTS "section_admins_branch_insert" ON section_admins;
@@ -15914,7 +15937,7 @@ DROP POLICY IF EXISTS "section_admins_branch_update" ON section_admins;
 
 CREATE POLICY "section_admins_branch_insert" ON section_admins FOR INSERT
   WITH CHECK (
-    NOT is_admin()  -- هذا المسار لأدمن الكورساتة فقط؛ الأدمن المنصة يمر من section_admins_super_all
+    NOT is_admin()  -- هذا المسار لأدمن الكورس فقط؛ الأدمن المنصة يمر من section_admins_super_all
     AND branch_admin_can_manage_admins(section_id)
     AND section_admins_perms_subset_of_caller(section_id, permissions)
     -- role مقصور أصلاً على 'admin' بواسطة CHECK على الجدول نفسه —
@@ -15960,12 +15983,12 @@ console.log('%c[SectionAdmins] اكتب printSectionAdminsPermissionsFix() لإ�
 //      getDetailedSectionAccess في الواجهة (اشتراك نشط على القسم أو أي جد
 //      له)، ويعيد استخدامه لتقييد SELECT على quizzes/quiz_questions.
 //   2) يستبدل quizzes_read_auth / qquestions_read_auth بسياسات مبنية على
-//      has_active_access_to() للطالب + is_branch_admin_of() لأدمن الكورساتة +
+//      has_active_access_to() للطالب + is_branch_admin_of() لأدمن الكورس +
 //      is_admin() للأدمن المنصة — بدل auth.uid() IS NOT NULL المفتوحة للجميع.
 //   3) يضيف عمودي lecture_id (ربط الاختبار بعنصر مسار تعلّم) و display_order
 //      (ترتيب الاختبار) لجدول quizzes — Additive فقط، لا حذف لأي بيانات.
-//   4) يضيف نطاق أدمن الكورساتة لـ quiz_results (كان مقصوراً على admin/الطالب
-//      نفسه فقط، فلم يكن أدمن الكورساتة يقدر يشوف نتائج شعبته).
+//   4) يضيف نطاق أدمن الكورس لـ quiz_results (كان مقصوراً على admin/الطالب
+//      نفسه فقط، فلم يكن أدمن الكورس يقدر يشوف نتائج شعبته).
 //   5) يضيف approved_at / rejected_at لجدول subscriptions + Trigger يملأهما
 //      تلقائياً أول ما تتغيّر payment_status إلى approved/rejected (ويُبقي
 //      القيمة القديمة لو رجعت الحالة تاني لنفس القيمة أو تغيّرت لحالة تالتة)
@@ -16043,7 +16066,7 @@ CREATE POLICY "qquestions_student_read_own_section" ON quiz_questions FOR SELECT
   USING (has_active_access_to((SELECT section_id FROM quizzes WHERE id = quiz_questions.quiz_id)));
 
 -- ────────────────────────────────────────────────────────────────
--- 5) quiz_results — إضافة نطاق أدمن الكورساتة (كان admin + الطالب نفسه فقط)
+-- 5) quiz_results — إضافة نطاق أدمن الكورس (كان admin + الطالب نفسه فقط)
 -- ────────────────────────────────────────────────────────────────
 DROP POLICY IF EXISTS "qresults_branch_admin_read" ON quiz_results;
 CREATE POLICY "qresults_branch_admin_read" ON quiz_results FOR SELECT
@@ -16227,7 +16250,7 @@ CREATE INDEX IF NOT EXISTS idx_lp_items_section ON learning_path_items(section_i
 ALTER TABLE learning_paths      ENABLE ROW LEVEL SECURITY;
 ALTER TABLE learning_path_items ENABLE ROW LEVEL SECURITY;
 
--- learning_paths: الطالب يرى المسارات النشطة فقط، الأدمن/أدمن الكورساتة حسب نطاقه
+-- learning_paths: الطالب يرى المسارات النشطة فقط، الأدمن/أدمن الكورس حسب نطاقه
 DROP POLICY IF EXISTS "paths_read"          ON learning_paths;
 DROP POLICY IF EXISTS "paths_admin_write"   ON learning_paths;
 DROP POLICY IF EXISTS "paths_branch_insert" ON learning_paths;
@@ -16240,7 +16263,7 @@ CREATE POLICY "paths_read" ON learning_paths
 CREATE POLICY "paths_admin_write" ON learning_paths
   FOR ALL USING (is_admin()) WITH CHECK (is_admin());
 
--- أدمن الكورساتة: يُنشئ فقط مسارات مربوطة بشعبته (section_id لازم يكون داخل نطاقه، مش NULL)
+-- أدمن الكورس: يُنشئ فقط مسارات مربوطة بشعبته (section_id لازم يكون داخل نطاقه، مش NULL)
 CREATE POLICY "paths_branch_insert" ON learning_paths
   FOR INSERT WITH CHECK (section_id IS NOT NULL AND is_branch_admin_of(section_id));
 CREATE POLICY "paths_branch_modify" ON learning_paths
@@ -16295,15 +16318,15 @@ CREATE POLICY "path_items_write" ON learning_path_items
 console.log('%c[PATHS] اكتب printPathsMigration() لعرض/نسخ SQL نظام المسارات', 'color:#6c3483;font-weight:bold');
 
 // printChatSystemMigration — استكمال نظام محادثة الكورس (Additive بالكامل)
-// لا ينشئ أي جدول جديد ولا يغيّر معمارية الأدمن الحالية (profiles.role / managed_section_id).
+// لا ينشئ نظام شات موازٍ؛ يعيد استخدام chat_rooms/chat_messages ويربط DM بالكورس (profiles.role / managed_section_id).
 // يعيد استخدام is_admin() و is_branch_admin_of() و has_active_subscription() الموجودين بالفعل.
 // يضيف فقط:
 //   1) قيد UNIQUE على chat_rooms.section_id (يمنع تكرار الغرف لنفس الشعبة).
-//   2) دالة get_or_create_chat_room() — تُنشئ غرفة الشعبة تلقائياً أول مرة فقط، بعد
+//   2) دالة get_or_create_chat_room() — تُنشئ غرفة الكورس تلقائياً أول مرة فقط، بعد
 //      التحقق من صلاحية الوصول (SECURITY DEFINER لأن إدخال الغرف بحد ذاته أدمن-only حالياً).
 //   3) Trigger على chat_messages يفرض user_id = auth.uid() ويجيب user_name من profiles
 //      دائماً من السيرفر — لا يثق بأي قيمة قادمة من الـ Frontend لتحديد صاحب الرسالة.
-//   4) سياسة DELETE جديدة لأدمن الكورساتة على chat_messages (كانت الحذف قبل ذلك Super Admin فقط).
+//   4) سياسة DELETE جديدة لأدمن الكورس على chat_messages (كانت الحذف قبل ذلك Super Admin فقط).
 window.printChatSystemMigration = function() {
   var sql = `
 -- ================================================================
@@ -16331,7 +16354,7 @@ BEGIN
 END $$;
 
 -- 2) get_or_create_chat_room(p_section_id) — يُنشئ غرفة الشعبة أول مرة فقط
---    يتحقق من نفس شرط دخول الشات المستخدم في RLS (أدمن عام / أدمن الكورساتة / مشترك فعّال)
+--    يتحقق من نفس شرط دخول الشات المستخدم في RLS (أدمن عام / أدمن الكورس / مشترك فعّال)
 --    قبل أي إنشاء أو قراءة — DENY ACCESS الصريح بدل أي fallback مسموح به بالخطأ.
 CREATE OR REPLACE FUNCTION get_or_create_chat_room(p_section_id BIGINT)
 RETURNS chat_rooms
@@ -16391,7 +16414,7 @@ CREATE TRIGGER trg_chat_messages_set_sender
   BEFORE INSERT ON chat_messages
   FOR EACH ROW EXECUTE FUNCTION _chat_messages_set_sender();
 
--- 4) أدمن الكورساتة يقدر يحذف رسالة مسيئة من شعبته فقط (كانت هذه الصلاحية Super Admin فقط)
+-- 4) أدمن الكورس يقدر يحذف رسالة مسيئة من شعبته فقط (كانت هذه الصلاحية Super Admin فقط)
 DROP POLICY IF EXISTS "chatmsg_delete_branch_admin" ON chat_messages;
 CREATE POLICY "chatmsg_delete_branch_admin" ON chat_messages FOR DELETE
   USING (is_branch_admin_of((SELECT cr.section_id FROM chat_rooms cr WHERE cr.id = chat_messages.room_id)));
@@ -16414,6 +16437,85 @@ CREATE POLICY "chatmsg_delete_branch_admin" ON chat_messages FOR DELETE
   return sql;
 };
 console.log('%c[CHAT] اكتب printChatSystemMigration() لعرض/نسخ SQL استكمال نظام الشات', 'color:#0b6e4f;font-weight:bold');
+
+window.printCourseChatAndSubscriptionFixSQL=function(){
+  var sql=`-- ================================================================
+-- COURSE CHAT + SUBSCRIPTIONS FIX — ADDITIVE / NO DATA DELETION
+-- 1) لكل كورس له اشتراك فعال غرفة محادثة تلقائية.
+-- 2) راسل أدمن الكورس، وإن لم يوجد، يتم إرجاع أدمن المنصة تلقائياً.
+-- 3) الطالب لا يستطيع مراسلة أي مستخدم عشوائي.
+-- 4) branch_admin مقيد بالكورس المسؤول عنه.
+-- 5) إصلاح قراءة الاشتراكات والإحصائيات عبر RLS.
+-- ================================================================
+
+CREATE OR REPLACE FUNCTION get_or_create_chat_room(p_section_id BIGINT)
+RETURNS chat_rooms LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
+DECLARE v_room chat_rooms; v_title TEXT;
+BEGIN
+  IF p_section_id IS NULL THEN RAISE EXCEPTION 'section_id مطلوب'; END IF;
+  IF NOT (is_admin() OR is_branch_admin_of(p_section_id) OR has_active_subscription(p_section_id)) THEN
+    RAISE EXCEPTION 'DENY ACCESS';
+  END IF;
+  SELECT * INTO v_room FROM chat_rooms WHERE section_id=p_section_id ORDER BY id LIMIT 1;
+  IF FOUND THEN RETURN v_room; END IF;
+  SELECT title INTO v_title FROM site_sections WHERE id=p_section_id;
+  INSERT INTO chat_rooms(room_name,section_id) VALUES('محادثة '||COALESCE(v_title,'الكورس'),p_section_id)
+  ON CONFLICT DO NOTHING RETURNING * INTO v_room;
+  IF v_room.id IS NULL THEN SELECT * INTO v_room FROM chat_rooms WHERE section_id=p_section_id ORDER BY id LIMIT 1; END IF;
+  RETURN v_room;
+END; $$;
+
+CREATE OR REPLACE FUNCTION get_section_admins_for_messaging(p_section_id BIGINT)
+RETURNS TABLE(user_id UUID, full_name TEXT, email TEXT, admin_source TEXT)
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
+BEGIN
+  IF NOT (is_admin() OR is_branch_admin_of(p_section_id) OR has_active_subscription(p_section_id)) THEN
+    RAISE EXCEPTION 'DENY ACCESS';
+  END IF;
+  -- أولاً أدمن الكورس نفسه فقط.
+  RETURN QUERY
+  SELECT sa.user_id, COALESCE(p.full_name,p.email,'أدمن الكورس')::TEXT, p.email::TEXT, 'course'::TEXT
+  FROM section_admins sa JOIN profiles p ON p.id=sa.user_id
+  WHERE sa.section_id=p_section_id AND sa.is_active=true AND sa.role='admin'
+  ORDER BY COALESCE(p.full_name,p.email,'');
+  IF FOUND THEN RETURN; END IF;
+  -- لا يوجد أدمن للكورس: أدمن المنصة يصبح المسؤول تلقائياً.
+  RETURN QUERY
+  SELECT p.id, COALESCE(p.full_name,p.email,'أدمن المنصة')::TEXT, p.email::TEXT, 'platform'::TEXT
+  FROM profiles p WHERE p.role='admin' ORDER BY COALESCE(p.full_name,p.email,'');
+END; $$;
+GRANT EXECUTE ON FUNCTION get_section_admins_for_messaging(BIGINT) TO authenticated;
+
+DROP FUNCTION IF EXISTS get_or_create_direct_room(UUID,BIGINT);
+CREATE OR REPLACE FUNCTION get_or_create_direct_room(p_other_user_id UUID,p_section_id BIGINT)
+RETURNS chat_rooms LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
+DECLARE v_me UUID:=auth.uid(); v_room chat_rooms; v_ok BOOLEAN:=false;
+BEGIN
+  IF v_me IS NULL OR p_other_user_id IS NULL OR p_other_user_id=v_me OR p_section_id IS NULL THEN RAISE EXCEPTION 'DENY ACCESS'; END IF;
+  IF NOT (is_admin() OR is_branch_admin_of(p_section_id) OR has_active_subscription(p_section_id)) THEN RAISE EXCEPTION 'DENY ACCESS'; END IF;
+  SELECT EXISTS(SELECT 1 FROM section_admins sa WHERE sa.user_id=p_other_user_id AND sa.section_id=p_section_id AND sa.is_active=true AND sa.role='admin') INTO v_ok;
+  IF NOT v_ok THEN SELECT EXISTS(SELECT 1 FROM profiles p WHERE p.id=p_other_user_id AND p.role='admin') INTO v_ok; END IF;
+  IF NOT v_ok THEN RAISE EXCEPTION 'DENY ACCESS: الطرف المطلوب ليس أدمن الكورس أو أدمن المنصة'; END IF;
+  SELECT * INTO v_room FROM chat_rooms cr WHERE cr.section_id=p_section_id AND cr.room_type='direct' AND EXISTS(SELECT 1 FROM chat_room_participants a WHERE a.room_id=cr.id AND a.user_id=v_me) AND EXISTS(SELECT 1 FROM chat_room_participants b WHERE b.room_id=cr.id AND b.user_id=p_other_user_id) LIMIT 1;
+  IF FOUND THEN RETURN v_room; END IF;
+  INSERT INTO chat_rooms(room_name,section_id,room_type) VALUES('محادثة خاصة',p_section_id,'direct') RETURNING * INTO v_room;
+  INSERT INTO chat_room_participants(room_id,user_id) VALUES(v_room.id,v_me),(v_room.id,p_other_user_id) ON CONFLICT DO NOTHING;
+  RETURN v_room;
+END; $$;
+GRANT EXECUTE ON FUNCTION get_or_create_direct_room(UUID,BIGINT) TO authenticated;
+
+-- حقول قرار الاشتراك إن لم تكن موجودة.
+ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS approved_at TIMESTAMPTZ;
+ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS rejected_at TIMESTAMPTZ;
+ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS approved_by UUID REFERENCES profiles(id);
+ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS rejected_by UUID REFERENCES profiles(id);
+CREATE INDEX IF NOT EXISTS idx_subscriptions_section_status ON subscriptions(section_id,payment_status,created_at);
+CREATE INDEX IF NOT EXISTS idx_subscriptions_approved_at ON subscriptions(approved_at);
+CREATE INDEX IF NOT EXISTS idx_subscriptions_rejected_at ON subscriptions(rejected_at);
+
+NOTIFY pgrst,'reload schema';`;
+  console.log(sql); if(navigator.clipboard) navigator.clipboard.writeText(sql).catch(function(){}); return sql;
+};
 
 window.printProductionFeaturesMigration = function() {
   var sql = `
@@ -16565,7 +16667,7 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, pg_temp AS $$
     UNION ALL
     SELECT s.id, s.parent_id FROM site_sections s JOIN ancestors a ON s.id=a.parent_id
   )
-  SELECT sa.user_id, COALESCE(p.full_name, p.email, 'أدمن الكورساتة')::TEXT, p.email::TEXT
+  SELECT sa.user_id, COALESCE(p.full_name, p.email, 'أدمن الكورس')::TEXT, p.email::TEXT
   FROM section_admins sa
   JOIN ancestors a ON a.id=sa.section_id
   LEFT JOIN profiles p ON p.id=sa.user_id
@@ -16575,60 +16677,143 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, pg_temp AS $$
 $$;
 GRANT EXECUTE ON FUNCTION get_section_admins_for_messaging(BIGINT) TO authenticated;
 
--- 5) DIRECT ROOM: overload جديد مع section scope؛ لا يغيّر الـRPC القديمة ذات الوسيط الواحد
+-- 5) DIRECT ROOM: محادثة خاصة لكل طالب مع أدمن الكورس/المنصة داخل نفس الكورس.
+-- section_id جزء أساسي من الغرفة حتى لا تختلط محادثات نفس الطالب بين كورسات مختلفة.
+DROP FUNCTION IF EXISTS get_or_create_direct_room(UUID, BIGINT);
 CREATE OR REPLACE FUNCTION get_or_create_direct_room(p_other_user_id UUID, p_section_id BIGINT)
 RETURNS chat_rooms LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
 DECLARE
   v_me UUID := auth.uid();
   v_room chat_rooms;
+  v_is_course_admin BOOLEAN;
+  v_is_platform_admin BOOLEAN;
 BEGIN
-  IF v_me IS NULL OR p_other_user_id IS NULL OR p_other_user_id = v_me OR p_section_id IS NULL THEN RAISE EXCEPTION 'DENY ACCESS'; END IF;
-  IF p_section_id IS NOT NULL THEN
-    IF NOT (is_admin() OR is_branch_admin_of(p_section_id) OR has_active_subscription(p_section_id)) THEN RAISE EXCEPTION 'DENY ACCESS'; END IF;
-    IF NOT EXISTS (
-      WITH RECURSIVE ancestors AS (
-        SELECT id, parent_id FROM site_sections WHERE id=p_section_id
-        UNION ALL
-        SELECT s.id, s.parent_id FROM site_sections s JOIN ancestors a ON s.id=a.parent_id
-      )
-      SELECT 1 FROM section_admins sa
-      WHERE sa.user_id=p_other_user_id AND sa.section_id IN (SELECT id FROM ancestors)
-        AND sa.is_active=true AND sa.role='admin'
-    ) AND NOT is_admin() THEN RAISE EXCEPTION 'DENY ACCESS'; END IF;
+  IF v_me IS NULL OR p_other_user_id IS NULL OR p_other_user_id = v_me OR p_section_id IS NULL THEN
+    RAISE EXCEPTION 'DENY ACCESS';
   END IF;
-  PERFORM pg_advisory_xact_lock(hashtextextended(LEAST(v_me::TEXT,p_other_user_id::TEXT)||':'||GREATEST(v_me::TEXT,p_other_user_id::TEXT),0));
+
+  IF NOT (is_admin() OR is_branch_admin_of(p_section_id) OR has_active_subscription(p_section_id)) THEN
+    RAISE EXCEPTION 'DENY ACCESS';
+  END IF;
+
+  SELECT EXISTS (
+    SELECT 1 FROM section_admins sa
+    WHERE sa.user_id = p_other_user_id
+      AND sa.section_id = p_section_id
+      AND sa.is_active = true
+      AND sa.role = 'admin'
+  ) INTO v_is_course_admin;
+
+  SELECT EXISTS (
+    SELECT 1 FROM profiles p
+    WHERE p.id = p_other_user_id AND p.role = 'admin'
+  ) INTO v_is_platform_admin;
+
+  -- الطالب لا يستطيع فتح DM مع أي شخص عشوائي؛ الطرف الآخر يجب أن يكون
+  -- أدمن الكورس، أو أدمن المنصة إذا لم يوجد أدمن للكورس.
+  IF NOT v_is_course_admin THEN
+    IF EXISTS (
+      SELECT 1 FROM section_admins sa
+      WHERE sa.section_id = p_section_id
+        AND sa.is_active = true
+        AND sa.role = 'admin'
+    ) THEN
+      RAISE EXCEPTION 'DENY ACCESS: الطرف المطلوب ليس أدمن هذا الكورس';
+    END IF;
+    IF NOT v_is_platform_admin THEN
+      RAISE EXCEPTION 'DENY ACCESS: لا يوجد تطابق لصلاحية أدمن المنصة';
+    END IF;
+  END IF;
+
+  PERFORM pg_advisory_xact_lock(
+    hashtextextended(
+      LEAST(v_me::TEXT,p_other_user_id::TEXT)||':'||
+      GREATEST(v_me::TEXT,p_other_user_id::TEXT)||':'||p_section_id::TEXT,
+      0
+    )
+  );
+
   SELECT cr.* INTO v_room
   FROM chat_rooms cr
-  WHERE cr.section_id IS NULL
-    AND EXISTS (SELECT 1 FROM chat_room_participants x WHERE x.room_id=cr.id AND x.user_id=v_me)
-    AND EXISTS (SELECT 1 FROM chat_room_participants y WHERE y.room_id=cr.id AND y.user_id=p_other_user_id)
+  WHERE cr.section_id = p_section_id
+    AND EXISTS (
+      SELECT 1 FROM chat_room_participants x
+      WHERE x.room_id=cr.id AND x.user_id=v_me
+    )
+    AND EXISTS (
+      SELECT 1 FROM chat_room_participants y
+      WHERE y.room_id=cr.id AND y.user_id=p_other_user_id
+    )
   ORDER BY cr.id LIMIT 1;
+
   IF FOUND THEN RETURN v_room; END IF;
-  INSERT INTO chat_rooms(room_name,section_id) VALUES('محادثة مباشرة',NULL) RETURNING * INTO v_room;
+
+  INSERT INTO chat_rooms(room_name,section_id)
+  VALUES('محادثة خاصة - ' || COALESCE(
+      (SELECT title FROM site_sections WHERE id=p_section_id),
+      'الكورس'
+    ), p_section_id)
+  RETURNING * INTO v_room;
+
   INSERT INTO chat_room_participants(room_id,user_id) VALUES(v_room.id,v_me);
   INSERT INTO chat_room_participants(room_id,user_id) VALUES(v_room.id,p_other_user_id);
+
   RETURN v_room;
 END;
 $$;
 GRANT EXECUTE ON FUNCTION get_or_create_direct_room(UUID,BIGINT) TO authenticated;
 
--- 6) RLS للـDM — العضو يرى غرفته ورسائله فقط، ولا نفتح direct rooms لغير المشاركين
+-- 6) RLS للـDM — العضو يرى غرفته فقط، والغرفة مرتبطة بالكورس.
 CREATE OR REPLACE FUNCTION can_access_direct_room_member(p_room_id BIGINT)
 RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, pg_temp AS $$
-  SELECT auth.uid() IS NOT NULL AND EXISTS (SELECT 1 FROM chat_room_participants p WHERE p.room_id=p_room_id AND p.user_id=auth.uid());
+  SELECT auth.uid() IS NOT NULL
+    AND EXISTS (
+      SELECT 1 FROM chat_room_participants p
+      WHERE p.room_id=p_room_id AND p.user_id=auth.uid()
+    );
 $$;
 GRANT EXECUTE ON FUNCTION can_access_direct_room_member(BIGINT) TO authenticated;
+
 ALTER TABLE chat_room_participants ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "dm_participants_own_read" ON chat_room_participants;
-CREATE POLICY "dm_participants_own_read" ON chat_room_participants FOR SELECT USING (user_id=auth.uid());
+CREATE POLICY "dm_participants_own_read"
+ON chat_room_participants FOR SELECT
+USING (user_id=auth.uid());
+
 ALTER TABLE chat_rooms ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "chatrooms_read_direct_member" ON chat_rooms;
-CREATE POLICY "chatrooms_read_direct_member" ON chat_rooms FOR SELECT USING (section_id IS NULL AND can_access_direct_room_member(id));
+CREATE POLICY "chatrooms_read_direct_member"
+ON chat_rooms FOR SELECT
+USING (
+  section_id IS NOT NULL
+  AND can_access_direct_room_member(id)
+);
+
 ALTER TABLE chat_messages ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "chatmsg_read_direct_member" ON chat_messages;
 DROP POLICY IF EXISTS "chatmsg_insert_direct_member" ON chat_messages;
-CREATE POLICY "chatmsg_read_direct_member" ON chat_messages FOR SELECT USING (EXISTS (SELECT 1 FROM chat_rooms cr WHERE cr.id=chat_messages.room_id AND cr.section_id IS NULL AND can_access_direct_room_member(cr.id)));
-CREATE POLICY "chatmsg_insert_direct_member" ON chat_messages FOR INSERT WITH CHECK (EXISTS (SELECT 1 FROM chat_rooms cr WHERE cr.id=chat_messages.room_id AND cr.section_id IS NULL AND can_access_direct_room_member(cr.id)));
+
+CREATE POLICY "chatmsg_read_direct_member"
+ON chat_messages FOR SELECT
+USING (
+  EXISTS (
+    SELECT 1 FROM chat_rooms cr
+    WHERE cr.id=chat_messages.room_id
+      AND cr.section_id IS NOT NULL
+      AND can_access_direct_room_member(cr.id)
+  )
+);
+
+CREATE POLICY "chatmsg_insert_direct_member"
+ON chat_messages FOR INSERT
+WITH CHECK (
+  EXISTS (
+    SELECT 1 FROM chat_rooms cr
+    WHERE cr.id=chat_messages.room_id
+      AND cr.section_id IS NOT NULL
+      AND can_access_direct_room_member(cr.id)
+  )
+);
 
 -- 7) ترتيب الموارد القياسي — ⚠️ تم نقل هذا المنطق لملف migration منفصل
 --    (compute_resource_sort_order + trigger set_resource_sort_order) لأنه بيضيف:
@@ -17281,7 +17466,7 @@ window.diagnose = async function() {
       var anchor = await _findSubscriptionAnchor(sectionId);
       if (!anchor) return null; // هذا القسم/الشعبة لا يتطلب اشتراكاً (requires_subscription = false)
 
-      // ✅ FIX: أدمن الكورساتة (section_admins) يجب أن يكون له وصول كامل *فقط* للشعبة
+      // ✅ FIX: أدمن الكورس (section_admins) يجب أن يكون له وصول كامل *فقط* للشعبة
       // التي يديرها ولكل ما تحتها — وليس لكل الشعب. سابقًا كان الفحص يعتمد على
       // window._isAdminUser وهو true لأي أدمن الكورس (isSuperAdmin || isBranchAdmin)
       // بدون أي scoping، فكان أدمن الكورس "أ" يرى محتوى شعبة "ب" مقفولاً بالكامل
@@ -17328,7 +17513,7 @@ window.diagnose = async function() {
       if (!anchor || anchor.id !== sectionId) return null;
 
       // ✅ FIX: نفس تصحيح checkSectionAccess — الأدمن المنصة فقط يدخل بلا شرط،
-      // وأدمن الكورساتة يدخل فقط لو anchor.id ضمن الشعب المُسندة له تحديدًا
+      // وأدمن الكورس يدخل فقط لو anchor.id ضمن الشعب المُسندة له تحديدًا
       // (الفحص التالي أصلاً كان موجودًا لكنه كان ميت الكود عمليًا لأن الشرط قبله
       // window._isAdminUser كان يشمل أدمن أي شعبة أخرى ويرجّع true قبل الوصول له).
       if (window._isSuperAdmin) return { anchor: anchor, allowed: true, isAdmin: true };
@@ -18234,7 +18419,7 @@ window.diagnose = async function() {
 
   // ── زر "دخول محادثة الكورس" — يُستدعى من _renderDynamicSectionPage عند الأهلية ──
   window._renderChatEntryButtonHTML = function(anchor) {
-    var titleEsc = _apEsc ? _apEsc(anchor.title || 'الشعبة') : (anchor.title || 'الشعبة');
+    var titleEsc = _apEsc ? _apEsc(anchor.title || 'الكورس') : (anchor.title || 'الشعبة');
     return '<button class="chat-entry-btn" onclick="openSectionChat(' + anchor.id + ', \'' +
       titleEsc.replace(/'/g, "\\'") + '\')">💬 دخول محادثة الكورس</button>';
   };
@@ -18634,7 +18819,7 @@ window.diagnose = async function() {
     }
   };
 
-  // ── حذف رسالة (أدمن الكورساتة أو الأدمن العام فقط — RLS تفرض هذا في قاعدة البيانات) ──
+  // ── حذف رسالة (أدمن الكورس أو الأدمن العام فقط — RLS تفرض هذا في قاعدة البيانات) ──
   //    لو كانت الرسالة تحمل مرفقات، نحذف ملفاتها من Storage أولاً بأفضل محاولة ممكنة
   //    حتى لا تبقى ملفات يتيمة بعد حذف الرسالة (سجلات message_attachments تُحذف
   //    مع الرسالة عبر FK الموجودة أصلاً على الجدول — لم نُضف أو نُعدّل أي شيء هنا).
@@ -18957,7 +19142,7 @@ window.diagnose = async function() {
         } else if (window._isBranchAdmin || (window._isAdminUser && !window._isBranchAdmin)) {
           displayName = 'مستخدم';
         } else {
-          displayName = '🛡️ أدمن الكورساتة';
+          displayName = '🛡️ أدمن الكورس';
         }
         var unread = !!(lastMsg && lastMsg.user_id !== _dmMe.id &&
           (!myReadMap[room.id] || new Date(lastMsg.created_at) > new Date(myReadMap[room.id])));
@@ -19019,7 +19204,7 @@ window.diagnose = async function() {
 
   // ════════════════════════════════════════════════════════════
   // بدء محادثة جديدة — Super Admin: بحث عام. Branch Admin: مشتركو
-  // نطاقه. طالب: عبر زر "راسل أدمن الكورساتة" فقط (انظر
+  // نطاقه. طالب: عبر زر "راسل أدمن الكورس" فقط (انظر
   // _renderMessageAdminEntry أسفل)، وليس من هنا.
   // ════════════════════════════════════════════════════════════
   window._dmOpenNewConversationPicker = async function() {
@@ -19038,7 +19223,7 @@ window.diagnose = async function() {
       resultsEl.innerHTML = '<div class="chat-empty">اكتب اسمًا أو بريدًا للبحث...</div>';
     } else {
       searchBox.style.display = 'none';
-      resultsEl.innerHTML = '<div class="chat-empty">هذه الميزة متاحة حاليًا فقط عبر زر "راسل أدمن الكورساتة" داخل صفحة شعبتك، أو عندما يبدأ أدمن الكورساتة المحادثة معك.</div>';
+      resultsEl.innerHTML = '<div class="chat-empty">هذه الميزة متاحة حاليًا فقط عبر زر "راسل أدمن الكورس" داخل صفحة شعبتك، أو عندما يبدأ أدمن الكورس المحادثة معك.</div>';
     }
   };
 
@@ -19066,7 +19251,7 @@ window.diagnose = async function() {
       if (!scope.length) { resultsEl.innerHTML = '<div class="chat-empty">لا يوجد نطاق شعبة مُعيَّن لك بعد.</div>'; return; }
       // ✅ FIX (Aug 2026): لازم نجيب section_id مع كل اشتراك عشان نقدر نبعته
       // لـ get_or_create_direct_room (تتطلبه إجباريًا) — قبل كده كان بيتسقط
-      // فترفض كل محادثة يبدأها أدمن الكورساتة مع أي مشترك عنده.
+      // فترفض كل محادثة يبدأها أدمن الكورس مع أي مشترك عنده.
       var subsRes = await db.from('subscriptions').select('user_id, section_id, payment_status, end_date')
         .in('section_id', scope).eq('payment_status', 'active');
       if (subsRes.error) throw subsRes.error;
@@ -19121,27 +19306,43 @@ window.diagnose = async function() {
     : _dmSearchUsers;
 
   // ════════════════════════════════════════════════════════════
-  // Phase C — "راسل أدمن الكورساتة": يُستدعى من _renderDynamicSectionPage
-  // بجانب زر Section Chat، فقط عندما elig.allowed === true (نفس شرط
-  // محادثة الكورس تمامًا). يستخدم RPC آمنة جديدة فقط — لا نقرأ
-  // section_admins أو profiles مباشرة من هنا.
+  // "راسل أدمن الكورس" — نظام تلقائي لكل كورس مدفوع.
+  // الأولوية:
+  //   1) أدمن/أدمنو الكورس المعيّنون فعلياً.
+  //   2) إذا لم يوجد أي أدمن للكورس، يرجع RPC أدمن المنصة تلقائياً.
+  // الطالب لا يرى section_admins أو profiles مباشرة؛ الـRPC هي مصدر الحقيقة.
   // ════════════════════════════════════════════════════════════
   window._renderMessageAdminEntry = async function(anchor, containerEl) {
     if (!containerEl || !anchor || !anchor.id || !window.supabase) return;
     try {
       var res = await window.supabase.rpc('get_section_admins_for_messaging', { p_section_id: anchor.id });
-      if (res.error) { console.warn('[DM] get_section_admins_for_messaging error:', res.error.message); return; }
+      if (res.error) {
+        console.warn('[DM] get_section_admins_for_messaging error:', res.error.message);
+        return;
+      }
       var admins = res.data || [];
-      if (!admins.length) return; // لا يظهر الزر إطلاقًا لو صفر
+      if (!admins.length) {
+        // لا يوجد أدمن مخصص للكورس: نحاول صراحةً جلب أدمن المنصة من نفس RPC بعد تطبيق migration.
+        console.warn('[DM] لم يرجع RPC أي أدمن؛ شغّل printCourseChatAndSubscriptionFixSQL() إن لزم.');
+        return;
+      }
+
+      var hasCourseAdmin = admins.some(function(a){ return String(a.admin_source || '') === 'course'; });
+      var label = hasCourseAdmin ? '✉️ راسل أدمن الكورس' : '✉️ راسل أدمن المنصة';
 
       var btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'chat-entry-btn';
       btn.style.background = 'linear-gradient(135deg,#17a589,#0a3d62)';
-      btn.textContent = '✉️ راسل أدمن الكورساتة';
+      btn.textContent = label;
       btn.onclick = function() {
         if (admins.length === 1) {
-          window.openDirectChat(admins[0].user_id, admins[0].full_name || admins[0].email, null, anchor.id);
+          window.openDirectChat(
+            admins[0].user_id,
+            admins[0].full_name || admins[0].email || (hasCourseAdmin ? 'أدمن الكورس' : 'أدمن المنصة'),
+            null,
+            anchor.id
+          );
         } else {
           _dmOpenAdminPicker(admins, anchor.id);
         }
@@ -19159,7 +19360,7 @@ window.diagnose = async function() {
     document.body.style.overflow = 'hidden';
     document.getElementById('dm-picker-search').style.display = 'none';
     document.getElementById('dm-picker-results').innerHTML = admins.map(function(a) {
-      var label = a.full_name || a.email || 'أدمن الكورساتة';
+      var label = a.full_name || a.email || 'أدمن الكورس';
       return _dmPickRowHTML(a.user_id, label, a.email || '', ' <span class="chat-msg-admin-badge">🛡️ أدمن</span>', sectionId);
     }).join('');
   }
@@ -20152,10 +20353,10 @@ ON notifications FOR ALL
 USING (is_admin())
 WITH CHECK (is_admin());
 
--- أدمن الكورساتة يستطيع الإرسال لأي مستخدم له صف طلب/اشتراك (بأي حالة دفع)
+-- أدمن الكورس يستطيع الإرسال لأي مستخدم له صف طلب/اشتراك (بأي حالة دفع)
 -- داخل نطاق شعبته — بما فيها "قبول" (active) و"رفض" (cancelled) على حد سواء.
 -- ✅ FIX (أغسطس 2026): كانت الدالة تشترط payment_status = 'active' فقط،
--- فكان أدمن الكورساتة يقدر يبلّغ الطالب بالموافقة لكن مش برسالة الرفض (لأن
+-- فكان أدمن الكورس يقدر يبلّغ الطالب بالموافقة لكن مش برسالة الرفض (لأن
 -- الحالة بعد الرفض بتبقى cancelled مش active). الشرط الوحيد المطلوب فعلاً
 -- هو إن صف الاشتراك يقع داخل نطاق شعبة الأدمن — بغض النظر عن حالته.
 CREATE OR REPLACE FUNCTION can_branch_admin_notify_user(target_user UUID)
@@ -20622,7 +20823,7 @@ async function _qzCurrentUserId() {
 }
 
 // ════════════════════════════════════════════════════════════════
-// ADMIN — اختيار المادة / الشابتر / القسم النهائي
+// ADMIN — اختيار المادة ثم الشابتر وإنشاء الاختبارات
 // ════════════════════════════════════════════════════════════════
 async function qzLoadMaterialsForAdmin() {
   var db = await _qzDb();
@@ -20630,7 +20831,7 @@ async function qzLoadMaterialsForAdmin() {
   var sel = document.getElementById('qz-material-select');
   try {
     // ✅ FIX ("لا توجد مواد ضمن نطاقك"): loadSections(null) كانت تجيب فقط
-    // أقسام المستوى الجذري (parent_id=null)، لكن نطاق أدمن الكورساتة
+    // أقسام المستوى الجذري (parent_id=null)، لكن نطاق أدمن الكورس
     // (window._branchAdminSectionIds) هو subtree يبدأ من قسمه هو (غالباً
     // مش جذر). الفلترة القديمة كانت تقارن جذور الموقع بنطاق فرعي فمفيش
     // تقاطع أبداً. نفس النمط الصحيح المستخدم في adminLoadSections/lpLoad:
@@ -20670,99 +20871,83 @@ async function qzOnMaterialChange() {
   var chapWrap = document.getElementById('qz-chapter-wrap');
   var secWrap = document.getElementById('qz-section-wrap');
   var chapSel = document.getElementById('qz-chapter-select');
+  var materialId = matSel ? matSel.value : '';
   document.getElementById('qz-admin-body').style.display = 'none';
   document.getElementById('qz-quiz-list-wrap').style.display = 'none';
   if (secWrap) secWrap.style.display = 'none';
-  var materialId = matSel ? matSel.value : '';
   if (!materialId) { if (chapWrap) chapWrap.style.display = 'none'; return; }
   try {
     var children = await loadSections(materialId);
-    if (children && children.length) {
-      chapSel.innerHTML = '<option value="">— اختر الشابتر —</option>' +
-        children.map(function(c) { return '<option value="' + c.id + '">' + c.title + '</option>'; }).join('');
+    children = (children || []).filter(function(c){
+      // أدمن الكورس يستطيع إدارة شباتر الكورس الذي يديره فقط؛
+      // الشابتر هنا ابن مباشر للمادة المختارة وليس "قسمًا نهائيًا".
+      return !window._isBranchAdmin || window._isSuperAdmin || Number(materialId) === courseIdForBranch();
+    });
+    if (!children.length) {
       chapWrap.style.display = 'block';
-    } else {
-      // لا يوجد شباتر — المادة نفسها قسم نهائي
-      chapWrap.style.display = 'none';
-      await qzPopulateSectionOptions([{ id: materialId, title: matSel.options[matSel.selectedIndex].text }]);
+      chapSel.innerHTML = '<option value="">— لا توجد شباتر لهذه المادة —</option>';
+      return;
     }
+    chapSel.innerHTML = '<option value="">— اختر الشابتر —</option>' +
+      children.map(function(c) { return '<option value="' + c.id + '">' + qzEsc(c.title || ('#'+c.id)) + '</option>'; }).join('');
+    chapWrap.style.display = 'block';
   } catch (e) { console.error('[qzOnMaterialChange]', e); }
 }
 
 async function qzOnChapterChange() {
   var chapSel = document.getElementById('qz-chapter-select');
   var chapterId = chapSel ? chapSel.value : '';
+  var materialId = document.getElementById('qz-material-select') ? document.getElementById('qz-material-select').value : '';
   document.getElementById('qz-admin-body').style.display = 'none';
   document.getElementById('qz-quiz-list-wrap').style.display = 'none';
-  if (!chapterId) { document.getElementById('qz-section-wrap').style.display = 'none'; return; }
-  try {
-    var children = await loadSections(chapterId);
-    if (children && children.length) {
-      await qzPopulateSectionOptions(children);
-    } else {
-      // الشابتر نفسه قسم نهائي
-      await qzPopulateSectionOptions([{ id: chapterId, title: chapSel.options[chapSel.selectedIndex].text }]);
-    }
-  } catch (e) { console.error('[qzOnChapterChange]', e); }
-}
-
-async function qzPopulateSectionOptions(sections) {
-  var secWrap = document.getElementById('qz-section-wrap');
-  var secSel = document.getElementById('qz-section-select');
-  // ── أدمن الكورساتة: يفلتر أي قسم برّه نطاقه حتى لو ظهر ضمن children ──
-  sections = (sections || []).filter(function(s) { return _qzInBranchScope(s.id); });
-  if (!sections.length) {
-    secSel.innerHTML = '<option value="">— لا توجد أقسام ضمن نطاقك —</option>';
-    secWrap.style.display = 'block';
+  if (!chapterId) return;
+  if (window._isBranchAdmin && !window._isSuperAdmin && Number(materialId) !== courseIdForBranch()) {
+    if (typeof _showToast === 'function') _showToast('⛔ المادة خارج نطاق كورسك','error');
     return;
   }
-  secSel.innerHTML = '<option value="">— اختر القسم —</option>' +
-    sections.map(function(s) { return '<option value="' + s.id + '">' + s.title + '</option>'; }).join('');
-  secWrap.style.display = 'block';
+  // الشابتر هو سياق الاختبارات. لا نطلب "قسم نهائي" إضافيًا.
+  var hiddenSec = document.getElementById('qz-section-select');
+  if (hiddenSec) hiddenSec.value = String(chapterId);
+  window._qz.adminChapterId = Number(chapterId);
+  window._qz.adminMaterialId = Number(materialId);
+  // نحمل اختبارات الشابتر، بينما ملكية الاختبار في قاعدة البيانات تبقى على المادة/الكورس
+  // إذا كانت القاعدة الحالية مصممة بهذا الشكل، ويتم ضبط ذلك في qzOnSectionChange.
+  await qzLoadByChapter(chapterId, materialId);
 }
 
-async function qzOnSectionChange() {
-  var secSel = document.getElementById('qz-section-select');
-  var sectionId = secSel ? secSel.value : '';
+async function qzLoadByChapter(chapterId, materialId) {
   var listWrap = document.getElementById('qz-quiz-list-wrap');
-  document.getElementById('qz-admin-body').style.display = 'none';
-  if (!sectionId || !_qzInBranchScope(sectionId)) { listWrap.style.display = 'none'; return; }
-  window._qz.adminEditingSectionId = sectionId;
-  window._qz.adminEditingQuizId = null;
+  var listEl = document.getElementById('qz-quiz-list');
+  if (!chapterId || !listWrap || !listEl) return;
   listWrap.style.display = 'block';
-  document.getElementById('qz-quiz-list').innerHTML = '<div style="text-align:center;color:#999;padding:14px;">⏳ جاري التحميل...</div>';
-
+  listEl.innerHTML = '<div style="text-align:center;color:#999;padding:14px;">⏳ جاري تحميل اختبارات الشابتر...</div>';
+  window._qz.adminEditingSectionId = String(chapterId);
+  window._qz.adminEditingQuizId = null;
   var db = await _qzDb();
   if (!db) return;
   try {
-    // ── محاضرات هذا القسم (section_content) — لملء قائمة "المحاضرة المرتبطة" ──
-    var lecturesPromise = (typeof loadSectionContent === 'function') ? loadSectionContent(sectionId) : Promise.resolve([]);
-    var { data: quizzes, error } = await db.from('quizzes').select('*').eq('section_id', sectionId).order('display_order', { ascending: true }).order('id', { ascending: true });
-    if (error) {
-      // ✅ FIX: لو عمود display_order لسه مش موجود في القاعدة الفعلية (Migration
-      // لم يُشغَّل بعد رغم إنه مكتوب جاهز في printQuizBranchSecurityAndAnalyticsSQL())،
-      // كان الخطأ ده بيوقف تحميل الاختبارات بالكامل. هنا نعيد المحاولة بدون الترتيب
-      // بهذا العمود (fallback مؤقت) بدل ما تنكسر الشاشة، مع تنبيه واضح للأدمن.
-      if (error.message && /display_order/i.test(error.message)) {
-        console.warn('[qzOnSectionChange] عمود display_order غير موجود — استخدم fallback مؤقت. شغّل printQuizBranchSecurityAndAnalyticsSQL() في Supabase SQL Editor.');
-        var fb = await db.from('quizzes').select('*').eq('section_id', sectionId).order('id', { ascending: true });
-        if (fb.error) throw fb.error;
-        quizzes = fb.data;
-        if (typeof _showToast === 'function') {
-          _showToast('⚠️ قاعدة البيانات محتاجة تحديث (عمود display_order) — شغّل printQuizBranchSecurityAndAnalyticsSQL() في Supabase', 'error');
-        }
-      } else {
-        throw error;
-      }
-    }
-    window._qz.adminQuizList = quizzes || [];
-    var lectures = await lecturesPromise;
+    var lectures = (typeof loadSectionContent === 'function') ? await loadSectionContent(chapterId) : [];
     window._qz.adminLectures = lectures || [];
+    // النظام الجديد: الاختبار مرتبط بالشابتر مباشرة.
+    var r = await db.from('quizzes').select('*').eq('section_id', chapterId).order('display_order', {ascending:true}).order('id',{ascending:true});
+    if (r.error && /display_order/i.test(r.error.message || '')) {
+      r = await db.from('quizzes').select('*').eq('section_id', chapterId).order('id',{ascending:true});
+    }
+    if (r.error) throw r.error;
+    window._qz.adminQuizList = r.data || [];
     qzRenderQuizList();
-  } catch (e) {
-    console.error('[qzOnSectionChange]', e);
-    document.getElementById('qz-quiz-list').innerHTML = '<div style="text-align:center;color:#e74c3c;padding:14px;">❌ خطأ: ' + qzEsc(e.message) + '</div>';
+  } catch(e) {
+    console.error('[qzLoadByChapter]',e);
+    listEl.innerHTML='<div style="text-align:center;color:#e74c3c;padding:14px;">❌ خطأ: '+qzEsc(e.message)+'</div>';
   }
+}
+
+function qzPopulateSectionOptions() { return; }
+
+async function qzOnSectionChange() {
+  var sid = document.getElementById('qz-section-select') ? document.getElementById('qz-section-select').value : '';
+  if (!sid) return;
+  return qzLoadByChapter(sid, window._qz.adminMaterialId || null);
 }
 
 function qzRenderQuizList() {
@@ -20770,7 +20955,7 @@ function qzRenderQuizList() {
   document.getElementById('qz-quiz-count').textContent = list.length;
   var el = document.getElementById('qz-quiz-list');
   if (!list.length) {
-    el.innerHTML = '<div style="text-align:center;color:#999;padding:14px;">لا توجد اختبارات بعد لهذا القسم — اضغط "➕ اختبار جديد"</div>';
+    el.innerHTML = '<div style="text-align:center;color:#999;padding:14px;">لا توجد اختبارات بعد لهذا الشابتر — اضغط "➕ اختبار جديد"</div>';
     return;
   }
   var lecturesById = {};
@@ -20845,11 +21030,13 @@ function qzToggleMaxAttemptsField() {
 
 async function qzSaveQuizSettings() {
   var sectionId = window._qz.adminEditingSectionId;
-  if (!sectionId || !_qzInBranchScope(sectionId)) return;
+  if (!sectionId) return;
   var msgEl = document.getElementById('qz-settings-msg');
   var title = document.getElementById('qz-title').value.trim();
   if (!title) { msgEl.textContent = '❌ عنوان الاختبار مطلوب'; return; }
   var lectureVal = document.getElementById('qz-lecture-select').value;
+  var materialId = Number(window._qz.adminMaterialId || document.getElementById('qz-material-select')?.value || 0);
+  if (window._isBranchAdmin && !window._isSuperAdmin && materialId !== courseIdForBranch()) { msgEl.textContent='❌ الشابتر خارج نطاق كورسك'; return; }
   var payload = {
     section_id: sectionId,
     title: title,
@@ -22376,7 +22563,7 @@ window.qzShowPastReview = qzShowPastReview;
   var originalOpenChat=window.openSectionChat;
   if(typeof originalOpenChat==='function'){
     window.openSectionChat=async function(sectionId,sectionTitle){
-      if(window._isBranchAdmin&&!window._isSuperAdmin&&Number(sectionId)!==courseIdForBranch()){
+      if(window._isBranchAdmin&&!window._isSuperAdmin&&String(sectionId)!==String(courseIdForBranch())){
         if(typeof _showToast==='function')_showToast('⛔ هذا الشات خارج نطاق كورسك','error');
         return;
       }
@@ -22394,8 +22581,11 @@ window.qzShowPastReview = qzShowPastReview;
   var originalQzSection=window.qzOnSectionChange;
   if(typeof originalQzSection==='function'){
     window.qzOnSectionChange=async function(){
+      // الاختبار أصبح مرتبطًا بالشابتر، لذلك لا نرفضه لمجرد أن chapter_id
+      // ليس مساويًا لـ course_id؛ نتحقق من أن المادة الأب هي كورس الأدمن.
       var sid=Number((document.getElementById('qz-section-select')||{}).value||0);
-      if(window._isBranchAdmin&&!window._isSuperAdmin&&sid!==courseIdForBranch()){
+      var mid=Number(window._qz.adminMaterialId || (document.getElementById('qz-material-select')||{}).value || 0);
+      if(window._isBranchAdmin&&!window._isSuperAdmin&&mid!==courseIdForBranch()){
         var list=document.getElementById('qz-quiz-list'); if(list)list.innerHTML='<div class="ap-empty">⛔ الاختبارات خارج نطاق كورسك.</div>';
         return;
       }
