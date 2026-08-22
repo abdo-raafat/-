@@ -10428,20 +10428,23 @@ async function apLoadSectionChatTab() {
   try {
     var query = window.supabase.from('site_sections').select('id, title, icon');
     if (window._isBranchAdmin && !window._isSuperAdmin) {
-      var rootRow = window._branchAdminRows && window._branchAdminRows[0];
-      var rootId  = rootRow ? rootRow.branch_section_id : null;
-      if (!rootId) { el.innerHTML = '<div class="ap-empty">لا توجد شعبة مُسندة إليك بعد.</div>'; return; }
-      // ✅ FIX: أدمن الكورس بيجيب شعبته هو بالـid مباشرة — من غير شرط
+      // ✅ FIX (الهيكل النهائي): أدمن الكورس ممكن يكون مُسندًا لأكثر من كورس —
+      // كل الكورسات المُسندة له فعليًا تظهر هنا (بدون توسيع لأي كورس آخر)، وليس
+      // أول كورس فقط في القائمة.
+      var rootIds = (Array.isArray(window._branchAdminRoots) ? window._branchAdminRoots : [])
+        .map(function(r){ return r && r.id; }).filter(Boolean);
+      if (!rootIds.length) { el.innerHTML = '<div class="ap-empty">لا توجد كورسات مُسندة إليك بعد.</div>'; return; }
+      // ✅ FIX: أدمن الكورس بيجيب كورساته بالـid مباشرة — من غير شرط
       // requires_subscription=true، لأن علم "تتطلب اشتراك" ممكن يكون
       // موجود على أحد أجداد القسم مش على القسم نفسه، وكان ده بيفضّي
       // النتيجة تمامًا ويظهر "لا توجد شعب متاحة" رغم إن عنده شعبة فعلاً.
-      // ✅ FIX (Aug 2026): كان هنا شرط إضافي .eq('type','course') فوق .eq('id',
-      // rootId) — يعني حتى بعد التخلص من شرط requires_subscription، ظل الاستعلام
+      // ✅ FIX (Aug 2026): كان هنا شرط إضافي .eq('type','course') فوق .in('id',
+      // rootIds) — يعني حتى بعد التخلص من شرط requires_subscription، ظل الاستعلام
       // يتطلب أن يكون عمود type لقسم الأدمن نفسه مضبوطاً حرفيًا على 'course'، وهو
       // غير مضمون لكل شعبة/كورس موجود فعليًا. النتيجة: "لا توجد شعب متاحة" رغم أن
-      // rootId صحيح ومُسنَد للأدمن فعلاً. بما أن .eq('id', rootId) بيحصر النتيجة
-      // أصلاً على شعبة الأدمن نفسها بالتحديد، شرط type لا يضيف أي حماية إضافية.
-      query = query.eq('id', rootId);
+      // rootIds صحيحة ومُسندة للأدمن فعلاً. بما أن .in('id', rootIds) بيحصر النتيجة
+      // أصلاً على كورسات الأدمن نفسه بالتحديد، شرط type لا يضيف أي حماية إضافية.
+      query = query.in('id', rootIds);
     } else {
       // الأدمن المنصة يشوف القائمة العامة للشعب القابلة للاشتراك فقط
       query = query.eq('requires_subscription', true);
@@ -16761,22 +16764,30 @@ END;
 $$;
 
 -- 4) SECTION ADMIN MESSAGING — RPC آمنة، بدون كشف section_admins مباشرة للطالب
+-- ✅ (Aug 2026 — الهيكل النهائي): section_admins.section_id هو الكورس ذاته الذي
+-- يديره الأدمن، وليس أي جدّ أعلى (فرقة/ترم). لذلك هذه الدالة تطابق p_section_id
+-- تطابقًا تامًا فقط — بدون WITH RECURSIVE ancestors إطلاقًا — حتى لا يظهر لطالب
+-- كورس "أ" أدمن كورس آخر معيّن على شعبة/جدّ أعلى بالخطأ ("أدمن الشعبة الأب").
+-- لو لم يوجد أدمن مُعيَّن لهذا الكورس تحديدًا، ترجع أدمن المنصة كبديل تلقائي.
 CREATE OR REPLACE FUNCTION get_section_admins_for_messaging(p_section_id BIGINT)
-RETURNS TABLE(user_id UUID, full_name TEXT, email TEXT)
-LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, pg_temp AS $$
-  WITH RECURSIVE ancestors AS (
-    SELECT id, parent_id FROM site_sections WHERE id=p_section_id
-    UNION ALL
-    SELECT s.id, s.parent_id FROM site_sections s JOIN ancestors a ON s.id=a.parent_id
-  )
-  SELECT sa.user_id, COALESCE(p.full_name, p.email, 'أدمن الكورس')::TEXT, p.email::TEXT
-  FROM section_admins sa
-  JOIN ancestors a ON a.id=sa.section_id
-  LEFT JOIN profiles p ON p.id=sa.user_id
-  WHERE sa.is_active=true AND sa.role='admin'
-    AND (is_admin() OR is_branch_admin_of(p_section_id) OR has_active_subscription(p_section_id))
-  ORDER BY COALESCE(p.full_name,p.email,'');
-$$;
+RETURNS TABLE(user_id UUID, full_name TEXT, email TEXT, admin_source TEXT)
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public, pg_temp AS $$
+BEGIN
+  IF NOT (is_admin() OR is_branch_admin_of(p_section_id) OR has_active_subscription(p_section_id)) THEN
+    RAISE EXCEPTION 'DENY ACCESS';
+  END IF;
+  -- أولاً أدمن هذا الكورس تحديدًا فقط (تطابق تام على section_id، بدون توسيع).
+  RETURN QUERY
+  SELECT sa.user_id, COALESCE(p.full_name, p.email, 'أدمن الكورس')::TEXT, p.email::TEXT, 'course'::TEXT
+  FROM section_admins sa JOIN profiles p ON p.id = sa.user_id
+  WHERE sa.section_id = p_section_id AND sa.is_active = true AND sa.role = 'admin'
+  ORDER BY COALESCE(p.full_name, p.email, '');
+  IF FOUND THEN RETURN; END IF;
+  -- لا يوجد أدمن مُعيَّن لهذا الكورس تحديدًا: أدمن المنصة يصبح المسؤول تلقائيًا.
+  RETURN QUERY
+  SELECT p.id, COALESCE(p.full_name, p.email, 'أدمن المنصة')::TEXT, p.email::TEXT, 'platform'::TEXT
+  FROM profiles p WHERE p.role = 'admin' ORDER BY COALESCE(p.full_name, p.email, '');
+END; $$;
 GRANT EXECUTE ON FUNCTION get_section_admins_for_messaging(BIGINT) TO authenticated;
 
 -- 5) DIRECT ROOM: محادثة خاصة لكل طالب مع أدمن الكورس/المنصة داخل نفس الكورس.
@@ -17437,7 +17448,7 @@ window.diagnose = async function() {
       // مع fail-open، بنفس نمط الحماية المستخدم في checkSectionAccess.
       var res = await _fetchWithTimeout(function() {
         return db.from('site_sections')
-          .select('id, title, icon, parent_id, requires_subscription, payment_method, payment_number, price')
+          .select('id, title, icon, parent_id, requires_subscription, chat_free_access, payment_method, payment_number, price')
           .eq('id', id).maybeSingle();
       }, 6000);
       if (res.error || !res.data) return null;
@@ -17616,23 +17627,53 @@ window.diagnose = async function() {
     }
   };
 
+  // ── يجد أقرب "شعبة" تصلح كنقطة دخول للشات: إما requires_subscription=true،
+  //    أو chat_free_access=true (شات مجاني بالكامل بدون أي علاقة بالاشتراك أو
+  //    نطاق أدمن الشعبة — مُستخدم لمحادثات عامة زي "شرح تليجرام"). ──
+  async function _findChatAnchor(sectionId) {
+    var current = await _getSectionRow(sectionId);
+    var depth = 0;
+    while (current && depth < 15) {
+      if (current.requires_subscription || current.chat_free_access) return current;
+      if (current.parent_id === null || current.parent_id === undefined) return null;
+      current = await _getSectionRow(current.parent_id);
+      depth++;
+    }
+    return null;
+  }
+
   // ── أهلية دخول محادثة الكورس — تُستخدم فقط لإظهار/إخفاء زر "دخول المحادثة".
   //    الأمان الحقيقي دائماً من RLS على chat_rooms/chat_messages، وهذه الدالة
   //    fail-closed (أي شك = لا يظهر الزر) بعكس checkSectionAccess (fail-open).
   window.getChatEligibility = async function(sectionId) {
     try {
-      var anchor = await _findSubscriptionAnchor(sectionId);
-      // الشات فقط على صفحة الشعبة نفسها (site_sections.requires_subscription = true)
+      var anchor = await _findChatAnchor(sectionId);
+      // الشات فقط على صفحة الشعبة نفسها (site_sections.requires_subscription = true
+      // أو chat_free_access = true)
       if (!anchor || anchor.id !== sectionId) return null;
 
-      // ✅ FIX: نفس تصحيح checkSectionAccess — الأدمن المنصة فقط يدخل بلا شرط،
-      // وأدمن الكورس يدخل فقط لو anchor.id ضمن الشعب المُسندة له تحديدًا
-      // (الفحص التالي أصلاً كان موجودًا لكنه كان ميت الكود عمليًا لأن الشرط قبله
-      // window._isAdminUser كان يشمل أدمن أي شعبة أخرى ويرجّع true قبل الوصول له).
-      if (window._isSuperAdmin) return { anchor: anchor, allowed: true, isAdmin: true };
-      if (window._isBranchAdmin && Array.isArray(window._branchAdminSectionIds) &&
-          window._branchAdminSectionIds.indexOf(anchor.id) !== -1) {
+      // ✅ شات مجاني بالكامل: لا علاقة له بالاشتراك ولا بنطاق أدمن الشعبة إطلاقاً —
+      // يظهر ويُسمح به لأي شخص (RLS في قاعدة البيانات تسمح بنفس الاستثناء أيضاً).
+      if (anchor.chat_free_access) {
+        return { anchor: anchor, allowed: true, isAdmin: false, free: true };
+      }
+
+      // ✅ FIX (الهيكل النهائي — طلب المستخدم): أدمن المنصة فقط يدخل أي شات
+      // بدون قيد. أدمن الكورس (section_admins/branch_admin) ممنوع يدخل أو حتى
+      // يرى زر شات كورس آخر غير مُسند له تحديدًا — لم يعد ملوش علاقة بنطاقه.
+      // نتحقق أن anchor.id (كورس هذا الشات) ضمن الكورسات المُسندة فعليًا لهذا
+      // الأدمن (section_admins.section_id / managed_section_id الدقيقة، بدون
+      // أي توسيع عبر أجداد).
+      if (window._isSuperAdmin) {
         return { anchor: anchor, allowed: true, isAdmin: true };
+      }
+      if (window._isBranchAdmin && Array.isArray(window._branchAdminAllSectionIds) &&
+          window._branchAdminAllSectionIds.indexOf(anchor.id) !== -1) {
+        return { anchor: anchor, allowed: true, isAdmin: true };
+      }
+      if (window._isBranchAdmin) {
+        // أدمن كورس، لكن هذا الكورس خارج نطاقه — لا يظهر له زر الدخول إطلاقاً.
+        return { anchor: anchor, allowed: false, state: 'out_of_scope' };
       }
 
       var db = window.supabase;
@@ -18613,8 +18654,8 @@ window.diagnose = async function() {
       // داخل شات شعبة "ب" التي لا يديرها. الآن: أدمن المنصة دائمًا، أو أدمن هذه
       // الشعبة تحديدًا (نفس الشرط الموجود بالفعل، لكنه الآن فعلي وليس ميت الكود).
       _chatIsAdmin = !!(window._isSuperAdmin ||
-        (window._isBranchAdmin && Array.isArray(window._branchAdminSectionIds) &&
-          window._branchAdminSectionIds.indexOf(sectionId) !== -1));
+        (window._isBranchAdmin && Array.isArray(window._branchAdminAllSectionIds) &&
+          window._branchAdminAllSectionIds.indexOf(sectionId) !== -1));
 
       await _chatLoadMessages();
       document.getElementById('chat-send-btn').disabled = false;
@@ -22746,17 +22787,12 @@ NOTIFY pgrst, 'reload schema';`;
     if(typeof originalProgress==='function') return originalProgress.apply(this,arguments);
   };
 
-  // Enforce course scope before opening chat from an admin.
-  var originalOpenChat=window.openSectionChat;
-  if(typeof originalOpenChat==='function'){
-    window.openSectionChat=async function(sectionId,sectionTitle){
-      if(window._isBranchAdmin&&!window._isSuperAdmin&&String(sectionId)!==String(courseIdForBranch())){
-        if(typeof _showToast==='function')_showToast('⛔ هذا الشات خارج نطاق كورسك','error');
-        return;
-      }
-      return originalOpenChat.apply(this,arguments);
-    };
-  }
+  // ✅ FIX (الهيكل النهائي — طلب المستخدم): أدمن المنصة (admin) يدخل أي شات
+  // بدون قيد. أدمن الكورس (section_admins/branch_admin) ممنوع يفتح أو حتى يرى
+  // زر شات أي كورس غير مُسند له تحديدًا — راجع getChatEligibility و_chatIsAdmin
+  // أسفل openSectionChat، اللي بيطابقا نطاقه الحقيقي (window._branchAdminAllSectionIds)
+  // بالضبط بدون أي توسيع عبر أجداد. الأمان الفعلي دائمًا من RLS/get_or_create_chat_room
+  // في قاعدة البيانات، وهذا مجرد حاجز واجهة إضافي.
 
   // Hook panel load.
   document.addEventListener('click', function(e){
@@ -23141,26 +23177,40 @@ var labels=document.querySelectorAll('#admin-panel .ap-label');labels.forEach(fu
 
   /* ------------------------------------------------------------
      1) CHAT: الشات داخل الكورس + راسل أدمن الشعبة
-     لا نعتمد على getChatEligibility لإظهار الأزرار.
-     صلاحية الدخول الفعلية تظل داخل RPC/RLS عند فتح الشات.
+     ✅ FIX (Aug 22 2026): كانت هذه الدالة تعرض زر "دخول محادثة الكورس" في كل
+     صفحة قسم بدون أي شرط (حتى المجلدات التنظيمية زي "الترم الأول/الثاني"
+     التي لا تتطلب اشتراكاً أصلاً)، متجاهلة تماماً window.getChatEligibility
+     الأصلية. النتيجة: الزر يظهر لكل الأقسام، وعند الضغط عليه إما RLS يرفض
+     الوصول ("🔒 غير مسموح بالوصول لهذه المحادثة") أو حارس نطاق أدمن الشعبة
+     يرفضه ("⛔ هذا الشات خارج نطاق كورسك") — حتى لو القسم أصلاً مفروض ملوش شات.
+     الآن تمر عبر getChatEligibility مثل المسار الأصلي بالضبط (fail-closed:
+     أي شك = لا يظهر الزر)، فيظهر فقط على صفحة الشعبة (الكورس) نفسها ولمن يملك
+     صلاحية دخولها فعلاً.
   ------------------------------------------------------------ */
-  function renderCourseChatButtons(sec){
+  async function renderCourseChatButtons(sec){
     var box = document.getElementById('dynamic-section-chat-entry');
     if (!box || !sec || !sec.id) return;
+    if (typeof window.getChatEligibility !== 'function') return;
 
-    var title = esc2(sec.title || 'الكورس');
-    var id = Number(sec.id);
-    box.innerHTML =
-      '<div class="bsm-course-chat-actions" style="display:flex;gap:8px;flex-wrap:wrap;margin:12px 0;">' +
-        '<button class="chat-entry-btn" type="button" onclick="openSectionChat(' + id + ', \'' +
-          title.replace(/'/g,"\\'") + '\')">💬 دخول محادثة الكورس</button>' +
-      '</div>';
+    var elig;
+    try { elig = await window.getChatEligibility(sec.id); } catch(e){ elig = null; }
+    if (!elig || !elig.anchor) return; // هذا القسم ملوش شات أصلاً (لا اشتراك ولا شات مجاني)
+
+    var id = Number(elig.anchor.id);
+    if (elig.allowed) {
+      var title = esc2(elig.anchor.title || sec.title || 'الكورس');
+      box.innerHTML =
+        '<div class="bsm-course-chat-actions" style="display:flex;gap:8px;flex-wrap:wrap;margin:12px 0;">' +
+          '<button class="chat-entry-btn" type="button" onclick="openSectionChat(' + id + ', \'' +
+            title.replace(/'/g,"\\'") + '\')">💬 دخول محادثة الكورس</button>' +
+        '</div>';
+    }
 
     /* renderMessageAdminEntry يضيف زر "راسل أدمن الكورس/الشعبة" إذا كان
        الـRPC يرى أدمن فعلياً، بدون كشف أي بيانات حساسة للطالب. */
     if (typeof window._renderMessageAdminEntry === 'function') {
       try {
-        window._renderMessageAdminEntry({id:id,title:sec.title || 'الكورس'}, box);
+        window._renderMessageAdminEntry({id:id,title:elig.anchor.title || sec.title || 'الكورس'}, box);
       } catch(e) {
         console.warn('[DEBUG FIX CHAT ADMIN]', e);
       }
@@ -23171,7 +23221,7 @@ var labels=document.querySelectorAll('#admin-panel .ap-label');labels.forEach(fu
     var oldRenderDynamic = window._renderDynamicSectionPage;
     window._renderDynamicSectionPage = async function(sec){
       var result = await oldRenderDynamic.apply(this, arguments);
-      try { renderCourseChatButtons(sec); } catch(e){}
+      try { await renderCourseChatButtons(sec); } catch(e){}
       return result;
     };
   }
@@ -23199,18 +23249,27 @@ var labels=document.querySelectorAll('#admin-panel .ap-label');labels.forEach(fu
   async function loadSubsDirect(filter){
     var db = await waitDb2();
     if (!db) throw new Error('Supabase غير جاهز');
-    var cid = courseId2();
-    if (!cid) return [];
 
-    var ids = await subtreeIds(cid);
-    if (!ids.length) return [];
+    // ✅ FIX (طلب المستخدم — الهيكل النهائي): أدمن المنصة (admin) يرى كل
+    // الاشتراكات المرسلة من كل الكورسات. أدمن الكورس (branch_admin/section_admins)
+    // فقط مقيَّد بكورسه/كورساته المُسندة له فعليًا. سابقًا كانت الدالة تعتمد على
+    // courseId2() دائمًا حتى لأدمن المنصة، وهي تساوي 0 له (لا يوجد كورس "مختار"
+    // بالنسبة له)، فكانت النتيجة قائمة فاضية دومًا ("لا تظهر الاشتراكات المرسلة").
+    var isBranch = !!(window._isBranchAdmin && !window._isSuperAdmin);
+    var ids = null;
+    if (isBranch) {
+      var cid = courseId2();
+      if (!cid) return [];
+      ids = await subtreeIds(cid);
+      if (!ids.length) return [];
+    }
 
     var q = db.from('subscriptions')
       .select('id,user_id,section_id,payment_status,subscription_type,start_date,end_date,receipt_image,created_at,requested_at')
-      .in('section_id', ids)
       .order('requested_at', {ascending:false, nullsFirst:false})
       .order('created_at', {ascending:false});
 
+    if (ids) q = q.in('section_id', ids);
     if (filter) q = q.eq('payment_status', filter);
     var r = await q;
     if (r.error) throw r.error;
