@@ -9597,11 +9597,11 @@ function _attUuid() {
   });
 }
 
-function _attSafeFileName(name) {
+function _attSafeExt(name) {
   var parts = String(name || 'file').split('.');
   var ext = parts.length > 1 ? parts.pop() : '';
-  var base = parts.join('.').replace(/[^a-zA-Z0-9\u0600-\u06FF _-]/g, '').trim().slice(0, 60) || 'file';
-  return base + (ext ? '.' + ext.replace(/[^a-zA-Z0-9]/g, '').toLowerCase() : '');
+  ext = ext.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+  return ext.slice(0, 12) || 'bin';
 }
 
 function _attFileSizeLabel(bytes) {
@@ -9628,7 +9628,7 @@ function _attValidateFile(file, kindKey) {
 // يرفع الملف إلى bucket 'files' تحت {sectionId}/{subfolder}/... ويرجع {path, publicUrl}
 async function _attUploadFile(file, sectionId, subfolder) {
   var db = window.supabase;
-  var storagePath = sectionId + '/' + subfolder + '/' + _attUuid() + '-' + _attSafeFileName(file.name);
+  var storagePath = sectionId + '/' + subfolder + '/' + _attUuid() + '.' + _attSafeExt(file.name);
   var upRes = await db.storage.from(ATT_BUCKET).upload(storagePath, file, {
     upsert: false,
     contentType: file.type || 'application/octet-stream'
@@ -17675,9 +17675,9 @@ window.diagnose = async function() {
   window.getChatEligibility = async function(sectionId) {
     try {
       var anchor = await _findChatAnchor(sectionId);
-      // الشات فقط على صفحة الشعبة نفسها (site_sections.requires_subscription = true
-      // أو chat_free_access = true)
-      if (!anchor || anchor.id !== sectionId) return null;
+      // الشات مرتبط بالكورس المدفوع (anchor) ويُعرض داخل صفحات الكورس/المادة/الشابتر
+      // التابعة له، وليس فقط عند فتح سجل الكورس نفسه.
+      if (!anchor) return null;
 
       // ✅ شات مجاني بالكامل: لا علاقة له بالاشتراك ولا بنطاق أدمن الشعبة إطلاقاً —
       // يظهر ويُسمح به لأي شخص (RLS في قاعدة البيانات تسمح بنفس الاستثناء أيضاً).
@@ -18569,20 +18569,10 @@ window.diagnose = async function() {
   }
 
   function _chatSafeFileName(name) {
-    // ✅ FIX (طلب المستخدم — Aug 2026): كانت الدالة دي بتسمح بحروف عربية ومسافات
-    // جوه الاسم اللي بيتحط مباشرة في storage KEY (مسار الملف الفعلي في Supabase
-    // Storage)، و Supabase Storage (متوافق مع S3) بيرفض أي key فيه حروف غير
-    // ASCII أو مسافات بخطأ "Invalid key" — فكان أي مرفق باسم عربي يفشل رفعه
-    // بالكامل. الحل: الـkey نفسه بقى ASCII آمن فقط (بدون تغيير اسم الملف
-    // الأصلي المعروض للمستخدم — ده محفوظ الآن في عمود file_name منفصل، انظر
-    // _chatUploadAttachment و_chatAttachmentDisplayName أسفل).
     var parts = String(name || 'file').split('.');
     var ext = parts.length > 1 ? parts.pop() : '';
-    var base = parts.join('.')
-      .replace(/[^a-zA-Z0-9 _-]/g, '')   // إزالة أي حرف غير ASCII (بما فيها العربي) بدل السماح به
-      .replace(/\s+/g, '_')
-      .trim().slice(0, 60) || 'file';
-    return base + (ext ? '.' + ext.replace(/[^a-zA-Z0-9]/g, '').toLowerCase() : '');
+    ext = ext.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+    return ext.slice(0, 12) || 'bin';
   }
 
   function _chatEscJs(s) {
@@ -18594,13 +18584,10 @@ window.diagnose = async function() {
     return CHAT_ALLOWED_EXT[ext] || 'file';
   }
 
-  function _chatAttachmentDisplayName(filePath, fileName) {
-    // ✅ FIX: نفضّل الاسم الأصلي المحفوظ في عمود file_name (لو موجود) لأنه يحافظ
-    // على العربي/المسافات كاملة؛ fallback لاستخراجه من الـkey للمرفقات القديمة
-    // المرفوعة قبل هذا الإصلاح (لا تُفقد أي بيانات قديمة).
-    if (fileName) return fileName;
+  function _chatAttachmentDisplayName(filePath, originalName) {
+    if (originalName) return String(originalName);
     var base = String(filePath || '').split('/').pop() || 'ملف';
-    return base.replace(/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}-/, '');
+    return base.replace(/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}[-.]/, '');
   }
 
   function _chatFileSizeLabel(bytes) {
@@ -18790,14 +18777,8 @@ window.diagnose = async function() {
     var ids = rows.map(function(m) { return m.id; });
     try {
       var res = await window.supabase.from('message_attachments')
-        .select('id, message_id, file_path, file_type, file_size, file_name')
+        .select('id, message_id, file_path, file_name, file_type, file_size')
         .in('message_id', ids);
-      if (res.error && /column .*file_name.* does not exist/i.test(res.error.message || '')) {
-        // العمود لسه غير موجود (قبل تشغيل الـSQL) — نعيد المحاولة بدونه
-        res = await window.supabase.from('message_attachments')
-          .select('id, message_id, file_path, file_type, file_size')
-          .in('message_id', ids);
-      }
       if (res.error) { console.warn('[CHAT] attachments fetch error:', res.error.message); return {}; }
       var map = {};
       (res.data || []).forEach(function(a) {
@@ -18987,7 +18968,7 @@ window.diagnose = async function() {
   //    عند فشل التسجيل بعد نجاح الرفع، نحذف الملف اليتيم من Storage فوراً. ──
   async function _chatUploadAttachment(messageId, file) {
     var db = window.supabase;
-    var storagePath = _chatRoom.id + '/' + _chatUuid() + '-' + _chatSafeFileName(file.name);
+    var storagePath = _chatRoom.id + '/' + _chatUuid() + '.' + _chatSafeFileName(file.name);
     try {
       var upRes = await db.storage.from(CHAT_ATTACH_BUCKET).upload(storagePath, file, {
         upsert: false,
@@ -18998,26 +18979,13 @@ window.diagnose = async function() {
       var attRes = await db.from('message_attachments').insert([{
         message_id: messageId,
         file_path: storagePath,
+        file_name: file.name || null,
         file_type: file.type || null,
-        file_size: file.size,
-        // ✅ الاسم الأصلي الكامل (عربي/مسافات) — منفصل عن الـkey الآمن أعلاه، يُستخدم
-        // فقط للعرض. لو العمود غير موجود بعد (قبل تشغيل الـSQL المرفق)، نتجاهل الفشل
-        // بصمت ونكمل بدونه (fallback تلقائي لاسم الـkey في _chatAttachmentDisplayName).
-        file_name: file.name || null
+        file_size: file.size
       }]);
-      if (attRes.error && !/column .*file_name.* does not exist/i.test(attRes.error.message || '')) {
+      if (attRes.error) {
         try { await db.storage.from(CHAT_ATTACH_BUCKET).remove([storagePath]); } catch(e2) {}
         throw attRes.error;
-      }
-      if (attRes.error) {
-        // العمود file_name لسه غير موجود — إعادة المحاولة بدونه فقط
-        var attRes2 = await db.from('message_attachments').insert([{
-          message_id: messageId, file_path: storagePath, file_type: file.type || null, file_size: file.size
-        }]);
-        if (attRes2.error) {
-          try { await db.storage.from(CHAT_ATTACH_BUCKET).remove([storagePath]); } catch(e3) {}
-          throw attRes2.error;
-        }
       }
       return true;
     } catch(e) {
@@ -19263,16 +19231,10 @@ window.diagnose = async function() {
   }
 
   function _dmSafeFileName(name) {
-    // ✅ FIX (طلب المستخدم — Aug 2026): نفس إصلاح _chatSafeFileName بالضبط — الـkey
-    // في Supabase Storage لازم يكون ASCII فقط، الاسم الأصلي (عربي/مسافات) محفوظ
-    // الآن في عمود file_name منفصل بدل الاعتماد على اسم الملف داخل الـkey نفسه.
     var parts = String(name || 'file').split('.');
     var ext = parts.length > 1 ? parts.pop() : '';
-    var base = parts.join('.')
-      .replace(/[^a-zA-Z0-9 _-]/g, '')
-      .replace(/\s+/g, '_')
-      .trim().slice(0, 60) || 'file';
-    return base + (ext ? '.' + ext.replace(/[^a-zA-Z0-9]/g, '').toLowerCase() : '');
+    ext = ext.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+    return ext.slice(0, 12) || 'bin';
   }
 
   // للاستخدام داخل onclick="" (سلسلة JS بين علامتي اقتباس أحاديتين)
@@ -19841,13 +19803,8 @@ window.diagnose = async function() {
     var ids = rows.map(function(m) { return m.id; });
     try {
       var res = await window.supabase.from('message_attachments')
-        .select('id, message_id, file_path, file_type, file_size, file_name')
+        .select('id, message_id, file_path, file_name, file_type, file_size')
         .in('message_id', ids);
-      if (res.error && /column .*file_name.* does not exist/i.test(res.error.message || '')) {
-        res = await window.supabase.from('message_attachments')
-          .select('id, message_id, file_path, file_type, file_size')
-          .in('message_id', ids);
-      }
       if (res.error) { console.warn('[DM] attachments fetch error:', res.error.message); return {}; }
       var map = {};
       (res.data || []).forEach(function(a) {
@@ -19865,11 +19822,10 @@ window.diagnose = async function() {
     return DM_ALLOWED_EXT[ext] || 'file';
   }
 
-  function _dmAttachmentDisplayName(filePath, fileName) {
-    if (fileName) return fileName;
+  function _dmAttachmentDisplayName(filePath, originalName) {
+    if (originalName) return String(originalName);
     var base = String(filePath || '').split('/').pop() || 'ملف';
-    // نزيل بادئة uuid- التي نضيفها عند الرفع، عشان الاسم المعروض يكون اسم الملف الأصلي فقط
-    return base.replace(/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}-/, '');
+    return base.replace(/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}[-.]/, '');
   }
 
   function _dmFileSizeLabel(bytes) {
@@ -20041,7 +19997,7 @@ window.diagnose = async function() {
   //    اليتيم من Storage فوراً حتى لا يبقى بلا سجل. ──
   async function _dmUploadAttachment(messageId, file) {
     var db = window.supabase;
-    var storagePath = _dmRoom.id + '/' + _dmUuid() + '-' + _dmSafeFileName(file.name);
+    var storagePath = _dmRoom.id + '/' + _dmUuid() + '.' + _dmSafeFileName(file.name);
     try {
       var upRes = await db.storage.from(DM_ATTACH_BUCKET).upload(storagePath, file, {
         upsert: false,
@@ -20052,22 +20008,13 @@ window.diagnose = async function() {
       var attRes = await db.from('message_attachments').insert([{
         message_id: messageId,
         file_path: storagePath,
+        file_name: file.name || null,
         file_type: file.type || null,
-        file_size: file.size,
-        file_name: file.name || null
+        file_size: file.size
       }]);
-      if (attRes.error && !/column .*file_name.* does not exist/i.test(attRes.error.message || '')) {
+      if (attRes.error) {
         try { await db.storage.from(DM_ATTACH_BUCKET).remove([storagePath]); } catch(e2) {}
         throw attRes.error;
-      }
-      if (attRes.error) {
-        var attRes2 = await db.from('message_attachments').insert([{
-          message_id: messageId, file_path: storagePath, file_type: file.type || null, file_size: file.size
-        }]);
-        if (attRes2.error) {
-          try { await db.storage.from(DM_ATTACH_BUCKET).remove([storagePath]); } catch(e3) {}
-          throw attRes2.error;
-        }
       }
       return true;
     } catch(e) {
@@ -21695,7 +21642,7 @@ async function qzOpenStartScreen(quizId) {
     // الآن (RLS تمنعه بالكامل). عدد الأسئلة يصل عبر RPC آمن مخصص.
     var qCount = 0;
     try {
-      var { data: qCountData, error: qCountErr } = await db.rpc('get_quiz_question_count', { p_quiz_id: quizId });
+      var { data: qCountData, error: qCountErr } = await db.rpc('get_quiz_question_count', { p_quiz_id: Number(quizId) });
       if (!qCountErr) qCount = qCountData || 0;
     } catch (eCount) { console.warn('[qzOpenStartScreen] get_quiz_question_count', eCount); }
     var { data: pastResults, error: resErr } = await db.from('quiz_results')
@@ -23134,58 +23081,31 @@ var labels=document.querySelectorAll('#admin-panel .ap-label');labels.forEach(fu
       var cw=document.getElementById('admin-chapter-wrap'); if(cw)cw.style.display='none';
     }catch(e){console.error('[FINAL CONTENT]',e);var m=document.getElementById('admin-msg');if(m)m.textContent='❌ تعذر تحميل المواد: '+E(e.message);}
   };
-  // ✅ (Aug 2026 — طلب المستخدم): مستوى إضافي بين "المادة" و"الشابتر" — دلوقتي:
-  // مادة (dropdown 1) → مادة فرعية (dropdown 2) → شابتر (dropdown 3)، بدل مادة
-  // ثم شابتر مباشرة. لسه بنفس منطق site_sections.parent_id، بدون أي تعديل Schema.
-  // لو أي مستوى مفيهوش أبناء فعليًا، نتعامل معاه كـ"نهاية الشجرة" (نفس السلوك
-  // القديم بالظبط) عشان محدش ينكسر عند الأقسام اللي معملهاش تقسيم فرعي كامل.
+  // FINAL CONTENT HIERARCHY: الكورس → المادة → الشابتر فقط.
+  // لا يوجد مستوى مادة فرعية؛ أي مادة هي ابن مباشر للكورس، وأي شابتر ابن مباشر للمادة.
   window.adminOnMaterialChange=async function(){
-    var mat=document.getElementById('admin-material-select'), sub=document.getElementById('admin-submaterial-select'), subWrap=document.getElementById('admin-submaterial-wrap'), chap=document.getElementById('admin-chapter-select'), chapWrap=document.getElementById('admin-chapter-wrap'), final=document.getElementById('admin-section-select');
+    var mat=document.getElementById('admin-material-select'), chap=document.getElementById('admin-chapter-select'), wrap=document.getElementById('admin-chapter-wrap'), final=document.getElementById('admin-section-select');
     var mid=Number(mat&&mat.value||0);
-    if(chapWrap)chapWrap.style.display='none'; if(chap)chap.innerHTML='<option value="">— اختر الشابتر —</option>';
-    if(!mid){ if(subWrap)subWrap.style.display='none'; if(sub)sub.innerHTML='<option value="">— اختر المادة الفرعية —</option>'; if(final)final.value=''; return; }
+    if(chap)chap.innerHTML='<option value="">— اختر الشابتر —</option>';
+    if(wrap)wrap.style.display='none';
+    if(final)final.value='';
+    if(!mid)return;
     try{
-      var rows=await finalChapters(mid); // ✅ هذا المستوى بقى "المادة الفرعية" دلوقتي
-      var subOpts=rows.map(function(x){return '<option value="'+x.id+'">'+E(x.title)+'</option>';}).join('');
-      if(sub)sub.innerHTML='<option value="">— اختر المادة الفرعية —</option>'+subOpts;
-      if(subWrap)subWrap.style.display=rows.length?'block':'none';
-      // ✅ FIX: نبني admin-section-select بحيث يحتوي دائمًا على <option> مطابق
-      // لأي قيمة قد نضبطها عليه لاحقًا — خيار المادة نفسها (تُستخدم لو مالهاش
-      // مواد فرعية) + خيارات كل مادة فرعية (تُستخدم بعد adminOnSubmaterialChange).
-      var matOptText = mat.options[mat.selectedIndex] ? mat.options[mat.selectedIndex].textContent : '';
+      var rows=await finalChapters(mid);
+      var opts=rows.map(function(x){return '<option value="'+x.id+'">'+E(x.title)+'</option>';}).join('');
+      if(chap)chap.innerHTML='<option value="">— اختر الشابتر —</option>'+opts;
+      if(wrap)wrap.style.display=rows.length?'block':'none';
       if(final){
-        final.innerHTML='<option value="">— اختر —</option><option value="'+mid+'">'+E(matOptText)+'</option>'+subOpts;
-        final.value = rows.length ? '' : String(mid);
-        window._adminSections = (window._adminSections||[]).filter(function(s){return String(s.id)!==String(mid) || s._chapterParent;}).concat(rows.map(function(c){c._chapterParent=mid;return c;}));
+        var matText=mat.options[mat.selectedIndex]?mat.options[mat.selectedIndex].textContent:'';
+        final.innerHTML='<option value="">— اختر —</option><option value="'+mid+'">'+E(matText)+'</option>'+opts;
+        final.value=rows.length?'':String(mid);
       }
       if(typeof adminLoadSectionPath==='function')adminLoadSectionPath();
-    }catch(e){console.error('[FINAL CONTENT SUBMATERIALS]',e);}
-  };
-  window.adminOnSubmaterialChange=async function(){
-    var mat=document.getElementById('admin-material-select'), sub=document.getElementById('admin-submaterial-select'), chap=document.getElementById('admin-chapter-select'), chapWrap=document.getElementById('admin-chapter-wrap'), final=document.getElementById('admin-section-select');
-    var mid=Number(mat&&mat.value||0), smid=Number(sub&&sub.value||0);
-    if(!smid){ if(chapWrap)chapWrap.style.display='none'; if(chap)chap.innerHTML='<option value="">— اختر الشابتر —</option>'; if(final)final.value= mid?String(mid):''; return; }
-    try{
-      var rows=await finalChapters(smid); // ✅ هذا المستوى الفعلي هو "الشابتر"
-      var chapOpts=rows.map(function(x){return '<option value="'+x.id+'">'+E(x.title)+'</option>';}).join('');
-      if(chap)chap.innerHTML='<option value="">— اختر الشابتر —</option>'+chapOpts;
-      if(chapWrap)chapWrap.style.display=rows.length?'block':'none';
-      if(final){
-        var subOptsHtml = (sub.innerHTML||'').replace(/^<option value="">.*?<\/option>/, '');
-        var matOptText = mat.options[mat.selectedIndex] ? mat.options[mat.selectedIndex].textContent : '';
-        final.innerHTML = '<option value="">— اختر —</option><option value="'+mid+'">'+E(matOptText)+'</option>'+subOptsHtml+chapOpts;
-        final.value = rows.length ? '' : String(smid);
-        window._adminSections = (window._adminSections||[]).filter(function(s){return String(s.id)!==String(smid) || s._chapterParent;}).concat(rows.map(function(c){c._chapterParent=smid;return c;}));
-      }
-      if(typeof adminLoadSectionPath==='function')adminLoadSectionPath();
-    }catch(e){console.error('[FINAL CONTENT CHAPTERS]',e);}
+    }catch(e){console.error('[FINAL CONTENT CHAPTER FIX]',e);}
   };
   window.adminOnChapterChange=function(){
     var c=document.getElementById('admin-chapter-select'), f=document.getElementById('admin-section-select');
-    if(f){
-      if(c && c.value){ f.value = c.value; } // الخيار مضاف بالفعل في adminOnSubmaterialChange أعلاه
-      else { f.value=''; }
-    }
+    if(f)f.value=c&&c.value?c.value:'';
     if(typeof adminLoadSectionPath==='function')adminLoadSectionPath();
   };
 
@@ -23348,17 +23268,7 @@ var labels=document.querySelectorAll('#admin-panel .ap-label');labels.forEach(fu
     var oldRenderDynamic = window._renderDynamicSectionPage;
     window._renderDynamicSectionPage = async function(sec){
       var result = await oldRenderDynamic.apply(this, arguments);
-      // ✅ FIX (طلب المستخدم — Aug 2026): كان هذا الـwrapper يستدعي renderCourseChatButtons(sec)
-      // هنا كمان، رغم أن _renderDynamicSectionPage الأصلية (oldRenderDynamic) بقت بالفعل
-      // بتعمل نفس الشيء تمامًا (getChatEligibility + _renderChatEntryButtonHTML +
-      // _renderMessageAdminEntry) داخل نفس الـ#dynamic-section-chat-entry — والدالتان
-      // بتشتغلوا بشكل غير متزامن (async) على نفس الـcontainer. النتيجة: زر "دخول محادثة
-      // الكورس" يتكرر أحيانًا حسب توقيت الشبكة، وزر "راسل أدمن الكورس" يتكرر دايمًا
-      // لأن _renderMessageAdminEntry تعمل containerEl.appendChild() (إضافة، مش استبدال)،
-      // فأي مرتين استدعاء = زران فعليان على نفس الصفحة. المصدر الوحيد الصحيح الآن هو
-      // المنطق داخل _renderDynamicSectionPage الأصلية فقط؛ لذلك تم تعطيل هذا الاستدعاء
-      // المكرر بدون حذف renderCourseChatButtons نفسها (تبقى معرّفة أعلاه للتوثيق فقط).
-      // try { await renderCourseChatButtons(sec); } catch(e){}
+      try { await renderCourseChatButtons(sec); } catch(e){}
       return result;
     };
   }
@@ -24191,5 +24101,429 @@ NOTIFY pgrst, 'reload schema';
 })();
 </script>
 
+<script>
+// ================================================================
+// FINAL DATABASE REPAIR PACK — 2026-08-22
+// شغّل window.printFinalDatabaseRepairSQL() مرة واحدة في Console ثم نفّذ SQL كله.
+// ================================================================
+window.printFinalDatabaseRepairSQL=function(){
+  var sql = `
+-- ================================================================
+-- FINAL DATABASE REPAIR — منصة الكورسات
+-- آمن/إضافي قدر الإمكان: لا يحذف بيانات المستخدمين.
+-- ================================================================
+
+-- 0) Schema cache
+NOTIFY pgrst, 'reload schema';
+
+-- 1) FREE FIRST CHAPTER + CONTENT/RESOURCE RLS
+CREATE OR REPLACE FUNCTION public.is_first_free_learning_path_item(p_section_id BIGINT)
+RETURNS BOOLEAN
+LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+  SELECT EXISTS (
+    SELECT 1
+    FROM public.learning_path_items lpi
+    JOIN public.learning_paths lp ON lp.id = lpi.path_id
+    WHERE lp.is_active = true
+      AND lpi.section_id = p_section_id
+      AND lpi.id = (
+        SELECT x.id
+        FROM public.learning_path_items x
+        WHERE x.path_id = lpi.path_id
+        ORDER BY x.display_order ASC, x.id ASC
+        LIMIT 1
+      )
+  );
+$$;
+
+CREATE OR REPLACE FUNCTION public.can_access_learning_section(p_section BIGINT)
+RETURNS BOOLEAN
+LANGUAGE plpgsql STABLE SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  u UUID := auth.uid();
+  p RECORD;
+  previous_section BIGINT;
+BEGIN
+  IF u IS NULL OR p_section IS NULL THEN RETURN false; END IF;
+
+  IF public.is_admin() OR public.is_branch_admin_of(p_section) THEN
+    RETURN true;
+  END IF;
+
+  -- أول عنصر فعلي في أي Learning Path نشط = مجاني بدون اشتراك.
+  IF public.is_first_free_learning_path_item(p_section) THEN
+    RETURN true;
+  END IF;
+
+  -- كل ما بعد الفصل المجاني يحتاج اشتراكاً فعالاً.
+  IF NOT public.has_active_course_subscription(p_section) THEN
+    RETURN false;
+  END IF;
+
+  -- لو لا يوجد Learning Path نشط للقسم، الاشتراك وحده يكفي.
+  IF NOT EXISTS (
+    SELECT 1
+    FROM public.learning_path_items lpi
+    JOIN public.learning_paths lp ON lp.id = lpi.path_id
+    WHERE lp.is_active = true AND lpi.section_id = p_section
+  ) THEN
+    RETURN true;
+  END IF;
+
+  -- القسم مفتوح إذا سبق إنهاء العنصر السابق في مسار واحد على الأقل.
+  FOR p IN
+    SELECT lpi.path_id, lpi.display_order, lpi.id
+    FROM public.learning_path_items lpi
+    JOIN public.learning_paths lp ON lp.id = lpi.path_id
+    WHERE lp.is_active = true AND lpi.section_id = p_section
+  LOOP
+    SELECT x.section_id INTO previous_section
+    FROM public.learning_path_items x
+    WHERE x.path_id = p.path_id
+      AND (x.display_order < p.display_order
+           OR (x.display_order = p.display_order AND x.id < p.id))
+    ORDER BY x.display_order DESC, x.id DESC
+    LIMIT 1;
+
+    IF previous_section IS NULL
+       OR public.learning_item_is_completed(u, previous_section)
+    THEN
+      RETURN true;
+    END IF;
+  END LOOP;
+
+  RETURN false;
+END;
+$$;
+
+DROP POLICY IF EXISTS content_student_read ON public.section_content;
+CREATE POLICY content_student_read ON public.section_content
+FOR SELECT TO authenticated
+USING (public.can_access_learning_section(section_id));
+
+DROP POLICY IF EXISTS resources_student_read ON public.section_resources;
+CREATE POLICY resources_student_read ON public.section_resources
+FOR SELECT TO authenticated
+USING (public.can_access_learning_section(section_id));
+
+-- إزالة أي سياسات SELECT عامة قديمة بدون فتح الجداول بالكامل.
+DROP POLICY IF EXISTS content_read_all ON public.section_content;
+DROP POLICY IF EXISTS content_read_authenticated ON public.section_content;
+DROP POLICY IF EXISTS resources_read_all ON public.section_resources;
+DROP POLICY IF EXISTS resources_read_auth ON public.section_resources;
+
+-- 2) SITE_SECTIONS RLS — إصلاح 403 عند إضافة مادة/شابتر لأدمن الكورس.
+ALTER TABLE public.site_sections ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS sections_admin_write ON public.site_sections;
+DROP POLICY IF EXISTS sections_branch_admin_insert ON public.site_sections;
+DROP POLICY IF EXISTS sections_branch_admin_update ON public.site_sections;
+DROP POLICY IF EXISTS sections_branch_admin_delete ON public.site_sections;
+DROP POLICY IF EXISTS site_sections_admin_all ON public.site_sections;
+CREATE POLICY site_sections_admin_all ON public.site_sections
+FOR ALL TO authenticated USING (public.is_admin()) WITH CHECK (public.is_admin());
+CREATE POLICY sections_branch_admin_insert ON public.site_sections
+FOR INSERT TO authenticated
+WITH CHECK (public.is_branch_admin_of(parent_id));
+CREATE POLICY sections_branch_admin_update ON public.site_sections
+FOR UPDATE TO authenticated
+USING (public.is_branch_admin_of(id))
+WITH CHECK (public.is_branch_admin_of(id));
+CREATE POLICY sections_branch_admin_delete ON public.site_sections
+FOR DELETE TO authenticated
+USING (public.is_branch_admin_of(id));
+
+-- 3) AUDIT LOG — حذف الكورس لا يفشل بسبب سجل قديم.
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conrelid = 'public.audit_log'::regclass
+      AND conname = 'audit_log_branch_id_fkey'
+  ) THEN
+    ALTER TABLE public.audit_log DROP CONSTRAINT audit_log_branch_id_fkey;
+  END IF;
+  ALTER TABLE public.audit_log
+    ADD CONSTRAINT audit_log_branch_id_fkey
+    FOREIGN KEY (branch_id) REFERENCES public.site_sections(id)
+    ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+-- 4) SUBSCRIPTIONS — الطالب يرسل pending، والأدمن يرى/يقرر، بدون فتح الجدول للكل.
+ALTER TABLE public.subscriptions ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS subscriptions_admin_all ON public.subscriptions;
+DROP POLICY IF EXISTS subscriptions_branch_admin_read ON public.subscriptions;
+DROP POLICY IF EXISTS subscriptions_own_read ON public.subscriptions;
+DROP POLICY IF EXISTS subscriptions_own_insert ON public.subscriptions;
+DROP POLICY IF EXISTS subscriptions_own_update_pending ON public.subscriptions;
+CREATE POLICY subscriptions_admin_all ON public.subscriptions
+FOR ALL TO authenticated USING (public.is_admin()) WITH CHECK (public.is_admin());
+CREATE POLICY subscriptions_branch_admin_read ON public.subscriptions
+FOR SELECT TO authenticated USING (public.is_branch_admin_of(section_id));
+CREATE POLICY subscriptions_own_read ON public.subscriptions
+FOR SELECT TO authenticated USING (user_id = auth.uid());
+CREATE POLICY subscriptions_own_insert ON public.subscriptions
+FOR INSERT TO authenticated
+WITH CHECK (user_id = auth.uid() AND payment_status = 'pending');
+CREATE POLICY subscriptions_own_update_pending ON public.subscriptions
+FOR UPDATE TO authenticated
+USING (user_id = auth.uid() AND payment_status IN ('pending','rejected'))
+WITH CHECK (user_id = auth.uid() AND payment_status = 'pending');
+
+-- 5) STORAGE: files bucket — رفع محتوى الكورس لأدمن الكورس/المنصة.
+DROP POLICY IF EXISTS files_admin_insert ON storage.objects;
+DROP POLICY IF EXISTS files_branch_insert ON storage.objects;
+DROP POLICY IF EXISTS files_admin_delete ON storage.objects;
+DROP POLICY IF EXISTS files_branch_delete ON storage.objects;
+CREATE POLICY files_admin_insert ON storage.objects
+FOR INSERT TO authenticated
+WITH CHECK (bucket_id = 'files' AND public.is_admin());
+CREATE POLICY files_branch_insert ON storage.objects
+FOR INSERT TO authenticated
+WITH CHECK (
+  bucket_id = 'files'
+  AND split_part(name,'/',1) ~ '^[0-9]+$'
+  AND public.is_branch_admin_of(split_part(name,'/',1)::BIGINT)
+);
+CREATE POLICY files_admin_delete ON storage.objects
+FOR DELETE TO authenticated USING (bucket_id='files' AND public.is_admin());
+CREATE POLICY files_branch_delete ON storage.objects
+FOR DELETE TO authenticated USING (
+  bucket_id='files'
+  AND split_part(name,'/',1) ~ '^[0-9]+$'
+  AND public.is_branch_admin_of(split_part(name,'/',1)::BIGINT)
+);
+
+-- 6) STORAGE: chat-attachments — العضو/الأدمن فقط داخل الغرفة.
+DROP POLICY IF EXISTS chat_attachments_member_insert ON storage.objects;
+DROP POLICY IF EXISTS chat_attachments_member_select ON storage.objects;
+DROP POLICY IF EXISTS chat_attachments_member_delete ON storage.objects;
+CREATE POLICY chat_attachments_member_insert ON storage.objects
+FOR INSERT TO authenticated
+WITH CHECK (
+  bucket_id='chat-attachments'
+  AND split_part(name,'/',1) ~ '^[0-9]+$'
+  AND EXISTS (
+    SELECT 1 FROM public.chat_room_participants p
+    WHERE p.room_id = split_part(name,'/',1)::BIGINT
+      AND p.user_id = auth.uid()
+  )
+);
+CREATE POLICY chat_attachments_member_select ON storage.objects
+FOR SELECT TO authenticated
+USING (
+  bucket_id='chat-attachments'
+  AND split_part(name,'/',1) ~ '^[0-9]+$'
+  AND EXISTS (
+    SELECT 1 FROM public.chat_room_participants p
+    WHERE p.room_id = split_part(name,'/',1)::BIGINT
+      AND p.user_id = auth.uid()
+  )
+);
+CREATE POLICY chat_attachments_member_delete ON storage.objects
+FOR DELETE TO authenticated
+USING (
+  bucket_id='chat-attachments'
+  AND split_part(name,'/',1) ~ '^[0-9]+$'
+  AND EXISTS (
+    SELECT 1 FROM public.chat_room_participants p
+    WHERE p.room_id = split_part(name,'/',1)::BIGINT
+      AND p.user_id = auth.uid()
+  )
+);
+
+-- 7) STORAGE: receipts — الطالب يرفع إيصالَه، والأدمن يقرأه.
+DROP POLICY IF EXISTS receipts_own_insert ON storage.objects;
+DROP POLICY IF EXISTS receipts_own_update ON storage.objects;
+DROP POLICY IF EXISTS receipts_own_select ON storage.objects;
+DROP POLICY IF EXISTS receipts_admin_select ON storage.objects;
+DROP POLICY IF EXISTS receipts_own_delete ON storage.objects;
+CREATE POLICY receipts_own_insert ON storage.objects
+FOR INSERT TO authenticated
+WITH CHECK (bucket_id='receipts' AND split_part(name,'/',1)=auth.uid()::TEXT);
+CREATE POLICY receipts_own_update ON storage.objects
+FOR UPDATE TO authenticated
+USING (bucket_id='receipts' AND split_part(name,'/',1)=auth.uid()::TEXT)
+WITH CHECK (bucket_id='receipts' AND split_part(name,'/',1)=auth.uid()::TEXT);
+CREATE POLICY receipts_own_select ON storage.objects
+FOR SELECT TO authenticated
+USING (bucket_id='receipts' AND split_part(name,'/',1)=auth.uid()::TEXT);
+CREATE POLICY receipts_admin_select ON storage.objects
+FOR SELECT TO authenticated
+USING (bucket_id='receipts' AND public.is_admin());
+CREATE POLICY receipts_own_delete ON storage.objects
+FOR DELETE TO authenticated
+USING (bucket_id='receipts' AND split_part(name,'/',1)=auth.uid()::TEXT);
+
+-- 8) COURSE CHAT + ADMIN DM — تلقائي لأي كورس عليه اشتراك.
+-- السماح لغرفة direct مرتبطة بكورس مع الحفاظ على الغرف القديمة direct بدون section_id.
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='chat_rooms_type_section_consistency') THEN
+    ALTER TABLE public.chat_rooms DROP CONSTRAINT chat_rooms_type_section_consistency;
+  END IF;
+  ALTER TABLE public.chat_rooms
+    ADD CONSTRAINT chat_rooms_type_section_consistency
+    CHECK (
+      (room_type = 'section' AND section_id IS NOT NULL)
+      OR
+      (room_type = 'direct')
+    );
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DROP FUNCTION IF EXISTS public.get_section_admins_for_messaging(BIGINT);
+CREATE OR REPLACE FUNCTION public.get_section_admins_for_messaging(p_section_id BIGINT)
+RETURNS TABLE(user_id UUID, full_name TEXT, email TEXT, admin_source TEXT)
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
+BEGIN
+  IF auth.uid() IS NULL OR p_section_id IS NULL THEN RAISE EXCEPTION 'DENY ACCESS'; END IF;
+  RETURN QUERY
+  SELECT sa.user_id, COALESCE(p.full_name,p.email,'أدمن الكورس')::TEXT, p.email::TEXT, 'course'::TEXT
+  FROM section_admins sa JOIN profiles p ON p.id=sa.user_id
+  WHERE sa.section_id=p_section_id AND sa.is_active=true AND sa.role='admin'
+  ORDER BY COALESCE(p.full_name,p.email,'');
+  IF FOUND THEN RETURN; END IF;
+  RETURN QUERY
+  SELECT p.id, COALESCE(p.full_name,p.email,'أدمن المنصة')::TEXT, p.email::TEXT, 'platform'::TEXT
+  FROM profiles p WHERE p.role='admin'
+  ORDER BY COALESCE(p.full_name,p.email,'');
+END; $$;
+GRANT EXECUTE ON FUNCTION public.get_section_admins_for_messaging(BIGINT) TO authenticated;
+
+DROP FUNCTION IF EXISTS public.get_or_create_direct_room(UUID,BIGINT);
+CREATE OR REPLACE FUNCTION public.get_or_create_direct_room(p_other_user_id UUID,p_section_id BIGINT)
+RETURNS chat_rooms LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
+DECLARE
+  v_me UUID := auth.uid(); v_room chat_rooms; v_is_course_admin BOOLEAN := false; v_is_platform_admin BOOLEAN := false;
+BEGIN
+  IF v_me IS NULL OR p_other_user_id IS NULL OR p_other_user_id=v_me OR p_section_id IS NULL THEN RAISE EXCEPTION 'DENY ACCESS'; END IF;
+  -- لا يشترط الاشتراك لفتح DM؛ الطالب يحتاج أن يستطيع السؤال قبل الشراء.
+  SELECT EXISTS(SELECT 1 FROM section_admins sa WHERE sa.user_id=p_other_user_id AND sa.section_id=p_section_id AND sa.is_active=true AND sa.role='admin') INTO v_is_course_admin;
+  SELECT EXISTS(SELECT 1 FROM profiles p WHERE p.id=p_other_user_id AND p.role='admin') INTO v_is_platform_admin;
+  IF NOT v_is_course_admin AND NOT v_is_platform_admin THEN RAISE EXCEPTION 'DENY ACCESS: الطرف المطلوب ليس أدمن الكورس أو أدمن المنصة'; END IF;
+  PERFORM pg_advisory_xact_lock(hashtextextended(LEAST(v_me::TEXT,p_other_user_id::TEXT)||':'||GREATEST(v_me::TEXT,p_other_user_id::TEXT)||':'||p_section_id::TEXT,0));
+  SELECT cr.* INTO v_room FROM chat_rooms cr
+  WHERE cr.section_id=p_section_id
+    AND cr.room_type='direct'
+    AND EXISTS(SELECT 1 FROM chat_room_participants x WHERE x.room_id=cr.id AND x.user_id=v_me)
+    AND EXISTS(SELECT 1 FROM chat_room_participants y WHERE y.room_id=cr.id AND y.user_id=p_other_user_id)
+  ORDER BY cr.id LIMIT 1;
+  IF FOUND THEN RETURN v_room; END IF;
+  INSERT INTO chat_rooms(room_name,section_id,room_type)
+  VALUES('محادثة خاصة - '||COALESCE((SELECT title FROM site_sections WHERE id=p_section_id),'الكورس'),'direct')
+  RETURNING * INTO v_room;
+  INSERT INTO chat_room_participants(room_id,user_id) VALUES(v_room.id,v_me),(v_room.id,p_other_user_id);
+  RETURN v_room;
+END; $$;
+GRANT EXECUTE ON FUNCTION public.get_or_create_direct_room(UUID,BIGINT) TO authenticated;
+
+-- إصلاح غرفة الكورس: room_type يجب أن يكون section عندما section_id موجود.
+DROP FUNCTION IF EXISTS public.get_or_create_chat_room(BIGINT);
+CREATE OR REPLACE FUNCTION public.get_or_create_chat_room(p_section_id BIGINT)
+RETURNS chat_rooms LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
+DECLARE v_room chat_rooms; v_title TEXT;
+BEGIN
+  IF auth.uid() IS NULL OR p_section_id IS NULL THEN RAISE EXCEPTION 'DENY ACCESS'; END IF;
+  IF NOT (public.is_admin() OR public.is_branch_admin_of(p_section_id) OR public.has_active_course_subscription(p_section_id)) THEN
+    RAISE EXCEPTION 'DENY ACCESS';
+  END IF;
+  PERFORM pg_advisory_xact_lock(p_section_id);
+  SELECT * INTO v_room FROM chat_rooms WHERE section_id=p_section_id AND room_type='section' ORDER BY id LIMIT 1;
+  IF FOUND THEN RETURN v_room; END IF;
+  SELECT title INTO v_title FROM site_sections WHERE id=p_section_id;
+  INSERT INTO chat_rooms(room_name,section_id,room_type)
+  VALUES('محادثة '||COALESCE(v_title,'الكورس'),p_section_id,'section')
+  RETURNING * INTO v_room;
+  RETURN v_room;
+END; $$;
+GRANT EXECUTE ON FUNCTION public.get_or_create_chat_room(BIGINT) TO authenticated;
+
+-- 9) QUIZ RPC — احذف overload integer الذي يسبب 300 Ambiguous Function.
+DROP FUNCTION IF EXISTS public.get_quiz_questions_for_attempt(INTEGER);
+NOTIFY pgrst, 'reload schema';
+
+-- 10) SUBSCRIPTION ADMIN RPCs — لوحة التحكم + الإحصائيات.
+CREATE OR REPLACE FUNCTION public.admin_get_subscription_requests(p_section_id BIGINT DEFAULT NULL, p_status TEXT DEFAULT NULL)
+RETURNS TABLE(
+  id BIGINT, user_id UUID, section_id BIGINT, full_name TEXT, email TEXT,
+  course_title TEXT, payment_status TEXT, subscription_type TEXT, requested_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ, start_date TIMESTAMPTZ, end_date TIMESTAMPTZ, receipt_image TEXT,
+  amount NUMERIC, payment_method TEXT, payment_number TEXT, reject_reason TEXT
+)
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
+BEGIN
+  IF NOT (public.is_admin() OR (p_section_id IS NOT NULL AND public.is_branch_admin_of(p_section_id))) THEN RAISE EXCEPTION 'DENY ACCESS'; END IF;
+  RETURN QUERY
+  SELECT s.id,s.user_id,s.section_id,COALESCE(p.full_name,'—')::TEXT,p.email::TEXT,ss.title::TEXT,
+         s.payment_status::TEXT,s.subscription_type::TEXT,COALESCE(s.requested_at,s.created_at),s.created_at,
+         s.start_date,s.end_date,s.receipt_image,s.amount,s.payment_method,s.payment_number,s.reject_reason
+  FROM subscriptions s
+  LEFT JOIN profiles p ON p.id=s.user_id
+  LEFT JOIN site_sections ss ON ss.id=s.section_id
+  WHERE (p_section_id IS NULL OR public.is_admin() OR s.section_id=p_section_id OR public.is_branch_admin_of(s.section_id))
+    AND (p_status IS NULL OR p_status='' OR s.payment_status=p_status)
+  ORDER BY COALESCE(s.requested_at,s.created_at) DESC;
+END; $$;
+GRANT EXECUTE ON FUNCTION public.admin_get_subscription_requests(BIGINT,TEXT) TO authenticated;
+
+CREATE OR REPLACE FUNCTION public.admin_decide_subscription(p_subscription_id BIGINT,p_decision TEXT,p_reason TEXT DEFAULT NULL)
+RETURNS JSONB LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
+DECLARE s subscriptions; v_end TIMESTAMPTZ;
+BEGIN
+  SELECT * INTO s FROM subscriptions WHERE id=p_subscription_id FOR UPDATE;
+  IF NOT FOUND THEN RAISE EXCEPTION 'الاشتراك غير موجود'; END IF;
+  IF NOT (public.is_admin() OR public.is_branch_admin_of(s.section_id)) THEN RAISE EXCEPTION 'DENY ACCESS'; END IF;
+  IF p_decision='approve' THEN
+    v_end := CASE WHEN s.end_date IS NOT NULL AND s.end_date > NOW() THEN s.end_date ELSE NOW() + INTERVAL '30 days' END;
+    UPDATE subscriptions SET payment_status='active',start_date=COALESCE(start_date,NOW()),end_date=v_end,activated_at=NOW(),reviewed_at=NOW(),approved_at=NOW(),approved_by=auth.uid(),reject_reason=NULL,updated_at=NOW() WHERE id=s.id;
+  ELSIF p_decision='reject' THEN
+    UPDATE subscriptions SET payment_status='rejected',reviewed_at=NOW(),rejected_at=NOW(),rejected_by=auth.uid(),reject_reason=COALESCE(p_reason,''),updated_at=NOW() WHERE id=s.id;
+  ELSE RAISE EXCEPTION 'قرار غير صالح'; END IF;
+  RETURN jsonb_build_object('ok',true,'subscription_id',s.id,'decision',p_decision);
+END; $$;
+GRANT EXECUTE ON FUNCTION public.admin_decide_subscription(BIGINT,TEXT,TEXT) TO authenticated;
+
+-- 11) COURSE STATS RPC — لا يعتمد على RLS الخاصة بالطالب.
+CREATE OR REPLACE FUNCTION public.admin_get_course_stats(p_section_id BIGINT)
+RETURNS JSONB LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
+DECLARE
+  v_total BIGINT:=0; v_active BIGINT:=0; v_pending BIGINT:=0; v_expired BIGINT:=0;
+  v_quiz BIGINT:=0; v_results BIGINT:=0; v_passed BIGINT:=0; v_content BIGINT:=0; v_msgs BIGINT:=0;
+  v_avg NUMERIC:=0; v_success NUMERIC:=0;
+BEGIN
+  IF NOT (public.is_admin() OR public.is_branch_admin_of(p_section_id)) THEN RAISE EXCEPTION 'DENY ACCESS'; END IF;
+  WITH RECURSIVE tree AS (SELECT id FROM site_sections WHERE id=p_section_id UNION ALL SELECT s.id FROM site_sections s JOIN tree t ON s.parent_id=t.id)
+  SELECT COUNT(DISTINCT user_id),COUNT(DISTINCT user_id) FILTER(WHERE payment_status='active' AND (end_date IS NULL OR end_date>=NOW())),COUNT(DISTINCT user_id) FILTER(WHERE payment_status='pending'),COUNT(DISTINCT user_id) FILTER(WHERE payment_status='expired' OR (payment_status='active' AND end_date<NOW())) INTO v_total,v_active,v_pending,v_expired FROM subscriptions WHERE section_id IN (SELECT id FROM tree);
+  WITH RECURSIVE tree AS (SELECT id FROM site_sections WHERE id=p_section_id UNION ALL SELECT s.id FROM site_sections s JOIN tree t ON s.parent_id=t.id)
+  SELECT COUNT(*) INTO v_quiz FROM quizzes WHERE section_id IN (SELECT id FROM tree);
+  WITH RECURSIVE tree AS (SELECT id FROM site_sections WHERE id=p_section_id UNION ALL SELECT s.id FROM site_sections s JOIN tree t ON s.parent_id=t.id)
+  SELECT COUNT(*),COALESCE(AVG(percentage),0),COUNT(DISTINCT user_id) FILTER(WHERE percentage >= COALESCE((SELECT q.passing_score FROM quizzes q WHERE q.id=quiz_results.quiz_id),60)),COUNT(*) FILTER(WHERE percentage >= COALESCE((SELECT q.passing_score FROM quizzes q WHERE q.id=quiz_results.quiz_id),60)) INTO v_results,v_avg,v_passed,v_success FROM quiz_results WHERE quiz_id IN (SELECT id FROM quizzes WHERE section_id IN (SELECT id FROM tree));
+  WITH RECURSIVE tree AS (SELECT id FROM site_sections WHERE id=p_section_id UNION ALL SELECT s.id FROM site_sections s JOIN tree t ON s.parent_id=t.id)
+  SELECT (SELECT COUNT(*) FROM section_content WHERE section_id IN (SELECT id FROM tree)) + (SELECT COUNT(*) FROM section_resources WHERE section_id IN (SELECT id FROM tree)) INTO v_content;
+  SELECT COUNT(*) INTO v_msgs FROM chat_messages cm JOIN chat_rooms cr ON cr.id=cm.room_id WHERE cr.section_id=p_section_id;
+  v_success := CASE WHEN v_results>0 THEN ROUND((v_success::NUMERIC/v_results::NUMERIC)*100,1) ELSE 0 END;
+  RETURN jsonb_build_object('total_students',v_total,'active_students',v_active,'pending_students',v_pending,'expired_students',v_expired,'quiz_count',v_quiz,'result_count',v_results,'passed_students',v_passed,'average_score',ROUND(v_avg,1),'success_rate',v_success,'content_count',v_content,'message_count',v_msgs,'pending_receipts',v_pending);
+END; $$;
+GRANT EXECUTE ON FUNCTION public.admin_get_course_stats(BIGINT) TO authenticated;
+
+-- 12) نظافة أسماء الدوال/Reload
+NOTIFY pgrst, 'reload schema';
+
+-- 13) Verification
+SELECT 'site_sections_policies' AS check_name, count(*) AS rows FROM pg_policies WHERE tablename='site_sections';
+SELECT 'content_policies' AS check_name, count(*) AS rows FROM pg_policies WHERE tablename='section_content';
+SELECT 'resource_policies' AS check_name, count(*) AS rows FROM pg_policies WHERE tablename='section_resources';
+SELECT 'storage_policies' AS check_name, count(*) AS rows FROM pg_policies WHERE schemaname='storage' AND tablename='objects';
+SELECT p.oid::regprocedure AS function_signature FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='public' AND p.proname='get_quiz_questions_for_attempt' ORDER BY 1;
+SELECT conname, pg_get_constraintdef(oid) FROM pg_constraint WHERE conname='audit_log_branch_id_fkey';
+`;
+  console.log(sql); if(navigator.clipboard)navigator.clipboard.writeText(sql).catch(function(){}); return sql;
+};
+</script>
 </body>
 </html>
