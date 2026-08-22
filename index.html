@@ -4665,7 +4665,19 @@ async function _openContentPage(sec, _preloadedContent, _preloadedResources) {
   // للاشتراك)، ولا يؤثر إطلاقاً على admin/branch_admin (يتم تجاهله لهما داخلياً).
   var pathLock = null;
   if (!gate && sec && sec.id && typeof window._pgCheckPathLock === 'function') {
-    try { pathLock = await window._pgCheckPathLock(sec.id); } catch (pgErr) { pathLock = null; }
+    // ✅ FIX (طلب المستخدم): الفصل المجاني الأول (Free Preview) لازم يتجاوز
+    // Path Gate كمان، مش بس بوابة الاشتراك. بدون هذا الفحص، لو ترتيب الفصل داخل
+    // "المسار التعليمي" (learning_path_items) مختلف عن ترتيبه الفعلي كأول فصل في
+    // أول مادة (site_sections/parent_id/display_order)، كان ممكن يُقفل تسلسليًا
+    // رغم إنه المفروض مفتوح دايمًا للجميع. لا يغيّر أي شيء في Path Gate نفسه أو
+    // ترتيب المحاضرات للطالب المشترك العادي — فقط يتجاوزه لهذا الفصل تحديدًا.
+    var _isFreePreviewForPathGate = false;
+    if (typeof window._isFreePreviewSection === 'function') {
+      try { _isFreePreviewForPathGate = await window._isFreePreviewSection(sec.id); } catch(e) { _isFreePreviewForPathGate = false; }
+    }
+    if (!_isFreePreviewForPathGate) {
+      try { pathLock = await window._pgCheckPathLock(sec.id); } catch (pgErr) { pathLock = null; }
+    }
   }
   if (pathLock && pathLock.locked) {
     window._currentContentSec = sec;
@@ -17627,6 +17639,21 @@ window.diagnose = async function() {
     }
   };
 
+  // ✅ FIX (طلب المستخدم — Free Preview يتجاوز Path Gate، بدون تغيير أي منطق آخر):
+  // دالة عامة صغيرة تُستخدم فقط لتحديد هل هذا القسم هو "الفصل المجاني الأول" —
+  // بنفس منطق checkSectionAccess بالضبط (نفس _findSubscriptionAnchor ونفس
+  // _isWithinFreeChapter، بدون أي رقم ثابت)، عشان أي نقطة دخول تانية (Path Gate،
+  // صفحة المسار التعليمي...) تقدر تتجاهل قفل التسلسل لهذا الفصل تحديدًا فقط.
+  window._isFreePreviewSection = async function(sectionId) {
+    sectionId = Number(sectionId);
+    if (!Number.isFinite(sectionId)) return false;
+    try {
+      var anchor = await _findSubscriptionAnchor(sectionId);
+      if (!anchor) return false; // لا يوجد أصلاً اشتراك مطلوب هنا — ليس "فصلاً مجانيًا استثنائيًا"
+      return await _isWithinFreeChapter(anchor.id, sectionId);
+    } catch(e) { return false; }
+  };
+
   // ── يجد أقرب "شعبة" تصلح كنقطة دخول للشات: إما requires_subscription=true،
   //    أو chat_free_access=true (شات مجاني بالكامل بدون أي علاقة بالاشتراك أو
   //    نطاق أدمن الشعبة — مُستخدم لمحادثات عامة زي "شرح تليجرام"). ──
@@ -20744,9 +20771,17 @@ window.__FIXED2_AUDIT = { version: 'FIXED-2', date: '2026-08-12' };
         // له الأولوية دائماً) ولمستخدم مسجّل دخول (الزائر لا تُفحص له محاضرات سابقة)
         var finalState = access.state, lockReason = 'sub';
         if (access.state !== 'admin' && access.state !== 'locked' && _pgUidForRender && typeof window._pgItemDisplayState === 'function') {
-          var pathState = await window._pgItemDisplayState(_pgUidForRender, it, items[ii-1] || null);
-          if (pathState === 'locked') { finalState = 'locked'; lockReason = 'sequence'; }
-          else if (pathState === 'completed') { finalState = 'completed'; }
+          // ✅ FIX (طلب المستخدم): الفصل المجاني الأول (Free Preview) يتجاوز قفل
+          // التسلسل هنا كمان — بدون هذا الفحص كان ممكن يظهر "مغلقة" على صفحة
+          // المسار التعليمي رغم أن access.state == 'free' فعلاً (وهو المفروض
+          // مفتوحاً دايمًا). لا يؤثر على أي فصل آخر أو على ترتيب المحاضرات نفسه.
+          var _isFreePreviewForPath = (typeof window._isFreePreviewSection === 'function')
+            ? await window._isFreePreviewSection(sec.id) : false;
+          if (!_isFreePreviewForPath) {
+            var pathState = await window._pgItemDisplayState(_pgUidForRender, it, items[ii-1] || null);
+            if (pathState === 'locked') { finalState = 'locked'; lockReason = 'sequence'; }
+            else if (pathState === 'completed') { finalState = 'completed'; }
+          }
         }
 
         var stateLabel={free:'مفتوحة',subscribed:'مفتوحة',admin:'أدمن',locked:'مغلقة',completed:'مكتملة'}[finalState]||'مغلقة';
@@ -20796,17 +20831,30 @@ window.__FIXED2_AUDIT = { version: 'FIXED-2', date: '2026-08-12' };
           // ✅ Phase 3: إعادة تحقق طازجة من قفل التسلسل مباشرة قبل الفتح (دفاع
           // إضافي غير معتمد على حالة الشارة المرسومة سابقاً في الواجهة)
           var proceedIfUnlocked=function(){
-            if(typeof window._pgCheckPathLock==='function'){
-              window._pgCheckPathLock(id).then(function(lock){
-                if(lock && lock.locked){
-                  if(window._showToast) window._showToast('🔒 أكمل المحاضرة السابقة واختبارها بنجاح أولاً','warning');
-                  return;
-                }
-                openFull();
+            // ✅ FIX (طلب المستخدم): الفصل المجاني الأول يتجاوز إعادة تحقق قفل
+            // التسلسل هنا أيضًا — نفس فحص _isFreePreviewSection المستخدم في كل
+            // نقاط الدخول الأخرى، بدون أي تغيير في سلوك أي فصل آخر.
+            var _openWithPathCheck=function(){
+              if(typeof window._pgCheckPathLock==='function'){
+                window._pgCheckPathLock(id).then(function(lock){
+                  if(lock && lock.locked){
+                    if(window._showToast) window._showToast('🔒 أكمل المحاضرة السابقة واختبارها بنجاح أولاً','warning');
+                    return;
+                  }
+                  openFull();
+                });
+                return;
+              }
+              openFull();
+            };
+            if(typeof window._isFreePreviewSection==='function'){
+              window._isFreePreviewSection(id).then(function(isFree){
+                if(isFree) return openFull();
+                _openWithPathCheck();
               });
               return;
             }
-            openFull();
+            _openWithPathCheck();
           };
           if(stateVal==='locked'){
             if(lockReason==='sequence'){
@@ -23244,7 +23292,17 @@ var labels=document.querySelectorAll('#admin-panel .ap-label');labels.forEach(fu
     var oldRenderDynamic = window._renderDynamicSectionPage;
     window._renderDynamicSectionPage = async function(sec){
       var result = await oldRenderDynamic.apply(this, arguments);
-      try { await renderCourseChatButtons(sec); } catch(e){}
+      // ✅ FIX (طلب المستخدم — Aug 2026): كان هذا الـwrapper يستدعي renderCourseChatButtons(sec)
+      // هنا كمان، رغم أن _renderDynamicSectionPage الأصلية (oldRenderDynamic) بقت بالفعل
+      // بتعمل نفس الشيء تمامًا (getChatEligibility + _renderChatEntryButtonHTML +
+      // _renderMessageAdminEntry) داخل نفس الـ#dynamic-section-chat-entry — والدالتان
+      // بتشتغلوا بشكل غير متزامن (async) على نفس الـcontainer. النتيجة: زر "دخول محادثة
+      // الكورس" يتكرر أحيانًا حسب توقيت الشبكة، وزر "راسل أدمن الكورس" يتكرر دايمًا
+      // لأن _renderMessageAdminEntry تعمل containerEl.appendChild() (إضافة، مش استبدال)،
+      // فأي مرتين استدعاء = زران فعليان على نفس الصفحة. المصدر الوحيد الصحيح الآن هو
+      // المنطق داخل _renderDynamicSectionPage الأصلية فقط؛ لذلك تم تعطيل هذا الاستدعاء
+      // المكرر بدون حذف renderCourseChatButtons نفسها (تبقى معرّفة أعلاه للتوثيق فقط).
+      // try { await renderCourseChatButtons(sec); } catch(e){}
       return result;
     };
   }
