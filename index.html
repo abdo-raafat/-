@@ -22383,9 +22383,27 @@ window.qzShowPastReview = qzShowPastReview;
       return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
     });
   }
+  // ✅ FIX (طلب المستخدم — الهيكل النهائي، Aug 22 2026): كانت هذه الدالة تعيد
+  // *كورساً واحداً فقط* (window._branchAdminCourseId — آخر كورس مختار في الـ
+  // Switcher)، رغم أن أدمن الكورس ممكن يكون مُسندًا لأكثر من كورس فعليًا
+  // (section_admins يدعم أكثر من صف لنفس المستخدم). النتيجة: قوائم "👥 الطلاب"
+  // و"📊 الإحصائيات" (عبر fillCoursePicker → getCourses) كانت تعرض كورساً واحداً
+  // بس مهما كان عدد كورسات الأدمن الحقيقي. الحل: نرجع كل معرّفات الكورسات
+  // المُسندة فعليًا (window._branchAdminOwnSectionIds، محسوبة في
+  // _loadBranchAdminScope من section_admins + managed_section_id القديم).
+  function courseIdsForBranch() {
+    var ids = Array.isArray(window._branchAdminOwnSectionIds) ? window._branchAdminOwnSectionIds.slice() : [];
+    if (!ids.length) {
+      var fallback = Number(window._branchAdminCourseId || window._activeSectionId || 0);
+      if (fallback > 0) ids = [fallback];
+    }
+    return ids;
+  }
+  // اسم قديم متوافق — بعض الكود القديم قد يستدعيه بمفرده (كورس واحد فقط)؛
+  // نُبقيه لكن مبنيًا على نفس المصدر الصحيح (أول كورس من قائمة كورساته).
   function courseIdForBranch() {
-    var id = Number(window._branchAdminCourseId || window._activeSectionId || 0);
-    return id > 0 ? id : null;
+    var ids = courseIdsForBranch();
+    return ids.length ? ids[0] : null;
   }
   async function guard(kind, sectionId) {
     if (!db()) throw new Error('Supabase غير جاهز');
@@ -22398,7 +22416,10 @@ window.qzShowPastReview = qzShowPastReview;
     if (kind === 'admin' && !status.isSuperAdmin) throw new Error('غير مصرح');
     if (kind === 'branch') {
       if (!status.isBranchAdmin && !status.isSuperAdmin) throw new Error('غير مصرح');
-      if (!status.isSuperAdmin && Number(sectionId) !== courseIdForBranch()) throw new Error('الكورس خارج نطاقك');
+      // ✅ FIX: كان يقارن sectionId بكورس واحد فقط (courseIdForBranch سابقًا)،
+      // فيرفض أي كورس آخر من كورسات نفس الأدمن بخطأ "الكورس خارج نطاقك".
+      // الآن يتحقق من وجود sectionId ضمن *كل* كورسات هذا الأدمن المُسندة فعليًا.
+      if (!status.isSuperAdmin && courseIdsForBranch().indexOf(Number(sectionId)) === -1) throw new Error('الكورس خارج نطاقك');
     }
     return status;
   }
@@ -22408,10 +22429,12 @@ window.qzShowPastReview = qzShowPastReview;
     // بالفعل في q (شروط AND في Supabase)، فكان لازم يكون عمود type لقسم الأدمن نفسه
     // = 'course' حرفيًا وإلا رجعت النتيجة فاضية — رغم أن cid معروف وصحيح ومُسنَد
     // للأدمن فعلاً. الحل: لأدمن الكورس، استعلام مستقل بالـ id بس، بدون شرط type.
+    // ✅ FIX (Aug 22 2026): كان يجيب كورساً واحداً بس (cid) — الآن يجيب *كل* الكورسات
+    // المُسندة فعليًا للأدمن (courseIdsForBranch) عشان تظهر كلها في القائمة المنسدلة.
     if (window._isBranchAdmin && !window._isSuperAdmin) {
-      var cid = courseIdForBranch();
-      if (!cid) return [];
-      var rq = await db().from('site_sections').select('id,title,icon,type').eq('id', cid);
+      var cids = courseIdsForBranch();
+      if (!cids.length) return [];
+      var rq = await db().from('site_sections').select('id,title,icon,type').in('id', cids).order('title');
       if (rq.error) throw rq.error;
       return rq.data || [];
     }
@@ -23258,9 +23281,23 @@ var labels=document.querySelectorAll('#admin-panel .ap-label');labels.forEach(fu
     var isBranch = !!(window._isBranchAdmin && !window._isSuperAdmin);
     var ids = null;
     if (isBranch) {
-      var cid = courseId2();
-      if (!cid) return [];
-      ids = await subtreeIds(cid);
+      // ✅ FIX (طلب المستخدم — الهيكل النهائي، Aug 22 2026): كانت هذه الدالة
+      // تقيّد النتيجة على subtree كورس واحد فقط (courseId2 — آخر كورس مختار في
+      // الـ Switcher)، فلو الأدمن مُسند لأكثر من كورس كانت اشتراكات باقي كورساته
+      // تختفي تمامًا من "الطلبات/الاشتراكات". الآن نجمع subtree كل الكورسات
+      // المُسندة له فعليًا معًا (window._branchAdminOwnSectionIds من
+      // section_admins/managed_section_id) بدلاً من كورس واحد.
+      var ownIds = Array.isArray(window._branchAdminOwnSectionIds) ? window._branchAdminOwnSectionIds : [];
+      if (!ownIds.length) { var cidFallback = courseId2(); if (cidFallback) ownIds = [cidFallback]; }
+      if (!ownIds.length) return [];
+      if (Array.isArray(window._branchAdminAllSectionIds) && window._branchAdminAllSectionIds.length) {
+        ids = window._branchAdminAllSectionIds;
+      } else {
+        var subtreeLists = await Promise.all(ownIds.map(function(id){ return subtreeIds(id); }));
+        var idSet = {};
+        subtreeLists.forEach(function(list){ (list||[]).forEach(function(id){ idSet[id] = true; }); });
+        ids = Object.keys(idSet).map(Number);
+      }
       if (!ids.length) return [];
     }
 
@@ -23354,10 +23391,25 @@ var labels=document.querySelectorAll('#admin-panel .ap-label');labels.forEach(fu
   window._apLoadBranchDashboard = async function(){
     var act=document.getElementById('ap-recent-activity');
     try{
-      var db=await waitDb2(), cid=courseId2();
-      if(!db || !cid) throw new Error('تعذر تحديد الكورس الحالي');
+      var db=await waitDb2();
+      if(!db) throw new Error('Supabase غير جاهز');
 
-      var ids=await subtreeIds(cid);
+      // ✅ FIX (طلب المستخدم — الهيكل النهائي، Aug 22 2026): كانت الإحصائيات هنا
+      // مقصورة على subtree كورس واحد فقط (courseId2/cid)، فلو الأدمن مُسند لأكثر
+      // من كورس كانت الأرقام تعكس كورساً واحداً بس بدل كل كورساته مجتمعة. الآن
+      // نستخدم اتحاد subtree كل كورسات الأدمن المُسندة فعليًا.
+      var ownIds = Array.isArray(window._branchAdminOwnSectionIds) ? window._branchAdminOwnSectionIds : [];
+      if (!ownIds.length) { var cidFallback = courseId2(); if (cidFallback) ownIds = [cidFallback]; }
+      if (!ownIds.length) throw new Error('تعذر تحديد الكورس الحالي');
+      var ids;
+      if (Array.isArray(window._branchAdminAllSectionIds) && window._branchAdminAllSectionIds.length) {
+        ids = window._branchAdminAllSectionIds;
+      } else {
+        var _dashSubtrees = await Promise.all(ownIds.map(function(id){ return subtreeIds(id); }));
+        var _dashSet = {};
+        _dashSubtrees.forEach(function(list){ (list||[]).forEach(function(id){ _dashSet[id] = true; }); });
+        ids = Object.keys(_dashSet).map(Number);
+      }
 
       var subR=await db.from('subscriptions')
         .select('id,user_id,payment_status,end_date,receipt_image,requested_at,created_at')
