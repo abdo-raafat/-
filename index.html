@@ -8804,6 +8804,13 @@ window.checkBanStatus = async function(email) {
             <select id="admin-material-select" class="ap-select" onchange="adminOnMaterialChange()">
               <option value="">— جاري تحميل المواد —</option>
             </select>
+            <!-- ✅ (Aug 2026): مستوى إضافي بين "المادة" و"الشابتر" — مادة ثم مادة فرعية ثم شابتر -->
+            <div id="admin-submaterial-wrap" style="display:none;margin-top:8px;">
+              <label class="ap-label">📁 اختر المادة الفرعية</label>
+              <select id="admin-submaterial-select" class="ap-select" onchange="adminOnSubmaterialChange()">
+                <option value="">— اختر المادة الفرعية —</option>
+              </select>
+            </div>
             <div id="admin-chapter-wrap" style="display:none;margin-top:8px;">
               <label class="ap-label">📂 اختر الشابتر</label>
               <select id="admin-chapter-select" class="ap-select" onchange="adminOnChapterChange()">
@@ -9065,13 +9072,20 @@ window.checkBanStatus = async function(email) {
       <div class="ap-tab-panel" id="ap-panel-quizzes" role="tabpanel">
         <div class="ap-section-heading" style="margin:0 0 10px;border:none;padding:0;">📝 إدارة الاختبارات</div>
         <div style="font-size:.76rem;color:#888;margin-bottom:14px;">
-          اختر المادة ثم الشابتر الخاص بها، وبعد اختيار الشابتر تظهر اختبارات هذا الشابتر ويمكنك إنشاء أكثر من اختبار وربط كل اختبار بمحاضرة وترتيبه.
+          اختر المادة ثم المادة الفرعية ثم الشابتر الخاص بها، وبعد اختيار الشابتر تظهر اختبارات هذا الشابتر ويمكنك إنشاء أكثر من اختبار وربط كل اختبار بمحاضرة وترتيبه.
         </div>
 
         <div class="ap-field">
           <label class="ap-label">📁 اختر المادة</label>
           <select id="qz-material-select" class="ap-select" onchange="qzOnMaterialChange()">
             <option value="">— جاري تحميل المواد —</option>
+          </select>
+        </div>
+        <!-- ✅ (Aug 2026): مستوى إضافي بين "المادة" و"الشابتر" — مادة ثم مادة فرعية ثم شابتر -->
+        <div class="ap-field" id="qz-submaterial-wrap" style="display:none;">
+          <label class="ap-label">📁 اختر المادة الفرعية</label>
+          <select id="qz-submaterial-select" class="ap-select" onchange="qzOnSubmaterialChange()">
+            <option value="">— اختر المادة الفرعية —</option>
           </select>
         </div>
         <div class="ap-field" id="qz-chapter-wrap" style="display:none;">
@@ -19296,10 +19310,24 @@ window.diagnose = async function() {
 
   window._dm2Close = function() {
     document.getElementById('dm2-overlay').classList.remove('chat-open');
+    document.getElementById('dm-picker-modal-overlay').classList.remove('chat-open');
+    document.getElementById('dm2-profile-overlay').classList.remove('chat-open');
     document.body.style.overflow = '';
     _dmStopRealtime();
     _dmRoom = null;
   };
+
+  // ✅ (Aug 2026 — شكوى: المحادثة بتملأ الشاشة ومفيش طريقة تقفلها إلا بإغلاق
+  // التطبيق كله): مفتاح Esc بيقفل أي نافذة محادثة مفتوحة حالياً، كطبقة أمان
+  // إضافية بجانب زر ✕ الموجود بالفعل ولمس خارج النافذة — حتى لو حصل أي خطأ
+  // JS غير متوقع يعطل زر الإغلاق العادي.
+  document.addEventListener('keydown', function(e) {
+    if (e.key !== 'Escape') return;
+    var anyOpen = document.getElementById('dm2-overlay').classList.contains('chat-open') ||
+      document.getElementById('dm-picker-modal-overlay').classList.contains('chat-open') ||
+      document.getElementById('dm2-profile-overlay').classList.contains('chat-open');
+    if (anyOpen) window._dm2Close();
+  });
 
   // ════════════════════════════════════════════════════════════
   // بدء محادثة جديدة — Super Admin: بحث عام. Branch Admin: مشتركو
@@ -22909,22 +22937,48 @@ var labels=document.querySelectorAll('#admin-panel .ap-label');labels.forEach(fu
       var cw=document.getElementById('admin-chapter-wrap'); if(cw)cw.style.display='none';
     }catch(e){console.error('[FINAL CONTENT]',e);var m=document.getElementById('admin-msg');if(m)m.textContent='❌ تعذر تحميل المواد: '+E(e.message);}
   };
+  // ✅ (Aug 2026 — طلب المستخدم): مستوى إضافي بين "المادة" و"الشابتر" — دلوقتي:
+  // مادة (dropdown 1) → مادة فرعية (dropdown 2) → شابتر (dropdown 3)، بدل مادة
+  // ثم شابتر مباشرة. لسه بنفس منطق site_sections.parent_id، بدون أي تعديل Schema.
+  // لو أي مستوى مفيهوش أبناء فعليًا، نتعامل معاه كـ"نهاية الشجرة" (نفس السلوك
+  // القديم بالظبط) عشان محدش ينكسر عند الأقسام اللي معملهاش تقسيم فرعي كامل.
   window.adminOnMaterialChange=async function(){
-    var mat=document.getElementById('admin-material-select'), chap=document.getElementById('admin-chapter-select'), final=document.getElementById('admin-section-select'), wrap=document.getElementById('admin-chapter-wrap');
-    var mid=Number(mat&&mat.value||0); if(!mid){if(wrap)wrap.style.display='none';if(chap)chap.innerHTML='<option value="">— اختر الشابتر —</option>';if(final)final.value='';return;}
+    var mat=document.getElementById('admin-material-select'), sub=document.getElementById('admin-submaterial-select'), subWrap=document.getElementById('admin-submaterial-wrap'), chap=document.getElementById('admin-chapter-select'), chapWrap=document.getElementById('admin-chapter-wrap'), final=document.getElementById('admin-section-select');
+    var mid=Number(mat&&mat.value||0);
+    if(chapWrap)chapWrap.style.display='none'; if(chap)chap.innerHTML='<option value="">— اختر الشابتر —</option>';
+    if(!mid){ if(subWrap)subWrap.style.display='none'; if(sub)sub.innerHTML='<option value="">— اختر المادة الفرعية —</option>'; if(final)final.value=''; return; }
     try{
-      var rows=await finalChapters(mid);
-      var chapOpts=rows.map(function(x){return '<option value="'+x.id+'">'+E(x.title)+'</option>';}).join('');
-      if(chap)chap.innerHTML='<option value="">— اختر الشابتر —</option>'+chapOpts;
-      if(wrap)wrap.style.display=rows.length?'block':'none';
+      var rows=await finalChapters(mid); // ✅ هذا المستوى بقى "المادة الفرعية" دلوقتي
+      var subOpts=rows.map(function(x){return '<option value="'+x.id+'">'+E(x.title)+'</option>';}).join('');
+      if(sub)sub.innerHTML='<option value="">— اختر المادة الفرعية —</option>'+subOpts;
+      if(subWrap)subWrap.style.display=rows.length?'block':'none';
       // ✅ FIX: نبني admin-section-select بحيث يحتوي دائمًا على <option> مطابق
       // لأي قيمة قد نضبطها عليه لاحقًا — خيار المادة نفسها (تُستخدم لو مالهاش
-      // شباتر) + خيارات كل شابتر (تُستخدم بعد adminOnChapterChange).
+      // مواد فرعية) + خيارات كل مادة فرعية (تُستخدم بعد adminOnSubmaterialChange).
       var matOptText = mat.options[mat.selectedIndex] ? mat.options[mat.selectedIndex].textContent : '';
       if(final){
-        final.innerHTML='<option value="">— اختر —</option><option value="'+mid+'">'+E(matOptText)+'</option>'+chapOpts;
+        final.innerHTML='<option value="">— اختر —</option><option value="'+mid+'">'+E(matOptText)+'</option>'+subOpts;
         final.value = rows.length ? '' : String(mid);
         window._adminSections = (window._adminSections||[]).filter(function(s){return String(s.id)!==String(mid) || s._chapterParent;}).concat(rows.map(function(c){c._chapterParent=mid;return c;}));
+      }
+      if(typeof adminLoadSectionPath==='function')adminLoadSectionPath();
+    }catch(e){console.error('[FINAL CONTENT SUBMATERIALS]',e);}
+  };
+  window.adminOnSubmaterialChange=async function(){
+    var mat=document.getElementById('admin-material-select'), sub=document.getElementById('admin-submaterial-select'), chap=document.getElementById('admin-chapter-select'), chapWrap=document.getElementById('admin-chapter-wrap'), final=document.getElementById('admin-section-select');
+    var mid=Number(mat&&mat.value||0), smid=Number(sub&&sub.value||0);
+    if(!smid){ if(chapWrap)chapWrap.style.display='none'; if(chap)chap.innerHTML='<option value="">— اختر الشابتر —</option>'; if(final)final.value= mid?String(mid):''; return; }
+    try{
+      var rows=await finalChapters(smid); // ✅ هذا المستوى الفعلي هو "الشابتر"
+      var chapOpts=rows.map(function(x){return '<option value="'+x.id+'">'+E(x.title)+'</option>';}).join('');
+      if(chap)chap.innerHTML='<option value="">— اختر الشابتر —</option>'+chapOpts;
+      if(chapWrap)chapWrap.style.display=rows.length?'block':'none';
+      if(final){
+        var subOptsHtml = (sub.innerHTML||'').replace(/^<option value="">.*?<\/option>/, '');
+        var matOptText = mat.options[mat.selectedIndex] ? mat.options[mat.selectedIndex].textContent : '';
+        final.innerHTML = '<option value="">— اختر —</option><option value="'+mid+'">'+E(matOptText)+'</option>'+subOptsHtml+chapOpts;
+        final.value = rows.length ? '' : String(smid);
+        window._adminSections = (window._adminSections||[]).filter(function(s){return String(s.id)!==String(smid) || s._chapterParent;}).concat(rows.map(function(c){c._chapterParent=smid;return c;}));
       }
       if(typeof adminLoadSectionPath==='function')adminLoadSectionPath();
     }catch(e){console.error('[FINAL CONTENT CHAPTERS]',e);}
@@ -22932,7 +22986,7 @@ var labels=document.querySelectorAll('#admin-panel .ap-label');labels.forEach(fu
   window.adminOnChapterChange=function(){
     var c=document.getElementById('admin-chapter-select'), f=document.getElementById('admin-section-select');
     if(f){
-      if(c && c.value){ f.value = c.value; } // الخيار مضاف بالفعل في adminOnMaterialChange أعلاه
+      if(c && c.value){ f.value = c.value; } // الخيار مضاف بالفعل في adminOnSubmaterialChange أعلاه
       else { f.value=''; }
     }
     if(typeof adminLoadSectionPath==='function')adminLoadSectionPath();
@@ -23606,25 +23660,42 @@ var labels=document.querySelectorAll('#admin-panel .ap-label');labels.forEach(fu
     }catch(e){console.error('[BSM ULTIMATE QUIZ MATERIALS]',e);sel.innerHTML='<option value="">— تعذر تحميل المواد —</option>';}
   };
 
+  // ✅ (Aug 2026 — طلب المستخدم): مستوى إضافي بين "المادة" و"الشابتر" في نظام
+  // الاختبارات كمان — مادة → مادة فرعية → شابتر، بنفس منطق نظام المحتوى بالضبط.
   window.qzOnMaterialChange = async function(){
     var mid=Number((document.getElementById('qz-material-select')||{}).value||0);
-    var sel=document.getElementById('qz-chapter-select'),wrap=document.getElementById('qz-chapter-wrap');
+    var subSel=document.getElementById('qz-submaterial-select'),subWrap=document.getElementById('qz-submaterial-wrap');
+    var chapSel=document.getElementById('qz-chapter-select'),chapWrap=document.getElementById('qz-chapter-wrap');
     var body=document.getElementById('qz-admin-body'),list=document.getElementById('qz-quiz-list-wrap');
     if(body)body.style.display='none'; if(list)list.style.display='none';
-    if(!mid){if(wrap)wrap.style.display='none';return;}
+    if(chapWrap)chapWrap.style.display='none'; if(chapSel)chapSel.innerHTML='<option value="">— اختر الشابتر —</option>';
+    if(!mid){ if(subWrap)subWrap.style.display='none'; if(subSel)subSel.innerHTML='<option value="">— اختر المادة الفرعية —</option>'; return; }
     try{
-      var rows=typeof window._finalChapters==='function'?await window._finalChapters(mid):[];
-      if(sel)sel.innerHTML='<option value="">— اختر الشابتر —</option>'+rows.map(function(c){return '<option value="'+c.id+'">'+escF(c.title)+'</option>';}).join('');
-      if(wrap)wrap.style.display=rows.length?'block':'none';
-    }catch(e){console.error('[BSM ULTIMATE QUIZ CHAPTERS]',e);if(sel)sel.innerHTML='<option value="">— تعذر تحميل الشباتر —</option>';}
+      var rows=typeof window._finalChapters==='function'?await window._finalChapters(mid):[]; // ✅ هذا المستوى بقى "المادة الفرعية"
+      if(subSel)subSel.innerHTML='<option value="">— اختر المادة الفرعية —</option>'+rows.map(function(c){return '<option value="'+c.id+'">'+escF(c.title)+'</option>';}).join('');
+      if(subWrap)subWrap.style.display=rows.length?'block':'none';
+    }catch(e){console.error('[BSM ULTIMATE QUIZ SUBMATERIALS]',e);if(subSel)subSel.innerHTML='<option value="">— تعذر تحميل المواد الفرعية —</option>';}
+  };
+
+  window.qzOnSubmaterialChange = async function(){
+    var smid=Number((document.getElementById('qz-submaterial-select')||{}).value||0);
+    var chapSel=document.getElementById('qz-chapter-select'),chapWrap=document.getElementById('qz-chapter-wrap');
+    var body=document.getElementById('qz-admin-body'),list=document.getElementById('qz-quiz-list-wrap');
+    if(body)body.style.display='none'; if(list)list.style.display='none';
+    if(!smid){ if(chapWrap)chapWrap.style.display='none'; if(chapSel)chapSel.innerHTML='<option value="">— اختر الشابتر —</option>'; return; }
+    try{
+      var rows=typeof window._finalChapters==='function'?await window._finalChapters(smid):[]; // ✅ هذا المستوى الفعلي هو "الشابتر"
+      if(chapSel)chapSel.innerHTML='<option value="">— اختر الشابتر —</option>'+rows.map(function(c){return '<option value="'+c.id+'">'+escF(c.title)+'</option>';}).join('');
+      if(chapWrap)chapWrap.style.display=rows.length?'block':'none';
+    }catch(e){console.error('[BSM ULTIMATE QUIZ CHAPTERS]',e);if(chapSel)chapSel.innerHTML='<option value="">— تعذر تحميل الشباتر —</option>';}
   };
 
   window.qzOnChapterChange = async function(){
-    var cid=Number((document.getElementById('qz-chapter-select')||{}).value||0),mid=Number((document.getElementById('qz-material-select')||{}).value||0);
-    if(!cid||!mid)return;
-    window._qz.adminChapterId=cid;window._qz.adminMaterialId=mid;
+    var cid=Number((document.getElementById('qz-chapter-select')||{}).value||0),smid=Number((document.getElementById('qz-submaterial-select')||{}).value||0);
+    if(!cid||!smid)return;
+    window._qz.adminChapterId=cid;window._qz.adminMaterialId=smid;
     var hidden=document.getElementById('qz-section-select');if(hidden)hidden.value=String(cid);
-    if(typeof window._finalLoadQuizByChapter==='function') await window._finalLoadQuizByChapter(cid,mid);
+    if(typeof window._finalLoadQuizByChapter==='function') await window._finalLoadQuizByChapter(cid,smid);
   };
 
   /* الطالب يرى اختبارات الشابتر من lecture_id. */
