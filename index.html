@@ -18569,9 +18569,19 @@ window.diagnose = async function() {
   }
 
   function _chatSafeFileName(name) {
+    // ✅ FIX (طلب المستخدم — Aug 2026): كانت الدالة دي بتسمح بحروف عربية ومسافات
+    // جوه الاسم اللي بيتحط مباشرة في storage KEY (مسار الملف الفعلي في Supabase
+    // Storage)، و Supabase Storage (متوافق مع S3) بيرفض أي key فيه حروف غير
+    // ASCII أو مسافات بخطأ "Invalid key" — فكان أي مرفق باسم عربي يفشل رفعه
+    // بالكامل. الحل: الـkey نفسه بقى ASCII آمن فقط (بدون تغيير اسم الملف
+    // الأصلي المعروض للمستخدم — ده محفوظ الآن في عمود file_name منفصل، انظر
+    // _chatUploadAttachment و_chatAttachmentDisplayName أسفل).
     var parts = String(name || 'file').split('.');
     var ext = parts.length > 1 ? parts.pop() : '';
-    var base = parts.join('.').replace(/[^a-zA-Z0-9\u0600-\u06FF _-]/g, '').trim().slice(0, 60) || 'file';
+    var base = parts.join('.')
+      .replace(/[^a-zA-Z0-9 _-]/g, '')   // إزالة أي حرف غير ASCII (بما فيها العربي) بدل السماح به
+      .replace(/\s+/g, '_')
+      .trim().slice(0, 60) || 'file';
     return base + (ext ? '.' + ext.replace(/[^a-zA-Z0-9]/g, '').toLowerCase() : '');
   }
 
@@ -18584,7 +18594,11 @@ window.diagnose = async function() {
     return CHAT_ALLOWED_EXT[ext] || 'file';
   }
 
-  function _chatAttachmentDisplayName(filePath) {
+  function _chatAttachmentDisplayName(filePath, fileName) {
+    // ✅ FIX: نفضّل الاسم الأصلي المحفوظ في عمود file_name (لو موجود) لأنه يحافظ
+    // على العربي/المسافات كاملة؛ fallback لاستخراجه من الـkey للمرفقات القديمة
+    // المرفوعة قبل هذا الإصلاح (لا تُفقد أي بيانات قديمة).
+    if (fileName) return fileName;
     var base = String(filePath || '').split('/').pop() || 'ملف';
     return base.replace(/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}-/, '');
   }
@@ -18776,8 +18790,14 @@ window.diagnose = async function() {
     var ids = rows.map(function(m) { return m.id; });
     try {
       var res = await window.supabase.from('message_attachments')
-        .select('id, message_id, file_path, file_type, file_size')
+        .select('id, message_id, file_path, file_type, file_size, file_name')
         .in('message_id', ids);
+      if (res.error && /column .*file_name.* does not exist/i.test(res.error.message || '')) {
+        // العمود لسه غير موجود (قبل تشغيل الـSQL) — نعيد المحاولة بدونه
+        res = await window.supabase.from('message_attachments')
+          .select('id, message_id, file_path, file_type, file_size')
+          .in('message_id', ids);
+      }
       if (res.error) { console.warn('[CHAT] attachments fetch error:', res.error.message); return {}; }
       var map = {};
       (res.data || []).forEach(function(a) {
@@ -18792,7 +18812,7 @@ window.diagnose = async function() {
 
   function _chatAttachmentHTML(att) {
     var kind = _chatFileKindFromPath(att.file_path);
-    var name = _chatAttachmentDisplayName(att.file_path);
+    var name = _chatAttachmentDisplayName(att.file_path, att.file_name);
     var sizeLabel = _chatFileSizeLabel(att.file_size);
     var pathJs = _chatEscJs(att.file_path);
     var typeJs = _chatEscJs(att.file_type || '');
@@ -18979,11 +18999,25 @@ window.diagnose = async function() {
         message_id: messageId,
         file_path: storagePath,
         file_type: file.type || null,
-        file_size: file.size
+        file_size: file.size,
+        // ✅ الاسم الأصلي الكامل (عربي/مسافات) — منفصل عن الـkey الآمن أعلاه، يُستخدم
+        // فقط للعرض. لو العمود غير موجود بعد (قبل تشغيل الـSQL المرفق)، نتجاهل الفشل
+        // بصمت ونكمل بدونه (fallback تلقائي لاسم الـkey في _chatAttachmentDisplayName).
+        file_name: file.name || null
       }]);
-      if (attRes.error) {
+      if (attRes.error && !/column .*file_name.* does not exist/i.test(attRes.error.message || '')) {
         try { await db.storage.from(CHAT_ATTACH_BUCKET).remove([storagePath]); } catch(e2) {}
         throw attRes.error;
+      }
+      if (attRes.error) {
+        // العمود file_name لسه غير موجود — إعادة المحاولة بدونه فقط
+        var attRes2 = await db.from('message_attachments').insert([{
+          message_id: messageId, file_path: storagePath, file_type: file.type || null, file_size: file.size
+        }]);
+        if (attRes2.error) {
+          try { await db.storage.from(CHAT_ATTACH_BUCKET).remove([storagePath]); } catch(e3) {}
+          throw attRes2.error;
+        }
       }
       return true;
     } catch(e) {
@@ -19229,9 +19263,15 @@ window.diagnose = async function() {
   }
 
   function _dmSafeFileName(name) {
+    // ✅ FIX (طلب المستخدم — Aug 2026): نفس إصلاح _chatSafeFileName بالضبط — الـkey
+    // في Supabase Storage لازم يكون ASCII فقط، الاسم الأصلي (عربي/مسافات) محفوظ
+    // الآن في عمود file_name منفصل بدل الاعتماد على اسم الملف داخل الـkey نفسه.
     var parts = String(name || 'file').split('.');
     var ext = parts.length > 1 ? parts.pop() : '';
-    var base = parts.join('.').replace(/[^a-zA-Z0-9\u0600-\u06FF _-]/g, '').trim().slice(0, 60) || 'file';
+    var base = parts.join('.')
+      .replace(/[^a-zA-Z0-9 _-]/g, '')
+      .replace(/\s+/g, '_')
+      .trim().slice(0, 60) || 'file';
     return base + (ext ? '.' + ext.replace(/[^a-zA-Z0-9]/g, '').toLowerCase() : '');
   }
 
@@ -19801,8 +19841,13 @@ window.diagnose = async function() {
     var ids = rows.map(function(m) { return m.id; });
     try {
       var res = await window.supabase.from('message_attachments')
-        .select('id, message_id, file_path, file_type, file_size')
+        .select('id, message_id, file_path, file_type, file_size, file_name')
         .in('message_id', ids);
+      if (res.error && /column .*file_name.* does not exist/i.test(res.error.message || '')) {
+        res = await window.supabase.from('message_attachments')
+          .select('id, message_id, file_path, file_type, file_size')
+          .in('message_id', ids);
+      }
       if (res.error) { console.warn('[DM] attachments fetch error:', res.error.message); return {}; }
       var map = {};
       (res.data || []).forEach(function(a) {
@@ -19820,7 +19865,8 @@ window.diagnose = async function() {
     return DM_ALLOWED_EXT[ext] || 'file';
   }
 
-  function _dmAttachmentDisplayName(filePath) {
+  function _dmAttachmentDisplayName(filePath, fileName) {
+    if (fileName) return fileName;
     var base = String(filePath || '').split('/').pop() || 'ملف';
     // نزيل بادئة uuid- التي نضيفها عند الرفع، عشان الاسم المعروض يكون اسم الملف الأصلي فقط
     return base.replace(/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}-/, '');
@@ -19834,7 +19880,7 @@ window.diagnose = async function() {
 
   function _dmAttachmentHTML(att) {
     var kind = _dmFileKindFromPath(att.file_path);
-    var name = _dmAttachmentDisplayName(att.file_path);
+    var name = _dmAttachmentDisplayName(att.file_path, att.file_name);
     var sizeLabel = _dmFileSizeLabel(att.file_size);
     var pathJs = _dmEscJs(att.file_path);
     var typeJs = _dmEscJs(att.file_type || '');
@@ -20007,11 +20053,21 @@ window.diagnose = async function() {
         message_id: messageId,
         file_path: storagePath,
         file_type: file.type || null,
-        file_size: file.size
+        file_size: file.size,
+        file_name: file.name || null
       }]);
-      if (attRes.error) {
+      if (attRes.error && !/column .*file_name.* does not exist/i.test(attRes.error.message || '')) {
         try { await db.storage.from(DM_ATTACH_BUCKET).remove([storagePath]); } catch(e2) {}
         throw attRes.error;
+      }
+      if (attRes.error) {
+        var attRes2 = await db.from('message_attachments').insert([{
+          message_id: messageId, file_path: storagePath, file_type: file.type || null, file_size: file.size
+        }]);
+        if (attRes2.error) {
+          try { await db.storage.from(DM_ATTACH_BUCKET).remove([storagePath]); } catch(e3) {}
+          throw attRes2.error;
+        }
       }
       return true;
     } catch(e) {
