@@ -18033,7 +18033,15 @@ window.diagnose = async function() {
 }
 .chat-send-btn:disabled { opacity: .5; cursor: not-allowed; }
 @media (max-width: 480px) {
-  .chat-modal { height: 100vh; max-height: 100vh; border-radius: 0; max-width: 100%; }
+  .chat-modal {
+    height: 100vh; max-height: 100vh; /* fallback للمتصفحات القديمة */
+    height: 100dvh; max-height: 100dvh; /* ✅ FIX (Aug 2026): 100vh على الموبايل بياخد ارتفاع أطول من
+      المساحة المرئية الفعلية (شريط العنوان/الأزرار في Chrome/Safari)، فكان هيدر
+      المحادثة (وزرار ✕ جواه) بيتقفل تحت حافة الشاشة ومش قابل للمس. dvh بيتابع
+      الارتفاع المرئي الحقيقي ديناميكيًا. */
+    border-radius: 0; max-width: 100%;
+  }
+  .chat-header { padding-top: max(16px, env(safe-area-inset-top)); }
 }
 
 /* ============================================================ */
@@ -18547,10 +18555,35 @@ window.diagnose = async function() {
   }
 
   // ── نقطة الدخول: تُستدعى بالضغط على زر الشات ──
+  // ✅ FIX (Aug 2026): زرار/إيماءة "الرجوع" على الموبايل كان بيقفل التطبيق كله
+  // بدل ما يقفل مودال المحادثة، لأن فتح المودال ماكانش بيسجّل خطوة في history
+  // المتصفح. الحل: نضيف خطوة وهمية في history عند الفتح، ونستمع لـ popstate
+  // عشان نقفل المودال بدل أي تنقّل فعلي — بدون أي تعديل على أي منطق أمان/RLS.
+  var _chatHistoryActive = false;
+  function _chatPushHistoryGuard() {
+    if (!_chatHistoryActive) {
+      try { history.pushState({ chatModal: true }, ''); } catch (e) {}
+      _chatHistoryActive = true;
+    }
+  }
+  function _chatPopHistoryGuard(fromPopstate) {
+    if (_chatHistoryActive) {
+      _chatHistoryActive = false;
+      if (!fromPopstate) { try { history.back(); } catch (e) {} }
+    }
+  }
+  window.addEventListener('popstate', function() {
+    var overlay = document.getElementById('chat-modal-overlay');
+    if (overlay && overlay.classList.contains('chat-open')) {
+      window.closeSectionChat(true);
+    }
+  });
+
   window.openSectionChat = async function(sectionId, sectionTitle) {
     _chatAnchor = { id: sectionId, title: sectionTitle };
     document.getElementById('chat-header-name').textContent = sectionTitle || 'محادثة الكورس';
     document.getElementById('chat-modal-overlay').classList.add('chat-open');
+    _chatPushHistoryGuard();
     document.body.style.overflow = 'hidden';
     var bodyEl = document.getElementById('chat-body');
     bodyEl.innerHTML = '<div class="chat-loading"><div class="spinner"></div> جاري تحميل المحادثة...</div>';
@@ -18592,11 +18625,12 @@ window.diagnose = async function() {
     }
   };
 
-  window.closeSectionChat = function() {
+  window.closeSectionChat = function(_fromPopstate) {
     document.getElementById('chat-modal-overlay').classList.remove('chat-open');
     document.body.style.overflow = '';
     _chatStopRealtime();
     _chatRoom = null;
+    _chatPopHistoryGuard(!!_fromPopstate);
   };
 
   // ── تحميل آخر صفحة من الرسائل فقط (✅ PERF: كان يجلب كل تاريخ المحادثة بلا حد أقصى) ──
