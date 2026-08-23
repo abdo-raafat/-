@@ -9903,8 +9903,18 @@ async function adminLoadContentList() {
   listEl.innerHTML = '<div style="text-align:center;padding:20px;color:#888">⏳ جاري التحميل...</div>';
   try {
     const table = kind === 'resource' ? 'section_resources' : 'section_content';
-    const orderCol = kind === 'resource' ? 'sort_order' : 'display_order';
-    const { data, error } = await window.supabase.from(table).select('*').eq('section_id', sectionId).order(orderCol);
+    // ✅ FIX (ترتيب المحتوى): sort_order في section_resources يُحسب تلقائياً بواسطة
+    // trigger حسب الفئة (فيديو/صوت/PDF/كويز...) ولا يجب تعديله يدوياً — أي محاولة
+    // لتحديثه تُعاد كتابتها تلقائياً بواسطة الـ trigger فتفشل أزرار الترتيب بصمت.
+    // العمود اليدوي الصحيح جوه نفس الفئة هو sub_order (لا يلمسه الـ trigger أبداً).
+    // نطلب البيانات بنفس ترتيب العرض الفعلي للطالب (sort_order → sub_order → id)
+    // عشان تسلسل "لأعلى/لأسفل" في لوحة الأدمن يطابق تماماً ما يراه الطالب.
+    const orderCol = kind === 'resource' ? 'sub_order' : 'display_order';
+    const query = kind === 'resource'
+      ? window.supabase.from(table).select('*').eq('section_id', sectionId)
+          .order('sort_order', { ascending: true }).order('sub_order', { ascending: true }).order('id', { ascending: true })
+      : window.supabase.from(table).select('*').eq('section_id', sectionId).order(orderCol, { ascending: true });
+    const { data, error } = await query;
     if (error) throw error;
     _adminContentListCache = {};
     // ✅ ترتيب المحتوى: نحتفظ بترتيب الـ IDs الحالي + جدول الترتيب (display_order/sort_order)
@@ -9975,6 +9985,13 @@ async function adminMoveContent(id, direction) {
   const a = _adminContentListCache[id];
   const b = _adminContentListCache[order[swapIdx]];
   if (!a || !b) return;
+  // ✅ لموارد section_resources فقط: sort_order (الفئة: فيديو/صوت/PDF/كويز...) ثابت
+  // ويُحسب تلقائياً — لا يمكن نقل عنصر عبر فئة مختلفة، فقط إعادة ترتيبه داخل نفس
+  // الفئة عبر sub_order. لو الجاران من فئتين مختلفتين، لا يوجد ما يمكن تبديله هنا.
+  if (kind === 'resource' && Number(a.sort_order) !== Number(b.sort_order)) {
+    if (typeof _showToast === 'function') _showToast('ℹ️ لا يمكن ترتيب هذا العنصر مع عنصر من نوع مختلف (الفئة تُحدَّد تلقائياً)', 'info');
+    return;
+  }
   const aOrder = a[col] || 0;
   const bOrder = b[col] || 0;
   try {
@@ -10778,7 +10795,15 @@ async function baLoadBranchAdmins() {
       return;
     }
 
-    el.innerHTML = '<div class="ap-table-wrap"><table class="ap-table"><thead><tr>'
+    // ✅ (طلب المستخدم — Owner يضيف أدمن مساعد): زر إضافة أدمن مساعد جديد يظهر دائماً
+    // طالما توجد شعبة مختارة (بجانب الأدمن/الـOwner الحاليين) — بدون استبدال أي أحد،
+    // فقط يُدرج صف section_admins جديد (role='admin') بجانب البقية عبر نفس مودال
+    // البحث (mode='add' الجديد). الحماية الحقيقية تبقى من RLS
+    // (branch_admin_can_manage_admins) كما هي — بدون نظام موازٍ.
+    var crumbEscTop = _apEsc(crumb).replace(/'/g, "\\'");
+    var addAssistantBtn = '<div style="margin-bottom:10px;"><button class="ap-btn ap-btn-success" onclick="baOpenAssignModal(' + branchId + ', \'' + crumbEscTop + '\', \'add\')">➕ إضافة أدمن مساعد</button></div>';
+
+    el.innerHTML = addAssistantBtn + '<div class="ap-table-wrap"><table class="ap-table"><thead><tr>'
       + '<th>الشعبة</th><th>الأدمن الحالي</th><th>البريد الإلكتروني</th><th>الدور</th><th>الحالة</th><th>الإجراءات</th>'
       + '</tr></thead><tbody>' +
       window._baAdminsForBranch.map(function(row) {
@@ -10788,9 +10813,21 @@ async function baLoadBranchAdmins() {
         var roleBadge = isOwner
           ? '<span class="ap-badge admin" style="background:#fff4e0;color:#b9770e;">👑 Owner</span>'
           : '<span class="ap-badge user">🛡️ Admin</span>';
-        var ownerBtn = isOwner
+        // ✅ (طلب المستخدم — لا يستبدل الأدمن المساعد الـOwner الأساسي): تعيين/نزع
+        // صفة Owner، وكذلك تعديل/إزالة صف الـOwner نفسه، تبقى حصراً لأدمن المنصة
+        // (Super Admin). أدمن الكورس (حتى صاحب صلاحية can_manage_admins) يقدر فقط
+        // يضيف/يعدّل/يحذف أدمن مساعد (role='admin')، ولا يقدر يمسّ صف الـOwner إطلاقاً.
+        var isSuper = !!window._isSuperAdmin;
+        var ownerBtn = !isSuper ? '' : (isOwner
           ? '<button class="ap-btn ap-btn-ghost" style="margin-left:4px;" onclick="baSetOwner(' + row.id + ',' + branchId + ', false)" title="نزع صفة Owner">👑 إلغاء Owner</button>'
-          : '<button class="ap-btn ap-btn-ghost" style="margin-left:4px;" onclick="baSetOwner(' + row.id + ',' + branchId + ', true)" title="تعيين هذا الأدمن كـ Owner للشعبة">👑 تعيين Owner</button>';
+          : '<button class="ap-btn ap-btn-ghost" style="margin-left:4px;" onclick="baSetOwner(' + row.id + ',' + branchId + ', true)" title="تعيين هذا الأدمن كـ Owner للشعبة">👑 تعيين Owner</button>');
+        var canEditRow = isSuper || !isOwner; // أدمن الكورس يعدّل/يزيل أدمن مساعد فقط، وليس الـOwner
+        var editBtn = canEditRow
+          ? '<button class="ap-btn ap-btn-primary" style="margin-left:4px;" onclick="baOpenAssignModal(' + branchId + ', \'' + crumbEsc + '\', \'change\', ' + row.id + ', \'' + row.role + '\')">🔄 تعديل</button>'
+          : '';
+        var removeBtn = canEditRow
+          ? '<button class="ap-btn ap-btn-danger" onclick="baOpenRemoveConfirm(' + row.id + ', \'' + (p.id || row.user_id) + '\', \'' + _apEsc(p.full_name || p.email || 'الأدمن').replace(/'/g,"\\'") + '\', \'' + crumbEsc + '\')">❌ إزالة</button>'
+          : '<span style="font-size:.7rem;color:#aaa;">🔒 لا يُعدَّل إلا من أدمن المنصة</span>';
         return '<tr>'
           + '<td>' + _apEsc(crumb) + '</td>'
           + '<td>' + _apEsc(p.full_name || '—') + '</td>'
@@ -10798,9 +10835,9 @@ async function baLoadBranchAdmins() {
           + '<td>' + roleBadge + '</td>'
           + '<td><span class="ap-badge admin" style="background:#eafaf1;color:#17a589;">🟢 نشط</span></td>'
           + '<td style="white-space:nowrap;">'
-            + '<button class="ap-btn ap-btn-primary" style="margin-left:4px;" onclick="baOpenAssignModal(' + branchId + ', \'' + crumbEsc + '\', \'change\')">🔄 تعديل</button>'
+            + editBtn
             + ownerBtn
-            + '<button class="ap-btn ap-btn-danger" onclick="baOpenRemoveConfirm(' + row.id + ', \'' + (p.id || row.user_id) + '\', \'' + _apEsc(p.full_name || p.email || 'الأدمن').replace(/'/g,"\\'") + '\', \'' + crumbEsc + '\')">❌ إزالة</button>'
+            + removeBtn
           + '</td></tr>';
       }).join('') + '</tbody></table></div>';
   } catch(err) {
@@ -10955,8 +10992,12 @@ NOTIFY pgrst, 'reload schema';
 };
 console.log('%c[OwnerRole] اكتب printOwnerRoleSQL() في الـ Console لعرض + نسخ SQL دور Owner', 'color:#b9770e;font-weight:bold;font-size:12px');
 
-// ── فتح مودال تعيين/تغيير الأدمن ──
-function baOpenAssignModal(sectionId, sectionTitle, mode) {
+// ── فتح مودال تعيين/تغيير/إضافة أدمن ──
+// ✅ (طلب المستخدم): mode جديد 'add' — إضافة أدمن مساعد بجانب الموجودين، بدون
+// استبدال أي أحد. ولـ mode='change' أصبح targetRowId/targetRole يحددان بالضبط أي
+// صف section_admins سيُستبدل (بدل افتراض أنه أول صف دائماً)، عشان تعديل أدمن
+// مساعد معيّن لا يمسّ أي أدمن آخر (وأهمهم الـOwner) بالخطأ.
+function baOpenAssignModal(sectionId, sectionTitle, mode, targetRowId, targetRole) {
   // ✅ (Aug 2026 — Phase 3): حاجز واجهة إضافي — أدمن الكورس (مش أدمن المنصة) يقدر
   // فقط يفتح المودال لشعبته النشطة هو. الحماية الحقيقية في RLS
   // (branch_admin_can_manage_admins) — هذا فقط لمنع محاولة عبث من الواجهة نفسها.
@@ -10964,7 +11005,7 @@ function baOpenAssignModal(sectionId, sectionTitle, mode) {
     _showToast ? _showToast('⛔ لا تملك صلاحية إدارة أدمن الكورس أخرى', 'error') : alert('⛔ غير مصرح');
     return;
   }
-  window._baModalCtx = { sectionId: sectionId, sectionTitle: sectionTitle, mode: mode };
+  window._baModalCtx = { sectionId: sectionId, sectionTitle: sectionTitle, mode: mode, targetRowId: targetRowId || null, targetRole: targetRole || null };
   window._baSelectedUser = null;
   var overlay = document.getElementById('ba-assign-overlay');
   var titleEl = document.getElementById('ba-assign-title');
@@ -10976,19 +11017,26 @@ function baOpenAssignModal(sectionId, sectionTitle, mode) {
   var confirmBtn = document.getElementById('ba-confirm-btn');
   var msgEl = document.getElementById('ba-assign-msg');
 
-  titleEl.textContent = mode === 'change' ? '🔄 تغيير أدمن الكورس' : '➕ تعيين أدمن الكورس';
+  titleEl.textContent = mode === 'change' ? '🔄 تغيير أدمن الكورس' : (mode === 'add' ? '➕ إضافة أدمن مساعد' : '➕ تعيين أدمن الكورس');
   labelEl.textContent = 'الشعبة: ' + sectionTitle;
   searchInput.value = ''; resultsEl.innerHTML = ''; msgEl.textContent = '';
   selBox.style.display = 'none'; selBox.innerHTML = '';
   confirmBtn.disabled = true;
-  confirmBtn.textContent = mode === 'change' ? '✅ تأكيد التغيير' : '✅ تعيين الأدمن';
+  confirmBtn.textContent = mode === 'change' ? '✅ تأكيد التغيير' : (mode === 'add' ? '✅ إضافة الأدمن المساعد' : '✅ تعيين الأدمن');
 
-  var currentRow = (window._baAdminsForBranch || [])[0];
+  // ✅ FIX: كان يفترض دائماً أن الصف المطلوب تعديله هو أول صف في المصفوفة، حتى لو
+  // "تعديل" فُتح من صف أدمن مساعد مختلف — الآن نطابق targetRowId المُمرَّر فعلياً.
+  var currentRow = (mode === 'change' && targetRowId)
+    ? (window._baAdminsForBranch || []).find(function(r){ return String(r.id) === String(targetRowId); })
+    : null;
   var currentAdmin = currentRow ? currentRow.profiles : null;
   if (mode === 'change' && currentAdmin) {
     curBox.style.display = '';
     curBox.innerHTML = '👤 الأدمن الحالي: <b>' + _apEsc(currentAdmin.full_name || currentAdmin.email) + '</b> ('
-      + _apEsc(currentAdmin.email || '') + ')<br>اختر مستخدماً آخر أدناه لاستبداله فوراً.';
+      + _apEsc(currentAdmin.email || '') + ')<br>اختر مستخدماً آخر أدناه لاستبداله فوراً (بنفس دوره: ' + (currentRow.role === 'owner' ? 'Owner' : 'Admin') + ').';
+  } else if (mode === 'add') {
+    curBox.style.display = '';
+    curBox.innerHTML = '➕ سيُضاف كأدمن مساعد جديد لهذه الشعبة، بجانب الأدمن/الـOwner الحاليين — بدون استبدال أي أحد منهم.';
   } else {
     curBox.style.display = 'none';
   }
@@ -11084,28 +11132,39 @@ async function baConfirmAssign() {
 
     // section_admins هو المصدر الوحيد الآن للكتابة. UNIQUE(user_id, section_id) في الجدول
     // يعني upsert آمن: لو المستخدم كان أدمن غير فعّال لنفس الشعبة من قبل، يُعاد تفعيله فقط.
-    // 1) عيّن/فعّل الأدمن الجديد لهذه الشعبة تحديداً (لا فرقة ولا ترم بالكامل)
+    //
+    // ✅ (طلب المستخدم — Owner/أدمن مساعد بدون استبدال): السلوك الآن يعتمد على mode:
+    //   - 'add'    : يضيف أدمن مساعد جديد (role='admin') بجانب البقية — بدون تعطيل أي أحد.
+    //   - 'change' : يستبدل تحديداً الصف المفتوح من زر "تعديل" (ctx.targetRowId) فقط،
+    //                بنفس دوره الأصلي (Owner يبقى Owner، Admin يبقى Admin) — لا يمسّ
+    //                أي صف آخر (وأهمهم صف الـOwner لو كنا نعدّل أدمن مساعد مختلف).
+    //   - 'assign' : تعيين أول أدمن لشعبة بلا أدمن إطلاقاً (القائمة فارغة أصلاً، فلا
+    //                يوجد صف آخر ليُعطَّل بأي حال).
+    var newRole = (ctx.mode === 'change' && ctx.targetRole) ? ctx.targetRole : 'admin';
+
     var { error: upErr } = await window.supabase.from('section_admins')
-      .upsert({ user_id: user.id, section_id: ctx.sectionId, role: 'admin', is_active: true, permissions: _baPerms },
+      .upsert({ user_id: user.id, section_id: ctx.sectionId, role: newRole, is_active: true, permissions: _baPerms },
               { onConflict: 'user_id,section_id' });
     if (upErr) throw upErr;
 
-    // 2) عطّل أي أدمن آخر (غير هذا المستخدم) كان فعّالاً على نفس الشعبة — بحيث الأدمن
-    //    القديم يفقد الصلاحية فوراً، دون حذف حسابه أو أي بيانات تخصه (فقط is_active=false)
-    var { data: others, error: othErr } = await window.supabase
-      .from('section_admins').select('id, user_id')
-      .eq('section_id', ctx.sectionId).eq('is_active', true).in('role', ['admin', 'owner'])
-      .neq('user_id', user.id);
-    if (othErr) throw othErr;
     var cleanupWarning = '';
-    for (var i = 0; i < (others || []).length; i++) {
-      var { error: clErr } = await window.supabase.from('section_admins')
-        .update({ is_active: false }).eq('id', others[i].id);
-      if (clErr) cleanupWarning = ' (تنبيه: تعذّرت إزالة الأدمن القديم تلقائيًا — راجعه يدويًا)';
+    var replacedCount = 0;
+    if (ctx.mode === 'change' && ctx.targetRowId) {
+      // نعطّل فقط الصف المحدد الذي فُتح منه زر "تعديل" — وليس كل الأدمنز الآخرين.
+      // لو المستخدم المُختار هو نفسه صاحب هذا الصف (بدون تغيير فعلي)، لا داعي لتعطيله.
+      var oldRow = (window._baAdminsForBranch || []).find(function(r){ return String(r.id) === String(ctx.targetRowId); });
+      if (oldRow && String(oldRow.user_id) !== String(user.id)) {
+        var { error: clErr } = await window.supabase.from('section_admins')
+          .update({ is_active: false }).eq('id', ctx.targetRowId);
+        if (clErr) cleanupWarning = ' (تنبيه: تعذّر إلغاء تفعيل الأدمن القديم تلقائيًا — راجعه يدويًا)';
+        else replacedCount = 1;
+      }
     }
+    // mode === 'add' أو 'assign': لا يوجد أي تعطيل لأي صف آخر — الجميع يبقى نشطاً كما هو.
 
-    _showToast ? _showToast('✅ تم تعيين الأدمن بنجاح' + cleanupWarning, cleanupWarning ? 'warning' : 'success') : null;
-    logAudit('assign_branch_admin', 'branch_admin', user.id, (user.full_name || user.email || user.id), ctx.sectionId, 'success', { section_title: ctx.sectionTitle, replaced_count: (others || []).length });
+    var successMsg = ctx.mode === 'add' ? '✅ تم إضافة الأدمن المساعد بنجاح' : '✅ تم تعيين الأدمن بنجاح';
+    _showToast ? _showToast(successMsg + cleanupWarning, cleanupWarning ? 'warning' : 'success') : null;
+    logAudit('assign_branch_admin', 'branch_admin', user.id, (user.full_name || user.email || user.id), ctx.sectionId, 'success', { section_title: ctx.sectionTitle, mode: ctx.mode, replaced_count: replacedCount });
     baCloseAssignModal();
     baLoadBranchAdmins();
   } catch(err) {
