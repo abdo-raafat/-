@@ -3881,7 +3881,7 @@ function buildSubSectionCard(sec, locked) {
                   .map(t => `<span class="tag">${t}</span>`).join('');
   if (locked) {
     return `
-    <div class="dept-card dept-card-locked" onclick="window._openLockNoticeModal(window.__chapterGate_${sec.id})" data-section-id="${sec.id}" style="cursor:pointer">
+    <div class="dept-card dept-card-locked" onclick="window._openLockNoticeModal(window.__currentChapterGate)" data-section-id="${sec.id}" style="cursor:pointer">
       <div class="card-top" style="background:${color};filter:grayscale(.6);opacity:.72">
         <span class="card-icon">🔒</span>
         <div class="card-title">${sec.title}</div>
@@ -4283,21 +4283,6 @@ async function _renderDynamicSectionPage(sec) {
       // جوه لما يوصل لحاجة خارج الفصل المجاني.
       var isAnchorItself = childAccess.anchor && Number(childAccess.anchor.id) === Number(child.id);
       var lockCard = childAccess.state === 'locked' && !isAnchorItself;
-      // ✅ FIX (زر "يتطلب اشتراكاً" لا يفتح Payment Modal): كان الكارت المقفول
-      // يعتمد على window.__currentChapterGate المشترك، وهو لا يُحدَّث إلا لو
-      // القسم الأب نفسه مقفولاً (gate أعلى الدالة). لو الأب مفتوحاً (مثلاً هو
-      // نفسه المادة/الفصل المجاني الأول) بينما بعض إخوته الأبناء مقفولين، كان
-      // window.__currentChapterGate يفضل بقيمته القديمة/undefined فيفشل الزر
-      // بصمت. الآن كل كارت مقفول له gate خاص به مبني من نفس childAccess اللي
-      // اتحسب له بالفعل (نفس البيانات، بدون أي استعلام إضافي)، بنفس شكل الكائن
-      // اللي تتوقعه _openLockNoticeModal (anchor + state + row).
-      if (lockCard) {
-        window['__chapterGate_' + child.id] = {
-          anchor: childAccess.anchor,
-          state: childAccess.access || 'none',
-          row: childAccess.row
-        };
-      }
       return buildSubSectionCard(child, lockCard);
     }));
     var gridHtml = childCards.join('');
@@ -16011,26 +15996,19 @@ BEGIN
   IF is_admin() OR is_branch_admin_of(NEW.section_id) OR is_branch_admin_of(OLD.section_id) THEN
     RETURN NEW;
   END IF;
-  -- غير كده: هذا تحديث من الطالب صاحب الصف نفسه — نقفل الأعمدة الحساسة فقط
-  -- (هوية الصف/نوعه/تواريخه). ✅ FIX (Aug 2026 — إعادة تقديم الطلب): أُزيلت
-  -- amount/payment_method/payment_number/reject_reason من هذه القائمة لأنها
-  -- كانت تمنع upsert إعادة الطلب: أي طالب اشتراكه expired/cancelled/rejected
-  -- كان عنده reject_reason أو amount قديم مختلف عن القيم الحالية المُرسَلة عند
-  -- إعادة التقديم، فيفشل التحديث بالكامل بـ Exception ولا يقدر يطلب الاشتراك
-  -- تاني إطلاقاً. هذه الحقول ليست حساسة أمنياً (لا تفعّل الاشتراك ولا تغيّر
-  -- صاحبه) — الحماية الحقيقية تبقى في قفل payment_status تحت.
+  -- غير كده: هذا تحديث من الطالب صاحب الصف نفسه — نقفل الأعمدة الحساسة
   IF NEW.user_id            IS DISTINCT FROM OLD.user_id
      OR NEW.section_id      IS DISTINCT FROM OLD.section_id
      OR NEW.subscription_type IS DISTINCT FROM OLD.subscription_type
+     OR NEW.amount          IS DISTINCT FROM OLD.amount
+     OR NEW.payment_method  IS DISTINCT FROM OLD.payment_method
+     OR NEW.payment_number  IS DISTINCT FROM OLD.payment_number
      OR NEW.start_date      IS DISTINCT FROM OLD.start_date
      OR NEW.end_date        IS DISTINCT FROM OLD.end_date
+     OR NEW.reject_reason   IS DISTINCT FROM OLD.reject_reason
   THEN
     RAISE EXCEPTION 'Forbidden: cannot modify this field of your own subscription directly';
   END IF;
-  -- ✅ لا يزال ممنوعاً منعاً باتاً أن يُفعّل الطالب اشتراكه بنفسه: أي تغيير في
-  -- payment_status يجب أن يبقى 'pending' (طلب/إعادة طلب)، والتفعيل الفعلي
-  -- (active) أو الرفض (rejected/cancelled) لا يتم إلا من is_admin() أو
-  -- is_branch_admin_of() في أعلى الدالة.
   IF NEW.payment_status IS DISTINCT FROM OLD.payment_status AND NEW.payment_status != 'pending' THEN
     RAISE EXCEPTION 'Forbidden: cannot set payment_status to % yourself', NEW.payment_status;
   END IF;
@@ -18812,26 +18790,24 @@ window.diagnose = async function() {
       var upRes = await db.storage.from('receipts').upload(path, _pmFile, { upsert: true, contentType: _pmFile.type });
       if (upRes.error) throw upRes.error;
 
-      // 2) إنشاء/إعادة تعيين طلب الاشتراك كـ pending في جدول subscriptions الموحّد
-      //    (مربوط بالشعبة عن طريق section_id) — upsert على (user_id, section_id)
-      //    ملاحظة: subscriptions ليس بها عمود user_email/status فعلياً — البريد يُقرأ من profiles،
-      //    وحالة الطلب تُخزَّن في payment_status (وليس status).
-      var subPrice  = (_pmAnchor.price != null && String(_pmAnchor.price).trim() !== '') ? _pmAnchor.price : null;
+      // 2) إنشاء/إعادة تعيين طلب الاشتراك كـ pending
+      //    ✅ FIX (Aug 2026 audit): كان هذا upsert مباشر على جدول subscriptions
+      //    (يعتمد فقط على RLS الجدول). الآن نمر عبر RPC request_subscription
+      //    (SECURITY DEFINER) اللي بيتحقق فعليًا إن الشعبة محتاجة اشتراك أصلاً
+      //    وإن الإيصال مرفوع قبل ما يسجل الطلب — بدل الاعتماد فقط على صحة RLS
+      //    المباشرة على الجدول (اللي فيها حاليًا سياسات متراكمة من محاولات سابقة،
+      //    راجع تقرير "Database issues" لتفاصيل هذا الخطر).
+      var subPrice  = (_pmAnchor.price != null && String(_pmAnchor.price).trim() !== '') ? Number(_pmAnchor.price) : null;
       var subMethod = _pmAnchor.payment_method || 'Vodafone Cash';
       var subNumber = _pmAnchor.payment_number || null;
-      var updRes = await db.from('subscriptions').upsert({
-        user_id: _pmUser.id,
-        section_id: _pmAnchor.id,
-        payment_status: 'pending',
-        subscription_type: 'monthly',
-        payment_method: subMethod,
-        payment_number: subNumber,
-        amount: subPrice,
-        receipt_image: 'receipts/' + path,
-        reject_reason: null,
-        requested_at: new Date().toISOString()
-      }, { onConflict: 'user_id,section_id' });
-      if (updRes.error) throw updRes.error;
+      var rpcRes = await db.rpc('request_subscription', {
+        p_section_id: _pmAnchor.id,
+        p_payment_method: subMethod,
+        p_payment_number: subNumber,
+        p_amount: subPrice,
+        p_receipt_image: 'receipts/' + path
+      });
+      if (rpcRes.error) throw rpcRes.error;
 
       msgEl.style.color = '#17a589';
       msgEl.textContent = '✅ تم إرسال طلبك بنجاح — سيتم تفعيل اشتراكك بعد مراجعة الأدمن';
@@ -20034,7 +20010,16 @@ window.diagnose = async function() {
       if (knownRoomId) {
         room = { id: knownRoomId };
       } else if (otherUserId) {
-        var roomRes = await db.rpc('get_or_create_direct_room', { p_other_user_id: otherUserId, p_section_id: window._dmSectionId || null });
+        // ✅ FIX (Aug 2026 audit): تأكيد صريح إننا دايمًا بنستخدم نسخة get_or_create_direct_room
+        // ذات الباراميترين (p_other_user_id + p_section_id) ولا نعتمد أبداً على النسخة القديمة
+        // بباراميتر واحد (لسه موجودة في الـLive DB — مطلوب حذفها لاحقاً، راجع التقرير).
+        // لو مفيش section_id (محادثة جديدة بدون شعبة معروفة) نوقف برسالة واضحة بدل ما نسيب
+        // القاعدة ترفض بـ"DENY ACCESS" غامضة للطالب.
+        if (!window._dmSectionId) {
+          bodyEl.innerHTML = '<div class="chat-empty">تعذّر تحديد الشعبة المرتبطة بهذه المحادثة. افتح المراسلة من داخل صفحة الشعبة.</div>';
+          return;
+        }
+        var roomRes = await db.rpc('get_or_create_direct_room', { p_other_user_id: otherUserId, p_section_id: window._dmSectionId });
         if (roomRes.error || !roomRes.data) {
           console.error('[DM] get_or_create_direct_room error:', roomRes.error && roomRes.error.message);
           bodyEl.innerHTML = '<div class="chat-empty">' + _dmFriendlyError() + '</div>';
@@ -21148,6 +21133,13 @@ window.__FIXED2_AUDIT = { version: 'FIXED-2', date: '2026-08-12' };
       var items=(path.learning_path_items||[]).slice().sort(function(a,b){
         return Number(a.display_order||0)-Number(b.display_order||0)||Number(a.id||0)-Number(b.id||0);
       });
+      // ⚠️ ملاحظة (Aug 2026 audit، لم تُحل نهائيًا هنا): سياسة RLS الحالية على
+      // learning_path_items لا تستثني أول عنصر مجاني — فلو المستخدم زائر/غير
+      // مشترك، ممكن يرجع "items" فاضية أو ناقصة أول عنصر حتى لو هو فعلاً مجاني
+      // (السطر ده صف بيانات مفقود من الأساس بسبب RLS، مش خطأ عرض نقدر نصلحه من
+      // جافاسكريبت بدون تعديل الـpolicy — راجع "Database SQL — NOT EXECUTED").
+      // هنا فقط بنتجنب رسالة مضلِّلة "لا توجد دورات" في هذه الحالة تحديدًا.
+      var _pgItemsMaybeHiddenByRls = !items.length;
 
       // ✅ Phase 3: uid المستخدم الحالي — يُجلب مرة واحدة فقط لكل رسم للمسار
       // (يُستخدم لفحص قفل التسلسل بين المحاضرات، بمعزل تام عن بوابة الاشتراك)
@@ -21207,7 +21199,7 @@ window.__FIXED2_AUDIT = { version: 'FIXED-2', date: '2026-08-12' };
                 (path.description?'<div class="learning-path-desc">'+_lpEsc(path.description)+'</div>':'')+
               '</div>'+
             '</div>'+
-            '<div class="learning-path-items">'+(itemHtml.length?itemHtml.join(''):'<div class="learning-path-desc">لا توجد دورات داخل هذا المسار بعد.</div>')+'</div>'+
+            '<div class="learning-path-items">'+(itemHtml.length?itemHtml.join(''):('<div class="learning-path-desc">'+(_pgItemsMaybeHiddenByRls?'تعذّر عرض محتوى هذا المسار الآن — سجّل الدخول أو حدّث الصفحة وحاول مجدداً.':'لا توجد دورات داخل هذا المسار بعد.')+'</div>'))+'</div>'+
           '</article>'+
         '</div>';
 
@@ -21930,7 +21922,10 @@ async function qzSaveQuestion() {
     payload.correct_answer = correct;
     var acceptedRaw = document.getElementById('qz-q-sa-accepted').value.trim();
     var acceptedArr = acceptedRaw ? acceptedRaw.split(',').map(function(s) { return s.trim(); }).filter(Boolean) : [];
-    payload.accepted_answers = JSON.stringify(acceptedArr);
+    // ✅ FIX (Aug 2026 audit): لا JSON.stringify هنا — accepted_answers عمود jsonb،
+    // ومكتبة supabase-js بتعمل serialize للـpayload كله لوحدها. لو بعتنا نص جاهز
+    // هيتخزن كنص JSON (scalar) جوه العمود بدل array حقيقي (double-encoding).
+    payload.accepted_answers = acceptedArr;
   } else if (type === 'matching') {
     var lines = document.getElementById('qz-q-match-pairs').value.split('\n').map(function(l) { return l.trim(); }).filter(Boolean);
     var pairs = lines.map(function(l) {
@@ -21938,7 +21933,10 @@ async function qzSaveQuestion() {
       return { left: (parts[0] || '').trim(), right: (parts.slice(1).join('=') || '').trim() };
     }).filter(function(p) { return p.left && p.right; });
     if (pairs.length < 2) { msgEl.textContent = '❌ أدخل زوجين على الأقل بصيغة "العنصر = المطابق"'; return; }
-    payload.matching_data = JSON.stringify(pairs);
+    // ✅ FIX (Aug 2026 audit): نفس السبب — matching_data عمود jsonb، وJSON.stringify هنا
+    // هو السبب المؤكد لخطأ "cannot extract elements from a scalar" في
+    // get_quiz_questions_for_attempt (موثّق على السؤال id=243). نرسل الـarray كما هو.
+    payload.matching_data = pairs;
   }
 
   var db = await _qzDb();
@@ -22179,7 +22177,16 @@ async function qzBeginAttempt(quizId) {
       message: e && e.message,
       stack: e && e.stack
     });
-    body.innerHTML = '<div style="text-align:center;padding:20px;color:#c0392b;">❌ تعذر تحميل الأسئلة: ' + qzEsc(e.message) + '</div>';
+    // ✅ FIX (Aug 2026 audit): "cannot extract elements from a scalar" معناه إن
+    // فيه سؤال matching واحد على الأقل بياناته متخزّنة كـstring مزدوج الترميز بدل
+    // array حقيقي — بيوقف الاختبار كله لأن الـRPC بيرجع كل الأسئلة في نداء واحد.
+    // ده يحتاج تصحيح بيانات على مستوى القاعدة (راجع التقرير)؛ هنا فقط بنمنع تسريب
+    // رسالة Postgres الخام للطالب ونديله سبب مفهوم.
+    var rawMsg = (e && e.message) || '';
+    var friendly = /extract elements from a scalar/i.test(rawMsg)
+      ? '⚠️ يوجد خطأ في بيانات أحد أسئلة المطابقة داخل هذا الاختبار يمنع تحميله بالكامل. تم إبلاغ الأدمن — جرّب لاحقاً.'
+      : 'تعذر تحميل الأسئلة: ' + qzEsc(rawMsg);
+    body.innerHTML = '<div style="text-align:center;padding:20px;color:#c0392b;">❌ ' + friendly + '</div>';
   }
 }
 window.qzBeginAttempt = qzBeginAttempt;
