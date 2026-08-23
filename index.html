@@ -25467,5 +25467,80 @@ SELECT 'FINAL FIX OK' AS result;
 })();
 </script>
 
+
+<!-- ================= SUBSCRIPTION BUTTON HARD FIX v6 ================= -->
+<script>
+(function(){
+  'use strict';
+  function pickAnchor(){
+    var a = window._currentGateAnchor || window._lastGateSec || window._currentSection || null;
+    if (!a && window._lnGate && window._lnGate.anchor) a = window._lnGate.anchor;
+    return a && a.id != null ? a : null;
+  }
+
+  window.requestOrRenewSubscription = async function(){
+    try {
+      var anchor = pickAnchor();
+      if (!anchor) {
+        if (window._showToast) _showToast('⚠️ لم يتم تحديد الشعبة المراد الاشتراك فيها. افتح الشعبة مرة أخرى ثم اضغط اشتراك.', 'warning');
+        else alert('لم يتم تحديد الشعبة المراد الاشتراك فيها. افتح الشعبة مرة أخرى ثم اضغط اشتراك.');
+        return false;
+      }
+      window._currentGateAnchor = anchor;
+      var db = window.supabase;
+      if (!db) {
+        if (window._showToast) _showToast('⏳ جاري الاتصال بالخادم، حاول بعد لحظة.', 'warning');
+        return false;
+      }
+      var sessionRes = (typeof window._getSessionSafe === 'function') ? await window._getSessionSafe(8000) : await db.auth.getSession();
+      var user = sessionRes && sessionRes.data && sessionRes.data.session && sessionRes.data.session.user;
+      if (!user) {
+        if (typeof window.loginWithGoogle === 'function') { window.loginWithGoogle(); return false; }
+        if (window._showToast) _showToast('🔐 سجل الدخول أولاً لإكمال الاشتراك.', 'warning');
+        return false;
+      }
+      if (typeof window._openPaymentModal !== 'function') {
+        if (window._showToast) _showToast('⏳ جاري تجهيز نافذة الاشتراك، اضغط مرة أخرى بعد لحظة.', 'warning');
+        return false;
+      }
+      window._openPaymentModal(anchor, user);
+      return false;
+    } catch(err) {
+      console.error('[SUBSCRIBE FIX] request failed:', err);
+      if (window._showToast) _showToast('❌ تعذر فتح الاشتراك: ' + (err.message || 'خطأ غير معروف'), 'error');
+      else alert('تعذر فتح الاشتراك: ' + (err.message || 'خطأ غير معروف'));
+      return false;
+    }
+  };
+
+  var oldOpen = window._openPaymentModal;
+  if (typeof oldOpen === 'function') {
+    window._openPaymentModal = function(anchor, user){
+      // لا تجعل السعر الفارغ يعطل الزر بالكامل؛ افتح المودال واظهر أن السعر يحدد من الإدارة.
+      if (!anchor) anchor = pickAnchor();
+      if (!anchor) return;
+      window._currentGateAnchor = anchor;
+      try { return oldOpen.call(this, anchor, user); }
+      catch(e) {
+        console.error('[SUBSCRIBE FIX] modal failed:', e);
+        if (window._showToast) _showToast('❌ حدث خطأ أثناء فتح نافذة الاشتراك: ' + (e.message || ''), 'error');
+      }
+    };
+  }
+
+  // حماية إضافية لأي زر اشتراك مولد ديناميكياً.
+  document.addEventListener('click', function(e){
+    var b = e.target && e.target.closest && e.target.closest('button');
+    if (!b) return;
+    var t = (b.textContent || '').trim();
+    if (/اشترك الآن|تجديد الاشتراك الآن/.test(t) && !b.closest('#payment-modal-overlay')) {
+      if (typeof window.requestOrRenewSubscription === 'function') {
+        e.preventDefault();
+        window.requestOrRenewSubscription();
+      }
+    }
+  }, true);
+})();
+</script>
 </body>
 </html>
