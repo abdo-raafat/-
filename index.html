@@ -3699,6 +3699,9 @@ async function loadSectionContent(sectionId) {
       const { data, error } = await _fetchWithRetry(function() {
         return db.from('section_content').select('*').eq('section_id', safeId).order('display_order', { ascending: true });
       });
+      // ✅ DEBUG مؤقت (طلب المستخدم — تشخيص اختفاء المرفقات): سطر واحد واضح
+      console.log('[ATTACH-DEBUG] loadSectionContent sectionId=' + sectionId + ' safeId=' + safeId +
+        ' → count=' + (data ? data.length : 0) + ' | error=' + (error ? (error.message + ' (code:' + error.code + ')') : 'null'));
       if (error) {
         console.error('[DEBUG loadSectionContent] ❌ خطأ Supabase:', error.message, '| code:', error.code, '| hint:', error.hint);
         if (error.code === '42501' || (error.message||'').includes('permission') || (error.message||'').includes('policy')) {
@@ -3790,6 +3793,11 @@ async function loadSectionResources(sectionId) {
       const { data, error } = await _fetchWithRetry(function() {
         return db.from('section_resources').select('*').eq('section_id', safeId).order('sort_order', { ascending: true }).order('sub_order', { ascending: true }).order('id', { ascending: true });
       });
+      // ✅ DEBUG مؤقت (طلب المستخدم — تشخيص اختفاء المرفقات): سطر واحد واضح
+      // يطبع sectionId المستخدم فعلياً في الاستعلام، وعدد الصفوف المرجعة،
+      // ورسالة أي خطأ إن وُجد — بدون تغيير أي منطق أو استعلام.
+      console.log('[ATTACH-DEBUG] loadSectionResources sectionId=' + sectionId + ' safeId=' + safeId +
+        ' → count=' + (data ? data.length : 0) + ' | error=' + (error ? (error.message + ' (code:' + error.code + ')') : 'null'));
       if (error) {
         console.error('[DEBUG loadSectionResources] ❌ خطأ Supabase:', error.message, '| code:', error.code);
         if (error.code === '42501' || (error.message||'').includes('permission') || (error.message||'').includes('policy')) {
@@ -17845,17 +17853,17 @@ window.diagnose = async function() {
     delete window._subStatusCache[userId + ':' + sectionId];
   }
 
-  // ── يحدد الفصل المجاني الأول بدون hardcoded section IDs.
-  // ✅ FIX (طلب المستخدم — Free Preview): كان الكود القديم يحاول "تخمين" أي
-  // مستوى هو الـ Chapter عبر البحث عن كلمة chapter/شابتر/فصل داخل type أو
-  // title، وقد ينزل حتى 4 مستويات بحثاً عنها. هذا التخمين هش: لو لم تحتوِ
-  // العناوين على هذه الكلمات، أو كان هناك مستوى وسيط غير متوقع، كان يمكن أن
-  // يختار قسماً خاطئاً (أو المستوى الرابع بدل الثاني)، فيظهر "المجاني" في
-  // غير موضعه أو لا يظهر إطلاقاً. الآن الحساب حرفي كما طُلب بالضبط:
-  // "أول Chapter من أول Material" = أول ابن مباشر للشعبة (المادة، بحسب
-  // display_order) ثم أول ابن مباشر لهذه المادة (الشابتر، بحسب display_order).
-  // لا تخمين، لا اعتماد على IDs — فقط display_order، بترتيب id كحسم تعادل
-  // ثابت (يطابق تماماً نفس المنطق في SQL: get_first_free_chapter_id()).
+  // ── يحدد الفصل المجاني الأول بدون hardcoded section IDs، وبدون افتراض
+  // عدد مستويات ثابت بين الشعبة/الكورس (anchor) والشابتر الفعلي.
+  // ✅ FIX (Aug 2026 — يطابق حرفيًا public.get_first_free_chapter_id في الـDB):
+  // هيكل غير ثابت العمق (فرقة→ترم→شعبة→Course→Chapter، أو فرقة→Course→Chapter،
+  // أو Course→Chapter مباشرة). النزول من anchor (الـCourse) يكون دائمًا عبر
+  // أول ابن حسب display_order (ثم id كحسم تعادل)، لكن التوقف الآن يعتمد على
+  // "type" الفعلي للعقدة وليس على كونها leaf (بلا أبناء):
+  //   - أول عقدة نوعها 'lesson' أو 'class' فقط = First Free Chapter.
+  //   - أي نوع آخر (subject/department/level/year/أي حاوية وسيطة) يُتخطّى
+  //     بالنزول لأول ابن له، ولا يُعتبر شابتراً مجانياً أبداً حتى لو لم يكن
+  //     له أبناء (يُرجع null في هذه الحالة بدل اعتباره الشابتر خطأً).
   function _sortByOrderThenId(rows){
     return (rows||[]).slice().sort(function(a,b){
       var ao=Number(a.display_order)||0, bo=Number(b.display_order)||0;
@@ -17867,16 +17875,27 @@ window.diagnose = async function() {
     anchorId=Number(anchorId);
     if(!Number.isFinite(anchorId)) return null;
 
-    // المستوى الأول تحت الشعبة = المواد
-    var materials=_sortByOrderThenId(await loadSections(anchorId));
-    if(!materials.length) return null;
-    var firstMaterial=materials[0];
-
-    // المستوى الثاني تحت أول مادة = الشابترات
-    var chapters=_sortByOrderThenId(await loadSections(firstMaterial.id));
-    if(!chapters.length) return firstMaterial.id; // مادة بلا شابترات فرعية = هي نفسها المحتوى المجاني
-
-    return chapters[0].id;
+    var currentId = anchorId;
+    var guard = 0; // حماية من حلقة لا نهائية بسبب بيانات parent_id تالفة/دائرية
+    while (guard++ < 12) {
+      var children = _sortByOrderThenId(await loadSections(currentId));
+      if (!children.length) {
+        // وصلنا لعقدة بلا أبناء ولم نجد lesson/class على الطريق — لا يوجد
+        // شابتر مجاني صالح تحت هذا الـanchor (لا نعتبر أي نوع آخر شابتراً).
+        console.log('[DEBUG _getFirstFreeChapterId] anchorId=' + anchorId + ' → لا يوجد Chapter (lesson/class) على مسار أول ابن، توقف عند id=' + currentId);
+        return null;
+      }
+      var first = children[0];
+      var t = String(first.type || '').trim().toLowerCase();
+      if (t === 'lesson' || t === 'class') {
+        console.log('[DEBUG _getFirstFreeChapterId] anchorId=' + anchorId + ' → firstFreeChapterId=' + first.id + ' (type=' + t + ', depth=' + guard + ')');
+        return first.id;
+      }
+      // نوع وسيط (subject/department/level/year/إلخ) — نزول أعمق بدون اعتباره شابتراً.
+      currentId = first.id;
+    }
+    console.warn('[DEBUG _getFirstFreeChapterId] ⚠️ توقف بعد ' + guard + ' مستويات دون إيجاد lesson/class تحت anchorId=' + anchorId);
+    return null;
   }
 
   async function _isWithinFreeChapter(anchorId, sectionId) {
