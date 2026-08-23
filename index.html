@@ -3881,7 +3881,7 @@ function buildSubSectionCard(sec, locked) {
                   .map(t => `<span class="tag">${t}</span>`).join('');
   if (locked) {
     return `
-    <div class="dept-card dept-card-locked" onclick="window._openLockNoticeModal(window.__currentChapterGate)" data-section-id="${sec.id}" style="cursor:pointer">
+    <div class="dept-card dept-card-locked" onclick="window._openLockNoticeModal(window.__chapterGate_${sec.id})" data-section-id="${sec.id}" style="cursor:pointer">
       <div class="card-top" style="background:${color};filter:grayscale(.6);opacity:.72">
         <span class="card-icon">🔒</span>
         <div class="card-title">${sec.title}</div>
@@ -4283,6 +4283,21 @@ async function _renderDynamicSectionPage(sec) {
       // جوه لما يوصل لحاجة خارج الفصل المجاني.
       var isAnchorItself = childAccess.anchor && Number(childAccess.anchor.id) === Number(child.id);
       var lockCard = childAccess.state === 'locked' && !isAnchorItself;
+      // ✅ FIX (زر "يتطلب اشتراكاً" لا يفتح Payment Modal): كان الكارت المقفول
+      // يعتمد على window.__currentChapterGate المشترك، وهو لا يُحدَّث إلا لو
+      // القسم الأب نفسه مقفولاً (gate أعلى الدالة). لو الأب مفتوحاً (مثلاً هو
+      // نفسه المادة/الفصل المجاني الأول) بينما بعض إخوته الأبناء مقفولين، كان
+      // window.__currentChapterGate يفضل بقيمته القديمة/undefined فيفشل الزر
+      // بصمت. الآن كل كارت مقفول له gate خاص به مبني من نفس childAccess اللي
+      // اتحسب له بالفعل (نفس البيانات، بدون أي استعلام إضافي)، بنفس شكل الكائن
+      // اللي تتوقعه _openLockNoticeModal (anchor + state + row).
+      if (lockCard) {
+        window['__chapterGate_' + child.id] = {
+          anchor: childAccess.anchor,
+          state: childAccess.access || 'none',
+          row: childAccess.row
+        };
+      }
       return buildSubSectionCard(child, lockCard);
     }));
     var gridHtml = childCards.join('');
@@ -15996,19 +16011,26 @@ BEGIN
   IF is_admin() OR is_branch_admin_of(NEW.section_id) OR is_branch_admin_of(OLD.section_id) THEN
     RETURN NEW;
   END IF;
-  -- غير كده: هذا تحديث من الطالب صاحب الصف نفسه — نقفل الأعمدة الحساسة
+  -- غير كده: هذا تحديث من الطالب صاحب الصف نفسه — نقفل الأعمدة الحساسة فقط
+  -- (هوية الصف/نوعه/تواريخه). ✅ FIX (Aug 2026 — إعادة تقديم الطلب): أُزيلت
+  -- amount/payment_method/payment_number/reject_reason من هذه القائمة لأنها
+  -- كانت تمنع upsert إعادة الطلب: أي طالب اشتراكه expired/cancelled/rejected
+  -- كان عنده reject_reason أو amount قديم مختلف عن القيم الحالية المُرسَلة عند
+  -- إعادة التقديم، فيفشل التحديث بالكامل بـ Exception ولا يقدر يطلب الاشتراك
+  -- تاني إطلاقاً. هذه الحقول ليست حساسة أمنياً (لا تفعّل الاشتراك ولا تغيّر
+  -- صاحبه) — الحماية الحقيقية تبقى في قفل payment_status تحت.
   IF NEW.user_id            IS DISTINCT FROM OLD.user_id
      OR NEW.section_id      IS DISTINCT FROM OLD.section_id
      OR NEW.subscription_type IS DISTINCT FROM OLD.subscription_type
-     OR NEW.amount          IS DISTINCT FROM OLD.amount
-     OR NEW.payment_method  IS DISTINCT FROM OLD.payment_method
-     OR NEW.payment_number  IS DISTINCT FROM OLD.payment_number
      OR NEW.start_date      IS DISTINCT FROM OLD.start_date
      OR NEW.end_date        IS DISTINCT FROM OLD.end_date
-     OR NEW.reject_reason   IS DISTINCT FROM OLD.reject_reason
   THEN
     RAISE EXCEPTION 'Forbidden: cannot modify this field of your own subscription directly';
   END IF;
+  -- ✅ لا يزال ممنوعاً منعاً باتاً أن يُفعّل الطالب اشتراكه بنفسه: أي تغيير في
+  -- payment_status يجب أن يبقى 'pending' (طلب/إعادة طلب)، والتفعيل الفعلي
+  -- (active) أو الرفض (rejected/cancelled) لا يتم إلا من is_admin() أو
+  -- is_branch_admin_of() في أعلى الدالة.
   IF NEW.payment_status IS DISTINCT FROM OLD.payment_status AND NEW.payment_status != 'pending' THEN
     RAISE EXCEPTION 'Forbidden: cannot set payment_status to % yourself', NEW.payment_status;
   END IF;
