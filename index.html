@@ -7083,7 +7083,7 @@ async function _resolveAdminStatus(userId) {
       var saCheck = await window.supabase
         .from('section_admins')
         .select('id', { count: 'exact', head: true })
-        .eq('user_id', userId).eq('is_active', true).eq('role', 'admin');
+        .eq('user_id', userId).eq('is_active', true).in('role', ['admin', 'owner']);
       hasSectionAdminRows = !saCheck.error && (saCheck.count || 0) > 0;
     } catch(e) { console.warn('[section_admins] check failed:', e && e.message); }
   }
@@ -7165,7 +7165,7 @@ async function _loadBranchAdminScope(userId) {
     var saRes = await window.supabase
       .from('section_admins')
       .select('section_id, role, is_active, permissions, site_sections:section_id(id, title)')
-      .eq('user_id', userId).eq('is_active', true).eq('role', 'admin');
+      .eq('user_id', userId).eq('is_active', true).in('role', ['admin', 'owner']);
     if (!saRes.error && Array.isArray(saRes.data)) {
       saRes.data.forEach(function(row) {
         if (!row.section_id) return;
@@ -8256,6 +8256,8 @@ window.checkBanStatus = async function(email) {
       <button class="ap-nav-btn" onclick="apSwitchTab('quizzes')"   id="ap-tab-quizzes"   role="tab">📝 الاختبارات</button>
       <button class="ap-nav-btn" onclick="apSwitchTab('courseStudents')" id="ap-tab-courseStudents" role="tab">👥 الطلاب</button>
       <button class="ap-nav-btn" onclick="apSwitchTab('courseStats')" id="ap-tab-courseStats" role="tab">📊 إحصائيات</button>
+      <button class="ap-nav-btn" onclick="apSwitchTab('branchsettings')" id="ap-tab-branchsettings" role="tab">⚙️ إعدادات الشعبة</button>
+      <button class="ap-nav-btn" onclick="apSwitchTab('studentlevels')" id="ap-tab-studentlevels" role="tab">📈 مستويات الطلاب</button>
       <button class="ap-nav-btn" onclick="apSwitchTab('platformSettings')" id="ap-tab-platformSettings" role="tab">⚙️ إعدادات المنصة</button>
       <button class="ap-nav-btn" onclick="apSwitchTab('sectionchat')" id="ap-tab-sectionchat" role="tab">💬 محادثة الكورس</button>
       <button class="ap-nav-btn" onclick="apSwitchTab('branchadmins')" id="ap-tab-branchadmins" role="tab">🛡️ أدمن الكورسات</button>
@@ -8789,6 +8791,40 @@ window.checkBanStatus = async function(email) {
           </select>
         </div>
         <div id="cst-stats-body"><div class="ap-loading"><div class="spinner"></div> جاري التحميل...</div></div>
+      </div>
+
+      <!-- ═══════════════════ TAB: BRANCH SETTINGS (إعدادات الشعبة) ═══════════════════
+           جديد — يسمح لأدمن الشعبة بتعديل price / payment_method / payment_number
+           (على جدول site_sections) و subscription_days (عمود سيُضاف لاحقاً بـ SQL —
+           انظر printBranchSettingsSQL()). لا يوجد تنفيذ SQL تلقائي من هنا. -->
+      <div class="ap-tab-panel" id="ap-panel-branchsettings" role="tabpanel">
+        <div class="ap-section-heading">⚙️ إعدادات الشعبة</div>
+        <div id="bs-course-picker-wrap" style="margin-bottom:12px;">
+          <label class="ap-label">📚 الشعبة/الكورس</label>
+          <select id="bs-course-picker" class="ap-select" onchange="bsLoadSettings()">
+            <option value="">— جاري التحميل —</option>
+          </select>
+        </div>
+        <div id="bs-settings-body"><div class="ap-loading"><div class="spinner"></div> جاري التحميل...</div></div>
+      </div>
+
+      <!-- ═══════════════════ TAB: STUDENT LEVELS (مستويات الطلاب) ═══════════════════
+           جديد — يعرض اسم الطالب / نسبة الإنجاز / المستوى الحالي، اعتمادًا مؤقتًا على
+           جدول user_progress (بانتظار إنشاء جدول student_levels لاحقاً — راجع التعليق
+           أعلى دالة slLoadLevels()). -->
+      <div class="ap-tab-panel" id="ap-panel-studentlevels" role="tabpanel">
+        <div class="ap-section-heading">📈 مستويات الطلاب</div>
+        <div style="font-size:.72rem;color:#999;margin-bottom:10px;">
+          ⚠️ نسبة الإنجاز والمستوى محسوبة مؤقتاً من جدول <code>user_progress</code> (عدد الأقسام المكتملة ÷ إجمالي أقسام الكورس)،
+          حتى يتم إنشاء جدول <code>student_levels</code> مخصص لاحقاً.
+        </div>
+        <div id="sl-course-picker-wrap" style="margin-bottom:12px;">
+          <label class="ap-label">📚 الشعبة/الكورس</label>
+          <select id="sl-course-picker" class="ap-select" onchange="slLoadLevels()">
+            <option value="">— جاري التحميل —</option>
+          </select>
+        </div>
+        <div id="sl-levels-body"><div class="ap-loading"><div class="spinner"></div> جاري التحميل...</div></div>
       </div>
 
       <!-- ═══════════════════ TAB: PLATFORM SETTINGS ═══════════════════ -->
@@ -9871,13 +9907,23 @@ async function adminLoadContentList() {
     const { data, error } = await window.supabase.from(table).select('*').eq('section_id', sectionId).order(orderCol);
     if (error) throw error;
     _adminContentListCache = {};
+    // ✅ ترتيب المحتوى: نحتفظ بترتيب الـ IDs الحالي + جدول الترتيب (display_order/sort_order)
+    // لاستخدامه في أزرار "لأعلى"/"لأسفل" — بدون أي تعديل على منطق التحميل نفسه.
+    window._adminContentListOrder = (data || []).map(it => it.id);
+    window._adminContentListOrderKind = kind;
+    window._adminContentListOrderCol = orderCol;
+    window._adminContentListOrderTable = table;
     if (!data || data.length === 0) {
       listEl.innerHTML = '<div style="text-align:center;padding:20px;color:#aaa;font-size:.82rem">لا يوجد عناصر لهذا القسم بعد</div>';
       return;
     }
     const icons = { video:'🎬', text:'📝', link:'🔗', pdf:'📄', image:'🖼️', audio:'🎵', form:'📝' };
-    listEl.innerHTML = data.map(item => {
+    listEl.innerHTML = data.map((item, idx) => {
       _adminContentListCache[item.id] = item;
+      const isFirst = idx === 0;
+      const isLast  = idx === data.length - 1;
+      const orderBtns = '<button ' + (isFirst ? 'disabled' : '') + ' onclick="adminMoveContent(' + item.id + ',\'up\')" title="لأعلى" style="background:#eef3fb;border:1px solid #d5e0f0;color:#0a3d62;border-radius:8px;padding:5px 9px;cursor:' + (isFirst?'not-allowed':'pointer') + ';font-size:.75rem;opacity:' + (isFirst?'.4':'1') + ';font-family:inherit;">⬆️</button>' +
+        '<button ' + (isLast ? 'disabled' : '') + ' onclick="adminMoveContent(' + item.id + ',\'down\')" title="لأسفل" style="background:#eef3fb;border:1px solid #d5e0f0;color:#0a3d62;border-radius:8px;padding:5px 9px;cursor:' + (isLast?'not-allowed':'pointer') + ';font-size:.75rem;opacity:' + (isLast?'.4':'1') + ';font-family:inherit;">⬇️</button>';
       const typeKey = kind === 'resource' ? item.resource_type : item.content_type;
       const hasFile = !!item.file_path;
       const displayUrl = item.file_url || item.url || '';
@@ -9901,7 +9947,8 @@ async function adminLoadContentList() {
             ${fileBadge}
           </div>
         </div>
-        <div style="display:flex;gap:6px;flex-wrap:wrap;">
+        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
+          ${orderBtns}
           ${previewBtn}
           ${replaceBtn}
           <button onclick="adminDeleteContent(${item.id},'${kind}')" style="background:#fef0f0;border:1px solid #fcc;color:#e74c3c;border-radius:8px;padding:5px 10px;cursor:pointer;font-size:.75rem;white-space:nowrap;font-family:inherit;">🗑️ حذف</button>
@@ -9913,6 +9960,37 @@ async function adminLoadContentList() {
     if (typeof _showToast === 'function') _showToast('❌ فشل تحميل القائمة: ' + (e.message||''), 'error');
   }
 }
+
+// ✅ ترتيب المحتوى (section_content.display_order / section_resources.sort_order):
+// زر لأعلى/لأسفل يبدّل قيمة الترتيب مع العنصر المجاور مباشرة، ويحفظ فوراً في القاعدة.
+async function adminMoveContent(id, direction) {
+  const order = window._adminContentListOrder || [];
+  const kind  = window._adminContentListOrderKind || 'content';
+  const col   = window._adminContentListOrderCol || 'display_order';
+  const table = window._adminContentListOrderTable || 'section_content';
+  const idx = order.indexOf(id);
+  if (idx === -1) return;
+  const swapIdx = direction === 'up' ? idx - 1 : idx + 1;
+  if (swapIdx < 0 || swapIdx >= order.length) return;
+  const a = _adminContentListCache[id];
+  const b = _adminContentListCache[order[swapIdx]];
+  if (!a || !b) return;
+  const aOrder = a[col] || 0;
+  const bOrder = b[col] || 0;
+  try {
+    await Promise.all([
+      window.supabase.from(table).update({ [col]: bOrder }).eq('id', a.id),
+      window.supabase.from(table).update({ [col]: aOrder }).eq('id', b.id)
+    ]);
+    if (typeof _showToast === 'function') _showToast('✅ تم حفظ الترتيب', 'success');
+    if (window._dataCache && window._dataCache.content) window._dataCache.content = {};
+    adminLoadContentList();
+  } catch (e) {
+    console.error('[adminMoveContent]', e);
+    if (typeof _showToast === 'function') _showToast('❌ فشل حفظ الترتيب: ' + (e.message || ''), 'error');
+  }
+}
+window.adminMoveContent = adminMoveContent;
 
 // يفتح منتقي ملفات مؤقت لاستبدال ملف عنصر موجود بالفعل (content أو resource)
 function adminReplaceFile(id, kind) {
@@ -10041,15 +10119,17 @@ function _applyBranchAdminPanelGating() {
 
   var perms = window._branchAdminPerms || {};
 
-  // تاب "أدمن الكورسات" لأدمن المنصة دايمًا، أو لأدمن الكورس لو معاه can_manage_admins
-  // (Aug 2026 — Phase 3: كان مقصور على أدمن المنصة فقط، الآن يدعم التفويض)
+  // تاب "أدمن الكورسات" (= "إدارة الأدمنات") لأدمن المنصة دايمًا، أو لأدمن الكورس
+  // لو معاه صلاحية can_manage_admins — ده كان مكتوب في التعليق فوق كنية لكنه ماكانش
+  // مطبّق فعليًا (كان دايمًا isSuper فقط)، فتم تفعيله هنا فعليًا (طلب المستخدم).
   var baTab = document.getElementById('ap-tab-branchadmins');
-  if (baTab) baTab.style.display = isSuper ? '' : 'none';
+  if (baTab) baTab.style.display = (isSuper || (isBranch && perms.can_manage_admins)) ? '' : 'none';
 
   if (!isBranch) {
     // مستخدم عادي أو أدمن المنصة: أظهر كل التابات كما هي
     ['ap-tab-requests','ap-tab-usermgmt','ap-tab-users','ap-tab-messages','ap-tab-divsubs','ap-tab-content','ap-tab-dashboard',
-     'ap-tab-payments','ap-tab-sectionsmgmt','ap-tab-paths','ap-tab-ads','ap-tab-monthlystats','ap-tab-sectionchat','ap-tab-auditlog','ap-tab-notifications']
+     'ap-tab-payments','ap-tab-sectionsmgmt','ap-tab-paths','ap-tab-ads','ap-tab-monthlystats','ap-tab-sectionchat','ap-tab-auditlog','ap-tab-notifications',
+     'ap-tab-branchsettings','ap-tab-studentlevels']
       .forEach(function(id) { var el = document.getElementById(id); if (el) el.style.display = ''; });
     return;
   }
@@ -10078,6 +10158,13 @@ function _applyBranchAdminPanelGating() {
   if (csTab) csTab.style.display = '';
   var cstTab = document.getElementById('ap-tab-courseStats');
   if (cstTab) cstTab.style.display = '';
+  // ✅ جديد: "إعدادات الشعبة" (price/payment_method/payment_number/subscription_days)
+  // متاح لأدمن الكورس صاحب صلاحية إدارة المدفوعات أو الاشتراكات أو المواد.
+  var bsTab = document.getElementById('ap-tab-branchsettings');
+  if (bsTab) bsTab.style.display = (perms.can_manage_payments || perms.can_manage_subscriptions || perms.can_manage_materials) ? '' : 'none';
+  // ✅ جديد: "مستويات الطلاب" — متاح دائماً لأدمن الكورس (اطّلاع فقط، بدون كتابة)
+  var slTab = document.getElementById('ap-tab-studentlevels');
+  if (slTab) slTab.style.display = '';
   var psTab = document.getElementById('ap-tab-platformSettings');
   if (psTab) psTab.style.display = 'none';
 
@@ -10384,6 +10471,8 @@ function apSwitchTab(tab) {
   else if (tab === 'quizzes')  { if (typeof qzLoadMaterialsForAdmin === 'function') qzLoadMaterialsForAdmin(); }
   else if (tab === 'sectionchat') apLoadSectionChatTab();
   else if (tab === 'branchadmins') { baLoadGrades(); }
+  else if (tab === 'branchsettings') { if (typeof bsInit === 'function') bsInit(); }
+  else if (tab === 'studentlevels')  { if (typeof slInit === 'function') slInit(); }
 }
 
 // ── لوحة إحصائيات مقيَّدة بشعبة أدمن الكورس فقط (تقرأ من site_sections + section_content + subscriptions) ──
@@ -10669,7 +10758,7 @@ async function baLoadBranchAdmins() {
     var { data: adminRows, error } = await window.supabase
       .from('section_admins')
       .select('id, user_id, is_active, role, permissions')
-      .eq('section_id', branchId).eq('is_active', true).eq('role', 'admin');
+      .eq('section_id', branchId).eq('is_active', true).in('role', ['admin', 'owner']);
     if (error) throw error;
     var _baUserIds = Array.from(new Set((adminRows || []).map(function(r){ return r.user_id; }).filter(Boolean)));
     var _baProfMap = await _apGetProfilesMap(_baUserIds); // استعلام واحد مجمّع (in()) — لا N+1
@@ -10690,18 +10779,27 @@ async function baLoadBranchAdmins() {
     }
 
     el.innerHTML = '<div class="ap-table-wrap"><table class="ap-table"><thead><tr>'
-      + '<th>الشعبة</th><th>الأدمن الحالي</th><th>البريد الإلكتروني</th><th>الحالة</th><th>الإجراءات</th>'
+      + '<th>الشعبة</th><th>الأدمن الحالي</th><th>البريد الإلكتروني</th><th>الدور</th><th>الحالة</th><th>الإجراءات</th>'
       + '</tr></thead><tbody>' +
       window._baAdminsForBranch.map(function(row) {
         var p = row.profiles || {};
         var crumbEsc = _apEsc(crumb).replace(/'/g, "\\'");
+        var isOwner = row.role === 'owner';
+        var roleBadge = isOwner
+          ? '<span class="ap-badge admin" style="background:#fff4e0;color:#b9770e;">👑 Owner</span>'
+          : '<span class="ap-badge user">🛡️ Admin</span>';
+        var ownerBtn = isOwner
+          ? '<button class="ap-btn ap-btn-ghost" style="margin-left:4px;" onclick="baSetOwner(' + row.id + ',' + branchId + ', false)" title="نزع صفة Owner">👑 إلغاء Owner</button>'
+          : '<button class="ap-btn ap-btn-ghost" style="margin-left:4px;" onclick="baSetOwner(' + row.id + ',' + branchId + ', true)" title="تعيين هذا الأدمن كـ Owner للشعبة">👑 تعيين Owner</button>';
         return '<tr>'
           + '<td>' + _apEsc(crumb) + '</td>'
           + '<td>' + _apEsc(p.full_name || '—') + '</td>'
           + '<td class="ap-email-cell" style="font-size:.72rem;">' + _apEsc(p.email || '—') + '</td>'
+          + '<td>' + roleBadge + '</td>'
           + '<td><span class="ap-badge admin" style="background:#eafaf1;color:#17a589;">🟢 نشط</span></td>'
           + '<td style="white-space:nowrap;">'
             + '<button class="ap-btn ap-btn-primary" style="margin-left:4px;" onclick="baOpenAssignModal(' + branchId + ', \'' + crumbEsc + '\', \'change\')">🔄 تعديل</button>'
+            + ownerBtn
             + '<button class="ap-btn ap-btn-danger" onclick="baOpenRemoveConfirm(' + row.id + ', \'' + (p.id || row.user_id) + '\', \'' + _apEsc(p.full_name || p.email || 'الأدمن').replace(/'/g,"\\'") + '\', \'' + crumbEsc + '\')">❌ إزالة</button>'
           + '</td></tr>';
       }).join('') + '</tbody></table></div>';
@@ -10710,6 +10808,152 @@ async function baLoadBranchAdmins() {
       + '<br><span style="font-size:.7rem;color:#888;">إن كان الجدول section_admins غير موجود بعد، شغّل printAuditAndScopeSQL() في الـ Console.</span></div>';
   }
 }
+
+// ✅ جديد (طلب المستخدم — "تعيين Owner"): يحدّث section_admins.role إلى 'owner' أو
+// يرجعه 'admin'. Owner واحد فقط لكل شعبة — عند تعيين Owner جديد، أي Owner سابق لنفس
+// الشعبة يُرجَّع تلقائياً لـ 'admin' (لا يُحذف، فقط يتغيّر الدور). يتطلب تعديل SQL
+// (role IN ('admin','owner')) — راجع printOwnerRoleSQL(). لو العمود/القيد لسه مش
+// معدَّل، الحفظ هيفشل برسالة خطأ واضحة من الـ CHECK constraint الحالي.
+async function baSetOwner(adminRowId, sectionId, makeOwner) {
+  if (!window.supabase) return;
+  try {
+    if (makeOwner) {
+      // أي Owner سابق لنفس الشعبة يُرجَّع admin أولاً (Owner واحد فقط لكل شعبة)
+      var demote = await window.supabase.from('section_admins')
+        .update({ role: 'admin' }).eq('section_id', sectionId).eq('role', 'owner');
+      if (demote.error) throw demote.error;
+    }
+    var { error } = await window.supabase.from('section_admins')
+      .update({ role: makeOwner ? 'owner' : 'admin' }).eq('id', adminRowId);
+    if (error) throw error;
+    if (typeof _showToast === 'function') _showToast(makeOwner ? '✅ تم تعيينه Owner' : '✅ تم إلغاء صفة Owner', 'success');
+    baLoadBranchAdmins();
+  } catch (e) {
+    console.error('[baSetOwner]', e);
+    var hint = /check constraint|role/i.test(e.message || '') ? ' — شغّل printOwnerRoleSQL() في الـ Console أولاً.' : '';
+    if (typeof _showToast === 'function') _showToast('❌ فشل التعيين: ' + (e.message || '') + hint, 'error');
+    else alert('فشل التعيين: ' + (e.message || '') + hint);
+  }
+}
+window.baSetOwner = baSetOwner;
+
+// يطبع SQL لتوسيع section_admins.role ليشمل 'owner' — لا يُنفَّذ تلقائياً.
+// ⚠️ مهم جداً: مجرد توسيع الـ CHECK constraint وحده غير كافٍ إطلاقاً. تم اكتشاف
+// أن is_branch_admin_of() — الدالة المستخدمة في RLS لكل شيء تقريباً (المحتوى،
+// الاشتراكات، الاختبارات، الشات، section_admins نفسه) — وكذلك 3 دوال أخرى مباشرة
+// (branch_admin_can_manage_admins, get_section_admins_for_messaging,
+// get_or_create_direct_room) تفحص جميعها sa.role='admin' بمطابقة تامة فقط. لو
+// عُيّن Owner (role='owner') بدون تعديل هذه الدوال، هذا الـ Owner يفقد فعلياً كل
+// صلاحياته على مستوى RLS (رغم ظهوره "Owner" في الواجهة) — بالضبط الخطر المطلوب
+// تجنبه. لذلك هذا الـ SQL يعيد تعريف الدوال الأربعة بأمان (CREATE OR REPLACE،
+// بدون حذف بيانات) لتقبل role IN ('admin','owner') بدل role='admin'.
+window.printOwnerRoleSQL = function() {
+  var sql = `
+-- ================================================================
+-- OWNER ROLE — يسمح لـ section_admins.role بقيمة 'owner' بجانب 'admin'،
+-- ويحدّث كل الدوال التي تفحص sa.role='admin' لتقبل 'owner' أيضاً.
+-- (ADDITIVE، لا يحذف أي بيانات). شغّله مرة واحدة في Supabase SQL Editor
+-- قبل استخدام زر "تعيين Owner" — وإلا سيفقد الـ Owner صلاحياته الفعلية.
+-- ================================================================
+ALTER TABLE section_admins DROP CONSTRAINT IF EXISTS section_admins_role_check;
+ALTER TABLE section_admins ADD CONSTRAINT section_admins_role_check CHECK (role IN ('admin','owner'));
+
+-- 1) is_branch_admin_of — الدالة المركزية المستخدمة في معظم سياسات RLS
+CREATE OR REPLACE FUNCTION is_branch_admin_of(target_id BIGINT)
+RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER AS $$
+  WITH RECURSIVE ancestors AS (
+    SELECT id, parent_id FROM site_sections WHERE id = target_id
+    UNION ALL
+    SELECT s.id, s.parent_id FROM site_sections s JOIN ancestors a ON s.id = a.parent_id
+  )
+  SELECT EXISTS (
+    SELECT 1 FROM profiles p
+    WHERE p.id = auth.uid()
+      AND p.role = 'branch_admin'
+      AND p.managed_section_id IN (SELECT id FROM ancestors)
+  ) OR EXISTS (
+    SELECT 1 FROM section_admins sa
+    WHERE sa.user_id = auth.uid()
+      AND sa.is_active = true
+      AND sa.role IN ('admin','owner')
+      AND sa.section_id IN (SELECT id FROM ancestors)
+  );
+$$;
+
+-- 2) branch_admin_can_manage_admins — تفويض إدارة الأدمنز (manage_admins)
+CREATE OR REPLACE FUNCTION branch_admin_can_manage_admins(target_section_id BIGINT) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER AS $$
+ SELECT EXISTS(SELECT 1 FROM section_admins sa WHERE sa.user_id=auth.uid() AND sa.section_id=target_section_id AND sa.is_active=true AND sa.role IN ('admin','owner') AND EXISTS (SELECT 1 FROM profiles p WHERE p.id=sa.user_id AND p.role='branch_admin') AND COALESCE((sa.permissions->>'manage_admins')::boolean,false));
+$$;
+
+-- 3) get_section_admins_for_messaging — قائمة أدمنز الكورس المتاحين للمراسلة
+CREATE OR REPLACE FUNCTION public.get_section_admins_for_messaging(p_section_id BIGINT)
+RETURNS TABLE(user_id UUID, full_name TEXT, email TEXT, admin_type TEXT) LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
+BEGIN
+  RETURN QUERY
+  SELECT sa.user_id, COALESCE(p.full_name,p.email,'أدمن الكورس')::TEXT, p.email::TEXT, 'course'::TEXT
+  FROM section_admins sa JOIN profiles p ON p.id=sa.user_id
+  WHERE sa.section_id=p_section_id AND sa.is_active=true AND sa.role IN ('admin','owner')
+  ORDER BY COALESCE(p.full_name,p.email,'');
+  IF FOUND THEN RETURN; END IF;
+  RETURN QUERY
+  SELECT p.id, COALESCE(p.full_name,p.email,'أدمن المنصة')::TEXT, p.email::TEXT, 'platform'::TEXT
+  FROM profiles p WHERE p.role='admin'
+  ORDER BY COALESCE(p.full_name,p.email,'');
+END; $$;
+GRANT EXECUTE ON FUNCTION public.get_section_admins_for_messaging(BIGINT) TO authenticated;
+
+-- 4) get_or_create_direct_room — فتح محادثة خاصة مع أدمن الكورس
+CREATE OR REPLACE FUNCTION public.get_or_create_direct_room(p_other_user_id UUID,p_section_id BIGINT)
+RETURNS chat_rooms LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
+DECLARE
+  v_me UUID := auth.uid(); v_room chat_rooms; v_is_course_admin BOOLEAN := false; v_is_platform_admin BOOLEAN := false;
+BEGIN
+  IF v_me IS NULL OR p_other_user_id IS NULL OR p_other_user_id=v_me OR p_section_id IS NULL THEN RAISE EXCEPTION 'DENY ACCESS'; END IF;
+  SELECT EXISTS(SELECT 1 FROM section_admins sa WHERE sa.user_id=p_other_user_id AND sa.section_id=p_section_id AND sa.is_active=true AND sa.role IN ('admin','owner')) INTO v_is_course_admin;
+  SELECT EXISTS(SELECT 1 FROM profiles p WHERE p.id=p_other_user_id AND p.role='admin') INTO v_is_platform_admin;
+  IF NOT v_is_course_admin AND NOT v_is_platform_admin THEN RAISE EXCEPTION 'DENY ACCESS: الطرف المطلوب ليس أدمن الكورس أو أدمن المنصة'; END IF;
+  PERFORM pg_advisory_xact_lock(hashtextextended(LEAST(v_me::TEXT,p_other_user_id::TEXT)||':'||GREATEST(v_me::TEXT,p_other_user_id::TEXT)||':'||p_section_id::TEXT,0));
+  SELECT cr.* INTO v_room FROM chat_rooms cr
+  WHERE cr.section_id=p_section_id
+    AND cr.room_type='direct'
+    AND EXISTS(SELECT 1 FROM chat_room_participants x WHERE x.room_id=cr.id AND x.user_id=v_me)
+    AND EXISTS(SELECT 1 FROM chat_room_participants y WHERE y.room_id=cr.id AND y.user_id=p_other_user_id)
+  ORDER BY cr.id LIMIT 1;
+  IF FOUND THEN RETURN v_room; END IF;
+  INSERT INTO chat_rooms(room_name,section_id,room_type)
+  VALUES('محادثة خاصة - '||COALESCE((SELECT title FROM site_sections WHERE id=p_section_id),'الكورس'),p_section_id,'direct')
+  RETURNING * INTO v_room;
+  INSERT INTO chat_room_participants(room_id,user_id) VALUES(v_room.id,v_me),(v_room.id,p_other_user_id);
+  RETURN v_room;
+END; $$;
+GRANT EXECUTE ON FUNCTION public.get_or_create_direct_room(UUID,BIGINT) TO authenticated;
+
+-- 5) سياسات section_admins للـ branch_admin المُفوَّض بصلاحية manage_admins:
+-- كانت تسمح فقط بإدراج/تعديل صفوف role='admin' بمطابقة تامة — أي أن هذا
+-- الأدمن المُفوَّض لم يكن يستطيع أبداً تعيين/تعديل صف Owner عبر هذه السياسة.
+CREATE OR REPLACE FUNCTION branch_admin_can_manage_admins(target_section_id BIGINT) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER AS $$
+ SELECT EXISTS(SELECT 1 FROM section_admins sa WHERE sa.user_id=auth.uid() AND sa.section_id=target_section_id AND sa.is_active=true AND sa.role IN ('admin','owner') AND EXISTS (SELECT 1 FROM profiles p WHERE p.id=sa.user_id AND p.role='branch_admin') AND COALESCE((sa.permissions->>'manage_admins')::boolean,false));
+$$;
+DROP POLICY IF EXISTS section_admins_branch_insert ON section_admins;
+CREATE POLICY section_admins_branch_insert ON section_admins FOR INSERT WITH CHECK(
+ NOT is_admin() AND role IN ('admin','owner') AND branch_admin_can_manage_admins(section_id)
+);
+DROP POLICY IF EXISTS section_admins_branch_update ON section_admins;
+CREATE POLICY section_admins_branch_update ON section_admins FOR UPDATE USING(
+ NOT is_admin() AND role IN ('admin','owner') AND branch_admin_can_manage_admins(section_id)
+) WITH CHECK(
+ NOT is_admin() AND role IN ('admin','owner') AND branch_admin_can_manage_admins(section_id)
+);
+
+NOTIFY pgrst, 'reload schema';
+`;
+  console.group('%c👑 OWNER ROLE SQL — شغّله مرة واحدة قبل استخدام زر "تعيين Owner"', 'color:#b9770e;font-weight:bold;font-size:1.05em');
+  console.log(sql);
+  console.groupEnd();
+  if (navigator.clipboard) navigator.clipboard.writeText(sql).catch(function(){});
+  return sql;
+};
+console.log('%c[OwnerRole] اكتب printOwnerRoleSQL() في الـ Console لعرض + نسخ SQL دور Owner', 'color:#b9770e;font-weight:bold;font-size:12px');
 
 // ── فتح مودال تعيين/تغيير الأدمن ──
 function baOpenAssignModal(sectionId, sectionTitle, mode) {
@@ -10850,7 +11094,7 @@ async function baConfirmAssign() {
     //    القديم يفقد الصلاحية فوراً، دون حذف حسابه أو أي بيانات تخصه (فقط is_active=false)
     var { data: others, error: othErr } = await window.supabase
       .from('section_admins').select('id, user_id')
-      .eq('section_id', ctx.sectionId).eq('is_active', true).eq('role', 'admin')
+      .eq('section_id', ctx.sectionId).eq('is_active', true).in('role', ['admin', 'owner'])
       .neq('user_id', user.id);
     if (othErr) throw othErr;
     var cleanupWarning = '';
@@ -21718,12 +21962,44 @@ async function qzBeginAttempt(quizId) {
     // على الإطلاق — لا مباشرة الطلب ولا داخل window._qz بعد ذلك. لا يوجد
     // SELECT مباشر على جدول quiz_questions من الطالب بعد الآن — RLS تمنعه
     // بالكامل (raise/0 rows)، وليس فقط استبعاد أعمدة من جهة العميل.
+    // ✅ Logging تشخيصي كامل لاستدعاء get_quiz_questions_for_attempt — مجمّع داخل
+    // console.group('Quiz Attempt') لتسهيل تتبع الأخطاء، بصيغة موحّدة:
+    // { quiz_id, questions_count, first_question_id, rpc_status }
+    console.group('Quiz Attempt');
+    console.log('[RPC CALL] get_quiz_questions_for_attempt — params:', { p_quiz_id: quizId });
     var { data: questions, error } = await db.rpc('get_quiz_questions_for_attempt', { p_quiz_id: quizId });
-    if (error) throw error;
+    if (error) {
+      console.error('[RPC ERROR] get_quiz_questions_for_attempt failed', {
+        quiz_id: quizId,
+        questions_count: null,
+        first_question_id: null,
+        rpc_status: 'error',
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+        code: error.code
+      });
+      console.groupEnd();
+      throw error;
+    }
+    console.log('[RPC OK] get_quiz_questions_for_attempt', {
+      quiz_id: quizId,
+      questions_count: questions ? questions.length : 0,
+      first_question_id: (questions && questions.length) ? questions[0].id : null,
+      rpc_status: 'ok'
+    });
     if (!questions || !questions.length) {
+      console.warn('[RPC WARN] get_quiz_questions_for_attempt returned no questions', {
+        quiz_id: quizId,
+        questions_count: 0,
+        first_question_id: null,
+        rpc_status: 'empty'
+      });
+      console.groupEnd();
       body.innerHTML = '<div style="text-align:center;padding:20px;">هذا الاختبار لا يحتوي على أسئلة بعد.</div>';
       return;
     }
+    console.groupEnd();
     // لسؤال المطابقة: اليسار/اليمين جاهزان ومخلوطان من السيرفر بدون أي رابط بينهما
     questions.forEach(function(q) {
       if (q.question_type === 'matching') {
@@ -21746,7 +22022,11 @@ async function qzBeginAttempt(quizId) {
       document.getElementById('qz-student-timer').style.display = 'none';
     }
   } catch (e) {
-    console.error('[qzBeginAttempt]', e);
+    console.error('[qzBeginAttempt] get_quiz_questions_for_attempt — exception', {
+      params: { p_quiz_id: quizId },
+      message: e && e.message,
+      stack: e && e.stack
+    });
     body.innerHTML = '<div style="text-align:center;padding:20px;color:#c0392b;">❌ تعذر تحميل الأسئلة: ' + qzEsc(e.message) + '</div>';
   }
 }
@@ -22892,6 +23172,369 @@ NOTIFY pgrst, 'reload schema';`;
 
   // Ensure new tabs are included in initial gating even if role resolution happens later.
   window._courseAdminExtensionReady=true;
+})();
+</script>
+
+
+<script>
+// ════════════════════════════════════════════════════════════════
+// ✅ جديد (طلب المستخدم): تاب "⚙️ إعدادات الشعبة" — يسمح لأدمن الكورس بتعديل
+// price / payment_method / payment_number (site_sections) و subscription_days
+// (عمود جديد — راجع SQL في printBranchSettingsSQL()، لم يُنفَّذ تلقائياً).
+// ════════════════════════════════════════════════════════════════
+(function(){
+'use strict';
+
+window._bsSubDaysColumnMissing = false; // يُحدَّث في _bsGetCourseList حسب وجود العمود فعلياً
+
+async function _bsGetCourseList() {
+  var db = window.supabase;
+  if (!db) return [];
+  var withDaysCols = 'id,title,icon,price,payment_method,payment_number,requires_subscription,subscription_days';
+  var noDaysCols = 'id,title,icon,price,payment_method,payment_number,requires_subscription';
+  if (window._isBranchAdmin && !window._isSuperAdmin) {
+    var ids = Array.isArray(window._branchAdminOwnSectionIds) ? window._branchAdminOwnSectionIds.slice() : [];
+    if (!ids.length) {
+      var fb = Number(window._branchAdminCourseId || window._activeSectionId || 0);
+      if (fb > 0) ids = [fb];
+    }
+    if (!ids.length) return [];
+    var r = await db.from('site_sections').select(withDaysCols).in('id', ids).order('title');
+    if (r.error) {
+      // ✅ (طلب المستخدم): لو العمود subscription_days غير موجود بعد، لا نعرض
+      // Error — نعيد المحاولة بدون العمود ونعلّم window._bsSubDaysColumnMissing
+      window._bsSubDaysColumnMissing = true;
+      var rFallback = await db.from('site_sections').select(noDaysCols).in('id', ids).order('title');
+      if (rFallback.error) throw rFallback.error;
+      return rFallback.data || [];
+    }
+    window._bsSubDaysColumnMissing = false;
+    return r.data || [];
+  }
+  var r2 = await db.from('site_sections').select(withDaysCols).eq('requires_subscription', true).order('title');
+  if (r2.error) {
+    window._bsSubDaysColumnMissing = true;
+    var r2Fallback = await db.from('site_sections').select(noDaysCols).eq('requires_subscription', true).order('title');
+    if (r2Fallback.error) throw r2Fallback.error;
+    return r2Fallback.data || [];
+  }
+  window._bsSubDaysColumnMissing = false;
+  return r2.data || [];
+}
+
+window._bsCourseCache = {};
+
+window.bsInit = async function() {
+  var sel = document.getElementById('bs-course-picker');
+  var body = document.getElementById('bs-settings-body');
+  if (!sel || !body) return;
+  sel.innerHTML = '<option value="">— جاري التحميل —</option>';
+  body.innerHTML = '<div class="ap-loading"><div class="spinner"></div> جاري التحميل...</div>';
+  try {
+    var rows = await _bsGetCourseList();
+    window._bsCourseCache = {};
+    rows.forEach(function(r){ window._bsCourseCache[r.id] = r; });
+    if (!rows.length) {
+      sel.innerHTML = '<option value="">لا توجد شعب مُسندة إليك</option>';
+      body.innerHTML = '<div class="ap-empty">لا توجد شعب متاحة للتعديل.</div>';
+      return;
+    }
+    sel.innerHTML = rows.map(function(r){ return '<option value="' + r.id + '">' + (r.icon || '🎓') + ' ' + _apEsc(r.title) + '</option>'; }).join('');
+    sel.value = rows[0].id;
+    window.bsLoadSettings();
+  } catch (e) {
+    console.error('[bsInit]', e);
+    sel.innerHTML = '<option value="">تعذّر التحميل</option>';
+    body.innerHTML = '<div class="ap-empty" style="color:#e74c3c;">❌ ' + _apEsc(e.message || '') + '</div>';
+  }
+};
+
+window.bsLoadSettings = function() {
+  var sel = document.getElementById('bs-course-picker');
+  var body = document.getElementById('bs-settings-body');
+  if (!sel || !body) return;
+  var id = Number(sel.value || 0);
+  var s = window._bsCourseCache[id];
+  if (!s) { body.innerHTML = '<div class="ap-empty">اختر الشعبة أولاً.</div>'; return; }
+  // ✅ (طلب المستخدم): لو العمود subscription_days غير موجود بعد في قاعدة
+  // البيانات، لا نعرض خطأ ولا نترك الحقل فارغاً — نعرض قيمة افتراضية (30) مع
+  // رسالة توضيحية محايدة بدل رسالة الخطأ الحمراء السابقة.
+  var subDaysMissing = !!window._bsSubDaysColumnMissing;
+  var subDaysValue = s.subscription_days != null ? s.subscription_days : 30;
+  var subDaysNote = subDaysMissing
+    ? '<div style="font-size:.68rem;color:#8a8a8a;margin-top:4px;">يتطلب SQL migration للتفعيل</div>'
+    : '';
+  body.innerHTML =
+    '<div class="ap-form-grid" style="display:grid;gap:12px;max-width:480px;">' +
+      '<div><label class="ap-label">💰 السعر (price)</label>' +
+        '<input type="number" step="0.01" id="bs-f-price" class="ap-input" value="' + (s.price != null ? s.price : '') + '" placeholder="مثال: 100"></div>' +
+      '<div><label class="ap-label">💳 وسيلة الدفع (payment_method)</label>' +
+        '<select id="bs-f-pay-method" class="ap-select">' +
+          ['Vodafone Cash','Instapay','Fawry','Etisalat Cash','Orange Cash','Bank Transfer'].map(function(m){
+            return '<option value="' + m + '"' + (s.payment_method === m ? ' selected' : '') + '>' + m + '</option>';
+          }).join('') +
+        '</select></div>' +
+      '<div><label class="ap-label">🔢 رقم الدفع (payment_number)</label>' +
+        '<input type="text" id="bs-f-pay-number" class="ap-input" value="' + _apEsc(s.payment_number || '') + '" placeholder="مثال: 01000000000"></div>' +
+      '<div><label class="ap-label">📅 مدة الاشتراك بالأيام (subscription_days)</label>' +
+        '<input type="number" id="bs-f-sub-days" class="ap-input" value="' + subDaysValue + '" placeholder="مثال: 30">' +
+        subDaysNote + '</div>' +
+      '<div id="bs-save-msg" style="font-size:.8rem;"></div>' +
+      '<button class="ap-btn ap-btn-primary" onclick="bsSave()" style="justify-self:start;">💾 حفظ التعديلات</button>' +
+    '</div>';
+};
+
+window.bsSave = async function() {
+  var sel = document.getElementById('bs-course-picker');
+  var msgEl = document.getElementById('bs-save-msg');
+  var id = Number(sel && sel.value || 0);
+  if (!id) return;
+  var price = document.getElementById('bs-f-price').value;
+  var payMethod = document.getElementById('bs-f-pay-method').value;
+  var payNumber = document.getElementById('bs-f-pay-number').value.trim();
+  var subDays = document.getElementById('bs-f-sub-days').value;
+  var baseFields = {
+    price: price === '' ? null : Number(price),
+    payment_method: payMethod || null,
+    payment_number: payNumber || null
+  };
+  if (msgEl) { msgEl.style.color = '#888'; msgEl.textContent = '⏳ جاري الحفظ...'; }
+  // ✅ (طلب المستخدم): استعلامان منفصلان بدل واحد — عشان لو عمود subscription_days
+  // لسه غير موجود في قاعدة البيانات، فشل تحديثه لا يمنع أبداً حفظ
+  // price/payment_method/payment_number (الحقول المضمون وجودها). قبل ذلك كانا
+  // مُرسلين في تحديث واحد فيفشل الاثنان معاً برسالة خطأ عمود غير موجود.
+  try {
+    var { error: baseErr } = await window.supabase.from('site_sections').update(baseFields).eq('id', id);
+    if (baseErr) throw baseErr;
+    if (window._dataCache && window._dataCache.sections) window._dataCache.sections = {};
+
+    var subDaysMsg = '';
+    if (subDays !== '') {
+      var { error: subErr } = await window.supabase.from('site_sections')
+        .update({ subscription_days: Number(subDays) }).eq('id', id);
+      if (subErr) {
+        console.warn('[bsSave] subscription_days update failed (likely missing column):', subErr.message);
+        window._bsSubDaysColumnMissing = true;
+        subDaysMsg = ' — يتطلب SQL migration للتفعيل';
+      } else {
+        window._bsSubDaysColumnMissing = false;
+      }
+    }
+    if (msgEl) { msgEl.style.color = subDaysMsg ? '#d68910' : '#17a589'; msgEl.textContent = '✅ تم الحفظ بنجاح' + subDaysMsg; }
+    if (typeof _showToast === 'function') _showToast(subDaysMsg ? ('✅ تم الحفظ' + subDaysMsg) : '✅ تم حفظ إعدادات الشعبة', subDaysMsg ? 'info' : 'success');
+  } catch (e) {
+    console.error('[bsSave]', e);
+    if (msgEl) { msgEl.style.color = '#e74c3c'; msgEl.textContent = '❌ فشل الحفظ: ' + (e.message || ''); }
+    if (typeof _showToast === 'function') _showToast('❌ فشل الحفظ: ' + (e.message || ''), 'error');
+  }
+};
+
+// يطبع SQL لإضافة عمود subscription_days بأمان (IF NOT EXISTS) — لا يُنفَّذ تلقائياً.
+window.printBranchSettingsSQL = function() {
+  var sql = `
+-- ================================================================
+-- BRANCH SETTINGS — subscription_days column (ADDITIVE, no data loss)
+-- شغّله مرة واحدة في Supabase SQL Editor.
+-- ================================================================
+ALTER TABLE site_sections ADD COLUMN IF NOT EXISTS subscription_days INT;
+COMMENT ON COLUMN site_sections.subscription_days IS 'مدة الاشتراك بالأيام لهذه الشعبة/الكورس — يُستخدم لحساب end_date عند قبول الاشتراك';
+NOTIFY pgrst, 'reload schema';
+`;
+  console.group('%c⚙️ BRANCH SETTINGS SQL — شغّله مرة واحدة', 'color:#0a3d62;font-weight:bold;font-size:1.05em');
+  console.log(sql);
+  console.groupEnd();
+  if (navigator.clipboard) navigator.clipboard.writeText(sql).catch(function(){});
+  return sql;
+};
+console.log('%c[BranchSettings] اكتب printBranchSettingsSQL() في الـ Console لعرض + نسخ SQL عمود subscription_days', 'color:#0a3d62;font-weight:bold;font-size:12px');
+})();
+</script>
+
+
+<script>
+// ════════════════════════════════════════════════════════════════
+// ✅ جديد (طلب المستخدم): تاب "📈 مستويات الطلاب" — اسم الطالب / نسبة الإنجاز /
+// المستوى الحالي. يعتمد مؤقتاً على user_progress (is_completed لكل قسم داخل
+// نطاق الكورس) حتى يتم إنشاء جدول student_levels مخصص لاحقاً — راجع الطلب رقم 3.
+// النسبة = (عدد الدروس المكتملة للطالب) / (إجمالي الدروس داخل نطاق الكورس، من section_content) × 100
+// المستوى تصنيف مبدئي بسيط حسب النسبة (مبتدئ / متوسط / متقدم) — placeholder فقط.
+// ════════════════════════════════════════════════════════════════
+(function(){
+'use strict';
+
+async function _slGetCourseList() {
+  var db = window.supabase;
+  if (!db) return [];
+  if (window._isBranchAdmin && !window._isSuperAdmin) {
+    var ids = Array.isArray(window._branchAdminOwnSectionIds) ? window._branchAdminOwnSectionIds.slice() : [];
+    if (!ids.length) {
+      var fb = Number(window._branchAdminCourseId || window._activeSectionId || 0);
+      if (fb > 0) ids = [fb];
+    }
+    if (!ids.length) return [];
+    var r = await db.from('site_sections').select('id,title,icon').in('id', ids).order('title');
+    if (r.error) throw r.error;
+    return r.data || [];
+  }
+  var r2 = await db.from('site_sections').select('id,title,icon').eq('requires_subscription', true).order('title');
+  if (r2.error) throw r2.error;
+  return r2.data || [];
+}
+
+function _slLevelLabel(pct) {
+  if (pct >= 67) return { text: '🏆 متقدم', color: '#17a589' };
+  if (pct >= 34) return { text: '📘 متوسط', color: '#d68910' };
+  return { text: '🌱 مبتدئ', color: '#8e44ad' };
+}
+
+window.slInit = async function() {
+  var sel = document.getElementById('sl-course-picker');
+  var body = document.getElementById('sl-levels-body');
+  if (!sel || !body) return;
+  sel.innerHTML = '<option value="">— جاري التحميل —</option>';
+  body.innerHTML = '<div class="ap-loading"><div class="spinner"></div> جاري التحميل...</div>';
+  try {
+    var rows = await _slGetCourseList();
+    if (!rows.length) {
+      sel.innerHTML = '<option value="">لا توجد شعب مُسندة إليك</option>';
+      body.innerHTML = '<div class="ap-empty">لا توجد شعب متاحة.</div>';
+      return;
+    }
+    sel.innerHTML = rows.map(function(r){ return '<option value="' + r.id + '">' + (r.icon || '🎓') + ' ' + _apEsc(r.title) + '</option>'; }).join('');
+    sel.value = rows[0].id;
+    window.slLoadLevels();
+  } catch (e) {
+    console.error('[slInit]', e);
+    sel.innerHTML = '<option value="">تعذّر التحميل</option>';
+    body.innerHTML = '<div class="ap-empty" style="color:#e74c3c;">❌ ' + _apEsc(e.message || '') + '</div>';
+  }
+};
+
+window.slLoadLevels = async function() {
+  var sel = document.getElementById('sl-course-picker');
+  var body = document.getElementById('sl-levels-body');
+  if (!sel || !body) return;
+  var courseId = Number(sel.value || 0);
+  if (!courseId) { body.innerHTML = '<div class="ap-empty">اختر الشعبة أولاً.</div>'; return; }
+  body.innerHTML = '<div class="ap-loading"><div class="spinner"></div> جاري الحساب...</div>';
+  try {
+    var db = window.supabase;
+    // 1) كل أقسام الكورس (بما فيه الفروع)
+    var subtreeIds = typeof _computeSectionSubtree === 'function'
+      ? await _computeSectionSubtree(courseId)
+      : [courseId];
+
+    // ✅ (طلب المستخدم — يعتمد فقط على user_progress + section_content): "عدد الدروس
+    // الكلي" = عدد أقسام الشجرة التي تحتوي فعلياً على محتوى في section_content
+    // (وليس كل عقد site_sections، لأن بعضها مجلدات/مواد بلا محتوى مباشر، فيضخّم
+    // المقام بشكل غير صحيح). نجيب section_id مميّزة من section_content ضمن الشجرة.
+    var contentRes = await db.from('section_content').select('section_id').in('section_id', subtreeIds);
+    if (contentRes.error) throw contentRes.error;
+    var lessonSectionIds = Array.from(new Set((contentRes.data || []).map(function(r){ return r.section_id; }).filter(Boolean)));
+    var totalLessons = lessonSectionIds.length || 1;
+
+    // 2) الطلاب المشتركين في هذا الكورس (نفس مصدر تاب "👥 الطلاب" — RPC إن وُجدت، وإلا subscriptions مباشرة)
+    var students = [];
+    try {
+      var rpcRes = await db.rpc('admin_get_course_students', { p_section_id: courseId });
+      if (!rpcRes.error && rpcRes.data) students = rpcRes.data;
+    } catch (eRpc) { /* fallback أدناه */ }
+    if (!students.length) {
+      var subRes = await db.from('subscriptions').select('user_id,payment_status').eq('section_id', courseId).eq('payment_status', 'active');
+      if (subRes.error) throw subRes.error;
+      var uids = Array.from(new Set((subRes.data || []).map(function(r){ return r.user_id; }).filter(Boolean)));
+      if (uids.length) {
+        var profRes = await db.from('profiles').select('id,full_name,email').in('id', uids);
+        if (!profRes.error) {
+          students = uids.map(function(uid) {
+            var p = (profRes.data || []).find(function(x){ return x.id === uid; });
+            return { user_id: uid, full_name: p ? p.full_name : null, email: p ? p.email : null };
+          });
+        }
+      }
+    }
+    if (!students.length) {
+      body.innerHTML = '<div class="ap-empty">لا يوجد طلاب مشتركين في هذه الشعبة بعد.</div>';
+      return;
+    }
+
+    // 3) عدد الدروس المكتملة لكل طالب (is_completed=true في user_progress) — لكن فقط
+    //    ضمن أقسام تحتوي محتوى فعلي (lessonSectionIds)، لمطابقة المقام تماماً.
+    var studentIds = students.map(function(s){ return s.user_id || s.id; }).filter(Boolean);
+    var progRes = await db.from('user_progress').select('user_id,section_id,is_completed').in('user_id', studentIds).in('section_id', lessonSectionIds);
+    if (progRes.error) throw progRes.error;
+    var lessonSectionSet = {};
+    lessonSectionIds.forEach(function(id){ lessonSectionSet[id] = true; });
+    var completedCountByUser = {};
+    (progRes.data || []).forEach(function(row) {
+      if (!row.is_completed || !lessonSectionSet[row.section_id]) return;
+      completedCountByUser[row.user_id] = (completedCountByUser[row.user_id] || 0) + 1;
+    });
+
+    // ✅ (طلب المستخدم): ترتيب تنازلي حسب progress_percentage — أكثر الطلاب تقدماً أولاً.
+    var studentsWithPct = students.map(function(s) {
+      var uid = s.user_id || s.id;
+      var completed = Math.min(completedCountByUser[uid] || 0, totalLessons);
+      var pct = Math.min(100, Math.round((completed / totalLessons) * 100));
+      return { s: s, uid: uid, completed: completed, pct: pct };
+    }).sort(function(a, b) { return b.pct - a.pct; });
+
+    var rowsHtml = studentsWithPct.map(function(row) {
+      var name = row.s.full_name || row.s.email || ('#' + String(row.uid).slice(0, 8));
+      var lvl = _slLevelLabel(row.pct);
+      return '<tr>' +
+        '<td>' + _apEsc(name) + '</td>' +
+        '<td style="text-align:center;">' + row.completed + '</td>' +
+        '<td style="text-align:center;">' + totalLessons + '</td>' +
+        '<td><div style="background:#eef3fb;border-radius:8px;overflow:hidden;height:16px;min-width:100px;position:relative;">' +
+          '<div style="background:linear-gradient(135deg,var(--primary),var(--teal));height:100%;width:' + row.pct + '%;"></div>' +
+          '<span style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:.65rem;font-weight:700;color:#0a3d62;">' + row.pct + '%</span>' +
+        '</div></td>' +
+        '<td><span style="color:' + lvl.color + ';font-weight:700;font-size:.78rem;">' + lvl.text + '</span></td>' +
+        '</tr>';
+    }).join('');
+
+    body.innerHTML = '<div class="ap-table-wrap"><table class="ap-table"><thead><tr>' +
+      '<th>اسم الطالب</th><th>الدروس المكتملة</th><th>إجمالي الدروس</th><th>نسبة الإنجاز</th><th>المستوى الحالي</th>' +
+      '</tr></thead><tbody>' + rowsHtml + '</tbody></table></div>';
+  } catch (e) {
+    console.error('[slLoadLevels]', e);
+    body.innerHTML = '<div class="ap-empty" style="color:#e74c3c;">❌ ' + _apEsc(e.message || '') + '</div>';
+  }
+};
+
+// يطبع SQL لإنشاء جدول student_levels المخصص مستقبلاً (لم يُنفَّذ تلقائياً، ولا يُستخدم بعد في الواجهة).
+window.printStudentLevelsSQL = function() {
+  var sql = `
+-- ================================================================
+-- STUDENT_LEVELS — جدول مستقبلي مخصص (ADDITIVE) لتخزين مستوى الطالب
+-- بدل الاعتماد المؤقت على حساب مشتق من user_progress في الواجهة.
+-- شغّله فقط لو قررتم اعتماد نظام مستويات صريح بدل الحساب التلقائي.
+-- ================================================================
+CREATE TABLE IF NOT EXISTS student_levels (
+  id           BIGSERIAL PRIMARY KEY,
+  user_id      UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  section_id   BIGINT NOT NULL REFERENCES site_sections(id) ON DELETE CASCADE,
+  level        TEXT NOT NULL DEFAULT 'beginner' CHECK (level IN ('beginner','intermediate','advanced')),
+  completion_percent INT NOT NULL DEFAULT 0 CHECK (completion_percent BETWEEN 0 AND 100),
+  updated_at   TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE (user_id, section_id)
+);
+CREATE INDEX IF NOT EXISTS idx_student_levels_section ON student_levels(section_id);
+ALTER TABLE student_levels ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "student_levels_admin_all" ON student_levels;
+DROP POLICY IF EXISTS "student_levels_self_read" ON student_levels;
+CREATE POLICY "student_levels_admin_all" ON student_levels FOR ALL USING (is_admin() OR is_branch_admin_of(section_id)) WITH CHECK (is_admin() OR is_branch_admin_of(section_id));
+CREATE POLICY "student_levels_self_read" ON student_levels FOR SELECT USING (user_id = auth.uid());
+NOTIFY pgrst, 'reload schema';
+`;
+  console.group('%c📈 STUDENT_LEVELS SQL (اختياري/مستقبلي) — لم يُستخدم في الواجهة بعد', 'color:#8e44ad;font-weight:bold;font-size:1.05em');
+  console.log(sql);
+  console.groupEnd();
+  if (navigator.clipboard) navigator.clipboard.writeText(sql).catch(function(){});
+  return sql;
+};
+console.log('%c[StudentLevels] اكتب printStudentLevelsSQL() في الـ Console لعرض + نسخ SQL جدول student_levels (اختياري)', 'color:#8e44ad;font-weight:bold;font-size:12px');
 })();
 </script>
 
@@ -24148,14 +24791,21 @@ DECLARE
   p RECORD;
   previous_section BIGINT;
 BEGIN
-  IF u IS NULL OR p_section IS NULL THEN RETURN false; END IF;
+  IF p_section IS NULL THEN RETURN false; END IF;
 
-  IF public.is_admin() OR public.is_branch_admin_of(p_section) THEN
+  -- ✅ إصلاح (مراجعة نهائية): كان الفحص القديم يرجع false فوراً لو u IS NULL
+  -- (زائر غير مسجّل دخول) *قبل* حتى فحص الفصل المجاني الأول — فكان الزائر
+  -- يُمنع من رؤية الفصل المجاني الأول بالكامل رغم أن الواجهة الأمامية تسمح
+  -- له بالدخول. الفصل المجاني الأول الآن يُفحص أولاً، بدون أي شرط على تسجيل
+  -- الدخول، لأنه مجاني للجميع بالتعريف (زائر أو مستخدم مسجّل، بلا فرق).
+  IF public.is_first_free_learning_path_item(p_section) THEN
     RETURN true;
   END IF;
 
-  -- أول عنصر فعلي في أي Learning Path نشط = مجاني بدون اشتراك.
-  IF public.is_first_free_learning_path_item(p_section) THEN
+  -- كل ما بعد الفصل المجاني يتطلب مستخدماً مسجّل دخول على الأقل.
+  IF u IS NULL THEN RETURN false; END IF;
+
+  IF public.is_admin() OR public.is_branch_admin_of(p_section) THEN
     RETURN true;
   END IF;
 
@@ -24202,13 +24852,18 @@ $$;
 
 DROP POLICY IF EXISTS content_student_read ON public.section_content;
 CREATE POLICY content_student_read ON public.section_content
-FOR SELECT TO authenticated
+FOR SELECT TO public
 USING (public.can_access_learning_section(section_id));
 
 DROP POLICY IF EXISTS resources_student_read ON public.section_resources;
 CREATE POLICY resources_student_read ON public.section_resources
-FOR SELECT TO authenticated
+FOR SELECT TO public
 USING (public.can_access_learning_section(section_id));
+
+-- ✅ لازم يكون anon قادراً على تنفيذ الدالتين (SECURITY DEFINER) عشان يستفيد
+-- زائر غير مسجّل دخول من سياسة FOR SELECT TO public أعلاه فعلياً.
+GRANT EXECUTE ON FUNCTION public.is_first_free_learning_path_item(BIGINT) TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.can_access_learning_section(BIGINT) TO anon, authenticated;
 
 -- إزالة أي سياسات SELECT عامة قديمة بدون فتح الجداول بالكامل.
 DROP POLICY IF EXISTS content_read_all ON public.section_content;
