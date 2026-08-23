@@ -25696,5 +25696,94 @@ SELECT 'QUIZ RPC FIX OK' AS result;`;
   };
 })();
 </script>
+
+<!-- ================= V8 HOTFIX: QUIZ RPC + BRANCH ADMIN AUTOCOMPLETE ================= -->
+<script>
+(function(){
+'use strict';
+/* Always expose the quiz SQL helper, even if an earlier patch fails. */
+window.printQuizRpcFixSQL = window.printQuizRpcFixSQL || function(){
+var sql=String.raw`DROP FUNCTION IF EXISTS public.get_quiz_questions_for_attempt(bigint);
+DROP FUNCTION IF EXISTS public.get_quiz_questions_for_attempt(integer);
+CREATE FUNCTION public.get_quiz_questions_for_attempt(p_quiz_id bigint)
+RETURNS TABLE(id bigint, question text, question_type text, option_1 text, option_2 text, option_3 text, option_4 text, points numeric, matching_left jsonb, matching_right jsonb)
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
+BEGIN
+ IF auth.uid() IS NULL THEN RAISE EXCEPTION 'DENY ACCESS'; END IF;
+ RETURN QUERY SELECT q.id::bigint,q.question::text,COALESCE(q.question_type,'multiple_choice')::text,q.option_1::text,q.option_2::text,q.option_3::text,q.option_4::text,COALESCE(q.points,1)::numeric,
+ CASE WHEN COALESCE(q.question_type,'')='matching' THEN COALESCE((SELECT jsonb_agg(x->>'left') FROM jsonb_array_elements(COALESCE(q.matching_data,'[]'::jsonb)) x),'[]'::jsonb) ELSE '[]'::jsonb END,
+ CASE WHEN COALESCE(q.question_type,'')='matching' THEN COALESCE((SELECT jsonb_agg(x->>'right') FROM jsonb_array_elements(COALESCE(q.matching_data,'[]'::jsonb)) x),'[]'::jsonb) ELSE '[]'::jsonb END
+ FROM public.quiz_questions q WHERE q.quiz_id::bigint=p_quiz_id ORDER BY q.id::bigint;
+END; $$;
+GRANT EXECUTE ON FUNCTION public.get_quiz_questions_for_attempt(bigint) TO authenticated;
+NOTIFY pgrst,'reload schema';
+SELECT 'QUIZ RPC FIX OK' AS result;`;
+console.log(sql); navigator.clipboard&&navigator.clipboard.writeText(sql).catch(function(){}); return sql;
+};
+
+window.printBranchAdminFixSQL=function(){
+var sql=String.raw`CREATE OR REPLACE FUNCTION public.branch_search_platform_users(p_section_id bigint,p_query text,p_limit integer DEFAULT 10)
+RETURNS TABLE(user_id uuid,full_name text,email text)
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
+BEGIN
+ IF auth.uid() IS NULL THEN RAISE EXCEPTION 'DENY ACCESS'; END IF;
+ IF NOT public.is_admin() AND NOT EXISTS(SELECT 1 FROM public.section_admins sa WHERE sa.section_id=p_section_id AND sa.user_id=auth.uid() AND COALESCE(sa.is_primary,false)=true) THEN
+   RAISE EXCEPTION 'ONLY PRIMARY ADMIN CAN SEARCH USERS';
+ END IF;
+ RETURN QUERY
+ SELECT p.id::uuid,p.full_name::text,p.email::text
+ FROM public.profiles p
+ WHERE length(trim(COALESCE(p_query,''))) >= 1
+ AND (COALESCE(p.full_name,'') ILIKE '%'||trim(p_query)||'%' OR COALESCE(p.email,'') ILIKE '%'||trim(p_query)||'%')
+ ORDER BY p.full_name NULLS LAST,p.email NULLS LAST
+ LIMIT LEAST(GREATEST(COALESCE(p_limit,10),1),20);
+END; $$;
+GRANT EXECUTE ON FUNCTION public.branch_search_platform_users(bigint,text,integer) TO authenticated;
+NOTIFY pgrst,'reload schema';
+SELECT 'BRANCH ADMIN SEARCH FIX OK' AS result;`;
+console.log(sql); navigator.clipboard&&navigator.clipboard.writeText(sql).catch(function(){}); return sql;
+};
+
+var selectedAdmin=null, timer=null;
+async function searchUsers(){
+ var input=document.getElementById('branch-admin-user');
+ var sel=document.getElementById('branch-admins-course');
+ var box=document.getElementById('branch-admin-search-results');
+ if(!input||!sel||!box||!window.supabase)return;
+ var q=input.value.trim(), sid=Number(sel.value); selectedAdmin=null;
+ if(!sid){box.innerHTML='<div class="ap-empty">اختر الشعبة أولاً.</div>';box.style.display='block';return;}
+ if(q.length<1){box.style.display='none';return;}
+ box.style.display='block';box.innerHTML='<div class="ap-empty">⏳ جاري البحث...</div>';
+ var r=await window.supabase.rpc('branch_search_platform_users',{p_section_id:sid,p_query:q,p_limit:10});
+ if(r.error){box.innerHTML='<div class="ap-empty">❌ '+String(r.error.message||r.error)+'</div>';return;}
+ var rows=r.data||[];
+ if(!rows.length){box.innerHTML='<div class="ap-empty">لا يوجد حساب مسجل مطابق.</div>';return;}
+ box.innerHTML=rows.map(function(x,i){return '<button type="button" class="ap-card branch-user-result" data-i="'+i+'" style="width:100%;text-align:right;padding:9px;margin:3px 0;cursor:pointer;background:rgba(255,255,255,.04);color:inherit;border:1px solid rgba(255,255,255,.1)"><b>'+esc(x.full_name||'بدون اسم')+'</b><br><small>'+esc(x.email||'')+'</small></button>';}).join('');
+ rows.forEach(function(x,i){box.querySelector('[data-i="'+i+'"]').onclick=function(){selectedAdmin=x;input.value=(x.full_name||x.email||'');box.style.display='none';};});
+}
+function esc(v){var d=document.createElement('div');d.textContent=String(v||'');return d.innerHTML;}
+function upgradeAdminUI(){
+ var input=document.getElementById('branch-admin-user');
+ if(!input||input.dataset.autocompleteReady)return;
+ input.dataset.autocompleteReady='1'; input.placeholder='اكتب اسم أو إيميل الحساب المسجل...'; input.autocomplete='off';
+ var box=document.createElement('div');box.id='branch-admin-search-results';box.style.cssText='display:none;max-height:260px;overflow:auto;margin-top:6px;border-radius:10px;';
+ input.parentNode.parentNode.insertBefore(box,input.parentNode.nextSibling);
+ input.addEventListener('input',function(){clearTimeout(timer);timer=setTimeout(searchUsers,250);});
+ var old=window.branchAdminsAdd;
+ window.branchAdminsAdd=async function(){
+   var sid=Number((document.getElementById('branch-admins-course')||{}).value);
+   if(!sid)return alert('اختر الشعبة أولاً.');
+   if(!selectedAdmin)return alert('ابحث عن الحساب واختره من القائمة أولاً.');
+   var r=await window.supabase.rpc('branch_add_secondary_admin',{p_section_id:sid,p_user_id:selectedAdmin.user_id});
+   if(r.error)return alert('❌ '+r.error.message);
+   input.value='';selectedAdmin=null;box.style.display='none';await window.branchAdminsLoad();alert('✅ تم إضافة الأدمن المساعد');
+ };
+}
+document.addEventListener('DOMContentLoaded',function(){setTimeout(upgradeAdminUI,1200);});
+setInterval(upgradeAdminUI,1500);
+console.log('[V8 HOTFIX] printQuizRpcFixSQL() + printBranchAdminFixSQL() جاهزان');
+})();
+</script>
+
 </body>
 </html>
