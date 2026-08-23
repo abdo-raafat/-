@@ -8957,6 +8957,11 @@ window.checkBanStatus = async function(email) {
             <label class="ap-label">💬 وصف (اختياري)</label>
             <input id="admin-content-desc" type="text" placeholder="وصف مختصر..." class="ap-input">
           </div>
+          <div class="ap-field">
+            <label class="ap-label">🔢 ترتيب العرض (اختياري)</label>
+            <input id="admin-content-order" type="number" placeholder="اتركه فارغاً ليُضاف في آخر الترتيب" class="ap-input">
+            <div style="font-size:.7rem;color:#888;margin-top:3px;">رقم أصغر = يظهر أولاً. تقدر تعدّل الترتيب لاحقاً من تبويب "المحتوى الحالي" بأزرار ▲▼.</div>
+          </div>
           <button onclick="adminSaveContent()" class="ap-btn ap-btn-primary" style="width:100%;justify-content:center;padding:13px;font-size:.9rem;">💾 حفظ المحتوى</button>
           <div id="admin-msg" style="margin-top:10px;text-align:center;font-size:.82rem;min-height:20px;"></div>
         </div>
@@ -9084,6 +9089,9 @@ window.checkBanStatus = async function(email) {
                البيانات فعلاً (مش JS ثابت) — كلها مفعّلة افتراضياً = نفس السلوك القديم. -->
           <div class="ap-field" style="margin-top:4px;">
             <label class="ap-label">🔐 صلاحيات هذا الأدمن</label>
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:.78rem;font-weight:700;margin-bottom:6px;color:var(--primary);">
+              <input type="checkbox" id="ba-perm-select-all" onchange="baToggleAllPerms(this.checked)"> ✅ تحديد كل الصلاحيات (كل الصلاحيات دي)
+            </label>
             <div id="ba-perm-checks" style="display:grid;grid-template-columns:1fr 1fr;gap:6px 10px;font-size:.78rem;">
               <label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" data-perm="can_view_stats" checked> عرض الإحصائيات</label>
               <label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" data-perm="can_manage_materials" checked> إدارة المواد</label>
@@ -9790,6 +9798,8 @@ async function adminSaveContent() {
   const url       = document.getElementById('admin-content-url').value.trim();
   const body      = document.getElementById('admin-content-body').value.trim();
   const desc      = document.getElementById('admin-content-desc').value.trim();
+  const orderRaw  = document.getElementById('admin-content-order') ? document.getElementById('admin-content-order').value.trim() : '';
+  const customOrder = (orderRaw !== '' && !isNaN(Number(orderRaw))) ? Number(orderRaw) : null;
   const msgEl     = document.getElementById('admin-msg');
   const srcMode   = window._adminContentSrcMode === 'file' ? 'file' : 'url';
   const saveBtn   = document.querySelector('#admin-tab-add button[onclick="adminSaveContent()"]');
@@ -9835,7 +9845,7 @@ async function adminSaveContent() {
         file_name: fileFields.file_name,
         file_type: fileFields.file_type,
         file_size: fileFields.file_size,
-        sort_order: 99,
+        sort_order: customOrder !== null ? customOrder : 99,
         sub_order: 0
       };
       ({ error } = await window.supabase.from('section_resources').insert([resRecord]));
@@ -9852,7 +9862,9 @@ async function adminSaveContent() {
         file_name: fileFields.file_name,
         file_type: fileFields.file_type,
         file_size: fileFields.file_size,
-        display_order: Date.now()
+        // ✅ (طلب المستخدم): تحديد ترتيب المحتوى وقت الإضافة نفسها — لو الأدمن
+        // ما حددش رقماً، يفضل نفس السلوك القديم (يُضاف في آخر الترتيب تلقائياً).
+        display_order: customOrder !== null ? customOrder : Date.now()
       };
       ({ error } = await window.supabase.from('section_content').insert([contentRecord]));
     }
@@ -9864,6 +9876,7 @@ async function adminSaveContent() {
     document.getElementById('admin-content-url').value   = '';
     document.getElementById('admin-content-body').value  = '';
     document.getElementById('admin-content-desc').value  = '';
+    if (document.getElementById('admin-content-order')) document.getElementById('admin-content-order').value = '';
     document.getElementById('admin-content-file').value  = '';
     document.getElementById('admin-file-preview').innerHTML = '';
     _adminContentPendingFile = null;
@@ -10919,7 +10932,7 @@ $$;
 
 -- 2) branch_admin_can_manage_admins — تفويض إدارة الأدمنز (manage_admins)
 CREATE OR REPLACE FUNCTION branch_admin_can_manage_admins(target_section_id BIGINT) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER AS $$
- SELECT EXISTS(SELECT 1 FROM section_admins sa WHERE sa.user_id=auth.uid() AND sa.section_id=target_section_id AND sa.is_active=true AND sa.role IN ('admin','owner') AND EXISTS (SELECT 1 FROM profiles p WHERE p.id=sa.user_id AND p.role='branch_admin') AND COALESCE((sa.permissions->>'manage_admins')::boolean,false));
+ SELECT EXISTS(SELECT 1 FROM section_admins sa WHERE sa.user_id=auth.uid() AND sa.section_id=target_section_id AND sa.is_active=true AND sa.role IN ('admin','owner') AND EXISTS (SELECT 1 FROM profiles p WHERE p.id=sa.user_id AND p.role='branch_admin') AND COALESCE((sa.permissions->>'can_manage_admins')::boolean,false));
 $$;
 
 -- 3) get_section_admins_for_messaging — قائمة أدمنز الكورس المتاحين للمراسلة
@@ -10933,7 +10946,7 @@ BEGIN
   ORDER BY COALESCE(p.full_name,p.email,'');
   IF FOUND THEN RETURN; END IF;
   RETURN QUERY
-  SELECT p.id, COALESCE(p.full_name,p.email,'أدمن المنصة')::TEXT, p.email::TEXT, 'platform'::TEXT
+  SELECT p.id, COALESCE(p.full_name,p.email,'أدمن الشعبة')::TEXT, p.email::TEXT, 'platform'::TEXT
   FROM profiles p WHERE p.role='admin'
   ORDER BY COALESCE(p.full_name,p.email,'');
 END; $$;
@@ -10969,7 +10982,7 @@ GRANT EXECUTE ON FUNCTION public.get_or_create_direct_room(UUID,BIGINT) TO authe
 -- كانت تسمح فقط بإدراج/تعديل صفوف role='admin' بمطابقة تامة — أي أن هذا
 -- الأدمن المُفوَّض لم يكن يستطيع أبداً تعيين/تعديل صف Owner عبر هذه السياسة.
 CREATE OR REPLACE FUNCTION branch_admin_can_manage_admins(target_section_id BIGINT) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER AS $$
- SELECT EXISTS(SELECT 1 FROM section_admins sa WHERE sa.user_id=auth.uid() AND sa.section_id=target_section_id AND sa.is_active=true AND sa.role IN ('admin','owner') AND EXISTS (SELECT 1 FROM profiles p WHERE p.id=sa.user_id AND p.role='branch_admin') AND COALESCE((sa.permissions->>'manage_admins')::boolean,false));
+ SELECT EXISTS(SELECT 1 FROM section_admins sa WHERE sa.user_id=auth.uid() AND sa.section_id=target_section_id AND sa.is_active=true AND sa.role IN ('admin','owner') AND EXISTS (SELECT 1 FROM profiles p WHERE p.id=sa.user_id AND p.role='branch_admin') AND COALESCE((sa.permissions->>'can_manage_admins')::boolean,false));
 $$;
 DROP POLICY IF EXISTS section_admins_branch_insert ON section_admins;
 CREATE POLICY section_admins_branch_insert ON section_admins FOR INSERT WITH CHECK(
@@ -11173,6 +11186,15 @@ async function baConfirmAssign() {
     confirmBtn.disabled = false;
     logAudit('assign_branch_admin', 'branch_admin', user.id, (user.full_name || user.email || user.id), ctx.sectionId, 'failure', { error: err.message });
   }
+}
+
+// ✅ (طلب المستخدم): زر واحد يفعّل كل صلاحيات الأدمن الجديد دفعة واحدة،
+// بما فيها صلاحية "تعيين أدمن آخر" الحساسة — ده اختيار الأدمن الحالي
+// الواعي وقت التعيين، مش تغييراً في الإعداد الافتراضي الآمن للنظام.
+function baToggleAllPerms(checked) {
+  document.querySelectorAll('#ba-perm-checks input[type="checkbox"]').forEach(function(cb) {
+    cb.checked = checked;
+  });
 }
 
 // ── مودال تأكيد الإزالة (نص واضح بالاسم والشعبة، وليس confirm() المتصفح) ──
@@ -13546,7 +13568,7 @@ CREATE INDEX IF NOT EXISTS idx_quiz_questions_order ON quiz_questions(quiz_id,di
 
 -- 4) أمان branch_admin على section_admins: نفس الكورس فقط، ولا يمنح صلاحيات أعلى من caller
 CREATE OR REPLACE FUNCTION branch_admin_can_manage_admins(target_section_id BIGINT) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER AS $$
- SELECT EXISTS(SELECT 1 FROM section_admins sa WHERE sa.user_id=auth.uid() AND sa.section_id=target_section_id AND sa.is_active=true AND sa.role='admin' AND EXISTS (SELECT 1 FROM profiles p WHERE p.id=sa.user_id AND p.role='branch_admin') AND COALESCE((sa.permissions->>'manage_admins')::boolean,false));
+ SELECT EXISTS(SELECT 1 FROM section_admins sa WHERE sa.user_id=auth.uid() AND sa.section_id=target_section_id AND sa.is_active=true AND sa.role='admin' AND EXISTS (SELECT 1 FROM profiles p WHERE p.id=sa.user_id AND p.role='branch_admin') AND COALESCE((sa.permissions->>'can_manage_admins')::boolean,false));
 $$;
 DROP POLICY IF EXISTS section_admins_branch_insert ON section_admins;
 CREATE POLICY section_admins_branch_insert ON section_admins FOR INSERT WITH CHECK(
@@ -16901,7 +16923,7 @@ BEGIN
   IF FOUND THEN RETURN; END IF;
   -- لا يوجد أدمن للكورس: أدمن المنصة يصبح المسؤول تلقائياً.
   RETURN QUERY
-  SELECT p.id, COALESCE(p.full_name,p.email,'أدمن المنصة')::TEXT, p.email::TEXT, 'platform'::TEXT
+  SELECT p.id, COALESCE(p.full_name,p.email,'أدمن الشعبة')::TEXT, p.email::TEXT, 'platform'::TEXT
   FROM profiles p WHERE p.role='admin' ORDER BY COALESCE(p.full_name,p.email,'');
 END; $$;
 GRANT EXECUTE ON FUNCTION get_section_admins_for_messaging(BIGINT) TO authenticated;
@@ -17100,7 +17122,7 @@ BEGIN
   IF FOUND THEN RETURN; END IF;
   -- لا يوجد أدمن مُعيَّن لهذا الكورس تحديدًا: أدمن المنصة يصبح المسؤول تلقائيًا.
   RETURN QUERY
-  SELECT p.id, COALESCE(p.full_name, p.email, 'أدمن المنصة')::TEXT, p.email::TEXT, 'platform'::TEXT
+  SELECT p.id, COALESCE(p.full_name, p.email, 'أدمن الشعبة')::TEXT, p.email::TEXT, 'platform'::TEXT
   FROM profiles p WHERE p.role = 'admin' ORDER BY COALESCE(p.full_name, p.email, '');
 END; $$;
 GRANT EXECUTE ON FUNCTION get_section_admins_for_messaging(BIGINT) TO authenticated;
@@ -18270,11 +18292,17 @@ window.diagnose = async function() {
 }
 @keyframes pm-pop { from{transform:scale(.92);opacity:0;} to{transform:scale(1);opacity:1;} }
 .pm-close {
-  position: absolute; top: 14px; left: 14px;
-  width: 32px; height: 32px; border-radius: 50%; border: none;
-  background: #eef3f8; color: #5a6b7d; font-weight: 900; cursor: pointer; font-size: .9rem;
+  /* ✅ FIX (طلب المستخدم): الزر كان بلون فاتح جداً (#eef3f8) على خلفية بيضاء
+     فيختفي عملياً على شاشات الموبايل. الآن لون واضح + ظل + z-index مرتفع
+     يضمن ظهوره فوق أي محتوى آخر داخل المودال. */
+  position: absolute; top: 12px; left: 12px; z-index: 5;
+  width: 34px; height: 34px; border-radius: 50%;
+  border: 1px solid rgba(10,61,98,.18);
+  background: #ffffff; color: #0a3d62; font-weight: 900; cursor: pointer; font-size: 1rem;
+  box-shadow: 0 2px 8px rgba(10,61,98,.18);
+  display: flex; align-items: center; justify-content: center;
 }
-.pm-close:hover { background:#e2ebf3; }
+.pm-close:hover { background:#eaf4fb; }
 .pm-icon { font-size: 2.6rem; margin-bottom: 4px; }
 .pm-title { font-size: 1.08rem; font-weight: 900; color: var(--primary); margin-bottom: 12px; line-height: 1.5; }
 .pm-price-badge {
@@ -19718,13 +19746,14 @@ window.diagnose = async function() {
 
   window.closeDirectMessagesList = function() { window._dm2Close(); };
 
-  window._dm2Close = function() {
+  window._dm2Close = function(_fromPopstate) {
     document.getElementById('dm2-overlay').classList.remove('chat-open');
     document.getElementById('dm-picker-modal-overlay').classList.remove('chat-open');
     document.getElementById('dm2-profile-overlay').classList.remove('chat-open');
     document.body.style.overflow = '';
     _dmStopRealtime();
     _dmRoom = null;
+    _dmPopHistoryGuard(!!_fromPopstate);
   };
 
   // ✅ (Aug 2026 — شكوى: المحادثة بتملأ الشاشة ومفيش طريقة تقفلها إلا بإغلاق
@@ -19739,6 +19768,33 @@ window.diagnose = async function() {
     if (anyOpen) window._dm2Close();
   });
 
+  // ✅ FIX (طلب المستخدم): نفس منطق زر/إيماءة "الرجوع" في مودال شات الشعبة
+  // الجماعي (انظر _chatPushHistoryGuard أعلاه)، لكن هنا لمودالات الرسائل
+  // المباشرة (راسل أدمن الشعبة/الكورس ونافذة اختيار المحادثة) — كانت هذه
+  // المودالات لا تسجّل خطوة في history المتصفح عند فتحها، فزر "رجوع" على
+  // الموبايل كان يغلق الصفحة كلها بدل ما يقفل المحادثة فقط، خصوصاً بعد ما
+  // يكتب المستخدم رسالة. لا تعديل على أي منطق أمان/RLS.
+  var _dmHistoryActive = false;
+  function _dmPushHistoryGuard() {
+    if (!_dmHistoryActive) {
+      try { history.pushState({ dmModal: true }, ''); } catch (e) {}
+      _dmHistoryActive = true;
+    }
+  }
+  function _dmPopHistoryGuard(fromPopstate) {
+    if (_dmHistoryActive) {
+      _dmHistoryActive = false;
+      if (!fromPopstate) { try { history.back(); } catch (e) {} }
+    }
+  }
+  window.addEventListener('popstate', function() {
+    var dm2Open    = document.getElementById('dm2-overlay').classList.contains('chat-open');
+    var pickerOpen = document.getElementById('dm-picker-modal-overlay').classList.contains('chat-open');
+    if (dm2Open || pickerOpen) {
+      window._dm2Close(true);
+    }
+  });
+
   // ════════════════════════════════════════════════════════════
   // بدء محادثة جديدة — Super Admin: بحث عام. Branch Admin: مشتركو
   // نطاقه. طالب: عبر زر "راسل أدمن الكورس" فقط (انظر
@@ -19746,6 +19802,7 @@ window.diagnose = async function() {
   // ════════════════════════════════════════════════════════════
   window._dmOpenNewConversationPicker = async function() {
     document.getElementById('dm-picker-modal-overlay').classList.add('chat-open');
+    _dmPushHistoryGuard();
     document.body.style.overflow = 'hidden';
     var searchBox  = document.getElementById('dm-picker-search');
     var resultsEl  = document.getElementById('dm-picker-results');
@@ -19764,10 +19821,11 @@ window.diagnose = async function() {
     }
   };
 
-  window._dmClosePicker = function() {
+  window._dmClosePicker = function(_fromPopstate) {
     window._dmSectionId = null;
     document.getElementById('dm-picker-modal-overlay').classList.remove('chat-open');
     document.body.style.overflow = '';
+    _dmPopHistoryGuard(!!_fromPopstate);
   };
 
   function _dmPickRowHTML(uid, label, sub, badge, sectionId) {
@@ -19851,6 +19909,11 @@ window.diagnose = async function() {
   // ════════════════════════════════════════════════════════════
   window._renderMessageAdminEntry = async function(anchor, containerEl) {
     if (!containerEl || !anchor || !anchor.id || !window.supabase) return;
+    // ✅ FIX (طلب المستخدم): هذه الدالة كانت تُستدعى مرتين على نفس الحاوية
+    // (من _renderDynamicSectionPage الأصلية، ثم من renderCourseChatButtons —
+    // تصحيح لاحق يُغلّف نفس الدالة) فيظهر زر "راسل أدمن..." مكرراً مرتين.
+    // الحل: لا نضيف الزر إذا كان موجوداً بالفعل داخل نفس الحاوية.
+    if (containerEl.querySelector('[data-role="msg-admin-btn"]')) return;
     try {
       var res = await window.supabase.rpc('get_section_admins_for_messaging', { p_section_id: anchor.id });
       if (res.error) {
@@ -19865,18 +19928,21 @@ window.diagnose = async function() {
       }
 
       var hasCourseAdmin = admins.some(function(a){ return String(a.admin_source || '') === 'course'; });
-      var label = hasCourseAdmin ? '✉️ راسل أدمن الكورس' : '✉️ راسل أدمن المنصة';
+      // ✅ FIX (طلب المستخدم): "أدمن المنصة" مربك للطالب هنا لأن هذا الزر
+      // مرتبط بشعبته تحديداً — استبدلناه بـ"أدمن الشعبة" في كل الحالات.
+      var label = hasCourseAdmin ? '✉️ راسل أدمن الكورس' : '✉️ راسل أدمن الشعبة';
 
       var btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'chat-entry-btn';
+      btn.dataset.role = 'msg-admin-btn';
       btn.style.background = 'linear-gradient(135deg,#17a589,#0a3d62)';
       btn.textContent = label;
       btn.onclick = function() {
         if (admins.length === 1) {
           window.openDirectChat(
             admins[0].user_id,
-            admins[0].full_name || admins[0].email || (hasCourseAdmin ? 'أدمن الكورس' : 'أدمن المنصة'),
+            admins[0].full_name || admins[0].email || (hasCourseAdmin ? 'أدمن الكورس' : 'أدمن الشعبة'),
             null,
             anchor.id
           );
@@ -19894,6 +19960,7 @@ window.diagnose = async function() {
   function _dmOpenAdminPicker(admins, sectionId) {
     window._dmSectionId = sectionId || window._dmSectionId || null;
     document.getElementById('dm-picker-modal-overlay').classList.add('chat-open');
+    _dmPushHistoryGuard();
     document.body.style.overflow = 'hidden';
     document.getElementById('dm-picker-search').style.display = 'none';
     document.getElementById('dm-picker-results').innerHTML = admins.map(function(a) {
@@ -19911,6 +19978,7 @@ window.diagnose = async function() {
     window._dmSectionId = sectionId || null;
     document.getElementById('dm-picker-modal-overlay').classList.remove('chat-open');
     document.getElementById('dm2-overlay').classList.add('chat-open');
+    _dmPushHistoryGuard();
     document.body.style.overflow = 'hidden';
     _dm2ShowChatActive();
     document.getElementById('dm2-chat-placeholder').style.display = 'none';
@@ -24986,9 +25054,16 @@ FOR SELECT TO authenticated USING (user_id = auth.uid());
 CREATE POLICY subscriptions_own_insert ON public.subscriptions
 FOR INSERT TO authenticated
 WITH CHECK (user_id = auth.uid() AND payment_status = 'pending');
+-- ✅ FIX (طلب المستخدم — خطأ "row-level security policy" عند إرسال طلب اشتراك):
+-- كانت هذه السياسة تسمح بإعادة التقديم (upsert) فقط لو الصف القديم حالته
+-- 'pending' أو 'rejected'. أي طالب كان مشتركاً من قبل وانتهى اشتراكه
+-- ('expired') أو ألغاه ('cancelled') كان يصطدم برفض RLS صريح عند محاولة
+-- الاشتراك/التجديد من جديد لأن upsert بيحاول UPDATE على نفس الصف. أضفنا
+-- 'expired' و'cancelled' هنا عشان أي طالب يقدر يعيد التقديم من أي حالة
+-- سابقة غير 'active' (المشترك فعلياً لا يحتاج يعيد التقديم أصلاً).
 CREATE POLICY subscriptions_own_update_pending ON public.subscriptions
 FOR UPDATE TO authenticated
-USING (user_id = auth.uid() AND payment_status IN ('pending','rejected'))
+USING (user_id = auth.uid() AND payment_status IN ('pending','rejected','expired','cancelled'))
 WITH CHECK (user_id = auth.uid() AND payment_status = 'pending');
 
 -- 5) STORAGE: files bucket — رفع محتوى الكورس لأدمن الكورس/المنصة.
@@ -25106,7 +25181,7 @@ BEGIN
   ORDER BY COALESCE(p.full_name,p.email,'');
   IF FOUND THEN RETURN; END IF;
   RETURN QUERY
-  SELECT p.id, COALESCE(p.full_name,p.email,'أدمن المنصة')::TEXT, p.email::TEXT, 'platform'::TEXT
+  SELECT p.id, COALESCE(p.full_name,p.email,'أدمن الشعبة')::TEXT, p.email::TEXT, 'platform'::TEXT
   FROM profiles p WHERE p.role='admin'
   ORDER BY COALESCE(p.full_name,p.email,'');
 END; $$;
