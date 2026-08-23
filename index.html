@@ -25542,5 +25542,159 @@ SELECT 'FINAL FIX OK' AS result;
   }, true);
 })();
 </script>
+
+<!-- ================= USER REQUEST REAL FIX v7 ================= -->
+<script>
+(function(){
+  'use strict';
+
+  /* 1) EXACT FREE PREVIEW RULE:
+     Only the FIRST DIRECT CHAPTER under the paid course is free.
+     Every other chapter remains visible, but locked until subscription.
+     Any unexpected access error must NEVER turn the whole course free. */
+  async function v7Row(id){
+    id=Number(id); var c=window['__sectionData_'+id];
+    if(c && c.id!=null) return c;
+    var db=window.supabase; if(!db) return null;
+    var r=await db.from('site_sections').select('id,parent_id,requires_subscription,title,display_order').eq('id',id).maybeSingle();
+    return r.data||null;
+  }
+  async function v7Anchor(id){
+    var seen={},cur=Number(id);
+    for(var d=0; Number.isFinite(cur)&&!seen[cur]&&d<50; d++){
+      seen[cur]=1; var row=await v7Row(cur); if(!row) return null;
+      var topPaid=null;
+      if(row.requires_subscription===true) topPaid=row;
+      if(row.parent_id==null) return topPaid;
+      cur=Number(row.parent_id);
+    } return topPaid||null;
+  }
+  async function v7FirstChapter(anchorId){
+    var db=window.supabase; if(!db) return null;
+    var r=await db.from('site_sections').select('id,parent_id,display_order').eq('parent_id',Number(anchorId)).order('display_order',{ascending:true}).order('id',{ascending:true}).limit(1);
+    return r.data&&r.data[0]?Number(r.data[0].id):null;
+  }
+  async function v7Descends(id,root){
+    id=Number(id); root=Number(root); if(id===root) return true;
+    var seen={},cur=id;
+    for(var d=0; Number.isFinite(cur)&&!seen[cur]&&d<50; d++){
+      seen[cur]=1; var row=await v7Row(cur); if(!row||row.parent_id==null) return false;
+      cur=Number(row.parent_id); if(cur===root) return true;
+    } return false;
+  }
+  window.getDetailedSectionAccess=async function(sectionId){
+    var anchor=await v7Anchor(sectionId);
+    if(!anchor) return {state:'free',anchor:null};
+    if(window._isSuperAdmin || (window._isBranchAdmin && (window._branchAdminAllSectionIds||window._branchAdminSectionIds||[]).map(Number).indexOf(Number(anchor.id))!==-1)) return {state:'admin',anchor:anchor};
+    try{
+      var first=await v7FirstChapter(anchor.id);
+      if(first && await v7Descends(sectionId,first)) return {state:'free',anchor:anchor,preview:true};
+      var gate=await window.checkSectionAccess(sectionId);
+      return gate ? {state:'locked',anchor:anchor,access:gate.state,row:gate.row} : {state:'subscribed',anchor:anchor};
+    }catch(e){
+      console.error('[v7 access]',e);
+      return {state:'locked',anchor:anchor,access:'error'};
+    }
+  };
+
+  /* 2) QUIZ: normalize both old and new RPC shapes so the UI always receives
+     question/option_1..4/points. The SQL below fixes the actual DB function. */
+  function v7NormalizeQuestion(q){
+    var out=Object.assign({},q||{});
+    if(out.question==null) out.question=out.question_text||'';
+    if(Array.isArray(out.options)){
+      out.option_1=out.option_1||out.options[0]||null; out.option_2=out.option_2||out.options[1]||null;
+      out.option_3=out.option_3||out.options[2]||null; out.option_4=out.option_4||out.options[3]||null;
+    }
+    out.points=Number(out.points)||1;
+    return out;
+  }
+  window.qzBeginAttempt=async function(quizId){
+    var body=document.getElementById('qz-student-body');
+    if(!body) return;
+    body.innerHTML='<div class="ap-loading" style="text-align:center;padding:30px;"><div class="spinner"></div> جاري تجهيز الأسئلة...</div>';
+    var db=await _qzDb(); if(!db) return;
+    try{
+      var res=await db.rpc('get_quiz_questions_for_attempt',{p_quiz_id:Number(quizId)});
+      if(res.error) throw res.error;
+      var questions=(res.data||[]).map(v7NormalizeQuestion);
+      if(!questions.length){ body.innerHTML='<div style="text-align:center;padding:20px;">هذا الاختبار لا يحتوي على أسئلة بعد.</div>'; return; }
+      questions.forEach(function(q){ if(q.question_type==='matching'){ q._left=q.matching_left||[]; q._right=q.matching_right||[]; }});
+      window._qz.currentQuizId=quizId; window._qz.questions=questions; window._qz.answers={}; window._qz.currentIndex=0; window._qz.adminMatchLeftPick={};
+      qzRenderQuestion();
+      if(window._qz.quiz&&window._qz.quiz.time_limit) qzStartTimer(window._qz.quiz.time_limit*60); else { var t=document.getElementById('qz-student-timer'); if(t)t.style.display='none'; }
+    }catch(e){ console.error('[v7 quiz RPC]',e); body.innerHTML='<div style="text-align:center;padding:20px;color:#c0392b;">❌ تعذر تحميل الأسئلة: '+qzEsc(e.message||'خطأ في قاعدة البيانات')+'</div>'; }
+  };
+  qzBeginAttempt=window.qzBeginAttempt;
+
+  /* 3) Real SQL repair. Explicit casts are important because PostgreSQL RETURN QUERY
+     requires exact result types. This also returns the exact names the quiz UI uses. */
+  window.printQuizRpcFixSQL=function(){
+    var sql=String.raw`
+DROP FUNCTION IF EXISTS public.get_quiz_questions_for_attempt(bigint);
+DROP FUNCTION IF EXISTS public.get_quiz_questions_for_attempt(integer);
+
+CREATE FUNCTION public.get_quiz_questions_for_attempt(p_quiz_id bigint)
+RETURNS TABLE(
+  id bigint,
+  question text,
+  question_type text,
+  option_1 text,
+  option_2 text,
+  option_3 text,
+  option_4 text,
+  points numeric,
+  matching_left jsonb,
+  matching_right jsonb
+)
+LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+BEGIN
+  IF auth.uid() IS NULL THEN
+    RAISE EXCEPTION 'DENY ACCESS';
+  END IF;
+
+  RETURN QUERY
+  SELECT
+    q.id::bigint,
+    q.question::text,
+    COALESCE(q.question_type,'multiple_choice')::text,
+    q.option_1::text,
+    q.option_2::text,
+    q.option_3::text,
+    q.option_4::text,
+    COALESCE(q.points,1)::numeric,
+    CASE WHEN COALESCE(q.question_type,'')='matching' THEN
+      COALESCE((SELECT jsonb_agg(x->>'left') FROM jsonb_array_elements(COALESCE(q.matching_data,'[]'::jsonb)) x),'[]'::jsonb)
+      ELSE '[]'::jsonb END,
+    CASE WHEN COALESCE(q.question_type,'')='matching' THEN
+      COALESCE((SELECT jsonb_agg(x->>'right') FROM jsonb_array_elements(COALESCE(q.matching_data,'[]'::jsonb)) x),'[]'::jsonb)
+      ELSE '[]'::jsonb END
+  FROM public.quiz_questions q
+  WHERE q.quiz_id::bigint=p_quiz_id
+  ORDER BY q.id::bigint;
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.get_quiz_questions_for_attempt(bigint) TO authenticated;
+NOTIFY pgrst, 'reload schema';
+SELECT 'QUIZ RPC FIX OK' AS result;`;
+    console.log(sql); if(navigator.clipboard) navigator.clipboard.writeText(sql).catch(function(){}); return sql;
+  };
+
+  /* 4) Content ordering: never ignore failed DB updates, and renumber deterministically. */
+  window.adminMoveContent=async function(id,direction){
+    var order=window._adminContentListOrder||[], kind=window._adminContentListOrderKind||'content', col=window._adminContentListOrderCol||(kind==='resource'?'sort_order':'display_order'), table=window._adminContentListOrderTable||(kind==='resource'?'section_resources':'section_content');
+    var idx=order.indexOf(id), ni=direction==='up'?idx-1:idx+1; if(idx<0||ni<0||ni>=order.length) return;
+    var a=_adminContentListCache[id], b=_adminContentListCache[order[ni]]; if(!a||!b)return;
+    var ra=await window.supabase.from(table).update({[col]:Number(b[col])||0}).eq('id',a.id); if(ra.error) throw ra.error;
+    var rb=await window.supabase.from(table).update({[col]:Number(a[col])||0}).eq('id',b.id); if(rb.error) throw rb.error;
+    if(window._dataCache&&window._dataCache.content) window._dataCache.content={};
+    if(typeof adminLoadContentList==='function') await adminLoadContentList();
+    if(window._showToast) _showToast('✅ تم حفظ ترتيب المحتوى','success');
+  };
+})();
+</script>
 </body>
 </html>
