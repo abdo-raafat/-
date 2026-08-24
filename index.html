@@ -1,13 +1,14 @@
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
-<!-- ==================== BSM DEBUG MODE ====================
-     وضع الاختبار على الكمبيوتر: App Gate معطل مؤقتاً.
-     لا تستخدم هذه النسخة كنسخة إنتاجية للمستخدمين.
+<!-- ==================== BSM PRE-RENDER GUARD ====================
+     الحماية الفعلية: App Gate مفعّل. يُحدَّد isOfficialApp عبر
+     window.isAndroidApp() (مُعرّفة لاحقاً بالاعتماد على User-Agent
+     token "BSMApp/1.0" أو JS bridge) بالإضافة لفحص iOS Standalone.
 -->
 <script>
 (function () {
-  window.__BSM_DEBUG_MODE = true;
+  window.__BSM_DEBUG_MODE = false;
   window.isIOSDevice = function () {
     var ua = navigator.userAgent || '';
     return /iPhone|iPad|iPod/i.test(ua) ||
@@ -19,9 +20,24 @@
              (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
     } catch (e) { return false; }
   };
-  // في وضع الاختبار نعتبر المتصفح بيئة مسموحة.
-  window.isOfficialApp = function () { return true; };
-  window.__bsmGateBlocked = false;
+  // كشف تطبيق أندرويد مباشرة هنا (نفس منطق window.isAndroidApp المُعرّفة
+  // لاحقاً في الملف) لأن هذا الفحص يجب أن يعمل فوراً قبل رندر الصفحة،
+  // قبل تحميل تلك الكتلة المتأخرة.
+  function _isAndroidAppEarly() {
+    try {
+      var ua = navigator.userAgent || '';
+      if (ua.indexOf('BSMApp/1.0') !== -1) return true;
+      if (window.BSMAndroidBridge) return true;
+      return false;
+    } catch (e) { return false; }
+  }
+  // تطبيق رسمي = تطبيق أندرويد أو iOS مثبّت كـ Standalone PWA.
+  window.isOfficialApp = function () {
+    try {
+      return _isAndroidAppEarly() || (window.isIOSDevice() && window.isIOSStandalone());
+    } catch (e) { return false; }
+  };
+  window.__bsmGateBlocked = !window.isOfficialApp();
   try { document.documentElement.style.visibility = 'visible'; } catch (e) {}
 })();
 </script>
@@ -2494,8 +2510,8 @@ img, video {
 <body>
 <script>
 (function(){
-  console.log('%c[BSM DEBUG MODE]','background:#111;color:#0f0;font-size:16px;font-weight:bold;',
-    'Protection/App Gate disabled for computer testing. Admin/Supabase logic remains enabled.');
+  console.log('%c[BSM]','background:#111;color:#0f0;font-size:16px;font-weight:bold;',
+    'Protection/App Gate active (production mode).');
   window.addEventListener('error', function(e){
     console.error('[BSM DEBUG ERROR]', e.message, e.filename, e.lineno, e.colno);
   });
