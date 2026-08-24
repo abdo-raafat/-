@@ -2668,7 +2668,7 @@ img, video {
         var toRemove = [];
         for (var i = 0; i < body.children.length; i++) {
           var el = body.children[i];
-          if (el.id !== 'bsm-app-gate' && el.id !== 'bsm-ios-modal') toRemove.push(el);
+          if (el.id !== 'bsm-app-gate' && el.id !== 'bsm-ios-modal' && el.id !== 'bsm-course-ad-modal') toRemove.push(el);
         }
         for (var j = 0; j < toRemove.length; j++) {
           toRemove[j].parentNode.removeChild(toRemove[j]);
