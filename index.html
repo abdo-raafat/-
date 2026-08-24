@@ -2556,7 +2556,14 @@ img, video {
     <div id="bsm-course-ad-card" style="margin:0 auto 18px; max-width:300px; width:100%; background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.2); border-radius:14px; padding:14px 16px; text-align:center; box-sizing:border-box;">
       <div style="font-size:.86rem; font-weight:700; margin-bottom:4px; line-height:1.5;">🎓 بتقدم كورسات على المنصة؟</div>
       <div style="font-size:.76rem; opacity:.85; margin-bottom:10px; line-height:1.55;">اكتشف لوحة تحكم أدمن الكورس ومميزات إدارة كورسك بسهولة.</div>
-      <button type="button" onclick="bsmOpenCourseAdModal()" style="display:inline-flex; align-items:center; gap:6px; background:#fff; color:#0a3d62; padding:8px 18px; border:none; border-radius:10px; font-weight:700; font-size:.82rem; cursor:pointer; font-family:inherit;">▶ مشاهدة الشرح</button>
+      <button type="button" id="bsm-course-ad-btn" style="display:inline-flex; align-items:center; gap:6px; background:#fff; color:#0a3d62; padding:8px 18px; border:none; border-radius:10px; font-weight:700; font-size:.82rem; cursor:pointer; font-family:inherit;">▶ مشاهدة الشرح</button>
+    </div>
+
+    <!-- ==================== بطاقة إعلانية صغيرة: طريقة تثبيت تطبيق المنصة (تحت "المساعد والاستفسار" مباشرة) ==================== -->
+    <div id="bsm-install-app-card" style="margin:0 auto 18px; max-width:300px; width:100%; background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.2); border-radius:14px; padding:14px 16px; text-align:center; box-sizing:border-box;">
+      <div style="font-size:.86rem; font-weight:700; margin-bottom:4px; line-height:1.5;">📱 عايز تثبت تطبيق المنصة؟</div>
+      <div style="font-size:.76rem; opacity:.85; margin-bottom:10px; line-height:1.55;">شاهد الفيديو لمعرفة طريقة تثبيت التطبيق بسهولة على جهازك.</div>
+      <button type="button" id="bsm-install-app-btn" style="display:inline-flex; align-items:center; gap:6px; background:#fff; color:#0a3d62; padding:8px 18px; border:none; border-radius:10px; font-weight:700; font-size:.82rem; cursor:pointer; font-family:inherit;">▶️ شاهد طريقة تثبيت التطبيق</button>
     </div>
 
     <div id="bsm-gate-sub" style="font-size:.95rem; opacity:.9; margin-bottom:18px;">يرجى فتح منصة المعاهد الفنية الصحية من تطبيق الهاتف.</div>
@@ -2586,36 +2593,78 @@ img, video {
 </div>
 
 <!-- ==================== Modal: فيديو شرح لوحة تحكم أدمن الكورس ==================== -->
-<div id="bsm-course-ad-modal" style="display:none; position:fixed; inset:0; z-index:2147483647; background:rgba(0,0,0,.85); align-items:center; justify-content:center; padding:16px; direction:rtl; font-family:inherit; box-sizing:border-box;">
+<div id="bsm-course-ad-modal" class="bsm-video-modal" style="display:none; position:fixed; inset:0; z-index:2147483647; background:rgba(0,0,0,.85); align-items:center; justify-content:center; padding:16px; direction:rtl; font-family:inherit; box-sizing:border-box;">
   <div style="position:relative; width:100%; max-width:560px; margin:0 auto; background:#000; border-radius:14px; overflow:hidden;">
-    <button type="button" onclick="bsmCloseCourseAdModal()" aria-label="إغلاق" style="position:absolute; top:8px; left:8px; z-index:2; background:rgba(0,0,0,.6); color:#fff; border:none; border-radius:50%; width:32px; height:32px; font-size:1.1rem; line-height:1; cursor:pointer; display:flex; align-items:center; justify-content:center;">✕</button>
+    <button type="button" data-close-video-modal aria-label="إغلاق" style="position:absolute; top:8px; left:8px; z-index:2; background:rgba(0,0,0,.6); color:#fff; border:none; border-radius:50%; width:32px; height:32px; font-size:1.1rem; line-height:1; cursor:pointer; display:flex; align-items:center; justify-content:center;">✕</button>
     <video id="bsm-course-ad-video" controls playsinline preload="none" style="width:100%; max-height:80vh; display:block; background:#000;">
       <source src="https://19bey0t9zc.ucarecd.net/665cd2e0-7eb4-4de6-b4fd-860ed9c23f5c/Record_20260824072212.mp4" type="video/mp4">
     </video>
   </div>
 </div>
+
+<!-- ==================== Modal: فيديو طريقة تثبيت تطبيق المنصة ==================== -->
+<div id="bsm-install-app-modal" class="bsm-video-modal" style="display:none; position:fixed; inset:0; z-index:2147483647; background:rgba(0,0,0,.85); align-items:center; justify-content:center; padding:16px; direction:rtl; font-family:inherit; box-sizing:border-box;">
+  <div style="position:relative; width:100%; max-width:560px; margin:0 auto; background:#000; border-radius:14px; overflow:hidden;">
+    <button type="button" data-close-video-modal aria-label="إغلاق" style="position:absolute; top:8px; left:8px; z-index:2; background:rgba(0,0,0,.6); color:#fff; border:none; border-radius:50%; width:32px; height:32px; font-size:1.1rem; line-height:1; cursor:pointer; display:flex; align-items:center; justify-content:center;">✕</button>
+    <video id="bsm-install-app-video" controls playsinline preload="metadata" style="width:100%; max-height:80vh; display:block; background:#000;">
+      <source src="https://19bey0t9zc.ucarecd.net/f7fd79ec-417c-42ae-84cc-7c3607f80ce3/WhatsAppVideo20260824at84018AM.mp4" type="video/mp4">
+    </video>
+  </div>
+</div>
+
 <script>
 (function () {
-  window.bsmOpenCourseAdModal = function () {
-    var m = document.getElementById('bsm-course-ad-modal');
-    if (m) m.style.display = 'flex';
-  };
-  window.bsmCloseCourseAdModal = function () {
-    var m = document.getElementById('bsm-course-ad-modal');
-    var v = document.getElementById('bsm-course-ad-video');
-    if (v) { try { v.pause(); v.currentTime = 0; } catch (e) {} }
-    if (m) m.style.display = 'none';
-  };
-  document.addEventListener('DOMContentLoaded', function () {
-    var m = document.getElementById('bsm-course-ad-modal');
-    if (m) {
-      m.addEventListener('click', function (e) {
-        if (e.target === m) bsmCloseCourseAdModal();
-      });
+  function pauseAllVideosIn(modal) {
+    var vids = modal.querySelectorAll('video');
+    for (var i = 0; i < vids.length; i++) {
+      try { vids[i].pause(); vids[i].currentTime = 0; } catch (e) {}
     }
-    document.addEventListener('keydown', function (e) {
-      if (e.key === 'Escape') bsmCloseCourseAdModal();
-    });
+  }
+  function openModalById(id) {
+    var m = document.getElementById(id);
+    if (m) m.style.display = 'flex';
+  }
+  function closeModal(m) {
+    if (!m) return;
+    pauseAllVideosIn(m);
+    m.style.display = 'none';
+  }
+
+  // إبقاء نفس أسماء الدوال القديمة متاحة (توافقية مع أي استدعاء سابق لها)
+  window.bsmOpenCourseAdModal   = function () { openModalById('bsm-course-ad-modal'); };
+  window.bsmCloseCourseAdModal  = function () { closeModal(document.getElementById('bsm-course-ad-modal')); };
+  window.bsmOpenInstallAppModal  = function () { openModalById('bsm-install-app-modal'); };
+  window.bsmCloseInstallAppModal = function () { closeModal(document.getElementById('bsm-install-app-modal')); };
+
+  // ✅ Event Delegation على مستوى document: يعمل دائمًا بغض النظر عن توقيت
+  // إنشاء/حذف الأزرار من الـDOM (مثل شاشة حجب التطبيق التي قد تعيد بناء الصفحة)
+  document.addEventListener('click', function (e) {
+    var t = e.target;
+
+    var openBtn = t.closest && t.closest('#bsm-course-ad-btn, #bsm-install-app-btn');
+    if (openBtn) {
+      if (openBtn.id === 'bsm-course-ad-btn') openModalById('bsm-course-ad-modal');
+      else if (openBtn.id === 'bsm-install-app-btn') openModalById('bsm-install-app-modal');
+      return;
+    }
+
+    var closeBtn = t.closest && t.closest('[data-close-video-modal]');
+    if (closeBtn) {
+      closeModal(closeBtn.closest('.bsm-video-modal'));
+      return;
+    }
+
+    // إغلاق عند الضغط على الخلفية المظلمة فقط (وليس عند الضغط على الفيديو نفسه)
+    if (t.classList && t.classList.contains('bsm-video-modal')) {
+      closeModal(t);
+    }
+  }, true);
+
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') {
+      var openModal = document.querySelector('.bsm-video-modal[style*="flex"]');
+      if (openModal) closeModal(openModal);
+    }
   });
 })();
 </script>
@@ -2668,7 +2717,7 @@ img, video {
         var toRemove = [];
         for (var i = 0; i < body.children.length; i++) {
           var el = body.children[i];
-          if (el.id !== 'bsm-app-gate' && el.id !== 'bsm-ios-modal' && el.id !== 'bsm-course-ad-modal') toRemove.push(el);
+          if (el.id !== 'bsm-app-gate' && el.id !== 'bsm-ios-modal' && el.id !== 'bsm-course-ad-modal' && el.id !== 'bsm-install-app-modal') toRemove.push(el);
         }
         for (var j = 0; j < toRemove.length; j++) {
           toRemove[j].parentNode.removeChild(toRemove[j]);
