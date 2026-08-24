@@ -169,17 +169,11 @@ _boot(0, 'page script parsing started');
     }
     var hashParams = summarize(hashStr);
     var queryParams = summarize(searchStr);
-    console.log('[AUTH-DEBUG] Page load — location.origin+pathname:', window.location.origin + window.location.pathname);
-    console.log('[AUTH-DEBUG] URL hash params (sanitized):', hashParams);
-    console.log('[AUTH-DEBUG] URL query params (sanitized):', queryParams);
     if (queryParams && queryParams.error) {
-      console.warn('[AUTH-DEBUG] ⚠️ OAuth returned an error in query string:', queryParams.error, queryParams.error_description || '');
     }
     if (hashParams && hashParams.error) {
-      console.warn('[AUTH-DEBUG] ⚠️ OAuth returned an error in hash:', hashParams.error, hashParams.error_description || '');
     }
   } catch (e) {
-    console.warn('[AUTH-DEBUG] URL param logging failed:', e && e.message);
   }
 })();
 
@@ -2646,7 +2640,7 @@ img, video {
   </div>
   <div style="display:flex;align-items:center;gap:8px;">
     <button class="ms-bell-btn" id="ms-paths-btn" onclick="openLearningPathsPage()" aria-label="المسارات التعليمية" title="المسارات التعليمية">🗺️</button>
-    <button class="ms-bell-btn" id="ms-bell-btn" onclick="openNotificationsCenter()" aria-label="الإشعارات" title="الإشعارات">🔔</button>
+    <button class="ms-bell-btn" id="ms-bell-btn" onclick="openNotificationsCenter()" aria-label="الإشعارات" title="الإشعارات" style="position:relative;">🔔<span id="ms-bell-badge" style="display:none;position:absolute;top:-2px;left:-2px;background:#e74c3c;color:#fff;border-radius:10px;font-size:.62rem;line-height:1;padding:2px 5px;font-weight:900;"></span></button>
     <div id="user-box" style="display:none;">
       <button class="chatgpt-login-btn" onclick="loginWithGoogle()">🔐 دخول</button>
     </div>
@@ -3171,6 +3165,7 @@ function stLogout() {
       <p id="dynamic-section-sub"></p>
     </div>
     <div id="dynamic-section-chat-entry"></div>
+    <div id="dynamic-section-course-widgets"></div>
     <div id="dynamic-section-resources-container"></div>
     <div class="cards-grid" id="dynamic-section-grid">
       <div class="loading"><div class="spinner"></div> جاري التحميل...</div>
@@ -3264,7 +3259,6 @@ window._supabaseReady.then(function(lib) {
     window._sbClientResolve && window._sbClientResolve(window._db);
     _boot(6, '_sbClientResolve fired — client is now globally available');
     console.log("✅ Supabase Client جاهز");
-    console.log('[AUTH-DEBUG] Supabase client created — url:', _supabaseUrl, '| storageKey: benisuef_auth | detectSessionInUrl: true | flowType: (not set explicitly → SDK default = implicit)');
   } catch(initErr) {
     console.error("❌ فشل إنشاء Supabase client:", initErr.message);
     _boot('5-FATAL', 'createClient() threw: ' + initErr.message);
@@ -3453,7 +3447,6 @@ async function _waitForSupabase(timeoutMs) {
           resources: parsed.resources || {},
           _pending:  {},
         };
-        console.log('[Cache] ✅ استُعيد من sessionStorage (' + Math.round(age/1000) + 's قديم)');
         return;
       }
     }
@@ -3655,7 +3648,6 @@ async function loadSections(parentId) {
       // ✅ FIX: لا نُخزِّن [] في الـ cache إذا كان الخطأ محتملاً (RLS أو شبكة)
       // نُخزِّن فقط إذا كانت النتيجة تبدو صحيحة أو أُعيدت المحاولة بنجاح
       window._dataCache.sections[key] = result;
-      console.log('[loadSections] ✅ cached → parentId=' + (parentId ?? 'null') + ', rows=' + result.length);
       _saveCacheToSession && _saveCacheToSession();
       return result;
     } catch (err) {
@@ -3675,7 +3667,6 @@ async function loadSectionContent(sectionId) {
   var key = _cacheKey('content', sectionId);
 
   if (window._dataCache.content[key] !== undefined) {
-    console.log('[DEBUG loadSectionContent] Cache hit → sectionId=' + sectionId + ', rows=' + (window._dataCache.content[key] || []).length);
     return window._dataCache.content[key];
   }
   if (window._dataCache._pending[key]) {
@@ -3690,7 +3681,6 @@ async function loadSectionContent(sectionId) {
         window._dataCache.content[key] = []; return [];
       }
       const safeId = toValidId(sectionId);
-      console.log('[DEBUG loadSectionContent] sectionId=' + sectionId + ' → safeId=' + safeId);
       if (safeId === null) {
         console.error('[DEBUG loadSectionContent] ❌ safeId=null — تحقق من نوع الـ ID (UUID أم رقم؟)');
         window._dataCache.content[key] = []; return [];
@@ -3699,9 +3689,6 @@ async function loadSectionContent(sectionId) {
       const { data, error } = await _fetchWithRetry(function() {
         return db.from('section_content').select('*').eq('section_id', safeId).order('display_order', { ascending: true });
       });
-      // ✅ DEBUG مؤقت (طلب المستخدم — تشخيص اختفاء المرفقات): سطر واحد واضح
-      console.log('[ATTACH-DEBUG] loadSectionContent sectionId=' + sectionId + ' safeId=' + safeId +
-        ' → count=' + (data ? data.length : 0) + ' | error=' + (error ? (error.message + ' (code:' + error.code + ')') : 'null'));
       if (error) {
         console.error('[DEBUG loadSectionContent] ❌ خطأ Supabase:', error.message, '| code:', error.code, '| hint:', error.hint);
         if (error.code === '42501' || (error.message||'').includes('permission') || (error.message||'').includes('policy')) {
@@ -3714,9 +3701,7 @@ async function loadSectionContent(sectionId) {
         window._dataCache.content[key] = []; return [];
       }
       const result = data || [];
-      console.log('[DEBUG loadSectionContent] ✅ sectionId=' + sectionId + ' → ' + result.length + ' صف');
       if (result.length === 0) {
-        console.warn('[DEBUG loadSectionContent] ⚠️ لا يوجد محتوى لهذا القسم — تحقق من أن section_id=' + safeId + ' موجود في section_content');
       }
       window._dataCache.content[key] = result;
       return result;
@@ -3769,7 +3754,6 @@ async function loadSectionResources(sectionId) {
   var cached = window._dataCache.resources[key];
   if (cached !== undefined && cached._fetchedAt !== undefined &&
       (Date.now() - cached._fetchedAt) < _RESOURCES_CACHE_TTL_MS) {
-    console.log('[DEBUG loadSectionResources] Cache hit (fresh, age=' + Math.round((Date.now()-cached._fetchedAt)/1000) + 's) → sectionId=' + sectionId + ', rows=' + (cached.rows || []).length);
     return cached.rows;
   }
   if (window._dataCache._pending[key]) {
@@ -3784,7 +3768,6 @@ async function loadSectionResources(sectionId) {
         window._dataCache.resources[key] = { rows: [], _fetchedAt: Date.now() }; return [];
       }
       const safeId = toValidId(sectionId);
-      console.log('[DEBUG loadSectionResources] sectionId=' + sectionId + ' → safeId=' + safeId);
       if (safeId === null) {
         console.error('[DEBUG loadSectionResources] ❌ safeId=null — تحقق من نوع الـ ID');
         window._dataCache.resources[key] = { rows: [], _fetchedAt: Date.now() }; return [];
@@ -3793,11 +3776,6 @@ async function loadSectionResources(sectionId) {
       const { data, error } = await _fetchWithRetry(function() {
         return db.from('section_resources').select('*').eq('section_id', safeId).order('sort_order', { ascending: true }).order('sub_order', { ascending: true }).order('id', { ascending: true });
       });
-      // ✅ DEBUG مؤقت (طلب المستخدم — تشخيص اختفاء المرفقات): سطر واحد واضح
-      // يطبع sectionId المستخدم فعلياً في الاستعلام، وعدد الصفوف المرجعة،
-      // ورسالة أي خطأ إن وُجد — بدون تغيير أي منطق أو استعلام.
-      console.log('[ATTACH-DEBUG] loadSectionResources sectionId=' + sectionId + ' safeId=' + safeId +
-        ' → count=' + (data ? data.length : 0) + ' | error=' + (error ? (error.message + ' (code:' + error.code + ')') : 'null'));
       if (error) {
         console.error('[DEBUG loadSectionResources] ❌ خطأ Supabase:', error.message, '| code:', error.code);
         if (error.code === '42501' || (error.message||'').includes('permission') || (error.message||'').includes('policy')) {
@@ -3814,7 +3792,6 @@ async function loadSectionResources(sectionId) {
         return [];
       }
       const result = _sortResourcesForDisplay(data || []);
-      console.log('[DEBUG loadSectionResources] ✅ sectionId=' + sectionId + ' → ' + result.length + ' مورد');
       window._dataCache.resources[key] = { rows: result, _fetchedAt: Date.now() };
       return result;
     } catch (err) {
@@ -3836,7 +3813,6 @@ window._clearDataCache = function() {
   window._dataCache.content  = {};
   window._dataCache.resources = {};
   window._dataCache._pending  = {};
-  console.log('[Cache] ✅ تم مسح الـ cache — سيتم إعادة تحميل البيانات عند الحاجة');
 };
 
 // ==================== SECTION DISPLAY MAP ====================
@@ -4217,6 +4193,18 @@ async function _renderDynamicSectionPage(sec) {
           window._renderMessageAdminEntry(elig.anchor, chatEntryEl);
         }
       }
+      // ✅ مواعيد المحاضرات + إعلانات الكورس — تظهر فقط على صفحة الكورس نفسه
+      // (anchor.id === sec.id)، وليس على كل صفحة فرعية تحته. الحماية الحقيقية
+      // من RLS (course_schedule_student_read / course_announcements_student_read
+      // المعتمدتان على has_active_course_subscription) — لسنا نضيف أي فلترة
+      // فرونت موازية، فقط نستدعي بنفس sec.id/anchor.id ونعرض ما رجع (لو رجع
+      // فاضي لغير المشترك، لا نعرض القسم أصلاً).
+      if (elig && elig.anchor && Number(elig.anchor.id) === Number(sec.id) && typeof window._renderCourseWidgets === 'function') {
+        window._renderCourseWidgets(elig.anchor.id);
+      } else {
+        var wEl = document.getElementById('dynamic-section-course-widgets');
+        if (wEl) wEl.innerHTML = '';
+      }
     }).catch(function(e){ console.warn('[chat entry]', e && e.message); });
   }
 
@@ -4439,7 +4427,6 @@ async function _apRestoreSectionPath(id, urlMode) {
     }
     if (urlMode) _apSetUrlForSection(target.id, true);
   } catch (e) {
-    console.warn('[AUTH-DEBUG][route] _apRestoreSectionPath failed:', e && e.message);
     goHome();
   } finally {
     window._apNavLoaderHide();
@@ -5350,8 +5337,7 @@ var BSM_AI = (function() {
         .limit(200);
       _trainingCache = data || [];
       _trainingLoadedAt = now;
-      console.log('[BSM_AI] Training cache loaded:', _trainingCache.length, 'rows');
-    } catch(e) {
+      } catch(e) {
       _trainingCache = [];
     }
     return _trainingCache;
@@ -5368,18 +5354,10 @@ var BSM_AI = (function() {
     var normMsg  = _normalize(original);
     var msgWords = normMsg.split(/\s+/).filter(function(w){ return w.length > 1; });
 
-    console.group('[BSM_AI] findBestAnswer');
-    console.log('Original :', original);
-    console.log('Cleaned  :', cleaned);
-    console.log('Normalized:', normMsg);
-    console.log('Words    :', msgWords);
-
     // 2. تحميل التدريب من الكاش
     var rows = await _loadTraining();
 
     if (rows.length === 0) {
-      console.log('Training: empty/unavailable');
-      console.groupEnd();
       return null;
     }
 
@@ -5392,34 +5370,20 @@ var BSM_AI = (function() {
     // 4. ترتيب تنازلي
     scored.sort(function(a, b){ return b.score - a.score; });
 
-    // 5. Debug: أعلى 3
-    console.log('Top matches:');
-    scored.slice(0, 3).forEach(function(s, i){
-      console.log('  #' + (i+1), '| score:', s.score,
-        '| kw:', (s.row.keywords || '').slice(0, 40),
-        '| matched:', s.matched.slice(0,3).join(','));
-    });
-
-    // 6. عتبة القبول
+    // 5. عتبة القبول
     var THRESHOLD = 30;
     var best = scored[0];
 
     if (!best || best.score < THRESHOLD) {
-      console.log('No match above threshold (' + THRESHOLD + '). Best score:', best ? best.score : 0);
-      console.groupEnd();
       return null;
     }
 
-    // 7. لو في نتائج متعددة قريبة → اقتراحات
+    // 6. لو في نتائج متعددة قريبة → اقتراحات
     var close = scored.filter(function(s){ return s.score >= THRESHOLD && s.score >= best.score * 0.75; });
     if (close.length > 1 && best.score < 80) {
-      console.log('Multiple close matches — returning suggestions');
-      console.groupEnd();
       return { type: 'suggestions', items: close.slice(0, 3).map(function(s){ return s.row; }) };
     }
 
-    console.log('Selected answer (score=' + best.score + '):', best.row.answer.slice(0, 60));
-    console.groupEnd();
     return { type: 'answer', answer: best.row.answer, score: best.score };
   }
 
@@ -6723,7 +6687,6 @@ window.loginWithGoogle = async function() {
   // redirectTo: حسب البيئة — داخل تطبيق Android نستخدم Deep Link خاص بالتطبيق،
   // وفي المتصفح العادي نستخدم رابط الموقع الثابت (WEB_AUTH_REDIRECT)
   var redirectTo = window.isAndroidApp() ? APP_AUTH_REDIRECT : WEB_AUTH_REDIRECT;
-  console.log('[AUTH-DEBUG] loginWithGoogle → isAndroidApp:', window.isAndroidApp(), '| redirectTo passed to signInWithOAuth:', redirectTo);
   try {
     const { error } = await db.auth.signInWithOAuth({
       provider: 'google',
@@ -6735,7 +6698,6 @@ window.loginWithGoogle = async function() {
          queryParams: { access_type: 'offline' }
       }
     });
-    console.log('[AUTH-DEBUG] signInWithOAuth() call returned, error:', error ? error.message : null);
     if (error) {
       console.error('[AUTH] Google OAuth error:', error.message);
       _showToast ? _showToast('خطأ: ' + error.message, 'error') : alert('خطأ في تسجيل الدخول: ' + error.message);
@@ -6766,7 +6728,6 @@ window.logoutUser = async function(btnEl) {
   // SIGNED_OUT كشبكة أمان مضاعفة.
   // ════════════════════════════════════════════════════════════════
   async function _cleanupRealtimeChannels() {
-    console.log('[AUTH-DEBUG] _cleanupRealtimeChannels: إغلاق جميع Realtime channels عند تسجيل الخروج');
     try { if (typeof _teardownOwnAdminStatusRealtime === 'function') _teardownOwnAdminStatusRealtime(); } catch(e) {}
     try { if (typeof window._closeSectionChatRealtime === 'function') window._closeSectionChatRealtime(); } catch(e) {}
     try { if (typeof window._closeDirectChatRealtime === 'function') window._closeDirectChatRealtime(); } catch(e) {}
@@ -6913,11 +6874,11 @@ function _setupOwnAdminStatusRealtime(userId) {
       .channel('own-admin-status-' + userId)
       .on('postgres_changes',
         { event: '*', schema: 'public', table: 'section_admins', filter: 'user_id=eq.' + userId },
-        function(payload) { console.log('[AUTH-DEBUG] realtime section_admins change for own user:', payload && payload.eventType); _reresolveOwnAdminStatus(userId, 'section_admins'); })
+        function(payload) { _reresolveOwnAdminStatus(userId, 'section_admins'); })
       .on('postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'profiles', filter: 'id=eq.' + userId },
-        function(payload) { console.log('[AUTH-DEBUG] realtime profiles change for own user'); _reresolveOwnAdminStatus(userId, 'profiles'); })
-      .subscribe(function(status) { console.log('[AUTH-DEBUG] own-admin-status realtime channel status:', status); });
+        function(payload) { _reresolveOwnAdminStatus(userId, 'profiles'); })
+      .subscribe(function(status) { });
     window._ownAdminRealtimeUserId = userId;
   } catch(e) { console.warn('[AUTH] own-admin-status realtime subscribe failed:', e && e.message); }
 }
@@ -6930,7 +6891,6 @@ function _teardownOwnAdminStatusRealtime() {
 
 async function _reresolveOwnAdminStatus(userId, source) {
   if (!window._currentAuthUser || window._currentAuthUser.id !== userId) return; // المستخدم بدّل جلسة بالفعل — تجاهل
-  console.log('[AUTH-DEBUG] _reresolveOwnAdminStatus من', source, '— إعادة تحليل صلاحيات الأدمن بدون Logout/Login');
   var mySeq = ++window._authRenderSeq;
   var role = await _fetchUserRole(userId);
   _renderUserBoxGuarded(window._currentAuthUser, role, mySeq);
@@ -6939,7 +6899,6 @@ async function _reresolveOwnAdminStatus(userId, source) {
 window._authRenderSeq = 0;
 function _renderUserBoxGuarded(user, role, mySeq) {
   if (mySeq !== window._authRenderSeq) {
-    console.log('[AUTH-DEBUG] _renderUserBoxGuarded: تجاهل نتيجة قديمة (seq', mySeq, '≠ current', window._authRenderSeq, ') — تم استبدالها بنداء أحدث');
     return;
   }
   _renderUserBox(user, role, mySeq);
@@ -6957,7 +6916,6 @@ function _renderUserBoxGuarded(user, role, mySeq) {
 // الجهاز والشبكة — ده اللي كان بيفرق بين Desktop وMobile لنفس الحساب) كان
 // يكتب فوق حالة صحيحة أحدث بنتيجة قديمة، فتختفي تابات زي "إدارة أدمن الكورسات".
 async function _renderUserBox(user, role, mySeq) {
-  console.log('[AUTH-DEBUG] _renderUserBox called — user:', user ? (user.id + ' / ' + user.email) : null, '| role:', role);
   const box = document.getElementById('user-box');
   if (!box) { console.warn('[AUTH-DEBUG] _renderUserBox: #user-box element NOT found in DOM — cannot render'); return; }
   if (!user) {
@@ -6974,17 +6932,16 @@ async function _renderUserBox(user, role, mySeq) {
     document.body.classList.remove('content-protected'); // المحتوى مجاني للجميع
     box.innerHTML = '<button class="chatgpt-login-btn" onclick="loginWithGoogle()">🔐 دخول</button>';
     if (typeof window._syncMobileSidebarUser === 'function') window._syncMobileSidebarUser(null, false, false, false);
-    console.log('[AUTH-DEBUG] _renderUserBox: rendered GUEST state (login button)');
     return;
   }
   window._currentAuthUser = user;
   _setupOwnAdminStatusRealtime(user.id); // ✅ يستقبل تغييرات section_admins/profiles.role لهذا المستخدم بدون Logout/Login
+  if (typeof window._refreshNotifBadge === 'function') window._refreshNotifBadge(); // ✅ عدّاد الإشعارات غير المقروءة عند تسجيل الدخول
   // role يأتي من profiles.role في Supabase — ليس من HTML
   // ✅ (Aug 2026): بنستخدم _resolveAdminStatus بدل الاعتماد على role وحده، عشان
   // أدمن الكورس المُعيّن عن طريق section_admins (بدون profiles.role='branch_admin')
   // يظهر له الأدمن بردو، مش بس اللي معيّن بالطريقة القديمة
   var status = (role === 'admin') ? { isSuperAdmin: true, isBranchAdmin: false, isAdmin: true } : await _resolveAdminStatus(user.id);
-  console.log('[AUTH-DEBUG] _renderUserBox: resolved admin status:', status);
   const isSuperAdmin  = status.isSuperAdmin;
   const isBranchAdmin = status.isBranchAdmin;
   const isAdmin = isSuperAdmin || isBranchAdmin; // كلاهما يرى واجهة الأدمن، لكن بصلاحيات مختلفة تماماً من القاعدة
@@ -7017,12 +6974,10 @@ async function _renderUserBox(user, role, mySeq) {
       // adminLoadSections()/_applyBranchAdminPanelGating() ولا أي DOM، حتى لا
       // تكتب حالة قديمة فوق حالة أحدث خلصت (أو لسه شغالة) لنفس المستخدم.
       if (mySeq !== undefined && mySeq !== window._authRenderSeq) {
-        console.log('[AUTH-DEBUG] _renderUserBox: تجاهل تطبيق admin gating من تمرير قديم (seq', mySeq, '≠ current', window._authRenderSeq, ')');
         return;
       }
       adminLoadSections();
       _applyBranchAdminPanelGating();
-      console.log('[PERF] admin scope ready', performance.now().toFixed(0) + 'ms');
     })();
   } else {
     box.innerHTML =
@@ -7032,7 +6987,6 @@ async function _renderUserBox(user, role, mySeq) {
       + '</div>';
   }
   if (typeof window._syncMobileSidebarUser === 'function') window._syncMobileSidebarUser(user, isAdmin, isSuperAdmin, isBranchAdmin);
-  console.log('[AUTH-DEBUG] _renderUserBox: rendered LOGGED-IN state — box.innerHTML length:', box.innerHTML.length, '| isAdmin:', isAdmin);
 }
 
 // ── fetchUserRole: جلب الـ role من profiles ──────────────────
@@ -7380,7 +7334,6 @@ window._lastProcessedAuthKey   = null;  // يمنع تكرار معالجة/رن
 // ============================================================
 async function _handleAuthStateChange(event, session) {
   // [AUTH-DEBUG] لا نطبع أي Token — فقط اسم الحدث ووجود/عدم وجود session
-  console.log('[AUTH-DEBUG] _handleAuthStateChange (deferred) — event:', event, '| session present:', !!session);
 
   // ✅ أول حدث auth وصل فعلياً — التهيئة الأولى انتهت من منظور تطبيقنا (القفل
   // الداخلي لـ gotrue-js يكون قد تحرر بالفعل بحلول هذه اللحظة أصلاً، بما أن
@@ -7395,7 +7348,6 @@ async function _handleAuthStateChange(event, session) {
   // لكنها تحمي أيضاً من أي استدعاء غير متوقع مستقبلاً لهذا المعالج)
   var _dedupeKey = event + ':' + (session && session.user ? session.user.id : 'guest');
   if (event === 'INITIAL_SESSION' && window._lastProcessedAuthKey === _dedupeKey) {
-    console.log('[AUTH-DEBUG] _handleAuthStateChange: تجاهل INITIAL_SESSION مكرر لنفس المستخدم/الحالة');
     return;
   }
   window._lastProcessedAuthKey = _dedupeKey;
@@ -7433,10 +7385,8 @@ async function _handleAuthStateChange(event, session) {
   }
 
   if (session && session.user) {
-    console.log('[AUTH-DEBUG] _handleAuthStateChange session.user →', 'id:', session.user.id, '| email:', session.user.email);
     // ── Admin Middleware: جلب الـ role من قاعدة البيانات ──
     var role = await _fetchUserRole(session.user.id);
-    console.log('[AUTH-DEBUG] _fetchUserRole resolved role:', role);
     _renderUserBoxGuarded(session.user, role, _authSeq);
     // ✅ مزامنة بريد الحساب في profiles (مرة واحدة فقط لو كان ناقصاً — راجع _ensureProfileEmailSynced)
     if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') {
@@ -7471,7 +7421,6 @@ async function _handleAuthStateChange(event, session) {
 // ============================================================
 function _registerAuthListenerOnce() {
   if (window._authListenerRegistered) {
-    console.log('[AUTH-DEBUG] _registerAuthListenerOnce: مُسجَّل بالفعل — تجاهل');
     return;
   }
   if (!window.supabase || typeof window.supabase.auth === 'undefined') return;
@@ -7481,12 +7430,10 @@ function _registerAuthListenerOnce() {
     // ملاحظة مهمة: هذا الـcallback نفسه لا يحتوي على أي await لأي عملية
     // auth/DB — أي عملية كهذه هنا كانت (قبل هذا الإصلاح) هي بالضبط سبب
     // تجمّد lock:benisuef_auth للأبد.
-    console.log('[AUTH-DEBUG] onAuthStateChange fired (sync callback) — event:', event, '| session present:', !!session);
     setTimeout(function() {
       _handleAuthStateChange(event, session);
     }, 0);
   });
-  console.log('[AUTH-DEBUG] _registerAuthListenerOnce: تم تسجيل onAuthStateChange (مرة واحدة)');
 }
 
 // ============================================================
@@ -7523,7 +7470,6 @@ async function _getSessionSafe(timeoutMs) {
 window.checkUser = async function() {
   // ✅ [PERF] DEBUG timing logs مؤقتة (بطلب المستخدم) — لتحديد بالضبط أين يضيع
   // الوقت في مسار تسجيل الدخول. لا تغيّر أي منطق، فقط console.log إضافي.
-  console.log('[PERF] auth start', performance.now().toFixed(0) + 'ms');
   // انتظر CLIENT الجاهز (فيه .auth)
   if (!window.supabase || typeof window.supabase.auth === 'undefined') {
     var rp = window._supabaseClientReady || window._supabaseReady;
@@ -7557,7 +7503,6 @@ window.checkUser = async function() {
   // لا نتدخل ولا نكتب فوقه بحالة Guest مؤقتة).
   var _isOAuthCallback = /[#&]access_token=|[?&#]code=/.test(window.location.href);
   var _bootstrapFailSafeMs = _isOAuthCallback ? 25000 : 12000;
-  console.log('[AUTH-DEBUG] checkUser: _isOAuthCallback:', _isOAuthCallback, '| fail-safe timeout:', _bootstrapFailSafeMs, 'ms');
   setTimeout(function() {
     if (window._authRenderSeq === 0) {
       console.warn('[AUTH] checkUser: لم يصل أي حدث auth خلال', _bootstrapFailSafeMs, 'ms — معاملة كـ Guest مؤقتاً (fail-safe دفاعي فقط)');
@@ -7571,7 +7516,6 @@ window.checkUser = async function() {
 // في التحميل، ولا بس إحساس التعليق سببه الـ Auth؟). إضافة مستمع جديد فقط —
 // لا يمسّ أي مستمع موجود.
 window.addEventListener('load', function() {
-  console.log('[PERF] page interactive', performance.now().toFixed(0) + 'ms');
 });
 
 // ══════════════════════════════════════════════════════
@@ -8269,6 +8213,8 @@ window.checkBanStatus = async function(email) {
       <button class="ap-nav-btn" onclick="apSwitchTab('platformSettings')" id="ap-tab-platformSettings" role="tab">⚙️ إعدادات المنصة</button>
       <button class="ap-nav-btn" onclick="apSwitchTab('sectionchat')" id="ap-tab-sectionchat" role="tab">💬 محادثة الكورس</button>
       <button class="ap-nav-btn" onclick="apSwitchTab('branchadmins')" id="ap-tab-branchadmins" role="tab">🛡️ أدمن الكورسات</button>
+      <button class="ap-nav-btn" onclick="apSwitchTab('lectures')" id="ap-tab-lectures" role="tab">📅 مواعيد المحاضرات</button>
+      <button class="ap-nav-btn" onclick="apSwitchTab('announcements')" id="ap-tab-announcements" role="tab">📢 إعلانات الكورس</button>
       <button class="ap-nav-btn" onclick="apSwitchTab('auditlog')" id="ap-tab-auditlog" role="tab">🧾 سجل العمليات</button>
     </nav>
 
@@ -9001,6 +8947,28 @@ window.checkBanStatus = async function(email) {
         <div id="ap-sectionchat-body"><div class="ap-loading"><div class="spinner"></div> جاري التحميل...</div></div>
       </div>
       <!-- End Section Chat Tab -->
+
+      <!-- ═══════════════════ TAB: LECTURE SCHEDULE ═══════════════════ -->
+      <div class="ap-tab-panel" id="ap-panel-lectures" role="tabpanel">
+        <div class="ap-section-heading" style="margin:0 0 10px;border:none;padding:0;">📅 مواعيد المحاضرات</div>
+        <div style="font-size:.76rem;color:#888;margin-bottom:14px;">
+          مواعيد كورساتك فقط. الطالب المشترك في الكورس يراها ويستقبل تذكيرات قبلها. يُستخدم جدول course_lecture_schedules الموجود بالفعل.
+        </div>
+        <div style="margin-bottom:14px;"><button class="ap-btn ap-btn-success" onclick="lsOpenModal()">➕ إضافة موعد جديد</button></div>
+        <div id="ls-list-body"><div class="ap-loading"><div class="spinner"></div> جاري التحميل...</div></div>
+      </div>
+      <!-- End Lecture Schedule Tab -->
+
+      <!-- ═══════════════════ TAB: COURSE ANNOUNCEMENTS ═══════════════════ -->
+      <div class="ap-tab-panel" id="ap-panel-announcements" role="tabpanel">
+        <div class="ap-section-heading" style="margin:0 0 10px;border:none;padding:0;">📢 إعلانات الكورس</div>
+        <div style="font-size:.76rem;color:#888;margin-bottom:14px;">
+          إعلانات كورساتك فقط. يظهر الإعلان للمشتركين في هذا الكورس تحديدًا فقط. يُستخدم جدول course_announcements الموجود بالفعل، والإشعار يُرسَل تلقائيًا عبر الـTrigger الموجود مسبقًا (trg_course_announcement_notification).
+        </div>
+        <div style="margin-bottom:14px;"><button class="ap-btn ap-btn-success" onclick="cnOpenModal()">➕ إعلان جديد</button></div>
+        <div id="cn-list-body"><div class="ap-loading"><div class="spinner"></div> جاري التحميل...</div></div>
+      </div>
+      <!-- End Course Announcements Tab -->
 
       <!-- ═══════════════════ TAB: BRANCH ADMINS (Super Admin only) ═══════════════════ -->
       <div class="ap-tab-panel" id="ap-panel-branchadmins" role="tabpanel">
@@ -10167,7 +10135,7 @@ function _applyBranchAdminPanelGating() {
     // مستخدم عادي أو أدمن المنصة: أظهر كل التابات كما هي
     ['ap-tab-requests','ap-tab-usermgmt','ap-tab-users','ap-tab-messages','ap-tab-divsubs','ap-tab-content','ap-tab-dashboard',
      'ap-tab-payments','ap-tab-sectionsmgmt','ap-tab-paths','ap-tab-ads','ap-tab-monthlystats','ap-tab-sectionchat','ap-tab-auditlog','ap-tab-notifications',
-     'ap-tab-branchsettings','ap-tab-studentlevels']
+     'ap-tab-branchsettings','ap-tab-studentlevels','ap-tab-lectures','ap-tab-announcements']
       .forEach(function(id) { var el = document.getElementById(id); if (el) el.style.display = ''; });
     return;
   }
@@ -10210,6 +10178,12 @@ function _applyBranchAdminPanelGating() {
   if (notifTab) notifTab.style.display = 'none';
   var chatTab = document.getElementById('ap-tab-sectionchat');
   if (chatTab) chatTab.style.display = '';
+  // ✅ جديد: مواعيد المحاضرات + إعلانات الكورس — متاحان دائماً لأدمن الكورس
+  // (جزء أساسي من إدارة كورسه، مثل محادثة الكورس، بدون صلاحية إضافية مطلوبة)
+  var lecTab = document.getElementById('ap-tab-lectures');
+  if (lecTab) lecTab.style.display = '';
+  var annTab = document.getElementById('ap-tab-announcements');
+  if (annTab) annTab.style.display = '';
   // سجل العمليات: متاح دائماً لأدمن الكورس، لكن RLS في القاعدة تعرض له سجل شعبته فقط (وليس باقي الشعب)
   var auditTab = document.getElementById('ap-tab-auditlog');
   if (auditTab) auditTab.style.display = 'none';
@@ -10451,13 +10425,36 @@ window.openNotificationsCenter=async function(){
     }).join('');
     // Mark all visible as read without blocking display.
     var unreadIds=rows.filter(function(n){return n.is_read===false;}).map(function(n){return n.id;});
-    if(unreadIds.length) window.supabase.from('notifications').update({is_read:true}).in('id',unreadIds).then(function(){});
+    if(unreadIds.length) window.supabase.from('notifications').update({is_read:true}).in('id',unreadIds).then(function(){
+      if (typeof window._refreshNotifBadge === 'function') window._refreshNotifBadge();
+    });
+    else if (typeof window._refreshNotifBadge === 'function') window._refreshNotifBadge();
   }catch(e){
     var body=document.getElementById('notifications-center-body');
     if(body)body.innerHTML='<div class="ap-empty" style="color:#c0392b">❌ تعذر تحميل الإشعارات.</div>';
   }
 };
 window.msNotificationsPlaceholder=window.openNotificationsCenter;
+
+// ✅ جديد: عدّاد الإشعارات غير المقروءة على زر الجرس 🔔 — قراءة فقط
+// (count فقط، بدون جلب الصفوف)، ولا يغيّر أي RLS/سياسة حالية.
+window._refreshNotifBadge = async function() {
+  var badge = document.getElementById('ms-bell-badge');
+  if (!badge || !window.supabase) return;
+  try {
+    var sessionRes = await _getSessionSafe();
+    var user = sessionRes && sessionRes.data && sessionRes.data.session && sessionRes.data.session.user;
+    if (!user) { badge.style.display = 'none'; return; }
+    var res = await window.supabase.from('notifications')
+      .select('id', { count: 'exact', head: true }).eq('user_id', user.id).eq('is_read', false);
+    if (res.error) throw res.error;
+    var n = res.count || 0;
+    if (n > 0) { badge.textContent = n > 99 ? '99+' : String(n); badge.style.display = ''; }
+    else { badge.style.display = 'none'; }
+  } catch (e) {
+    console.warn('[_refreshNotifBadge] error:', e && e.message);
+  }
+};
 
 // ── apSwitchTab ─────────────────────────────────────────────────
 function apSwitchTab(tab) {
@@ -10509,6 +10506,8 @@ function apSwitchTab(tab) {
   else if (tab === 'quizzes')  { if (typeof qzLoadMaterialsForAdmin === 'function') qzLoadMaterialsForAdmin(); }
   else if (tab === 'sectionchat') apLoadSectionChatTab();
   else if (tab === 'branchadmins') { baLoadGrades(); }
+  else if (tab === 'lectures') lsLoad();
+  else if (tab === 'announcements') cnLoad();
   else if (tab === 'branchsettings') { if (typeof bsInit === 'function') bsInit(); }
   else if (tab === 'studentlevels')  { if (typeof slInit === 'function') slInit(); }
 }
@@ -10603,6 +10602,347 @@ async function apLoadSectionChatTab() {
   } catch(err) {
     console.error('[SectionChat] load error:', err && err.message);
     el.innerHTML = '<div class="ap-empty" style="color:#e74c3c;">تعذّر تحميل قائمة الشعب.</div>';
+  }
+}
+
+// ════════════════════════════════════════════════════════════════
+// COURSE OPTIONS HELPER — نفس منطق apLoadSectionChatTab بالضبط (إعادة استخدام،
+// بدون تكرار): أدمن الكورس يرى كورساته المُسندة فقط (window._branchAdminRoots)،
+// أدمن المنصة يرى كل الشعب القابلة للاشتراك (requires_subscription=true).
+// ════════════════════════════════════════════════════════════════
+async function _adminCourseOptions() {
+  var db = window.supabase;
+  if (!db) return [];
+  try {
+    var query = db.from('site_sections').select('id, title, icon');
+    if (window._isBranchAdmin && !window._isSuperAdmin) {
+      var rootIds = (Array.isArray(window._branchAdminRoots) ? window._branchAdminRoots : [])
+        .map(function(r){ return r && r.id; }).filter(Boolean);
+      if (!rootIds.length) return [];
+      query = query.in('id', rootIds);
+    } else {
+      query = query.eq('requires_subscription', true);
+    }
+    var res = await query.order('title');
+    if (res.error) throw res.error;
+    return res.data || [];
+  } catch (e) {
+    console.error('[_adminCourseOptions] error:', e && e.message);
+    return [];
+  }
+}
+function _adminCourseIds(courses) { return (courses || []).map(function(c){ return c.id; }); }
+
+// ════════════════════════════════════════════════════════════════
+// LECTURE SCHEDULE TAB (📅 مواعيد المحاضرات) — course_lecture_schedules
+// الجدول والـRLS (course_schedule_admin_all / course_schedule_student_read)
+// موجودان بالفعل — Frontend فقط، بدون أي SQL جديد.
+// أعمدة مؤكَّدة: id, course_id, chapter_id, title, description, start_at,
+// end_at, reminder_minutes (ARRAY, default [1440,60,15]), is_active.
+// ════════════════════════════════════════════════════════════════
+window._lsCourses = [];
+window._lsRows = [];
+window._lsEditId = null;
+
+async function lsLoad() {
+  var el = document.getElementById('ls-list-body');
+  if (!el || !window.supabase) return;
+  el.innerHTML = '<div class="ap-loading"><div class="spinner"></div> جاري التحميل...</div>';
+  try {
+    window._lsCourses = await _adminCourseOptions();
+    var ids = _adminCourseIds(window._lsCourses);
+    if (!ids.length) { el.innerHTML = '<div class="ap-empty">لا توجد كورسات مُسندة إليك بعد.</div>'; return; }
+    var { data, error } = await window.supabase.from('course_lecture_schedules')
+      .select('*').in('course_id', ids).order('start_at', { ascending: true });
+    if (error) throw error;
+    window._lsRows = data || [];
+    _lsRender();
+  } catch (e) {
+    console.error('[lsLoad] error:', e && e.message);
+    el.innerHTML = '<div class="ap-empty" style="color:#e74c3c;">❌ تعذّر تحميل المواعيد: ' + _apEsc(e.message) + '</div>';
+  }
+}
+
+function _lsCourseTitle(courseId) {
+  var c = (window._lsCourses || []).find(function(x){ return String(x.id) === String(courseId); });
+  return c ? ((c.icon || '🎓') + ' ' + c.title) : ('#' + courseId);
+}
+function _lsFmtDate(iso) {
+  if (!iso) return '—';
+  try { return new Date(iso).toLocaleString('ar-EG', { dateStyle: 'medium', timeStyle: 'short' }); }
+  catch(e) { return iso; }
+}
+function _lsReminderLabel(arr) {
+  var map = { 1440: 'قبل يوم', 60: 'قبل ساعة', 15: 'قبل 15 دقيقة', 30: 'قبل 30 دقيقة', 10: 'قبل 10 دقائق', 5: 'قبل 5 دقائق', 2880: 'قبل يومين' };
+  return (arr || []).map(function(m){ return map[m] || ('قبل ' + m + ' د'); }).join(' · ') || '—';
+}
+
+function _lsRender() {
+  var el = document.getElementById('ls-list-body');
+  if (!el) return;
+  if (!window._lsRows.length) { el.innerHTML = '<div class="ap-empty">لا توجد مواعيد محاضرات بعد.</div>'; return; }
+  var now = Date.now();
+  el.innerHTML = '<div class="ap-table-wrap"><table class="ap-table"><thead><tr>'
+    + '<th>الكورس</th><th>عنوان المحاضرة</th><th>البداية</th><th>النهاية</th><th>التذكيرات</th><th>الحالة</th><th>الإجراءات</th>'
+    + '</tr></thead><tbody>' +
+    window._lsRows.map(function(r) {
+      var isPast = r.start_at && new Date(r.start_at).getTime() < now;
+      var stateBadge = !r.is_active
+        ? '<span class="ap-badge user">⏸️ معطّل</span>'
+        : (isPast ? '<span class="ap-badge user">⌛ انتهى</span>' : '<span class="ap-badge admin" style="background:#eafaf1;color:#17a589;">🟢 قادم</span>');
+      return '<tr>'
+        + '<td>' + _apEsc(_lsCourseTitle(r.course_id)) + '</td>'
+        + '<td><b>' + _apEsc(r.title) + '</b>' + (r.chapter_id ? '<br><span style="font-size:.68rem;color:#8a9bab;">شابتر #' + r.chapter_id + '</span>' : '') + '</td>'
+        + '<td>' + _lsFmtDate(r.start_at) + '</td>'
+        + '<td>' + (r.end_at ? _lsFmtDate(r.end_at) : '—') + '</td>'
+        + '<td style="font-size:.72rem;">' + _apEsc(_lsReminderLabel(r.reminder_minutes)) + '</td>'
+        + '<td>' + stateBadge + '</td>'
+        + '<td style="white-space:nowrap;">'
+          + '<button class="ap-btn ap-btn-primary" style="margin-left:4px;" onclick="lsOpenModal(' + r.id + ')">🔄 تعديل</button>'
+          + '<button class="ap-btn ap-btn-ghost" style="margin-left:4px;" onclick="lsToggleActive(' + r.id + ',' + (!r.is_active) + ')">' + (r.is_active ? '⏸️ تعطيل' : '▶️ تفعيل') + '</button>'
+          + '<button class="ap-btn ap-btn-danger" onclick="lsDelete(' + r.id + ')">🗑️ حذف</button>'
+        + '</td></tr>';
+    }).join('') + '</tbody></table></div>';
+}
+
+function _lsToLocalInputValue(iso) {
+  if (!iso) return '';
+  var d = new Date(iso);
+  var pad = function(n){ return String(n).padStart(2,'0'); };
+  return d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate()) + 'T' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+}
+
+function lsOpenModal(id) {
+  window._lsEditId = id || null;
+  var row = id ? (window._lsRows || []).find(function(r){ return String(r.id) === String(id); }) : null;
+  var courseOpts = (window._lsCourses || []).map(function(c) {
+    var sel = row && String(row.course_id) === String(c.id) ? ' selected' : '';
+    return '<option value="' + c.id + '"' + sel + '>' + _apEsc(c.title) + '</option>';
+  }).join('');
+  var reminders = row ? (row.reminder_minutes || [1440,60,15]) : [1440,60,15];
+  var remCheck = function(m) { return reminders.indexOf(m) !== -1 ? 'checked' : ''; };
+
+  var overlay = document.createElement('div');
+  overlay.id = 'ls-modal-overlay';
+  overlay.style.cssText = 'display:flex;position:fixed;inset:0;z-index:9999998;background:rgba(10,20,40,.75);backdrop-filter:blur(4px);align-items:center;justify-content:center;padding:16px;';
+  overlay.innerHTML =
+    '<div style="background:#fff;border-radius:16px;max-width:480px;width:100%;max-height:90vh;overflow:auto;padding:22px;">'
+    + '<h3 style="margin:0 0 14px;color:#0a3d62;">' + (id ? '🔄 تعديل الموعد' : '➕ موعد محاضرة جديد') + '</h3>'
+    + '<label style="font-size:.78rem;font-weight:700;">الكورس</label>'
+    + '<select id="ls-f-course" class="ap-input" style="width:100%;margin:4px 0 10px;">' + courseOpts + '</select>'
+    + '<label style="font-size:.78rem;font-weight:700;">الشابتر (اختياري — ID)</label>'
+    + '<input id="ls-f-chapter" class="ap-input" style="width:100%;margin:4px 0 10px;" type="number" value="' + (row && row.chapter_id ? row.chapter_id : '') + '" placeholder="اتركه فارغًا لو غير مرتبط بشابتر محدد">'
+    + '<label style="font-size:.78rem;font-weight:700;">عنوان المحاضرة</label>'
+    + '<input id="ls-f-title" class="ap-input" style="width:100%;margin:4px 0 10px;" value="' + (row ? _apEsc(row.title) : '') + '">'
+    + '<label style="font-size:.78rem;font-weight:700;">وصف (اختياري)</label>'
+    + '<textarea id="ls-f-desc" class="ap-input" style="width:100%;margin:4px 0 10px;min-height:60px;">' + (row ? _apEsc(row.description || '') : '') + '</textarea>'
+    + '<label style="font-size:.78rem;font-weight:700;">تاريخ ووقت البداية</label>'
+    + '<input id="ls-f-start" class="ap-input" style="width:100%;margin:4px 0 10px;" type="datetime-local" value="' + (row ? _lsToLocalInputValue(row.start_at) : '') + '">'
+    + '<label style="font-size:.78rem;font-weight:700;">تاريخ ووقت النهاية (اختياري)</label>'
+    + '<input id="ls-f-end" class="ap-input" style="width:100%;margin:4px 0 10px;" type="datetime-local" value="' + (row ? _lsToLocalInputValue(row.end_at) : '') + '">'
+    + '<label style="font-size:.78rem;font-weight:700;">أوقات التذكير</label>'
+    + '<div style="display:flex;gap:12px;flex-wrap:wrap;margin:6px 0 14px;font-size:.78rem;">'
+      + '<label><input type="checkbox" id="ls-rem-1440" ' + remCheck(1440) + '> قبل يوم</label>'
+      + '<label><input type="checkbox" id="ls-rem-60" ' + remCheck(60) + '> قبل ساعة</label>'
+      + '<label><input type="checkbox" id="ls-rem-15" ' + remCheck(15) + '> قبل 15 دقيقة</label>'
+    + '</div>'
+    + '<div id="ls-modal-msg" style="color:#e74c3c;font-size:.78rem;margin-bottom:8px;"></div>'
+    + '<div style="display:flex;gap:8px;justify-content:flex-end;">'
+      + '<button class="ap-btn ap-btn-ghost" onclick="document.getElementById(\'ls-modal-overlay\').remove()">إلغاء</button>'
+      + '<button class="ap-btn ap-btn-success" onclick="lsSave()">✅ حفظ</button>'
+    + '</div></div>';
+  document.body.appendChild(overlay);
+}
+
+async function lsSave() {
+  var msgEl = document.getElementById('ls-modal-msg');
+  try {
+    var courseId = Number(document.getElementById('ls-f-course').value);
+    var chapterVal = document.getElementById('ls-f-chapter').value;
+    var title = document.getElementById('ls-f-title').value.trim();
+    var desc = document.getElementById('ls-f-desc').value.trim();
+    var startVal = document.getElementById('ls-f-start').value;
+    var endVal = document.getElementById('ls-f-end').value;
+    if (!courseId || !title || !startVal) { msgEl.textContent = '⚠️ الكورس، العنوان، وموعد البداية مطلوبون.'; return; }
+    var reminders = [];
+    if (document.getElementById('ls-rem-1440').checked) reminders.push(1440);
+    if (document.getElementById('ls-rem-60').checked) reminders.push(60);
+    if (document.getElementById('ls-rem-15').checked) reminders.push(15);
+    var payload = {
+      course_id: courseId,
+      chapter_id: chapterVal ? Number(chapterVal) : null,
+      title: title,
+      description: desc || null,
+      start_at: new Date(startVal).toISOString(),
+      end_at: endVal ? new Date(endVal).toISOString() : null,
+      reminder_minutes: reminders.length ? reminders : [1440,60,15]
+    };
+    var db = window.supabase;
+    var res = window._lsEditId
+      ? await db.from('course_lecture_schedules').update(payload).eq('id', window._lsEditId)
+      : await db.from('course_lecture_schedules').insert(payload);
+    if (res.error) throw res.error;
+    document.getElementById('ls-modal-overlay').remove();
+    if (typeof _showToast === 'function') _showToast('✅ تم الحفظ', 'success');
+    lsLoad();
+  } catch (e) {
+    console.error('[lsSave] error:', e && e.message);
+    if (msgEl) msgEl.textContent = '❌ ' + (e.message || 'فشل الحفظ');
+  }
+}
+
+async function lsToggleActive(id, makeActive) {
+  try {
+    var { error } = await window.supabase.from('course_lecture_schedules').update({ is_active: makeActive }).eq('id', id);
+    if (error) throw error;
+    lsLoad();
+  } catch (e) {
+    if (typeof _showToast === 'function') _showToast('❌ فشل التحديث: ' + (e.message || ''), 'error');
+  }
+}
+
+async function lsDelete(id) {
+  if (!confirm('حذف هذا الموعد نهائيًا؟')) return;
+  try {
+    var { error } = await window.supabase.from('course_lecture_schedules').delete().eq('id', id);
+    if (error) throw error;
+    if (typeof _showToast === 'function') _showToast('✅ تم الحذف', 'success');
+    lsLoad();
+  } catch (e) {
+    if (typeof _showToast === 'function') _showToast('❌ فشل الحذف: ' + (e.message || ''), 'error');
+  }
+}
+
+// ════════════════════════════════════════════════════════════════
+// COURSE ANNOUNCEMENTS TAB (📢 إعلانات الكورس) — course_announcements
+// الجدول والـRLS (course_announcements_admin_all / course_announcements_student_read)
+// موجودان بالفعل، والإشعار يُرسَل عبر trg_course_announcement_notification
+// الموجود مسبقًا — لا يوجد أي إنشاء إشعار من الفرونت هنا إطلاقًا.
+// ════════════════════════════════════════════════════════════════
+window._cnCourses = [];
+window._cnRows = [];
+window._cnEditId = null;
+
+async function cnLoad() {
+  var el = document.getElementById('cn-list-body');
+  if (!el || !window.supabase) return;
+  el.innerHTML = '<div class="ap-loading"><div class="spinner"></div> جاري التحميل...</div>';
+  try {
+    window._cnCourses = await _adminCourseOptions();
+    var ids = _adminCourseIds(window._cnCourses);
+    if (!ids.length) { el.innerHTML = '<div class="ap-empty">لا توجد كورسات مُسندة إليك بعد.</div>'; return; }
+    var { data, error } = await window.supabase.from('course_announcements')
+      .select('*').in('course_id', ids).order('created_at', { ascending: false });
+    if (error) throw error;
+    window._cnRows = data || [];
+    _cnRender();
+  } catch (e) {
+    console.error('[cnLoad] error:', e && e.message);
+    el.innerHTML = '<div class="ap-empty" style="color:#e74c3c;">❌ تعذّر تحميل الإعلانات: ' + _apEsc(e.message) + '</div>';
+  }
+}
+
+function _cnCourseTitle(courseId) {
+  var c = (window._cnCourses || []).find(function(x){ return String(x.id) === String(courseId); });
+  return c ? ((c.icon || '🎓') + ' ' + c.title) : ('#' + courseId);
+}
+
+function _cnRender() {
+  var el = document.getElementById('cn-list-body');
+  if (!el) return;
+  if (!window._cnRows.length) { el.innerHTML = '<div class="ap-empty">لا توجد إعلانات بعد.</div>'; return; }
+  el.innerHTML = '<div class="ap-table-wrap"><table class="ap-table"><thead><tr>'
+    + '<th>الكورس</th><th>العنوان</th><th>تاريخ النشر</th><th>الحالة</th><th>الإجراءات</th>'
+    + '</tr></thead><tbody>' +
+    window._cnRows.map(function(r) {
+      var stateBadge = r.is_active
+        ? '<span class="ap-badge admin" style="background:#eafaf1;color:#17a589;">🟢 منشور</span>'
+        : '<span class="ap-badge user">⏸️ معطّل</span>';
+      return '<tr>'
+        + '<td>' + _apEsc(_cnCourseTitle(r.course_id)) + '</td>'
+        + '<td><b>' + _apEsc(r.title) + '</b></td>'
+        + '<td>' + _lsFmtDate(r.created_at) + '</td>'
+        + '<td>' + stateBadge + '</td>'
+        + '<td style="white-space:nowrap;">'
+          + '<button class="ap-btn ap-btn-primary" style="margin-left:4px;" onclick="cnOpenModal(' + r.id + ')">🔄 تعديل</button>'
+          + '<button class="ap-btn ap-btn-ghost" style="margin-left:4px;" onclick="cnToggleActive(' + r.id + ',' + (!r.is_active) + ')">' + (r.is_active ? '⏸️ تعطيل' : '▶️ تفعيل') + '</button>'
+          + '<button class="ap-btn ap-btn-danger" onclick="cnDelete(' + r.id + ')">🗑️ حذف</button>'
+        + '</td></tr>';
+    }).join('') + '</tbody></table></div>';
+}
+
+function cnOpenModal(id) {
+  window._cnEditId = id || null;
+  var row = id ? (window._cnRows || []).find(function(r){ return String(r.id) === String(id); }) : null;
+  var courseOpts = (window._cnCourses || []).map(function(c) {
+    var sel = row && String(row.course_id) === String(c.id) ? ' selected' : '';
+    return '<option value="' + c.id + '"' + sel + '>' + _apEsc(c.title) + '</option>';
+  }).join('');
+
+  var overlay = document.createElement('div');
+  overlay.id = 'cn-modal-overlay';
+  overlay.style.cssText = 'display:flex;position:fixed;inset:0;z-index:9999998;background:rgba(10,20,40,.75);backdrop-filter:blur(4px);align-items:center;justify-content:center;padding:16px;';
+  overlay.innerHTML =
+    '<div style="background:#fff;border-radius:16px;max-width:480px;width:100%;max-height:90vh;overflow:auto;padding:22px;">'
+    + '<h3 style="margin:0 0 14px;color:#0a3d62;">' + (id ? '🔄 تعديل الإعلان' : '📢 إعلان جديد') + '</h3>'
+    + '<label style="font-size:.78rem;font-weight:700;">الكورس</label>'
+    + '<select id="cn-f-course" class="ap-input" style="width:100%;margin:4px 0 10px;">' + courseOpts + '</select>'
+    + '<label style="font-size:.78rem;font-weight:700;">عنوان الإعلان</label>'
+    + '<input id="cn-f-title" class="ap-input" style="width:100%;margin:4px 0 10px;" value="' + (row ? _apEsc(row.title) : '') + '">'
+    + '<label style="font-size:.78rem;font-weight:700;">نص الإعلان</label>'
+    + '<textarea id="cn-f-body" class="ap-input" style="width:100%;margin:4px 0 10px;min-height:100px;">' + (row ? _apEsc(row.body || '') : '') + '</textarea>'
+    + '<div id="cn-modal-msg" style="color:#e74c3c;font-size:.78rem;margin-bottom:8px;"></div>'
+    + '<div style="font-size:.7rem;color:#8a9bab;margin-bottom:10px;">' + (id ? 'لن يُرسَل إشعار جديد عند التعديل (الإشعار يُرسَل مرة واحدة فقط عند الإنشاء عبر الـTrigger الموجود).' : 'سيصل إشعار تلقائيًا لكل مشترك نشط في هذا الكورس فور النشر.') + '</div>'
+    + '<div style="display:flex;gap:8px;justify-content:flex-end;">'
+      + '<button class="ap-btn ap-btn-ghost" onclick="document.getElementById(\'cn-modal-overlay\').remove()">إلغاء</button>'
+      + '<button class="ap-btn ap-btn-success" onclick="cnSave()">✅ ' + (id ? 'حفظ التعديل' : 'نشر الإعلان') + '</button>'
+    + '</div></div>';
+  document.body.appendChild(overlay);
+}
+
+async function cnSave() {
+  var msgEl = document.getElementById('cn-modal-msg');
+  try {
+    var courseId = Number(document.getElementById('cn-f-course').value);
+    var title = document.getElementById('cn-f-title').value.trim();
+    var body = document.getElementById('cn-f-body').value.trim();
+    if (!courseId || !title || !body) { msgEl.textContent = '⚠️ الكورس والعنوان والنص مطلوبون.'; return; }
+    var payload = { course_id: courseId, title: title, body: body };
+    var db = window.supabase;
+    // ✅ لا نُنشئ Notification يدويًا هنا إطلاقًا — trg_course_announcement_notification
+    // الموجود بالفعل على الجدول يتولى ذلك تلقائيًا عند الـINSERT.
+    var res = window._cnEditId
+      ? await db.from('course_announcements').update(payload).eq('id', window._cnEditId)
+      : await db.from('course_announcements').insert(payload);
+    if (res.error) throw res.error;
+    document.getElementById('cn-modal-overlay').remove();
+    if (typeof _showToast === 'function') _showToast('✅ تم الحفظ', 'success');
+    cnLoad();
+  } catch (e) {
+    console.error('[cnSave] error:', e && e.message);
+    if (msgEl) msgEl.textContent = '❌ ' + (e.message || 'فشل الحفظ');
+  }
+}
+
+async function cnToggleActive(id, makeActive) {
+  try {
+    var { error } = await window.supabase.from('course_announcements').update({ is_active: makeActive }).eq('id', id);
+    if (error) throw error;
+    cnLoad();
+  } catch (e) {
+    if (typeof _showToast === 'function') _showToast('❌ فشل التحديث: ' + (e.message || ''), 'error');
+  }
+}
+
+async function cnDelete(id) {
+  if (!confirm('حذف هذا الإعلان نهائيًا؟')) return;
+  try {
+    var { error } = await window.supabase.from('course_announcements').delete().eq('id', id);
+    if (error) throw error;
+    if (typeof _showToast === 'function') _showToast('✅ تم الحذف', 'success');
+    cnLoad();
+  } catch (e) {
+    if (typeof _showToast === 'function') _showToast('❌ فشل الحذف: ' + (e.message || ''), 'error');
   }
 }
 
@@ -15404,7 +15744,6 @@ function _applyBranchAdminPanelRestrictions() {
       } else {
         window._branchAdminSectionIds = [];
       }
-      console.log('[AUTH-DEBUG] _sessionCheckOnce: admin type changed — resynced isSuperAdmin/isBranchAdmin', status);
     }
   }
 
@@ -17618,13 +17957,10 @@ window.diagnose = async function() {
             });
           }
         }).then(function () {
-          console.log('[BSM DEBUG] ✅ Service Worker registrations/cache cleared for testing');
         }).catch(function (e) {
-          console.warn('[BSM DEBUG] Service Worker/cache cleanup warning:', e);
         });
       }
     } catch (e) {
-      console.warn('[BSM DEBUG] SW cleanup warning:', e);
     }
   });
 })();
@@ -17753,7 +18089,6 @@ window.diagnose = async function() {
   });
   
   _cardObserver.observe(document.body, { childList: true, subtree: true });
-  console.log('[PREFETCH] ✅ Intersection Observer مفعَّل للـ prefetching');
 })();
 </script>
 <!-- ============================================================ -->
@@ -17882,19 +18217,16 @@ window.diagnose = async function() {
       if (!children.length) {
         // وصلنا لعقدة بلا أبناء ولم نجد lesson/class على الطريق — لا يوجد
         // شابتر مجاني صالح تحت هذا الـanchor (لا نعتبر أي نوع آخر شابتراً).
-        console.log('[DEBUG _getFirstFreeChapterId] anchorId=' + anchorId + ' → لا يوجد Chapter (lesson/class) على مسار أول ابن، توقف عند id=' + currentId);
         return null;
       }
       var first = children[0];
       var t = String(first.type || '').trim().toLowerCase();
       if (t === 'lesson' || t === 'class') {
-        console.log('[DEBUG _getFirstFreeChapterId] anchorId=' + anchorId + ' → firstFreeChapterId=' + first.id + ' (type=' + t + ', depth=' + guard + ')');
         return first.id;
       }
       // نوع وسيط (subject/department/level/year/إلخ) — نزول أعمق بدون اعتباره شابتراً.
       currentId = first.id;
     }
-    console.warn('[DEBUG _getFirstFreeChapterId] ⚠️ توقف بعد ' + guard + ' مستويات دون إيجاد lesson/class تحت anchorId=' + anchorId);
     return null;
   }
 
@@ -18968,6 +19300,63 @@ window.diagnose = async function() {
   function _chatEsc(s) { return _apEsc ? _apEsc(s) : String(s == null ? '' : s).replace(/[&<>"']/g, function(c){
     return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
   }); }
+
+  // ════════════════════════════════════════════════════════════════
+  // مواعيد المحاضرات + إعلانات الكورس — واجهة الطالب (قراءة فقط)
+  // نعتمد كليًا على course_schedule_student_read / course_announcements_student_read
+  // (RLS الموجودة أصلاً، مبنية على has_active_course_subscription) كحماية حقيقية —
+  // لا يوجد أي فحص اشتراك مكرر هنا في الفرونت؛ لو رجعت النتيجة فاضية (غير مشترك)
+  // لا نعرض القسم إطلاقاً، بدون أي رسالة "غير مسموح" مربكة.
+  // ════════════════════════════════════════════════════════════════
+  window._renderCourseWidgets = async function(courseId) {
+    var wrap = document.getElementById('dynamic-section-course-widgets');
+    if (!wrap || !window.supabase) return;
+    try {
+      var nowIso = new Date().toISOString();
+      var [lecRes, annRes] = await Promise.all([
+        window.supabase.from('course_lecture_schedules').select('*')
+          .eq('course_id', courseId).eq('is_active', true).gte('start_at', nowIso)
+          .order('start_at', { ascending: true }).limit(10),
+        window.supabase.from('course_announcements').select('*')
+          .eq('course_id', courseId).eq('is_active', true)
+          .order('created_at', { ascending: false }).limit(10)
+      ]);
+      var lectures = (!lecRes.error && lecRes.data) ? lecRes.data : [];
+      var anns = (!annRes.error && annRes.data) ? annRes.data : [];
+      if (lecRes.error) console.warn('[_renderCourseWidgets] lectures:', lecRes.error.message);
+      if (annRes.error) console.warn('[_renderCourseWidgets] announcements:', annRes.error.message);
+
+      var html = '';
+      if (lectures.length) {
+        html += '<div style="margin:14px 0;padding:14px;border:1px solid #e7edf2;border-radius:14px;background:#fff;">'
+          + '<div style="font-weight:900;color:#0a3d62;margin-bottom:8px;">📅 مواعيد المحاضرات القادمة</div>'
+          + lectures.map(function(l) {
+              var d; try { d = new Date(l.start_at).toLocaleString('ar-EG', { dateStyle: 'medium', timeStyle: 'short' }); } catch(e) { d = l.start_at; }
+              return '<div style="padding:8px 0;border-top:1px solid #f0f3f6;font-size:.84rem;">'
+                + '<b>' + _chatEsc(l.title) + '</b> — ' + d
+                + (l.description ? '<div style="color:#667;font-size:.78rem;margin-top:2px;">' + _chatEsc(l.description) + '</div>' : '')
+                + '</div>';
+            }).join('')
+          + '</div>';
+      }
+      if (anns.length) {
+        html += '<div style="margin:14px 0;padding:14px;border:1px solid #e7edf2;border-radius:14px;background:#fff;">'
+          + '<div style="font-weight:900;color:#0a3d62;margin-bottom:8px;">📢 إعلانات الكورس</div>'
+          + anns.map(function(a) {
+              var d; try { d = new Date(a.created_at).toLocaleDateString('ar-EG'); } catch(e) { d = a.created_at; }
+              return '<div style="padding:8px 0;border-top:1px solid #f0f3f6;font-size:.84rem;">'
+                + '<b>' + _chatEsc(a.title) + '</b> <span style="color:#8a9bab;font-size:.7rem;">' + d + '</span>'
+                + '<div style="color:#425466;margin-top:2px;line-height:1.7;">' + _chatEsc(a.body) + '</div>'
+                + '</div>';
+            }).join('')
+          + '</div>';
+      }
+      wrap.innerHTML = html; // فاضي تمامًا (غير مشترك أو لا يوجد شيء) = لا يُعرض شيء، بدون رسالة مربكة
+    } catch (e) {
+      console.warn('[_renderCourseWidgets] error:', e && e.message);
+      wrap.innerHTML = '';
+    }
+  };
 
   function _chatFriendlyError(msg) {
     // ✅ لا نعرض أبداً رسائل تقنية (RLS/PostgREST/SQL) — رسالة عربية مفهومة فقط
@@ -22135,7 +22524,6 @@ async function qzBeginAttempt(quizId) {
     // console.group('Quiz Attempt') لتسهيل تتبع الأخطاء، بصيغة موحّدة:
     // { quiz_id, questions_count, first_question_id, rpc_status }
     console.group('Quiz Attempt');
-    console.log('[RPC CALL] get_quiz_questions_for_attempt — params:', { p_quiz_id: quizId });
     var { data: questions, error } = await db.rpc('get_quiz_questions_for_attempt', { p_quiz_id: quizId });
     if (error) {
       console.error('[RPC ERROR] get_quiz_questions_for_attempt failed', {
@@ -22151,12 +22539,6 @@ async function qzBeginAttempt(quizId) {
       console.groupEnd();
       throw error;
     }
-    console.log('[RPC OK] get_quiz_questions_for_attempt', {
-      quiz_id: quizId,
-      questions_count: questions ? questions.length : 0,
-      first_question_id: (questions && questions.length) ? questions[0].id : null,
-      rpc_status: 'ok'
-    });
     if (!questions || !questions.length) {
       console.warn('[RPC WARN] get_quiz_questions_for_attempt returned no questions', {
         quiz_id: quizId,
@@ -24371,7 +24753,6 @@ var labels=document.querySelectorAll('#admin-panel .ap-label');labels.forEach(fu
     try{
       if(typeof window.adminLoadSections==='function') await window.adminLoadSections();
       if(typeof window.qzLoadMaterialsForAdmin==='function') await window.qzLoadMaterialsForAdmin();
-      console.log('[BSM DEBUG FIX] course materials reloaded');
     }catch(e){ console.warn('[BSM DEBUG FIX MATERIALS]',e); }
   };
 
@@ -24532,8 +24913,6 @@ var labels=document.querySelectorAll('#admin-panel .ap-label');labels.forEach(fu
     }
   });
 
-  console.log('%c[BSM DEBUG FIX V2]','background:#111;color:#0f0;font-weight:bold;',
-    'Chat داخل الكورس + مراسلة الأدمن + الاشتراكات + الإحصائيات + المحتوى/الشباتر + الطلاب + الجدول');
 })();
 </script>
 
