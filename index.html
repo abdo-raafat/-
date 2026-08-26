@@ -1284,6 +1284,36 @@ footer strong { color: var(--accent2); }
   max-height: calc(100vh - 140px) !important;
 }
 
+/* ✅ تكبير بصري مضمون (fallback لا يعتمد على Fullscreen API) — يعمل على كل
+   المتصفحات بما فيها iOS Safari اللي مش بتدعم Fullscreen API للعناصر العامة. */
+body.rv-fs-open .rv-overlay {
+  padding: 0 !important;
+}
+body.rv-fs-open .rv-modal {
+  width: 100vw !important; max-width: 100vw !important;
+  height: 100vh !important; height: 100dvh !important;
+  max-height: 100vh !important; max-height: 100dvh !important;
+  border-radius: 0 !important;
+}
+body.rv-fs-open .rv-modal .rv-embed-frame {
+  height: calc(100vh - 120px) !important;
+  height: calc(100dvh - 120px) !important;
+}
+body.rv-fs-open .rv-modal .rv-video {
+  max-height: calc(100vh - 120px) !important;
+  max-height: calc(100dvh - 120px) !important;
+}
+body.rv-fs-open .rv-modal .rv-image-wrap img {
+  max-height: calc(100vh - 140px) !important;
+  max-height: calc(100dvh - 140px) !important;
+}
+body.rv-fs-open .rv-audio-wrap {
+  padding-top: 8vh;
+}
+body.rv-fs-open .rv-audio-icon {
+  font-size: 5rem !important;
+}
+
 /* Zoom للصور: pinch على الهاتف */
 .rv-image-wrap {
   touch-action: pinch-zoom;
@@ -6592,6 +6622,9 @@ const ResourceViewer = (function() {
     if (el) el.remove();
     document.body.style.overflow = '';
     document.body.classList.remove('rv-open');
+    // ✅ تنظيف حالة التكبير البصري (rv-force-enlarged) عند إغلاق العارض حتى لا
+    // يبقى المشغل التالي مفتوحاً في وضع مكبّر بالخطأ.
+    document.body.classList.remove('rv-fs-open');
     if (document._rvKeyHandler) {
       document.removeEventListener('keydown', document._rvKeyHandler);
     }
@@ -6613,72 +6646,69 @@ const ResourceViewer = (function() {
 
   function _toggleFullscreen() {
     const modal = document.getElementById('rv-modal');
-    const btn   = document.getElementById('rv-fs-btn');
     if (!modal) return;
 
-    try {
-      const fsEl = document.fullscreenElement || document.webkitFullscreenElement;
-      if (!fsEl) {
-        // الفيديو المباشر: ادخل ملء الشاشة على عنصر الفيديو نفسه.
-        // Embed: ادخل ملء الشاشة على الـiframe نفسه أولًا.
-        // fallback: المودال كاملًا إذا منع المتصفح Fullscreen للعنصر.
-        var target =
-          document.getElementById('rv-embed-iframe') ||
-          document.getElementById('rv-video-el') ||
-          modal;
+    // ✅ FIX: زر "تكبير" لم يكن يعمل فعليًا على متصفحات كثيرة (خصوصًا
+    // iOS Safari وبعض WebViews) لأن Fullscreen API القياسي (requestFullscreen/
+    // webkitRequestFullscreen) غير مدعوم فيها إطلاقًا لعناصر عامة، فكانت الدالة
+    // تفشل بصمت (console.warn فقط) دون أي تأثير مرئي للمستخدم. الحل: نعتمد على
+    // تكبير بصري مضمون عبر CSS (class على body لا يعتمد على أي إذن أو دعم
+    // متصفح) كسلوك أساسي مضمون يعمل في كل مكان، ثم نحاول أيضًا Fullscreen API
+    // الحقيقي (أو webkitEnterFullscreen الخاص بفيديو iOS) كتحسين إضافي إن كان مدعومًا.
+    const isEnlarged = document.body.classList.contains('rv-fs-open');
 
-        var req =
-          target.requestFullscreen ||
-          target.webkitRequestFullscreen ||
-          modal.requestFullscreen ||
-          modal.webkitRequestFullscreen;
+    if (!isEnlarged) {
+      document.body.classList.add('rv-fs-open');
+      modal.classList.add('rv-force-enlarged');
+      _updateFsButtons();
 
-        if (!req) {
-          console.warn('[Fullscreen] Fullscreen API غير مدعوم في هذا المتصفح.');
-          return;
-        }
+      try {
+        var video  = document.getElementById('rv-video-el');
+        var iframe = document.getElementById('rv-embed-iframe');
+        var target = iframe || video || modal;
 
-        var result = req.call(target);
-        if (result && typeof result.catch === 'function') {
-          result.catch(function(err) {
-            // محاولة أخيرة: Fullscreen للمودال.
-            try {
-              var fallbackReq = modal.requestFullscreen || modal.webkitRequestFullscreen;
-              if (fallbackReq && target !== modal) {
-                var fallbackResult = fallbackReq.call(modal);
-                if (fallbackResult && typeof fallbackResult.catch === 'function') {
-                  fallbackResult.catch(function(e2) {
-                    console.warn('[Fullscreen]', e2 && e2.message);
-                  });
-                }
-              } else {
+        // iOS Safari: الفيديو (فقط) يدعم ملء شاشة حقيقي عبر webkitEnterFullscreen
+        // (وليس عبر Fullscreen API القياسي الغير مدعوم إطلاقًا هناك).
+        if (video && typeof video.webkitEnterFullscreen === 'function' && !video.requestFullscreen && !video.webkitRequestFullscreen) {
+          video.webkitEnterFullscreen();
+        } else {
+          var req = target.requestFullscreen || target.webkitRequestFullscreen ||
+                    modal.requestFullscreen || modal.webkitRequestFullscreen;
+          if (req) {
+            var result = req.call(target);
+            if (result && typeof result.catch === 'function') {
+              result.catch(function(err) {
+                // فشل Fullscreen API الحقيقي — لا مشكلة، التكبير البصري (rv-force-enlarged) شغّال بالفعل.
                 console.warn('[Fullscreen]', err && err.message);
-              }
-            } catch (e2) {
-              console.warn('[Fullscreen]', e2 && e2.message);
+              });
             }
-          });
-        }
-      } else {
-        var exit = document.exitFullscreen || document.webkitExitFullscreen;
-        if (exit) {
-          var exitResult = exit.call(document);
-          if (exitResult && typeof exitResult.catch === 'function') {
-            exitResult.catch(function(err) {
-              console.warn('[Fullscreen]', err && err.message);
-            });
           }
         }
+      } catch (e) {
+        console.warn('[Fullscreen]', e && e.message);
       }
-    } catch(e) {
-      console.warn('[Fullscreen]', e && e.message);
+    } else {
+      document.body.classList.remove('rv-fs-open');
+      modal.classList.remove('rv-force-enlarged');
+      _updateFsButtons();
+      try {
+        var exit = document.exitFullscreen || document.webkitExitFullscreen;
+        if (exit && (document.fullscreenElement || document.webkitFullscreenElement)) {
+          var exitResult = exit.call(document);
+          if (exitResult && typeof exitResult.catch === 'function') {
+            exitResult.catch(function(err) { console.warn('[Fullscreen]', err && err.message); });
+          }
+        }
+      } catch (e) {
+        console.warn('[Fullscreen]', e && e.message);
+      }
     }
   }
 
   // تحديث شكل زر/أزرار ملء الشاشة بعد دخول/خروج Fullscreen فعليًا،
   // بدل الاعتماد على الضغط فقط. يشمل زر الهيدر وأي زر "⛶ تكبير" داخل شريط الأدوات.
   function _updateFsButtons() {
-    var isFs = !!(document.fullscreenElement || document.webkitFullscreenElement);
+    var isFs = !!(document.fullscreenElement || document.webkitFullscreenElement || document.body.classList.contains('rv-fs-open'));
     var headerBtn = document.getElementById('rv-fs-btn');
     if (headerBtn) headerBtn.textContent = isFs ? '✕' : '⛶';
     document.querySelectorAll('.rv-fs-toggle-btn').forEach(function(b) {
@@ -6687,8 +6717,27 @@ const ResourceViewer = (function() {
   }
   if (!document._rvFullscreenBound) {
     document._rvFullscreenBound = true;
-    document.addEventListener('fullscreenchange', _updateFsButtons);
-    document.addEventListener('webkitfullscreenchange', _updateFsButtons);
+    document.addEventListener('fullscreenchange', function() {
+      // لو المستخدم خرج من Fullscreen الحقيقي بزر ESC أو زر النظام، لازم
+      // نظبط تكبيرنا البصري (rv-force-enlarged) بنفس الحالة حتى لا يفضل الزر
+      // شغّال دون أن يكون هناك Fullscreen حقيقي فعليًا شغّال معه.
+      var isFs = !!(document.fullscreenElement || document.webkitFullscreenElement);
+      if (!isFs) {
+        var modal = document.getElementById('rv-modal');
+        document.body.classList.remove('rv-fs-open');
+        if (modal) modal.classList.remove('rv-force-enlarged');
+      }
+      _updateFsButtons();
+    });
+    document.addEventListener('webkitfullscreenchange', function() {
+      var isFs = !!(document.fullscreenElement || document.webkitFullscreenElement);
+      if (!isFs) {
+        var modal = document.getElementById('rv-modal');
+        document.body.classList.remove('rv-fs-open');
+        if (modal) modal.classList.remove('rv-force-enlarged');
+      }
+      _updateFsButtons();
+    });
   }
 
   // ✅ حماية موحّدة لفشل تشغيل الفيديو/الصوت (رابط منتهي/معطوب/ملف مفقود)
