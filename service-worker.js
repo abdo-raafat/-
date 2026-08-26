@@ -1,4 +1,4 @@
-const CACHE_NAME = "health-platform-v5";
+const CACHE_NAME = "health-platform-v6";
 
 const APP_SHELL = [
   "./",
@@ -22,16 +22,13 @@ self.addEventListener("install", (event) => {
             try {
               await cache.add(file);
             } catch (error) {
-              // الملف غير موجود أو تعذر تحميله — تجاهل
+              // تجاهل أي ملف غير موجود
             }
           })
         );
       })
       .then(() => {
-        /*
-         * تفعيل النسخة الجديدة فورًا
-         * بدون انتظار إغلاق التطبيق.
-         */
+        // تفعيل النسخة الجديدة فورًا
         return self.skipWaiting();
       })
   );
@@ -51,18 +48,15 @@ self.addEventListener("activate", (event) => {
           cacheNames
             .filter((name) => {
               return (
-                name !== CACHE_NAME &&
-                name.startsWith("health-platform-v")
+                name.startsWith("health-platform-v") &&
+                name !== CACHE_NAME
               );
             })
             .map((name) => caches.delete(name))
         );
       })
       .then(() => {
-        /*
-         * السيطرة على جميع الصفحات المفتوحة
-         * فور تفعيل النسخة الجديدة.
-         */
+        // السيطرة على التطبيق/الصفحات المفتوحة فورًا
         return self.clients.claim();
       })
   );
@@ -73,15 +67,12 @@ self.addEventListener("activate", (event) => {
  * ================================
  * MESSAGE
  * ================================
- *
- * يسمح للـHTML بطلب فحص/تحديث
- * الـService Worker أثناء تشغيل التطبيق.
  */
 self.addEventListener("message", (event) => {
   if (!event.data) return;
 
   /*
-   * طلب تفعيل النسخة الجديدة فورًا
+   * تفعيل النسخة الجديدة فورًا
    */
   if (event.data.type === "BSM_SKIP_WAITING") {
     self.skipWaiting();
@@ -89,10 +80,31 @@ self.addEventListener("message", (event) => {
   }
 
   /*
-   * طلب إعادة تحميل/تحديث الـService Worker
+   * إجبار Service Worker على فحص وجود نسخة جديدة
    */
   if (event.data.type === "BSM_CHECK_UPDATE") {
     self.registration.update().catch(() => {});
+    return;
+  }
+
+  /*
+   * تنظيف الكاش القديم يدويًا عند الحاجة
+   */
+  if (event.data.type === "BSM_CLEAR_OLD_CACHE") {
+    event.waitUntil(
+      caches.keys().then((cacheNames) => {
+        return Promise.all(
+          cacheNames
+            .filter((name) => {
+              return (
+                name.startsWith("health-platform-v") &&
+                name !== CACHE_NAME
+              );
+            })
+            .map((name) => caches.delete(name))
+        );
+      })
+    );
   }
 });
 
@@ -105,9 +117,7 @@ self.addEventListener("message", (event) => {
 self.addEventListener("fetch", (event) => {
   const request = event.request;
 
-  /*
-   * GET فقط
-   */
+  // GET فقط
   if (request.method !== "GET") {
     return;
   }
@@ -116,18 +126,27 @@ self.addEventListener("fetch", (event) => {
 
   /*
    * لا نتدخل في المواقع الخارجية.
-   * مهم جدًا للفيديوهات Embed مثل Fembed
-   * وSupabase وأي خدمة خارجية.
+   *
+   * مهم جدًا لـ:
+   * Fembed
+   * الفيديوهات الخارجية
+   * الصوت
+   * الصور الخارجية
+   * Supabase
+   * أي خدمة خارجية
    */
   if (url.origin !== self.location.origin) {
     return;
   }
 
   /*
-   * لا نتعامل مع API.
-   * Supabase يظل خارج نظام الكاش.
+   * لا نتعامل مع API
    */
-  if (url.pathname.includes("/api/")) {
+  if (
+    url.pathname.includes("/api/") ||
+    url.pathname.includes("/rest/") ||
+    url.pathname.includes("/auth/")
+  ) {
     return;
   }
 
@@ -138,8 +157,8 @@ self.addEventListener("fetch", (event) => {
    * NETWORK FIRST
    * ================================
    *
-   * الأولوية دائمًا للنسخة الموجودة
-   * على GitHub / السيرفر.
+   * دائمًا نحاول أخذ أحدث index.html
+   * من GitHub / السيرفر أولًا.
    */
   const isHTML =
     request.mode === "navigate" ||
@@ -152,6 +171,7 @@ self.addEventListener("fetch", (event) => {
         cache: "no-store"
       })
         .then((response) => {
+
           if (response && response.ok) {
             const clone = response.clone();
 
@@ -178,16 +198,16 @@ self.addEventListener("fetch", (event) => {
 
   /*
    * ================================
-   * SERVICE WORKER نفسه
+   * SERVICE WORKER
    * ================================
    *
-   * لا نخزن نسخة قديمة منه في الكاش.
-   * هذا يسمح للمتصفح باكتشاف النسخة الجديدة.
+   * لا نسمح بتقديم نسخة قديمة منه.
    */
-  if (
+  const isServiceWorker =
     url.pathname.endsWith("/service-worker.js") ||
-    url.pathname.endsWith("/sw.js")
-  ) {
+    url.pathname.endsWith("/sw.js");
+
+  if (isServiceWorker) {
     event.respondWith(
       fetch(request, {
         cache: "no-store"
@@ -202,36 +222,39 @@ self.addEventListener("fetch", (event) => {
 
   /*
    * ================================
-   * STATIC FILES
+   * MANIFEST / ICONS
+   * NETWORK FIRST
    * ================================
+   *
+   * حتى لو تم تعديل manifest أو الأيقونات
+   * نحاول أخذ النسخة الجديدة أولًا.
    */
-  const isStaticFile =
+  const isAppMeta =
     url.pathname.endsWith("/manifest.json") ||
     url.pathname.endsWith("/icon-192.png") ||
     url.pathname.endsWith("/icon-512.png");
 
-  if (isStaticFile) {
+  if (isAppMeta) {
     event.respondWith(
-      caches.match(request)
-        .then((cachedResponse) => {
-          if (cachedResponse) {
-            return cachedResponse;
+      fetch(request, {
+        cache: "no-store"
+      })
+        .then((response) => {
+
+          if (response && response.ok) {
+            const clone = response.clone();
+
+            caches.open(CACHE_NAME)
+              .then((cache) => {
+                return cache.put(request, clone);
+              })
+              .catch(() => {});
           }
 
-          return fetch(request)
-            .then((response) => {
-              if (response && response.ok) {
-                const clone = response.clone();
-
-                caches.open(CACHE_NAME)
-                  .then((cache) => {
-                    return cache.put(request, clone);
-                  })
-                  .catch(() => {});
-              }
-
-              return response;
-            });
+          return response;
+        })
+        .catch(() => {
+          return caches.match(request);
         })
     );
 
@@ -241,17 +264,21 @@ self.addEventListener("fetch", (event) => {
 
   /*
    * ================================
-   * باقي الملفات والطلبات
+   * باقي الملفات
    * ================================
    *
    * لا نتدخل فيها.
+   *
    * خصوصًا:
    * - Supabase
    * - الفيديوهات
    * - الصوت
-   * - الصور الخارجية
+   * - الصور
    * - Embed
    * - Fembed
+   * - الملفات الخارجية
    * - أي API خارجي
+   *
+   * وبالتالي لا نكسر المشغل الحالي.
    */
 });
