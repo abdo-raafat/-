@@ -2506,14 +2506,6 @@ img, video {
   body { display: none !important; }
 }
 </style>
-
-<style id="admin-special-nav-styles">
-  .ap-nav-btn.owner-only-nav, .ap-nav-btn.platform-only-nav { display:none; }
-  .ap-nav-btn.special-action-nav { font-weight:800; }
-  @media (max-width: 760px){
-    #ap-panel-courseAdminPhone .ap-card > div[style*="grid-template-columns"]{grid-template-columns:1fr !important;}
-  }
-</style>
 </head>
 <body>
 <script>
@@ -4265,30 +4257,14 @@ async function _renderDynamicSectionPage(sec) {
   // يظهر أصلاً إذا كان الحقل فارغاً/غير موجود.
   var adminPhoneEl = document.getElementById('dynamic-section-admin-phone');
   if (adminPhoneEl) {
-    // نضمن قراءة الرقم من صف الكورس نفسه حتى لو كانت الصفحة الحالية وصلت
-    // للقسم من مسار/قائمة استخدمت select محدودًا ولم تحمل course_admin_phone.
-    (async function(){
-      var coursePhone = (sec && sec.course_admin_phone) ? String(sec.course_admin_phone).trim() : '';
-      if (!coursePhone && sec && sec.id && window.supabase) {
-        try {
-          var phoneRes = await window.supabase.from('site_sections')
-            .select('course_admin_phone,type')
-            .eq('id', Number(sec.id)).maybeSingle();
-          if (!phoneRes.error && phoneRes.data && phoneRes.data.course_admin_phone) {
-            coursePhone = String(phoneRes.data.course_admin_phone).trim();
-          }
-        } catch(_phoneErr) {
-          console.warn('[COURSE PHONE] تعذر تحميل رقم دكتور الكورس:', _phoneErr && _phoneErr.message);
-        }
-      }
-      adminPhoneEl.innerHTML = coursePhone
-        ? '<div style="background:linear-gradient(135deg,#eefaf6,#f5fbff);border:1px solid #b8e6d8;border-radius:14px;padding:13px 16px;margin:10px 0;text-align:center;box-shadow:0 4px 14px rgba(10,61,98,.06);">'
-          + '<div style="font-size:.85rem;color:#0a3d62;font-weight:800;margin-bottom:4px;">📱 للتواصل والاستفسار عن الكورس</div>'
-          + '<div style="font-size:.8rem;color:#555;margin-bottom:9px;">تواصل مع أدمن/دكتور الكورس</div>'
-          + '<a href="tel:' + coursePhone.replace(/[^0-9+]/g,'') + '" style="display:inline-block;background:linear-gradient(135deg,#0a3d62,#17a589);color:#fff;text-decoration:none;padding:9px 22px;border-radius:22px;font-weight:800;font-size:.92rem;direction:ltr;">📞 ' + _apEsc(coursePhone) + '</a>'
-          + '</div>'
-        : '';
-    })();
+    var coursePhone = (sec && sec.course_admin_phone) ? String(sec.course_admin_phone).trim() : '';
+    adminPhoneEl.innerHTML = coursePhone
+      ? '<div style="background:#eefaf6;border:1px solid #b8e6d8;border-radius:12px;padding:12px 16px;margin:10px 0;text-align:center;">'
+        + '<div style="font-size:.85rem;color:#0a3d62;font-weight:700;margin-bottom:4px;">للتواصل والاستفسار</div>'
+        + '<div style="font-size:.8rem;color:#555;margin-bottom:8px;">تواصل مع دكتور الكورس</div>'
+        + '<a href="tel:' + coursePhone.replace(/[^0-9+]/g,'') + '" style="display:inline-block;background:linear-gradient(135deg,#0a3d62,#17a589);color:#fff;text-decoration:none;padding:8px 20px;border-radius:20px;font-weight:700;font-size:.9rem;direction:ltr;">📞 ' + coursePhone + '</a>'
+        + '</div>'
+      : '';
   }
 
   showLoading('dynamic-section-grid');
@@ -4946,8 +4922,8 @@ function buildContentHTML(contentItems, gate) {
     // في url. نستخدم fallback بسيط هنا بدل ما نلمس أي منطق تاني في العرض.
     const displayUrl = item.url || item.file_url || '';
     if (item.content_type === 'video') {
-      const safeUrl = displayUrl.replace(/'/g,"\'");
-      const safeTitle = (item.title || 'فيديو شرح').replace(/'/g,"\'");
+      const safeUrl = displayUrl.replace(/'/g,"\\'");
+      const safeTitle = (item.title || 'فيديو شرح').replace(/'/g,"\\'");
       html += `
         <div class="video-placeholder" ${displayUrl ? `onclick="openResource('${safeUrl}','${safeTitle}','video')"` : ''} style="margin-bottom:18px">
           <div class="play-btn">▶</div>
@@ -4963,9 +4939,9 @@ function buildContentHTML(contentItems, gate) {
         </div>`;
     } else {
       const icon = item.icon || (item.content_type === 'pdf' ? '📄' : item.content_type === 'image' ? '🖼️' : item.content_type === 'link' ? '🔗' : '📌');
-      const safeUrl = displayUrl.replace(/'/g,"\'");
-      const safeTitle = (item.title || '').replace(/'/g,"\'");
-      const safeType = (item.content_type || '').replace(/'/g,"\'");
+      const safeUrl = displayUrl.replace(/'/g,"\\'");
+      const safeTitle = (item.title || '').replace(/'/g,"\\'");
+      const safeType = (item.content_type || '').replace(/'/g,"\\'");
       html += `
         <div class="resource-item" ${displayUrl ? `onclick="openResource('${safeUrl}','${safeTitle}','${safeType}')"` : ''} style="${displayUrl ? 'cursor:pointer' : ''};margin-bottom:10px;padding:18px 22px;">
           <div class="ri-icon" style="font-size:2rem">${icon}</div>
@@ -5004,9 +4980,9 @@ function buildResourcesInsideArea(resources, gate) {
       </div>`;
     }
     const icon = getResourceIcon(r);
-    const safeUrl = (r.file_url || '').replace(/'/g,"\'").replace(/"/g,'&quot;');
-    const safeTitle = (r.title || 'مورد').replace(/'/g,"\'");
-    const safeType = (r.resource_type || '').replace(/'/g,"\'");
+    const safeUrl = (r.file_url || '').replace(/'/g,"\\'").replace(/"/g,'&quot;');
+    const safeTitle = (r.title || 'مورد').replace(/'/g,"\\'");
+    const safeType = (r.resource_type || '').replace(/'/g,"\\'");
     const clickHandler = r.file_url ? `onclick="openResource('${safeUrl}','${safeTitle}','${safeType}')"` : '';
     const hasLink = !!r.file_url;
     return `
@@ -5073,9 +5049,9 @@ function renderResourceCards(containerId, items, gate) {
         </div>
       </div>`;
     }
-    const safeUrl = (item.url || '').replace(/'/g,"\'");
-    const safeTitle = (item.title || '').replace(/'/g,"\'");
-    const safeType = (item.content_type || '').replace(/'/g,"\'");
+    const safeUrl = (item.url || '').replace(/'/g,"\\'");
+    const safeTitle = (item.title || '').replace(/'/g,"\\'");
+    const safeType = (item.content_type || '').replace(/'/g,"\\'");
     return `
     <div class="link-card lc-blue" style="cursor:${item.url ? 'pointer' : 'default'}"
          ${item.url ? `onclick="openResource('${safeUrl}','${safeTitle}','${safeType}')"` : ''}>
@@ -5130,9 +5106,9 @@ function buildResourcesHTML(resources, gate) {
       </div>`;
     }
     const icon = getResourceIcon(r);
-    const safeUrl = (r.file_url || '').replace(/'/g,"\'").replace(/"/g,'&quot;');
-    const safeTitle = (r.title || 'مورد').replace(/'/g,"\'");
-    const safeType = (r.resource_type || '').replace(/'/g,"\'");
+    const safeUrl = (r.file_url || '').replace(/'/g,"\\'").replace(/"/g,'&quot;');
+    const safeTitle = (r.title || 'مورد').replace(/'/g,"\\'");
+    const safeType = (r.resource_type || '').replace(/'/g,"\\'");
     const typeLabel = _resourceTypeLabel(r);
     const desc = (r.description || typeLabel || '').toString();
     return `
@@ -5843,7 +5819,7 @@ var BSM_AI = (function() {
     if (matches.length === 0) { box.classList.remove('visible'); box.innerHTML = ''; return; }
     box.innerHTML = matches.map(function(m){
       var icon = m.indexOf('كتاب') !== -1 ? '📚' : m.indexOf('محاضر') !== -1 ? '🎓' : m.indexOf('فيديو') !== -1 ? '🎬' : '📂';
-      return '<div class="ai-sug-item" onclick="BSM_AI.pickSuggestion(\'' + m.replace(/'/g,"\'") + '\')">'
+      return '<div class="ai-sug-item" onclick="BSM_AI.pickSuggestion(\'' + m.replace(/'/g,"\\'") + '\')">'
            + '<span class="ai-sug-icon">' + icon + '</span>' + m + '</div>';
     }).join('');
     box.classList.add('visible');
@@ -6157,6 +6133,9 @@ const ResourceViewer = (function() {
     if (/vimeo\.com\/\d+/.test(url))                   return 'vimeo';
     if (/dailymotion\.com\/video/.test(url))            return 'dailymotion';
 
+    // Fembed / generic video embed: يبقى داخل المنصة ولا يعامل كرابط خارجي.
+    if (/^https?:\/\/(?:www\.)?fembed\.(?:co|com)\/embed\//i.test(url)) return 'embed_video';
+
     return 'fallback';
   }
 
@@ -6253,7 +6232,8 @@ const ResourceViewer = (function() {
 
       case 'youtube':
       case 'vimeo':
-      case 'dailymotion': {
+      case 'dailymotion':
+      case 'embed_video': {
         const embedUrl = toEmbedUrl(url, type);
         return `
           <div class="rv-loading" id="rv-loading-indicator">
@@ -6271,7 +6251,14 @@ const ResourceViewer = (function() {
               document.getElementById('rv-loading-indicator').style.display='none';
               this.style.display='block';
             "
-          ></iframe>`;
+          ></iframe>
+          ${type === 'embed_video' ? `
+          <div class="rv-media-tools rv-embed-tools" data-embed-tools="video">
+            <button type="button" data-embed-seek="-10">↶ 10ث</button>
+            <button type="button" data-embed-seek="10">10ث ↷</button>
+            <label>السرعة <select data-embed-speed><option value="0.5">0.5x</option><option value="0.75">0.75x</option><option value="1" selected>1x</option><option value="1.25">1.25x</option><option value="1.5">1.5x</option><option value="1.75">1.75x</option><option value="2">2x</option></select></label>
+            <span class="rv-embed-control-note">إن كان المشغل الخارجي يدعم التحكم</span>
+          </div>` : ''}`;
       }
 
       case 'gdrive_pdf': {
@@ -6304,7 +6291,7 @@ const ResourceViewer = (function() {
                 else if(el.classList.contains('zoomed')){el.classList.add('zoomed-max');}
                 else{el.classList.add('zoomed');}
               "
-              onerror="document.getElementById('rv-img-wrap').innerHTML='<div class=\'rv-error\'><span class=\'rv-err-icon\'>🖼️</span><p>تعذّر تحميل الصورة</p></div>'"
+              onerror="document.getElementById('rv-img-wrap').innerHTML='<div class=\\'rv-error\\'><span class=\\'rv-err-icon\\'>🖼️</span><p>تعذّر تحميل الصورة</p></div>'"
             >
             <div style="position:absolute;bottom:10px;right:10px;background:rgba(0,0,0,.5);color:#fff;border-radius:8px;padding:4px 10px;font-size:.72rem;">اضغط للتكبير</div>
           </div>`;
@@ -6393,6 +6380,7 @@ const ResourceViewer = (function() {
       youtube: '▶️ YouTube',
       vimeo: '🎥 Vimeo',
       dailymotion: '📹 Dailymotion',
+      embed_video: '🎬 Embed Video',
       gdrive_pdf: '📄 Google Drive PDF',
       image: '🖼️ صورة',
       audio: '🎵 صوت',
@@ -6493,6 +6481,7 @@ const ResourceViewer = (function() {
     });
 
     _setupMediaControls(overlay);
+    _setupEmbedControls(overlay);
 
     // Swipe لأسفل للإغلاق على الموبايل
     var touchStartY = 0;
@@ -6519,6 +6508,23 @@ const ResourceViewer = (function() {
     var h = Math.floor(m / 60);
     m = m % 60;
     return (h ? String(h).padStart(2,'0') + ':' : '') + String(m).padStart(2,'0') + ':' + String(s).padStart(2,'0');
+  }
+
+  function _setupEmbedControls(root) {
+    var iframe = root && root.querySelector('#rv-embed-iframe');
+    var tools = root && root.querySelector('[data-embed-tools]');
+    if (!iframe || !tools) return;
+    function send(cmd, value) {
+      try { if (iframe.contentWindow) iframe.contentWindow.postMessage({event:'command', func:cmd, args:[value]}, '*'); } catch(e) {}
+    }
+    tools.querySelectorAll('[data-embed-seek]').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        var delta=Number(btn.getAttribute('data-embed-seek'))||0;
+        send(delta < 0 ? 'seekBackward' : 'seekForward', Math.abs(delta));
+      });
+    });
+    var speed=tools.querySelector('[data-embed-speed]');
+    if(speed) speed.addEventListener('change', function(){ send('setPlaybackRate', Number(speed.value)||1); });
   }
 
   function _setupMediaControls(root) {
@@ -6606,19 +6612,86 @@ const ResourceViewer = (function() {
     const modal = document.getElementById('rv-modal');
     const btn   = document.getElementById('rv-fs-btn');
     if (!modal) return;
-    if (!document.fullscreenElement) {
-      try {
-        var req = modal.requestFullscreen || modal.webkitRequestFullscreen;
-        if (req) Promise.resolve(req.call(modal)).catch(function(err){ console.warn('[Fullscreen]', err && err.message); });
-      } catch(e) { console.warn('[Fullscreen]', e && e.message); }
-      if (btn) btn.textContent = '✕ خروج ملء الشاشة';
-    } else {
-      try {
+
+    try {
+      const fsEl = document.fullscreenElement || document.webkitFullscreenElement;
+      if (!fsEl) {
+        // الفيديو المباشر: ادخل ملء الشاشة على عنصر الفيديو نفسه.
+        // Embed: ادخل ملء الشاشة على الـiframe نفسه أولًا.
+        // fallback: المودال كاملًا إذا منع المتصفح Fullscreen للعنصر.
+        var target =
+          document.getElementById('rv-embed-iframe') ||
+          document.getElementById('rv-video-el') ||
+          modal;
+
+        var req =
+          target.requestFullscreen ||
+          target.webkitRequestFullscreen ||
+          modal.requestFullscreen ||
+          modal.webkitRequestFullscreen;
+
+        if (!req) {
+          console.warn('[Fullscreen] Fullscreen API غير مدعوم في هذا المتصفح.');
+          return;
+        }
+
+        var result = req.call(target);
+        if (result && typeof result.catch === 'function') {
+          result.catch(function(err) {
+            // محاولة أخيرة: Fullscreen للمودال.
+            try {
+              var fallbackReq = modal.requestFullscreen || modal.webkitRequestFullscreen;
+              if (fallbackReq && target !== modal) {
+                var fallbackResult = fallbackReq.call(modal);
+                if (fallbackResult && typeof fallbackResult.catch === 'function') {
+                  fallbackResult.catch(function(e2) {
+                    console.warn('[Fullscreen]', e2 && e2.message);
+                  });
+                }
+              } else {
+                console.warn('[Fullscreen]', err && err.message);
+              }
+            } catch (e2) {
+              console.warn('[Fullscreen]', e2 && e2.message);
+            }
+          });
+        }
+      } else {
         var exit = document.exitFullscreen || document.webkitExitFullscreen;
-        if (exit) Promise.resolve(exit.call(document)).catch(function(err){ console.warn('[Fullscreen]', err && err.message); });
-      } catch(e) { console.warn('[Fullscreen]', e && e.message); }
-      if (btn) btn.textContent = '⛶';
+        if (exit) {
+          var exitResult = exit.call(document);
+          if (exitResult && typeof exitResult.catch === 'function') {
+            exitResult.catch(function(err) {
+              console.warn('[Fullscreen]', err && err.message);
+            });
+          }
+        }
+      }
+    } catch(e) {
+      console.warn('[Fullscreen]', e && e.message);
     }
+  }
+
+  // تحديث شكل زر ملء الشاشة بعد دخول/خروج Fullscreen فعليًا،
+  // بدل الاعتماد على الضغط فقط.
+  if (!document._rvFullscreenBound) {
+    document._rvFullscreenBound = true;
+    document.addEventListener('fullscreenchange', function() {
+      const btn = document.getElementById('rv-fs-btn');
+      if (!btn) return;
+      btn.textContent =
+        (document.fullscreenElement || document.webkitFullscreenElement)
+          ? '✕'
+          : '⛶';
+    });
+    document.addEventListener('webkitfullscreenchange', function() {
+      const btn = document.getElementById('rv-fs-btn');
+      if (!btn) return;
+      btn.textContent =
+        (document.fullscreenElement || document.webkitFullscreenElement)
+          ? '✕'
+          : '⛶';
+    });
   }
 
   // ✅ حماية موحّدة لفشل تشغيل الفيديو/الصوت (رابط منتهي/معطوب/ملف مفقود)
@@ -7950,36 +8023,44 @@ window.checkBanStatus = async function(email) {
 .ap-close-btn:hover { background: rgba(255,255,255,.35); }
 
 /* Nav Tabs */
-.ap-workspace { display:flex; min-height:0; background:var(--bg-card,#fff); }
-.ap-sidebar {
-  width:245px; flex:0 0 245px; background:linear-gradient(180deg,#f8fbfe 0%,#f2f7fb 100%);
-  border-left:1px solid #e3eaf5; border-right:1px solid #e3eaf5; padding:12px 10px;
-  overflow-y:auto; max-height:calc(100vh - 190px);
+.ap-nav {
+  display: flex;
+  background: var(--bg-card, #fff);
+  border-bottom: 2px solid #e3eaf5;
+  overflow-x: auto;
+  gap: 0;
+  scrollbar-width: none;
 }
-.ap-sidebar-title { font-weight:900; color:#0a3d62; font-size:.9rem; padding:8px 10px 12px; }
-.ap-nav-group { margin:0 0 12px; }
-.ap-nav-group-title { font-size:.67rem; font-weight:900; color:#8292a3; padding:7px 10px 5px; letter-spacing:.1px; }
-.ap-nav { display:flex; flex-direction:column; gap:3px; background:transparent; border:0; }
+.ap-nav::-webkit-scrollbar { display: none; }
+/* ✅ FIX (Aug 2026): على الشاشات الواسعة (كمبيوتر) كانت التبويبات الزايدة عن
+   عرض الشاشة بتتخفي فورا لأن .ap-nav بيعتمد على overflow-x:auto بدون أي
+   scrollbar ظاهر (scrollbar-width:none) — فالمستخدم مكانش عارف إنه لازم
+   يعمل سحب أفقي (على الموبايل السحب باللمس طبيعي فكل التبويبات كانت
+   بتظهر بالتمرير، لكن على الكمبيوتر مفيش أي إشارة إن فيه المزيد). الحل:
+   من عرض معين وفوق نخلي التبويبات تعمل wrap على أكتر من سطر بدل ما تتقص. */
+@media (min-width: 900px) {
+  .ap-nav {
+    flex-wrap: wrap;
+    overflow-x: visible;
+  }
+}
 .ap-nav-btn {
-  width:100%; min-height:40px; padding:9px 10px; border:1px solid transparent; border-radius:10px;
-  background:transparent; color:#5f6d7b; font-family:inherit; font-size:.78rem; font-weight:700;
-  cursor:pointer; white-space:normal; text-align:right; transition:all .18s; display:flex;
-  align-items:center; gap:8px; direction:rtl;
+  padding: 13px 18px;
+  border: none;
+  background: transparent;
+  color: #666;
+  font-family: inherit;
+  font-size: .82rem;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  border-bottom: 3px solid transparent;
+  margin-bottom: -2px;
+  transition: color .2s, border-color .2s;
+  display: flex; align-items: center; gap: 6px;
 }
-.ap-nav-btn span { flex:1; }
-.ap-nav-btn:hover { color:#0a3d62; background:#eaf4fb; border-color:#d7e8f5; transform:translateX(-1px); }
-.ap-nav-btn.active { color:#0a3d62; background:linear-gradient(135deg,#e6f3fb,#eefaf6); border-color:#b8ddea; box-shadow:0 3px 10px rgba(10,61,98,.07); }
-.ap-body { flex:1; min-width:0; }
-@media (max-width: 899px) {
-  .ap-workspace { display:block; }
-  .ap-sidebar { width:auto; max-height:none; padding:8px; border:0; border-bottom:1px solid #e3eaf5; }
-  .ap-sidebar-title { display:none; }
-  .ap-nav-group { margin:0; }
-  .ap-nav-group-title { display:none; }
-  .ap-nav { flex-direction:row; overflow-x:auto; scrollbar-width:none; }
-  .ap-nav::-webkit-scrollbar { display:none; }
-  .ap-nav-btn { width:auto; min-width:max-content; border-radius:9px; padding:9px 12px; white-space:nowrap; }
-}
+.ap-nav-btn:hover { color: #0a3d62; }
+.ap-nav-btn.active { color: #0a3d62; border-bottom-color: #0a3d62; }
 
 /* Body */
 .ap-body { padding: 24px; min-height: 400px; }
@@ -8344,62 +8425,34 @@ window.checkBanStatus = async function(email) {
       <div id="ap-quick-search-results" style="display:none;position:relative;"></div>
     </div>
 
-    <!-- Navigation Tabs — organized sidebar -->
-    <div class="ap-workspace">
-      <aside class="ap-sidebar" aria-label="أقسام لوحة التحكم">
-        <div class="ap-sidebar-title">🧭 أقسام الإدارة</div>
-
-        <div class="ap-nav-group">
-          <div class="ap-nav-group-title">الرئيسية</div>
-          <button class="ap-nav-btn active" onclick="apSwitchTab('dashboard')" id="ap-tab-dashboard" role="tab">📊 <span>لوحة المعلومات</span></button>
-          <button class="ap-nav-btn platform-only-nav" onclick="apSwitchTab('courseAdminPhone')" id="ap-tab-courseAdminPhone" role="tab">📱 <span>رقم أدمن / دكتور الكورس</span></button>
-          <button class="ap-nav-btn owner-only-nav" onclick="openOwnerAssistantFromNav()" id="ap-tab-ownerAssistant" role="button">➕ <span>إضافة أدمن مساعد</span></button>
-          <button class="ap-nav-btn" onclick="apSwitchTab('notifications')" id="ap-tab-notifications" role="tab">🔔 <span>الإشعارات</span></button>
-        </div>
-
-        <div class="ap-nav-group">
-          <div class="ap-nav-group-title">💳 الاشتراكات والمدفوعات</div>
-          <button class="ap-nav-btn" onclick="apSwitchTab('requests')" id="ap-tab-requests" role="tab">📝 <span>طلبات الاشتراك</span></button>
-          <button class="ap-nav-btn" onclick="apSwitchTab('divsubs')" id="ap-tab-divsubs" role="tab">🎓 <span>إدارة الاشتراكات</span></button>
-          <button class="ap-nav-btn" onclick="apSwitchTab('payments')" id="ap-tab-payments" role="tab">💳 <span>إدارة المدفوعات</span></button>
-        </div>
-
-        <div class="ap-nav-group">
-          <div class="ap-nav-group-title">📚 المحتوى والتعليم</div>
-          <button class="ap-nav-btn" onclick="apSwitchTab('sectionsmgmt')" id="ap-tab-sectionsmgmt" role="tab">🗂️ <span>الشعب / المواد / الفصول</span></button>
-          <button class="ap-nav-btn" onclick="apSwitchTab('content')" id="ap-tab-content" role="tab">➕ <span>المحتوى</span></button>
-          <button class="ap-nav-btn" onclick="apSwitchTab('subcontent')" id="ap-tab-subcontent" role="tab">🔐 <span>محتوى الاشتراك</span></button>
-          <button class="ap-nav-btn" onclick="apSwitchTab('quizzes')" id="ap-tab-quizzes" role="tab">📝 <span>الاختبارات</span></button>
-          <button class="ap-nav-btn" onclick="apSwitchTab('paths')" id="ap-tab-paths" role="tab">🎯 <span>المسارات التعليمية</span></button>
-          <button class="ap-nav-btn" onclick="apSwitchTab('lectures')" id="ap-tab-lectures" role="tab">📅 <span>مواعيد المحاضرات</span></button>
-        </div>
-
-        <div class="ap-nav-group">
-          <div class="ap-nav-group-title">👥 الطلاب والمستخدمون</div>
-          <button class="ap-nav-btn" onclick="apSwitchTab('courseStudents')" id="ap-tab-courseStudents" role="tab">👥 <span>طلاب الكورس</span></button>
-          <button class="ap-nav-btn" onclick="apSwitchTab('courseStats')" id="ap-tab-courseStats" role="tab">📊 <span>إحصائيات الكورس</span></button>
-          <button class="ap-nav-btn" onclick="apSwitchTab('studentlevels')" id="ap-tab-studentlevels" role="tab">📈 <span>مستويات الطلاب</span></button>
-          <button class="ap-nav-btn" onclick="apSwitchTab('usermgmt')" id="ap-tab-usermgmt" role="tab">👥 <span>إدارة المستخدمين</span></button>
-          <button class="ap-nav-btn" onclick="apSwitchTab('users')" id="ap-tab-users" role="tab">🔒 <span>الحظر</span></button>
-        </div>
-
-        <div class="ap-nav-group">
-          <div class="ap-nav-group-title">💬 التواصل والإعلانات</div>
-          <button class="ap-nav-btn" onclick="apSwitchTab('messages')" id="ap-tab-messages" role="tab">💬 <span>الرسائل</span></button>
-          <button class="ap-nav-btn" onclick="apSwitchTab('sectionchat')" id="ap-tab-sectionchat" role="tab">💬 <span>محادثة الكورس</span></button>
-          <button class="ap-nav-btn" onclick="apSwitchTab('ads')" id="ap-tab-ads" role="tab">📢 <span>إدارة إعلانات المنصة</span></button>
-          <button class="ap-nav-btn" onclick="apSwitchTab('announcements')" id="ap-tab-announcements" role="tab">📢 <span>إعلانات الكورس</span></button>
-        </div>
-
-        <div class="ap-nav-group">
-          <div class="ap-nav-group-title">⚙️ الإدارة والإعدادات</div>
-          <button class="ap-nav-btn" onclick="apSwitchTab('branchsettings')" id="ap-tab-branchsettings" role="tab">⚙️ <span>إعدادات الكورس</span></button>
-          <button class="ap-nav-btn" onclick="apSwitchTab('platformSettings')" id="ap-tab-platformSettings" role="tab">⚙️ <span>إعدادات المنصة</span></button>
-          <button class="ap-nav-btn" onclick="apSwitchTab('branchadmins')" id="ap-tab-branchadmins" role="tab">🛡️ <span>أدمن الكورسات</span></button>
-          <button class="ap-nav-btn" onclick="apSwitchTab('monthlystats')" id="ap-tab-monthlystats" role="tab">📈 <span>إحصائيات شهرية</span></button>
-          <button class="ap-nav-btn" onclick="apSwitchTab('auditlog')" id="ap-tab-auditlog" role="tab">🧾 <span>سجل العمليات</span></button>
-        </div>
-      </aside>
+    <!-- Navigation Tabs -->
+    <nav class="ap-nav" role="tablist">
+      <button class="ap-nav-btn active" onclick="apSwitchTab('dashboard')" id="ap-tab-dashboard" role="tab">📊 Dashboard</button>
+      <button class="ap-nav-btn" onclick="apSwitchTab('notifications')" id="ap-tab-notifications" role="tab">🔔 الإشعارات</button>
+      <button class="ap-nav-btn" onclick="apSwitchTab('requests')"  id="ap-tab-requests"  role="tab">📝 Requests</button>
+      <button class="ap-nav-btn" onclick="apSwitchTab('divsubs')"   id="ap-tab-divsubs"   role="tab">🎓 إدارة الاشتراكات</button>
+      <button class="ap-nav-btn" onclick="apSwitchTab('payments')"  id="ap-tab-payments"  role="tab">💳 إدارة المدفوعات</button>
+      <button class="ap-nav-btn" onclick="apSwitchTab('sectionsmgmt')" id="ap-tab-sectionsmgmt" role="tab">🗂️ الشعب / المواد / الفصول</button>
+      <button class="ap-nav-btn" onclick="apSwitchTab('paths')"      id="ap-tab-paths"      role="tab">🎯 إدارة المسارات</button>
+      <button class="ap-nav-btn" onclick="apSwitchTab('ads')"       id="ap-tab-ads"        role="tab">📢 إدارة الإعلانات</button>
+      <button class="ap-nav-btn" onclick="apSwitchTab('monthlystats')" id="ap-tab-monthlystats" role="tab">📈 إحصائيات شهرية</button>
+      <button class="ap-nav-btn" onclick="apSwitchTab('usermgmt')"  id="ap-tab-usermgmt"  role="tab">👥 إدارة المستخدمين</button>
+      <button class="ap-nav-btn" onclick="apSwitchTab('users')"     id="ap-tab-users"     role="tab">🔒 الحظر</button>
+      <button class="ap-nav-btn" onclick="apSwitchTab('messages')"  id="ap-tab-messages"  role="tab">💬 الرسائل</button>
+      <button class="ap-nav-btn" onclick="apSwitchTab('content')"   id="ap-tab-content"   role="tab">➕ المحتوى</button>
+      <button class="ap-nav-btn" onclick="apSwitchTab('subcontent')" id="ap-tab-subcontent" role="tab">🔐 محتوى الاشتراك</button>
+      <button class="ap-nav-btn" onclick="apSwitchTab('quizzes')"   id="ap-tab-quizzes"   role="tab">📝 الاختبارات</button>
+      <button class="ap-nav-btn" onclick="apSwitchTab('courseStudents')" id="ap-tab-courseStudents" role="tab">👥 الطلاب</button>
+      <button class="ap-nav-btn" onclick="apSwitchTab('courseStats')" id="ap-tab-courseStats" role="tab">📊 إحصائيات</button>
+      <button class="ap-nav-btn" onclick="apSwitchTab('branchsettings')" id="ap-tab-branchsettings" role="tab">⚙️ إعدادات الشعبة</button>
+      <button class="ap-nav-btn" onclick="apSwitchTab('studentlevels')" id="ap-tab-studentlevels" role="tab">📈 مستويات الطلاب</button>
+      <button class="ap-nav-btn" onclick="apSwitchTab('platformSettings')" id="ap-tab-platformSettings" role="tab">⚙️ إعدادات المنصة</button>
+      <button class="ap-nav-btn" onclick="apSwitchTab('sectionchat')" id="ap-tab-sectionchat" role="tab">💬 محادثة الكورس</button>
+      <button class="ap-nav-btn" onclick="apSwitchTab('branchadmins')" id="ap-tab-branchadmins" role="tab">🛡️ أدمن الكورسات</button>
+      <button class="ap-nav-btn" onclick="apSwitchTab('lectures')" id="ap-tab-lectures" role="tab">📅 مواعيد المحاضرات</button>
+      <button class="ap-nav-btn" onclick="apSwitchTab('announcements')" id="ap-tab-announcements" role="tab">📢 إعلانات الكورس</button>
+      <button class="ap-nav-btn" onclick="apSwitchTab('auditlog')" id="ap-tab-auditlog" role="tab">🧾 سجل العمليات</button>
+    </nav>
 
     <!-- Body -->
     <div class="ap-body">
@@ -8419,33 +8472,6 @@ window.checkBanStatus = async function(email) {
         <div class="ap-section-heading" style="margin-top:20px;">🕐 آخر النشاطات</div>
         <div id="ap-recent-activity">
           <div class="ap-loading"><div class="spinner"></div> جاري التحميل...</div>
-        </div>
-      </div>
-
-      <!-- ═══════════════════ TAB: COURSE ADMIN PHONE ═══════════════════ -->
-      <div class="ap-tab-panel" id="ap-panel-courseAdminPhone" role="tabpanel">
-        <div class="ap-section-heading">📱 رقم أدمن / دكتور الكورس</div>
-        <div class="ap-card" style="padding:18px;max-width:760px;">
-          <div style="font-size:.82rem;color:#667;line-height:1.8;margin-bottom:14px;">
-            اختر الكورس ثم سجّل رقم أدمن/دكتور هذا الكورس. الرقم يُحفظ على الكورس نفسه ويظهر للطلاب داخل الكورس المحدد فقط.
-          </div>
-          <div style="display:grid;grid-template-columns:minmax(220px,1fr) minmax(220px,1fr);gap:14px;align-items:end;">
-            <div>
-              <label class="ap-label">📚 الكورس</label>
-              <select id="cap-course-select" class="ap-select" onchange="capLoadCourse()">
-                <option value="">— جاري تحميل الكورسات —</option>
-              </select>
-            </div>
-            <div>
-              <label class="ap-label">📱 رقم أدمن / دكتور الكورس</label>
-              <input id="cap-phone-input" class="ap-input" type="text" inputmode="tel" dir="ltr" style="text-align:right;" placeholder="01xxxxxxxxx">
-            </div>
-          </div>
-          <div id="cap-save-msg" style="font-size:.8rem;margin-top:12px;"></div>
-          <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap;">
-            <button class="ap-btn ap-btn-primary" onclick="capSave()">💾 حفظ رقم الكورس</button>
-            <button class="ap-btn ap-btn-ghost" onclick="capInit()">🔄 تحديث الكورسات</button>
-          </div>
         </div>
       </div>
 
@@ -8588,11 +8614,7 @@ window.checkBanStatus = async function(email) {
               </div>
               <div class="ap-field"><label class="ap-label">التصنيف (Category) — اختياري</label><input class="ap-input" id="sm-f-category" type="text"></div>
               <div class="ap-field"><label class="ap-label">Tags — اختياري (مفصولة بفاصلة)</label><input class="ap-input" id="sm-f-tags" type="text"></div>
-              <div class="ap-field" id="sm-course-admin-phone-wrap" style="display:block;">
-  <label class="ap-label">📱 رقم أدمن/دكتور الكورس</label>
-  <input class="ap-input" id="sm-f-course-admin-phone" type="tel" inputmode="tel" autocomplete="tel" style="direction:ltr;text-align:right;" placeholder="01xxxxxxxxx">
-  <div style="font-size:.68rem;color:#7b8794;margin-top:4px;">يظهر للطلاب داخل هذا الكورس فقط. هذا الحقل متاح لأدمن المنصة (Owner) فقط.</div>
-</div>
+              <div class="ap-field" id="sm-course-admin-phone-wrap"><label class="ap-label">📱 رقم أدمن/دكتور الكورس — اختياري (يظهر للطلاب داخل هذا القسم فقط) — إدارة المنصة فقط</label><input class="ap-input" id="sm-f-course-admin-phone" type="text" style="direction:ltr;text-align:right;" placeholder="01xxxxxxxxx"></div>
               <div class="ap-field" style="display:flex;align-items:center;gap:8px;background:#eefaf6;border:1px solid #b8e6d8;border-radius:10px;padding:10px 12px;">
                 <input type="checkbox" id="sm-f-is-course" style="width:auto;">
                 <label class="ap-label" style="margin:0;" for="sm-f-is-course">📚 هذا العنصر دورة (Course) — يظهر في صفحة "الدورات"</label>
@@ -9547,7 +9569,6 @@ window.checkBanStatus = async function(email) {
     <div class="qz-modal-body" id="qz-student-body">
       <!-- محتوى ديناميكي: شاشة البدء / الأسئلة / شاشة المراجعة -->
     </div>
-    </div>
   </div>
 </div>
 
@@ -10165,7 +10186,7 @@ async function adminLoadContentList() {
           (item.file_name || 'ملف') + (item.file_size ? ' · ' + _attFileSizeLabel(item.file_size) : '') + '</div>'
         : '';
       const previewBtn = displayUrl
-        ? '<button onclick="openResource(\'' + displayUrl.replace(/'/g,"\'") + '\',\'' + (item.title||'').replace(/'/g,"\'") + '\',\'' + (typeKey||'').replace(/'/g,"\'") + '\')" style="background:#eaf6ee;border:1px solid #bfe6c9;color:#1e8449;border-radius:8px;padding:5px 10px;cursor:pointer;font-size:.75rem;white-space:nowrap;font-family:inherit;">👁️ معاينة</button>'
+        ? '<button onclick="openResource(\'' + displayUrl.replace(/'/g,"\\'") + '\',\'' + (item.title||'').replace(/'/g,"\\'") + '\',\'' + (typeKey||'').replace(/'/g,"\\'") + '\')" style="background:#eaf6ee;border:1px solid #bfe6c9;color:#1e8449;border-radius:8px;padding:5px 10px;cursor:pointer;font-size:.75rem;white-space:nowrap;font-family:inherit;">👁️ معاينة</button>'
         : '';
       const replaceBtn = hasFile
         ? '<button onclick="adminReplaceFile(' + item.id + ',\'' + kind + '\')" style="background:#fef6e6;border:1px solid #f5dfa0;color:#8a6d1f;border-radius:8px;padding:5px 10px;cursor:pointer;font-size:.75rem;white-space:nowrap;font-family:inherit;">🔁 استبدال</button>'
@@ -10372,16 +10393,12 @@ function _applyBranchAdminPanelGating() {
     // مستخدم عادي أو أدمن المنصة: أظهر كل التابات كما هي
     ['ap-tab-requests','ap-tab-usermgmt','ap-tab-users','ap-tab-messages','ap-tab-divsubs','ap-tab-content','ap-tab-dashboard',
      'ap-tab-payments','ap-tab-sectionsmgmt','ap-tab-paths','ap-tab-ads','ap-tab-monthlystats','ap-tab-sectionchat','ap-tab-auditlog','ap-tab-notifications',
-     'ap-tab-branchsettings','ap-tab-studentlevels','ap-tab-lectures','ap-tab-announcements','ap-tab-subcontent','ap-tab-courseAdminPhone','ap-tab-ownerAssistant']
+     'ap-tab-branchsettings','ap-tab-studentlevels','ap-tab-lectures','ap-tab-announcements','ap-tab-subcontent']
       .forEach(function(id) { var el = document.getElementById(id); if (el) el.style.display = ''; });
     // ✅ حقل رقم أدمن/دكتور الكورس داخل "🗂️ الشعب/المواد/الفصول" يظل خاصًا بلوحة
     // تحكم المنصة فقط (أدمن المنصة الحقيقي، وليس أدمن الكورس/الشعبة) — يظهر هنا.
     var cpWrap0 = document.getElementById('sm-course-admin-phone-wrap');
-    if (cpWrap0) { cpWrap0.style.display = 'block'; cpWrap0.classList.add('platform-only-phone'); }
-    var capNav0 = document.getElementById('ap-tab-courseAdminPhone');
-    if (capNav0) capNav0.style.display = '';
-    var ownerNav0 = document.getElementById('ap-tab-ownerAssistant');
-    if (ownerNav0) ownerNav0.style.display = 'none';
+    if (cpWrap0) cpWrap0.style.display = '';
     return;
   }
 
@@ -10396,7 +10413,7 @@ function _applyBranchAdminPanelGating() {
   // ✅ حقل رقم أدمن/دكتور الكورس يبقى مقصورًا على لوحة تحكم المنصة فقط — يُخفى من
   // أدمن الكورس/الشعبة حتى لو كان يملك صلاحية الوصول لتاب "الشعب/المواد/الفصول".
   var cpWrap = document.getElementById('sm-course-admin-phone-wrap');
-  if (cpWrap) { cpWrap.style.display = 'none'; cpWrap.classList.remove('platform-only-phone'); }
+  if (cpWrap) cpWrap.style.display = 'none';
   var pathsTab = document.getElementById('ap-tab-paths');
   if (pathsTab) pathsTab.style.display = (perms.can_manage_materials || perms.can_manage_chapters) ? '' : 'none';
   // ✅ جديد: "🔐 محتوى الاشتراك" — نفس نطاق صلاحية "المحتوى/الشعب" (اختيار أي
@@ -10426,13 +10443,6 @@ function _applyBranchAdminPanelGating() {
   if (slTab) slTab.style.display = '';
   var psTab = document.getElementById('ap-tab-platformSettings');
   if (psTab) psTab.style.display = 'none';
-  var capNav = document.getElementById('ap-tab-courseAdminPhone');
-  if (capNav) capNav.style.display = 'none';
-  var ownerNav = document.getElementById('ap-tab-ownerAssistant');
-  if (ownerNav) {
-    // Owner الكورس فقط يرى زر إضافة الأدمن المساعد؛ الأدمن المساعد العادي لا يراه.
-    ownerNav.style.display = (isOwnerActive && !window._isSuperAdmin) ? '' : 'none';
-  }
 
   var notifTab = document.getElementById('ap-tab-notifications');
   if (notifTab) notifTab.style.display = 'none';
@@ -10716,107 +10726,6 @@ window._refreshNotifBadge = async function() {
   }
 };
 
-// ════════════════════════════════════════════════════════════════
-// 📱 COURSE ADMIN PHONE — لوحة مستقلة للـOwner/Platform Admin
-// ════════════════════════════════════════════════════════════════
-window._capCourses = [];
-window.capInit = async function(){
-  var sel=document.getElementById('cap-course-select');
-  var phone=document.getElementById('cap-phone-input');
-  var msg=document.getElementById('cap-save-msg');
-  if(!sel) return;
-  // 📱 هذه الصفحة خاصة بـOwner المنصة فقط. Owner المنصة الحقيقي هو profiles.role='admin'،
-  // وليس _isSuperAdmin إذا كان الاسم الداخلي مختلفًا في الواجهة.
-  // لا نمنح أدمن الكورس/branch_admin صلاحية الوصول هنا.
-  var _canManageCoursePhones = window._isSuperAdmin === true ||
-    (window._currentUserProfile && window._currentUserProfile.role === 'admin') ||
-    window._currentUserRole === 'admin';
-  if(!_canManageCoursePhones){
-    sel.innerHTML='<option value="">غير متاح</option>';
-    if(msg) msg.textContent='⛔ هذه الصفحة متاحة لمالك المنصة فقط.';
-    return;
-  }
-  sel.innerHTML='<option value="">— جاري تحميل الكورسات —</option>';
-  if(msg) msg.textContent='';
-  try{
-    // لا نعتمد على requires_subscription هنا؛ رقم الدكتور خاص بالكورس نفسه،
-    // ولذلك يجب أن تظهر كل الصفوف التي تمثل كورسًا فعليًا في site_sections.
-    var {data: rows, error: rowsErr}=await window.supabase
-      .from('site_sections')
-      .select('id,title,icon,course_admin_phone,type,parent_id')
-      .eq('type','course')
-      .order('title');
-    if(rowsErr) throw rowsErr;
-    window._capCourses=rows||[];
-    if(!rows.length){sel.innerHTML='<option value="">لا توجد كورسات</option>';if(phone)phone.value='';return;}
-    sel.innerHTML='<option value="">— اختر الكورس —</option>'+rows.map(function(c){return '<option value="'+c.id+'">'+(c.icon||'📚')+' '+_apEsc(c.title)+'</option>';}).join('');
-    sel.value=String(rows[0].id);
-    await capLoadCourse();
-  }catch(e){
-    console.error('[CourseAdminPhone] init',e);
-    sel.innerHTML='<option value="">تعذر تحميل الكورسات</option>';
-    if(msg) {msg.style.color='#e74c3c';msg.textContent='❌ تعذر تحميل الكورسات: '+_apEsc(e.message||'');}
-  }
-};
-window.capLoadCourse = async function(){
-  var sel=document.getElementById('cap-course-select'),phone=document.getElementById('cap-phone-input'),msg=document.getElementById('cap-save-msg');
-  var id=Number(sel&&sel.value||0);
-  if(!id){if(phone)phone.value='';return;}
-  var row=(window._capCourses||[]).find(function(x){return Number(x.id)===id;});
-  if(phone)phone.value=(row&&row.course_admin_phone)||'';
-  if(msg)msg.textContent='';
-};
-window.capSave = async function(){
-  var sel=document.getElementById('cap-course-select'),phone=document.getElementById('cap-phone-input'),msg=document.getElementById('cap-save-msg');
-  var _canManageCoursePhones = window._isSuperAdmin === true ||
-    (window._currentUserProfile && window._currentUserProfile.role === 'admin') ||
-    window._currentUserRole === 'admin';
-  if(!_canManageCoursePhones){return;}
-  var id=Number(sel&&sel.value||0), value=(phone&&phone.value||'').trim();
-  if(!id){if(msg){msg.style.color='#e74c3c';msg.textContent='❌ اختر الكورس أولاً';}return;}
-  if(msg){msg.style.color='#667';msg.textContent='⏳ جاري الحفظ...';}
-  try{
-    var res=await window.supabase.from('site_sections').update({course_admin_phone:value||null}).eq('id',id);
-    if(res.error) throw res.error;
-    var row=(window._capCourses||[]).find(function(x){return Number(x.id)===id;});
-    if(row)row.course_admin_phone=value||null;
-    if(msg){msg.style.color='#17a589';msg.textContent='✅ تم حفظ رقم أدمن/دكتور الكورس بنجاح';}
-    if(typeof _showToast==='function')_showToast('✅ تم حفظ رقم الكورس','success');
-    // إعادة تحميل البيانات من Supabase بعد الحفظ للتأكد أن القيمة المعروضة هي القيمة الفعلية.
-    var _savedCourseId = id;
-    await capInit();
-    var _reloadedSel = document.getElementById('cap-course-select');
-    if (_reloadedSel) {
-      _reloadedSel.value = String(_savedCourseId);
-      await capLoadCourse();
-    }
-  }catch(e){
-    console.error('[CourseAdminPhone] save',e);
-    if(msg){msg.style.color='#e74c3c';msg.textContent='❌ فشل الحفظ: '+_apEsc(e.message||'');}
-  }
-};
-
-// ➕ Owner: زر مستقل تحت لوحة المعلومات يفتح نفس مودال إضافة الأدمن المساعد الموجود بالفعل.
-// صلاحية واجهة موحّدة: Owner للكورس أو Owner المنصة فقط.
-window._canCurrentUserAddCourseAssistant = function(sectionId){
-  var id = Number(sectionId || window._branchAdminCourseId || 0);
-  if (window._isSuperAdmin === true) return true;
-  if (window._branchAdminActiveRole === 'owner' && id) return true;
-  var roots = Array.isArray(window._branchAdminRoots) ? window._branchAdminRoots : [];
-  return !!roots.find(function(r){
-    return Number(r && r.id) === id && (r.role === 'owner' || (r.permissions && r.permissions.can_manage_admins === true));
-  });
-};
-
-window.openOwnerAssistantFromNav = function(){
-  if(window._isSuperAdmin || window._branchAdminActiveRole!=='owner') return;
-  var id=Number(window._branchAdminCourseId || window._activeSectionId || ((window._branchAdminOwnSectionIds||[])[0]) || 0);
-  if(!id){if(typeof _showToast==='function')_showToast('❌ تعذر تحديد الكورس الحالي','error');return;}
-  var title=(window._branchAdminRoots||[]).find(function(x){return Number(x.id)===id;});
-  var titleText=title&&title.title ? title.title : ('#'+id);
-  baOpenAssignModal(id,titleText,'add');
-};
-
 // ── apSwitchTab ─────────────────────────────────────────────────
 function apSwitchTab(tab) {
   // Update nav buttons
@@ -10835,7 +10744,6 @@ function apSwitchTab(tab) {
 
   // Lazy load data
   if (tab === 'dashboard')     apLoadDashboard();
-  else if (tab === 'courseAdminPhone') { if(typeof capInit==='function') capInit(); }
   else if (tab === 'auditlog') apLoadAuditLog();
   else if (tab === 'notifications') apLoadNotificationsPanel();
   else if (tab === 'requests') apLoadRequests();
@@ -10958,7 +10866,7 @@ async function apLoadSectionChatTab() {
     el.innerHTML = '<div class="ap-table-wrap"><table class="ap-table"><thead><tr>' +
       '<th>الشعبة</th><th></th></tr></thead><tbody>' +
       rows.map(function(s) {
-        var titleEsc = _apEsc(s.title).replace(/'/g, "\'");
+        var titleEsc = _apEsc(s.title).replace(/'/g, "\\'");
         return '<tr><td>' + (s.icon || '🎓') + ' ' + _apEsc(s.title) + '</td>' +
           '<td style="text-align:left;"><button class="ap-btn ap-btn-primary" onclick="openSectionChat(' + s.id + ', \'' + titleEsc + '\')">💬 فتح المحادثة</button></td></tr>';
       }).join('') + '</tbody></table></div>';
@@ -11514,7 +11422,7 @@ async function baLoadBranchAdmins() {
         + '<td>' + _apEsc(crumb) + '</td>'
         + '<td style="color:#b0b8c1;">لا يوجد</td>'
         + '<td><span class="ap-badge user">🚫 بدون أدمن</span></td>'
-        + '<td><button class="ap-btn ap-btn-success" onclick="baOpenAssignModal(' + branchId + ', \'' + _apEsc(crumb).replace(/'/g,"\'") + '\', \'assign\')">➕ تعيين</button></td>'
+        + '<td><button class="ap-btn ap-btn-success" onclick="baOpenAssignModal(' + branchId + ', \'' + _apEsc(crumb).replace(/'/g,"\\'") + '\', \'assign\')">➕ تعيين</button></td>'
         + '</tr></tbody></table></div>';
       return;
     }
@@ -11524,7 +11432,7 @@ async function baLoadBranchAdmins() {
     // فقط يُدرج صف section_admins جديد (role='admin') بجانب البقية عبر نفس مودال
     // البحث (mode='add' الجديد). الحماية الحقيقية تبقى من RLS
     // (branch_admin_can_manage_admins) كما هي — بدون نظام موازٍ.
-    var crumbEscTop = _apEsc(crumb).replace(/'/g, "\'");
+    var crumbEscTop = _apEsc(crumb).replace(/'/g, "\\'");
     var addAssistantBtn = '<div style="margin-bottom:10px;"><button class="ap-btn ap-btn-success" onclick="baOpenAssignModal(' + branchId + ', \'' + crumbEscTop + '\', \'add\')">➕ إضافة أدمن مساعد</button></div>';
 
     el.innerHTML = addAssistantBtn + '<div class="ap-table-wrap"><table class="ap-table"><thead><tr>'
@@ -11532,7 +11440,7 @@ async function baLoadBranchAdmins() {
       + '</tr></thead><tbody>' +
       window._baAdminsForBranch.map(function(row) {
         var p = row.profiles || {};
-        var crumbEsc = _apEsc(crumb).replace(/'/g, "\'");
+        var crumbEsc = _apEsc(crumb).replace(/'/g, "\\'");
         var isOwner = row.role === 'owner';
         var roleBadge = isOwner
           ? '<span class="ap-badge admin" style="background:#fff4e0;color:#b9770e;">👑 Owner</span>'
@@ -11550,7 +11458,7 @@ async function baLoadBranchAdmins() {
           ? '<button class="ap-btn ap-btn-primary" style="margin-left:4px;" onclick="baOpenAssignModal(' + branchId + ', \'' + crumbEsc + '\', \'change\', ' + row.id + ', \'' + row.role + '\')">🔄 تعديل</button>'
           : '';
         var removeBtn = canEditRow
-          ? '<button class="ap-btn ap-btn-danger" onclick="baOpenRemoveConfirm(' + row.id + ', \'' + (p.id || row.user_id) + '\', \'' + _apEsc(p.full_name || p.email || 'الأدمن').replace(/'/g,"\'") + '\', \'' + crumbEsc + '\')">❌ إزالة</button>'
+          ? '<button class="ap-btn ap-btn-danger" onclick="baOpenRemoveConfirm(' + row.id + ', \'' + (p.id || row.user_id) + '\', \'' + _apEsc(p.full_name || p.email || 'الأدمن').replace(/'/g,"\\'") + '\', \'' + crumbEsc + '\')">❌ إزالة</button>'
           : '<span style="font-size:.7rem;color:#aaa;">🔒 لا يُعدَّل إلا من أدمن المنصة</span>';
         return '<tr>'
           + '<td>' + _apEsc(crumb) + '</td>'
@@ -12499,7 +12407,7 @@ async function apLoadDivisionSubs() {
           }
         }
         var receiptCell = r.receipt_image
-          ? '<button class="ap-btn ap-btn-ghost" style="padding:5px 9px;font-size:.72rem;" onclick="apViewReceipt(\'' + _apEsc(r.receipt_image).replace(/'/g,"\'") + '\')">🧾 عرض</button>'
+          ? '<button class="ap-btn ap-btn-ghost" style="padding:5px 9px;font-size:.72rem;" onclick="apViewReceipt(\'' + _apEsc(r.receipt_image).replace(/'/g,"\\'") + '\')">🧾 عرض</button>'
           : '<span style="color:#b0b8c1;font-size:.72rem;">— لا يوجد</span>';
         var reasonRow = (r.payment_status === 'cancelled' && r.reject_reason)
           ? '<div style="font-size:.68rem;color:#e74c3c;margin-top:4px;">سبب الرفض: ' + _apEsc(r.reject_reason) + '</div>' : '';
@@ -12656,7 +12564,7 @@ async function apLoadPayments() {
         var label     = secInfo.title || (r.subscription_type === 'yearly' ? 'اشتراك سنوي عام' : 'اشتراك شهري عام');
         var price     = secInfo.price != null ? (secInfo.price + ' ج.م') : '—';
         var method    = secInfo.payment_method || '—';
-        var receiptCell = '<button class="ap-btn ap-btn-ghost" style="padding:5px 9px;font-size:.72rem;" onclick="apViewReceipt(\'' + _apEsc(r.receipt_image).replace(/'/g,"\'") + '\')">🧾 عرض</button>';
+        var receiptCell = '<button class="ap-btn ap-btn-ghost" style="padding:5px 9px;font-size:.72rem;" onclick="apViewReceipt(\'' + _apEsc(r.receipt_image).replace(/'/g,"\\'") + '\')">🧾 عرض</button>';
         var actions = '';
         var prof = profMapPay[r.user_id] || {};
         if (r.payment_status === 'pending') {
@@ -13480,7 +13388,7 @@ function smRenderList() {
         : '<span class="ap-badge active">🔓 مجاني</span>';
       return '<tr>'
         + '<td>' + (idx+1) + '</td>'
-        + '<td style="cursor:pointer;font-weight:700;" onclick="smDrillInto(' + s.id + ',\'' + _apEsc(s.title).replace(/'/g,"\'") + '\')">' + icon + ' ' + _apEsc(s.title) + courseBadge + '</td>'
+        + '<td style="cursor:pointer;font-weight:700;" onclick="smDrillInto(' + s.id + ',\'' + _apEsc(s.title).replace(/'/g,"\\'") + '\')">' + icon + ' ' + _apEsc(s.title) + courseBadge + '</td>'
         + '<td style="font-size:.75rem;color:#888;">' + _apEsc(s.subtitle || '—') + '</td>'
         + '<td>' + lockBadge + '</td>'
         + '<td style="white-space:nowrap;">'
@@ -13489,7 +13397,7 @@ function smRenderList() {
         + '</td>'
         + '<td style="white-space:nowrap;">'
         + '<button class="ap-btn ap-btn-ghost" style="padding:5px 9px;" onclick="smOpenEdit(' + s.id + ')">✏️</button>'
-        + '<button class="ap-btn ap-btn-primary" style="padding:5px 9px;" onclick="smDrillInto(' + s.id + ',\'' + _apEsc(s.title).replace(/'/g,"\'") + '\')">📂 فتح</button>'
+        + '<button class="ap-btn ap-btn-primary" style="padding:5px 9px;" onclick="smDrillInto(' + s.id + ',\'' + _apEsc(s.title).replace(/'/g,"\\'") + '\')">📂 فتح</button>'
         + '<button class="ap-btn ap-btn-danger" style="padding:5px 9px;" onclick="smDelete(' + s.id + ')">🗑️</button>'
         + '</td></tr>';
     }).join('')
@@ -14210,7 +14118,7 @@ async function apQuickSearch(q) {
       if (users.length) {
         html += '<div style="font-size:.68rem;font-weight:800;color:#888;margin:8px 4px 2px;">👥 مستخدمون</div>';
         html += users.map(function(u) {
-          return '<div class="ap-qs-item" onclick="apSwitchTab(\'usermgmt\');document.getElementById(\'um-search\').value=\'' + _apEsc(u.email||'').replace(/'/g,"\'") + '\';umApplyFilters();apQuickSearchClose();" style="padding:8px 10px;border-radius:8px;cursor:pointer;font-size:.8rem;">👤 ' + _apEsc(u.full_name || u.email) + ' <span style="color:#aaa;font-size:.7rem;">' + _apEsc(u.email||'') + '</span></div>';
+          return '<div class="ap-qs-item" onclick="apSwitchTab(\'usermgmt\');document.getElementById(\'um-search\').value=\'' + _apEsc(u.email||'').replace(/'/g,"\\'") + '\';umApplyFilters();apQuickSearchClose();" style="padding:8px 10px;border-radius:8px;cursor:pointer;font-size:.8rem;">👤 ' + _apEsc(u.full_name || u.email) + ' <span style="color:#aaa;font-size:.7rem;">' + _apEsc(u.email||'') + '</span></div>';
         }).join('');
       }
       if (sections.length) {
@@ -14223,7 +14131,7 @@ async function apQuickSearch(q) {
         html += '<div style="font-size:.68rem;font-weight:800;color:#888;margin:8px 4px 2px;">💳 اشتراكات</div>';
         html += subs.map(function(s) {
           var sEmail = (usersByIdQS[s.user_id] || {}).email || '';
-          return '<div class="ap-qs-item" onclick="apSwitchTab(\'divsubs\');document.getElementById(\'ap-divsub-search\').value=\'' + _apEsc(sEmail).replace(/'/g,"\'") + '\';apLoadDivisionSubs();apQuickSearchClose();" style="padding:8px 10px;border-radius:8px;cursor:pointer;font-size:.8rem;">💳 ' + _apEsc(sEmail || '—') + ' — ' + _apEsc(s.payment_status) + '</div>';
+          return '<div class="ap-qs-item" onclick="apSwitchTab(\'divsubs\');document.getElementById(\'ap-divsub-search\').value=\'' + _apEsc(sEmail).replace(/'/g,"\\'") + '\';apLoadDivisionSubs();apQuickSearchClose();" style="padding:8px 10px;border-radius:8px;cursor:pointer;font-size:.8rem;">💳 ' + _apEsc(sEmail || '—') + ' — ' + _apEsc(s.payment_status) + '</div>';
         }).join('');
       }
       if (!html) html = '<div style="padding:10px;font-size:.8rem;color:#888;">لا نتائج</div>';
@@ -19566,23 +19474,14 @@ window.diagnose = async function() {
       var subPrice  = (_pmAnchor.price != null && String(_pmAnchor.price).trim() !== '') ? Number(_pmAnchor.price) : null;
       var subMethod = _pmAnchor.payment_method || 'Vodafone Cash';
       var subNumber = _pmAnchor.payment_number || null; // رقم المستقبِل/رقم الدفع الخاص بالكورس — لا يتغيّر معناه
-      var rpcRes = await (window._pmRpcRequestSubscription
-        ? window._pmRpcRequestSubscription(db, {
-            p_section_id: _pmAnchor.id,
-            p_payment_method: subMethod,
-            p_payment_number: subNumber,
-            p_amount: subPrice,
-            p_receipt_image: 'receipts/' + path,
-            p_sender_phone: senderPhone // رقم الطالب الذي تم التحويل منه
-          })
-        : db.rpc('request_subscription', {
-            p_section_id: _pmAnchor.id,
-            p_payment_method: subMethod,
-            p_payment_number: subNumber,
-            p_amount: subPrice,
-            p_receipt_image: 'receipts/' + path,
-            p_sender_phone: senderPhone
-          }));
+      var rpcRes = await db.rpc('request_subscription', {
+        p_section_id: _pmAnchor.id,
+        p_payment_method: subMethod,
+        p_payment_number: subNumber,
+        p_amount: subPrice,
+        p_receipt_image: 'receipts/' + path,
+        p_sender_phone: senderPhone // رقم الطالب الذي تم التحويل منه
+      });
       if (rpcRes.error) throw rpcRes.error;
 
       msgEl.style.color = '#17a589';
@@ -19684,7 +19583,7 @@ window.diagnose = async function() {
   }
 
   function _chatEscJs(s) {
-    return String(s == null ? '' : s).replace(/\\/g, '\\\').replace(/'/g, "\'").replace(/[\r\n]/g, ' ');
+    return String(s == null ? '' : s).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/[\r\n]/g, ' ');
   }
 
   function _chatFileKindFromPath(path) {
@@ -19719,7 +19618,7 @@ window.diagnose = async function() {
   window._renderChatEntryButtonHTML = function(anchor) {
     var titleEsc = _apEsc ? _apEsc(anchor.title || 'الكورس') : (anchor.title || 'الشعبة');
     return '<button class="chat-entry-btn" onclick="openSectionChat(' + anchor.id + ', \'' +
-      titleEsc.replace(/'/g, "\'") + '\')">💬 دخول محادثة الكورس</button>';
+      titleEsc.replace(/'/g, "\\'") + '\')">💬 دخول محادثة الكورس</button>';
   };
 
   function _chatEsc(s) { return _apEsc ? _apEsc(s) : String(s == null ? '' : s).replace(/[&<>"']/g, function(c){
@@ -20404,7 +20303,7 @@ window.diagnose = async function() {
 
   // للاستخدام داخل onclick="" (سلسلة JS بين علامتي اقتباس أحاديتين)
   function _dmEscJs(s) {
-    return String(s == null ? '' : s).replace(/\\/g, '\\\').replace(/'/g, "\'").replace(/[\r\n]/g, ' ');
+    return String(s == null ? '' : s).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/[\r\n]/g, ' ');
   }
 
   function _dmAttachScrollListener() {
@@ -20549,7 +20448,7 @@ window.diagnose = async function() {
     if (!rows.length) { listEl.innerHTML = '<div class="dm2-empty-list">💬<br>لا توجد محادثات بعد.</div>'; return; }
     listEl.innerHTML = rows.map(function(r) {
       return '<div class="dm2-conv-row' + (r.unread ? ' dm2-unread' : '') + (_dmRoom && _dmRoom.id === r.roomId ? ' dm2-active' : '') + '" ' +
-        'onclick="openDirectChat(' + (r.otherId ? ("'" + r.otherId + "'") : 'null') + ', \'' + _dmEsc(r.name).replace(/'/g, "\'") + '\', ' + r.roomId + ')">' +
+        'onclick="openDirectChat(' + (r.otherId ? ("'" + r.otherId + "'") : 'null') + ', \'' + _dmEsc(r.name).replace(/'/g, "\\'") + '\', ' + r.roomId + ')">' +
         '<div class="dm2-avatar">' + _dmAvatarHTML(r.name, r.avatarUrl) + '</div>' +
         '<div class="dm2-conv-main">' +
           '<div class="dm2-conv-toprow"><span class="dm2-conv-name">' + _dmEsc(r.name) + '</span><span class="dm2-conv-time">' + _dmFormatTime(r.time) + '</span></div>' +
@@ -23099,7 +22998,7 @@ function qzRenderQuestion() {
   body.innerHTML = html;
 }
 
-function qzAttr(s) { return String(s).replace(/'/g, "\'"); }
+function qzAttr(s) { return String(s).replace(/'/g, "\\'"); }
 
 function qzGoTo(idx) {
   if (idx < 0 || idx >= window._qz.questions.length) return;
@@ -24679,10 +24578,10 @@ async function courseRoots(){
   // مش في وسم type الذي يديره أدمن المنصة يدويًا وقد يُنسى.
   if(isBranch()){
     var cid=courseId(); if(!cid)return [];
-    var rBranch=await db().from('site_sections').select('id,title,icon,type,parent_id,display_order,requires_subscription,course_admin_phone').eq('id',cid);
+    var rBranch=await db().from('site_sections').select('id,title,icon,type,parent_id,display_order,requires_subscription').eq('id',cid);
     if(rBranch.error)throw rBranch.error; return rBranch.data||[];
   }
-  var q=db().from('site_sections').select('id,title,icon,type,parent_id,display_order,requires_subscription,course_admin_phone').eq('type','course').order('display_order').order('id');
+  var q=db().from('site_sections').select('id,title,icon,type,parent_id,display_order,requires_subscription').eq('type','course').order('display_order').order('id');
   var r=await q; if(r.error)throw r.error; return r.data||[];
 }
 async function materialsForCourses(){
@@ -24797,10 +24696,10 @@ var labels=document.querySelectorAll('#admin-panel .ap-label');labels.forEach(fu
     // العمود غير مضبوط للقسم رغم أنه معيّن فعليًا كورس عبر section_admins).
     if(window._isBranchAdmin && !window._isSuperAdmin){
       var cid=await getCourseId(); if(!cid)return [];
-      var rB=await d.from('site_sections').select('id,title,subtitle,type,parent_id,display_order,requires_subscription,payment_method,payment_number,price,course_admin_phone').eq('id',cid);
+      var rB=await d.from('site_sections').select('id,title,subtitle,type,parent_id,display_order,requires_subscription,payment_method,payment_number,price').eq('id',cid);
       if(rB.error)throw rB.error; return rB.data||[];
     }
-    var q=d.from('site_sections').select('id,title,subtitle,type,parent_id,display_order,requires_subscription,payment_method,payment_number,price,course_admin_phone').eq('type','course').order('display_order').order('id');
+    var q=d.from('site_sections').select('id,title,subtitle,type,parent_id,display_order,requires_subscription,payment_method,payment_number,price').eq('type','course').order('display_order').order('id');
     var r=await q; if(r.error)throw r.error; return r.data||[];
   }
   async function finalMaterials(){
@@ -25011,7 +24910,7 @@ var labels=document.querySelectorAll('#admin-panel .ap-label');labels.forEach(fu
       box.innerHTML =
         '<div class="bsm-course-chat-actions" style="display:flex;gap:8px;flex-wrap:wrap;margin:12px 0;">' +
           '<button class="chat-entry-btn" type="button" onclick="openSectionChat(' + id + ', \'' +
-            title.replace(/'/g,"\'") + '\')">💬 دخول محادثة الكورس</button>' +
+            title.replace(/'/g,"\\'") + '\')">💬 دخول محادثة الكورس</button>' +
         '</div>';
     }
 
@@ -25128,12 +25027,12 @@ var labels=document.querySelectorAll('#admin-panel .ap-label');labels.forEach(fu
         var actions='';
         if (showActions && r.payment_status==='pending'){
           actions += '<button class="ap-btn ap-btn-success" style="margin-left:4px" onclick="apApproveReq(\''+
-            esc2(r.id).replace(/'/g,"\'")+'\',\''+esc2(r.user_id).replace(/'/g,"\'")+'\')">✅ قبول</button>';
+            esc2(r.id).replace(/'/g,"\\'")+'\',\''+esc2(r.user_id).replace(/'/g,"\\'")+'\')">✅ قبول</button>';
           actions += '<button class="ap-btn ap-btn-danger" onclick="apRejectReq(\''+
-            esc2(r.id).replace(/'/g,"\'")+'\',\''+esc2(r.user_id).replace(/'/g,"\'")+'\')">❌ رفض</button>';
+            esc2(r.id).replace(/'/g,"\\'")+'\',\''+esc2(r.user_id).replace(/'/g,"\\'")+'\')">❌ رفض</button>';
         } else if (showActions && r.payment_status!=='cancelled'){
           actions='<button class="ap-btn ap-btn-danger" onclick="apCancelSub(\''+
-            esc2(r.id).replace(/'/g,"\'")+'\',\''+esc2(r.user_id).replace(/'/g,"\'")+'\')">🚫 إلغاء</button>';
+            esc2(r.id).replace(/'/g,"\\'")+'\',\''+esc2(r.user_id).replace(/'/g,"\\'")+'\')">🚫 إلغاء</button>';
         } else actions='—';
         return '<tr><td>'+esc2(p.full_name||'—')+'</td><td class="ap-email-cell">'+esc2(p.email||'—')+
           '</td><td>'+status(r.payment_status)+'</td><td>'+esc2(r.subscription_type==='yearly'?'سنوي':'شهري')+
@@ -25230,16 +25129,15 @@ var labels=document.querySelectorAll('#admin-panel .ap-label');labels.forEach(fu
         // يحصل هنا فقط على زر مستقل لإضافة أدمن مساعد لشعبته/كورسه هو تحديداً —
         // نفس المودال الموجود بالفعل (baOpenAssignModal mode='add')، بدون أي واجهة
         // إضافية جديدة ولا مساس بصف الـOwner نفسه (لا تعيين/تغيير/حذف Owner من هنا).
-        var ownerSectionId = window._branchAdminCourseId || ownIds[0];
-        if (window._canCurrentUserAddCourseAssistant(ownerSectionId)) {
-          var _ownerSectionIdForButton = ownerSectionId;
+        if (!window._isSuperAdmin && window._branchAdminActiveRole === 'owner') {
+          var ownerSectionId = window._branchAdminCourseId || ownIds[0];
           var ownerSectionTitle = (function(){
             var r = (window._branchAdminRoots||[]).find(function(x){ return Number(x.id) === Number(ownerSectionId); });
             return (r && r.title) || ('#' + ownerSectionId);
           })();
-          var ownerTitleEsc = String(ownerSectionTitle).replace(/'/g, "\'");
+          var ownerTitleEsc = String(ownerSectionTitle).replace(/'/g, "\\'");
           act.innerHTML += '<div style="margin-top:14px;"><button class="ap-btn ap-btn-success" '
-            + 'onclick="baOpenAssignModal(' + Number(_ownerSectionIdForButton) + ', \'' + ownerTitleEsc + '\', \'add\')">'
+            + 'onclick="baOpenAssignModal(' + Number(ownerSectionId) + ', \'' + ownerTitleEsc + '\', \'add\')">'
             + '➕ إضافة أدمن مساعد</button></div>';
         }
       }
@@ -25396,9 +25294,9 @@ var labels=document.querySelectorAll('#admin-panel .ap-label');labels.forEach(fu
           '<div style="margin-top:10px" class="'+(x.completed?'sch-done':(overdue?'sch-overdue':''))+'">'+
           (x.completed?'✅ مكتملة':(overdue?'⚠️ متأخرة':'⏳ مجدولة'))+'</div>'+
           '<div style="display:flex;gap:6px;margin-top:10px"><button class="ap-btn ap-btn-ghost" onclick="schToggle(\''+
-          esc2(x.id).replace(/'/g,"\'")+'\','+(!x.completed)+')">'+(x.completed?'↩️ إعادة فتح':'✅ إكمال')+
+          esc2(x.id).replace(/'/g,"\\'")+'\','+(!x.completed)+')">'+(x.completed?'↩️ إعادة فتح':'✅ إكمال')+
           '</button><button class="ap-btn ap-btn-danger" onclick="schDelete(\''+
-          esc2(x.id).replace(/'/g,"\'")+'\')">🗑️ حذف</button></div></div>';
+          esc2(x.id).replace(/'/g,"\\'")+'\')">🗑️ حذف</button></div></div>';
       }).join(''):'<div class="sch-card">لا توجد مهام بعد.</div>')+
       '</div>';
   };
@@ -26320,455 +26218,5 @@ SELECT conname, pg_get_constraintdef(oid) FROM pg_constraint WHERE conname='audi
   console.log(sql); if(navigator.clipboard)navigator.clipboard.writeText(sql).catch(function(){}); return sql;
 };
 </script>
-
-<!-- ============================================================
-     FINAL CONTINUATION FIX — Subscription hierarchy + schedule hierarchy
-     Uses existing site_sections.parent_id + existing subscription_content_access
-     + existing course_lecture_schedules. No new tables / no SQL.
-     ============================================================ -->
-<script>
-(function(){
-  'use strict';
-
-  function _fcEsc(v){
-    if(typeof _apEsc === 'function') return _apEsc(v == null ? '' : String(v));
-    return String(v == null ? '' : v).replace(/[&<>"']/g,function(c){
-      return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
-    });
-  }
-  async function _fcDB(){
-    try{ if(typeof _waitForSupabase === 'function') await _waitForSupabase(); }catch(e){}
-    return window.supabase || (typeof db === 'function' ? db() : null);
-  }
-  async function _fcChildren(parentId){
-    var d=await _fcDB(); if(!d) throw new Error('Supabase غير متاح');
-    var r=await d.from('site_sections')
-      .select('id,title,subtitle,icon,parent_id,display_order,type')
-      .eq('parent_id',Number(parentId))
-      .order('display_order',{ascending:true}).order('id');
-    if(r.error) throw r.error;
-    return r.data || [];
-  }
-
-  /* ============================================================
-     1) 🔐 محتوى الاشتراك
-     الكورس → المادة → نوع/جزء المادة → الشباتر
-     الحفظ في subscription_content_access فقط.
-     ============================================================ */
-  window.scInit = async function(){
-    var picker=document.getElementById('sc-course-picker'), body=document.getElementById('sc-content-body');
-    if(!picker||!body) return;
-    picker.innerHTML='<option value="">— جاري التحميل —</option>';
-    body.innerHTML='<div class="ap-loading"><div class="spinner"></div> جاري التحميل...</div>';
-    try{
-      var rows=typeof _adminCourseOptions==='function' ? await _adminCourseOptions() : [];
-      if(!rows.length){
-        picker.innerHTML='<option value="">لا توجد كورسات متاحة</option>';
-        body.innerHTML='<div class="ap-empty">لا توجد كورسات متاحة لك.</div>';
-        return;
-      }
-      picker.innerHTML='<option value="">— اختر الكورس —</option>'+
-        rows.map(function(r){return '<option value="'+r.id+'">'+(r.icon||'🎓')+' '+_fcEsc(r.title)+'</option>';}).join('');
-      picker.value='';
-      window._scCurrentCourseId=0;
-      window._scMaterials=[];
-      window._scParts=[];
-      window._scChapters=[];
-      window._scAccessMap={};
-      body.innerHTML='<div class="ap-empty">اختر الكورس أولاً.</div>';
-    }catch(e){
-      console.error('[SC HIERARCHY INIT]',e);
-      picker.innerHTML='<option value="">تعذّر التحميل</option>';
-      body.innerHTML='<div class="ap-empty" style="color:#e74c3c;">❌ تعذّر تحميل الكورسات: '+_fcEsc(e.message||'')+'</div>';
-    }
-  };
-
-  function _scRenderShell(){
-    var body=document.getElementById('sc-content-body');
-    if(!body) return;
-    body.innerHTML=
-      '<div class="ap-field">'+
-        '<label class="ap-label">📁 اختر المادة</label>'+
-        '<select id="sc-material-select" class="ap-select" onchange="scOnMaterialChange()">'+
-          '<option value="">— اختر المادة —</option>'+
-        '</select>'+
-      '</div>'+
-      '<div class="ap-field" id="sc-part-wrap" style="display:none;">'+
-        '<label class="ap-label">📂 نوع/جزء المادة</label>'+
-        '<select id="sc-part-select" class="ap-select" onchange="scOnPartChange()">'+
-          '<option value="">— اختر نوع/جزء المادة —</option>'+
-        '</select>'+
-        '<div style="font-size:.7rem;color:#888;margin-top:4px;">مثال: شرح المادة، مراجعة، محاضرات… حسب الشجرة الموجودة في الكورس.</div>'+
-      '</div>'+
-      '<div class="ap-field" id="sc-chapter-wrap" style="display:none;">'+
-        '<label class="ap-label">📚 الشباتر المطلوبة للاشتراك</label>'+
-        '<div id="sc-chapter-actions" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:7px;">'+
-          '<button type="button" class="ap-btn ap-btn-ghost" style="padding:5px 9px;font-size:.72rem;" onclick="scSelectAllChapters(true)">☑ تحديد الكل</button>'+
-          '<button type="button" class="ap-btn ap-btn-ghost" style="padding:5px 9px;font-size:.72rem;" onclick="scSelectAllChapters(false)">☐ إلغاء الكل</button>'+
-        '</div>'+
-        '<div id="sc-chapters-list"></div>'+
-        '<button type="button" class="ap-btn ap-btn-primary" style="width:100%;justify-content:center;margin-top:10px;" onclick="scSaveChapters()">💾 حفظ محتوى الاشتراك</button>'+
-        '<div id="sc-save-msg" style="margin-top:7px;font-size:.75rem;min-height:16px;text-align:center;"></div>'+
-      '</div>'+
-      '<div id="sc-empty-msg" class="ap-empty" style="display:none;"></div>';
-  }
-
-  async function _scLoadAccess(chapterIds){
-    var d=await _fcDB(), map={};
-    if(!chapterIds.length){ window._scAccessMap=map; return map; }
-    var r=await d.from('subscription_content_access').select('section_id,requires_subscription').in('section_id',chapterIds);
-    if(r.error) throw r.error;
-    (r.data||[]).forEach(function(x){ if(x.requires_subscription) map[Number(x.section_id)]=true; });
-    window._scAccessMap=map;
-    return map;
-  }
-
-  function _scRenderChapters(rows){
-    var list=document.getElementById('sc-chapters-list'), wrap=document.getElementById('sc-chapter-wrap');
-    if(!list||!wrap) return;
-    if(!rows.length){
-      wrap.style.display='block';
-      list.innerHTML='<div class="ap-empty">لا توجد شباتر تحت هذا الجزء.</div>';
-      return;
-    }
-    list.innerHTML='<div class="ap-card" style="padding:7px;">'+rows.map(function(c){
-      var checked=window._scAccessMap && window._scAccessMap[Number(c.id)] ? ' checked' : '';
-      return '<label style="display:flex;align-items:center;gap:9px;padding:9px 7px;border-bottom:1px solid #eee;cursor:pointer;">'+
-        '<input type="checkbox" class="sc-chapter-check" value="'+c.id+'"'+checked+' style="width:18px;height:18px;">'+
-        '<span>'+ (c.icon||'📄') +' '+_fcEsc(c.title)+'</span>'+
-      '</label>';
-    }).join('')+'</div>';
-    wrap.style.display='block';
-  }
-
-  async function _scSetChapterRows(rows){
-    window._scChapters=rows||[];
-    var ids=window._scChapters.map(function(x){return Number(x.id);});
-    try{
-      await _scLoadAccess(ids);
-      _scRenderChapters(window._scChapters);
-    }catch(e){
-      console.error('[SC ACCESS LOAD]',e);
-      var list=document.getElementById('sc-chapters-list');
-      if(list) list.innerHTML='<div class="ap-empty" style="color:#e74c3c;">❌ تعذّر تحميل حالة الاشتراك: '+_fcEsc(e.message||'')+'</div>';
-    }
-  }
-
-  window.scLoadCourse = async function(){
-    var picker=document.getElementById('sc-course-picker'), body=document.getElementById('sc-content-body');
-    if(!picker||!body) return;
-    var courseId=Number(picker.value||0);
-    window._scCurrentCourseId=courseId;
-    if(!courseId){ body.innerHTML='<div class="ap-empty">اختر الكورس أولاً.</div>'; return; }
-    body.innerHTML='<div class="ap-loading"><div class="spinner"></div> جاري تحميل المواد...</div>';
-    try{
-      _scRenderShell();
-      var mats=await _fcChildren(courseId);
-      window._scMaterials=mats;
-      var matSel=document.getElementById('sc-material-select');
-      if(!mats.length){
-        body.innerHTML='<div class="ap-empty">لا توجد مواد داخل هذا الكورس.</div>';
-        return;
-      }
-      matSel.innerHTML='<option value="">— اختر المادة —</option>'+mats.map(function(m){
-        return '<option value="'+m.id+'">'+(m.icon||'📁')+' '+_fcEsc(m.title)+'</option>';
-      }).join('');
-    }catch(e){
-      console.error('[SC HIERARCHY COURSE]',e);
-      body.innerHTML='<div class="ap-empty" style="color:#e74c3c;">❌ تعذّر تحميل مواد الكورس: '+_fcEsc(e.message||'')+'</div>';
-    }
-  };
-
-  window.scOnMaterialChange=async function(){
-    var mid=Number((document.getElementById('sc-material-select')||{}).value||0);
-    var partWrap=document.getElementById('sc-part-wrap'), partSel=document.getElementById('sc-part-select');
-    var chapWrap=document.getElementById('sc-chapter-wrap'), empty=document.getElementById('sc-empty-msg');
-    if(partWrap)partWrap.style.display='none'; if(chapWrap)chapWrap.style.display='none'; if(empty)empty.style.display='none';
-    if(!mid)return;
-    try{
-      var children=await _fcChildren(mid);
-      window._scParts=children;
-      /* إذا المادة ليس لها مستوى فرعي، أبناؤها هم الشباتر مباشرة. */
-      if(!children.length){
-        if(empty){empty.style.display='block';empty.textContent='لا توجد أجزاء أو شباتر داخل هذه المادة.';}
-        return;
-      }
-      /* نعرض المستوى الوسيط فقط إذا كان له معنى في الشجرة؛ وفي حالة وجود
-         أبناء، يظل الاختيار متسقاً: مادة → جزء → شابتر. */
-      if(partSel){
-        partSel.innerHTML='<option value="">— اختر نوع/جزء المادة —</option>'+children.map(function(x){
-          return '<option value="'+x.id+'">'+(x.icon||'📂')+' '+_fcEsc(x.title)+'</option>';
-        }).join('');
-      }
-      if(partWrap)partWrap.style.display='block';
-    }catch(e){
-      console.error('[SC HIERARCHY MATERIAL]',e);
-      if(empty){empty.style.display='block';empty.style.color='#e74c3c';empty.textContent='❌ '+(e.message||'تعذّر تحميل أجزاء المادة');}
-    }
-  };
-
-  window.scOnPartChange=async function(){
-    var pid=Number((document.getElementById('sc-part-select')||{}).value||0);
-    var chapWrap=document.getElementById('sc-chapter-wrap'), empty=document.getElementById('sc-empty-msg');
-    if(chapWrap)chapWrap.style.display='none'; if(empty)empty.style.display='none';
-    if(!pid)return;
-    try{
-      var rows=await _fcChildren(pid);
-      await _scSetChapterRows(rows);
-      if(!rows.length && empty){empty.style.display='block';empty.textContent='لا توجد شباتر داخل هذا الجزء.';}
-    }catch(e){
-      console.error('[SC HIERARCHY PART]',e);
-      if(empty){empty.style.display='block';empty.style.color='#e74c3c';empty.textContent='❌ '+(e.message||'تعذّر تحميل الشباتر');}
-    }
-  };
-
-  window.scSelectAllChapters=function(flag){
-    document.querySelectorAll('#sc-chapters-list .sc-chapter-check').forEach(function(x){x.checked=!!flag;});
-  };
-
-  window.scSaveChapters=async function(){
-    var d=await _fcDB(), msg=document.getElementById('sc-save-msg');
-    var rows=window._scChapters||[];
-    if(!d||!rows.length){if(msg)msg.textContent='⚠️ لا توجد شباتر للحفظ.';return;}
-    var ids=rows.map(function(x){return Number(x.id);});
-    var selected=Array.from(document.querySelectorAll('#sc-chapters-list .sc-chapter-check:checked')).map(function(x){return Number(x.value);});
-    try{
-      if(msg){msg.style.color='#888';msg.textContent='⏳ جاري الحفظ...';}
-      var del=await d.from('subscription_content_access').delete().in('section_id',ids);
-      if(del.error)throw del.error;
-      if(selected.length){
-        var up=await d.from('subscription_content_access').upsert(
-          selected.map(function(id){return {section_id:id,requires_subscription:true};}),
-          {onConflict:'section_id'}
-        );
-        if(up.error)throw up.error;
-      }
-      window._scAccessMap={};
-      selected.forEach(function(id){window._scAccessMap[id]=true;});
-      if(msg){msg.style.color='#17a589';msg.textContent='✅ تم حفظ الشباتر المطلوبة للاشتراك.';}
-      if(typeof _showToast==='function')_showToast('✅ تم حفظ محتوى الاشتراك','success');
-    }catch(e){
-      console.error('[SC SAVE]',e);
-      if(msg){msg.style.color='#e74c3c';msg.textContent='❌ فشل الحفظ: '+(e.message||'');}
-    }
-  };
-
-  /* ============================================================
-     2) 📅 إضافة موعد جديد
-     الكورس → المادة → نوع/جزء المادة → الشباتر
-     ثم بيانات الموعد. نفس الجدول الحالي.
-     ============================================================ */
-  async function _lsLoadMaterials(courseId){
-    return await _fcChildren(courseId);
-  }
-  async function _lsLoadParts(materialId){
-    return await _fcChildren(materialId);
-  }
-  async function _lsLoadChapters(parentId){
-    return await _fcChildren(parentId);
-  }
-
-  window.lsOpenModal=function(id){
-    window._lsEditId=id||null;
-    var row=id ? (window._lsRows||[]).find(function(r){return String(r.id)===String(id);}) : null;
-    var courses=window._lsCourses||[];
-    var overlay=document.createElement('div'); overlay.id='ls-modal-overlay';
-    overlay.style.cssText='display:flex;position:fixed;inset:0;z-index:9999998;background:rgba(10,20,40,.75);backdrop-filter:blur(4px);align-items:center;justify-content:center;padding:16px;';
-    var courseOpts=courses.map(function(c){
-      return '<option value="'+c.id+'">'+_fcEsc(c.title)+'</option>';
-    }).join('');
-    overlay.innerHTML=
-      '<div style="background:#fff;border-radius:16px;max-width:500px;width:100%;max-height:90vh;overflow:auto;padding:22px;">'+
-      '<h3 style="margin:0 0 14px;color:#0a3d62;">'+(id?'🔄 تعديل الموعد':'➕ موعد محاضرة جديد')+'</h3>'+
-      '<label style="font-size:.78rem;font-weight:700;">الكورس</label>'+
-      '<select id="ls-f-course" class="ap-input" style="width:100%;margin:4px 0 10px;" onchange="lsOnCourseChange()"><option value="">— اختر الكورس —</option>'+courseOpts+'</select>'+
-      '<label style="font-size:.78rem;font-weight:700;">المادة</label>'+
-      '<select id="ls-f-material" class="ap-input" style="width:100%;margin:4px 0 10px;" onchange="lsOnMaterialChange()"><option value="">— اختر المادة —</option></select>'+
-      '<div id="ls-part-wrap" style="display:none;">'+
-        '<label style="font-size:.78rem;font-weight:700;">نوع/جزء المادة</label>'+
-        '<select id="ls-f-part" class="ap-input" style="width:100%;margin:4px 0 10px;" onchange="lsOnPartChange()"><option value="">— اختر نوع/جزء المادة —</option></select>'+
-      '</div>'+
-      '<label style="font-size:.78rem;font-weight:700;">الشابتر</label>'+
-      '<select id="ls-f-chapter" class="ap-input" style="width:100%;margin:4px 0 10px;"><option value="">— اختر الشابتر —</option></select>'+
-      '<label style="font-size:.78rem;font-weight:700;">عنوان المحاضرة</label>'+
-      '<input id="ls-f-title" class="ap-input" style="width:100%;margin:4px 0 10px;" value="'+(row?_fcEsc(row.title):'')+'">'+
-      '<label style="font-size:.78rem;font-weight:700;">وصف (اختياري)</label>'+
-      '<textarea id="ls-f-desc" class="ap-input" style="width:100%;margin:4px 0 10px;min-height:60px;">'+(row?_fcEsc(row.description||''):'')+'</textarea>'+
-      '<label style="font-size:.78rem;font-weight:700;">تاريخ ووقت البداية</label>'+
-      '<input id="ls-f-start" class="ap-input" style="width:100%;margin:4px 0 10px;" type="datetime-local" value="'+(row?_lsToLocalInputValue(row.start_at):'')+'">'+
-      '<label style="font-size:.78rem;font-weight:700;">تاريخ ووقت النهاية (اختياري)</label>'+
-      '<input id="ls-f-end" class="ap-input" style="width:100%;margin:4px 0 10px;" type="datetime-local" value="'+(row?_lsToLocalInputValue(row.end_at):'')+'">'+
-      '<label style="font-size:.78rem;font-weight:700;">أوقات التذكير</label>'+
-      '<div style="display:flex;gap:12px;flex-wrap:wrap;margin:6px 0 14px;font-size:.78rem;">'+
-        '<label><input type="checkbox" id="ls-rem-1440" checked> قبل يوم</label>'+
-        '<label><input type="checkbox" id="ls-rem-60" checked> قبل ساعة</label>'+
-        '<label><input type="checkbox" id="ls-rem-15" checked> قبل 15 دقيقة</label>'+
-      '</div>'+
-      '<div id="ls-modal-msg" style="color:#e74c3c;font-size:.78rem;margin-bottom:8px;"></div>'+
-      '<div style="display:flex;gap:8px;justify-content:flex-end;">'+
-        '<button class="ap-btn ap-btn-ghost" onclick="document.getElementById(\'ls-modal-overlay\').remove()">إلغاء</button>'+
-        '<button class="ap-btn ap-btn-success" onclick="lsSave()">✅ حفظ</button>'+
-      '</div></div>';
-    document.body.appendChild(overlay);
-
-    if(row){
-      /* سيتم ضبط التسلسل بعد تحميل الكورس. */
-      document.getElementById('ls-f-course').value=String(row.course_id);
-      if(row.reminder_minutes){
-        document.getElementById('ls-rem-1440').checked=row.reminder_minutes.indexOf(1440)!==-1;
-        document.getElementById('ls-rem-60').checked=row.reminder_minutes.indexOf(60)!==-1;
-        document.getElementById('ls-rem-15').checked=row.reminder_minutes.indexOf(15)!==-1;
-      }
-      lsOnCourseChange().then(function(){ return window._lsPrepareEditRow(row); }).catch(function(e){console.error('[LS EDIT PREP]',e);});
-    }
-  };
-
-  window.lsOnCourseChange=async function(){
-    var cid=Number((document.getElementById('ls-f-course')||{}).value||0);
-    var mat=document.getElementById('ls-f-material'), part=document.getElementById('ls-f-part'), partWrap=document.getElementById('ls-part-wrap'), chap=document.getElementById('ls-f-chapter');
-    if(mat)mat.innerHTML='<option value="">— اختر المادة —</option>';
-    if(part)part.innerHTML='<option value="">— اختر نوع/جزء المادة —</option>';
-    if(chap)chap.innerHTML='<option value="">— اختر الشابتر —</option>';
-    if(partWrap)partWrap.style.display='none';
-    if(!cid)return;
-    try{
-      var mats=await _lsLoadMaterials(cid);
-      if(mat)mat.innerHTML='<option value="">— اختر المادة —</option>'+mats.map(function(x){return '<option value="'+x.id+'">'+(x.icon||'📁')+' '+_fcEsc(x.title)+'</option>';}).join('');
-    }catch(e){
-      var msg=document.getElementById('ls-modal-msg');if(msg)msg.textContent='❌ تعذّر تحميل مواد الكورس: '+(e.message||'');
-    }
-  };
-
-  window.lsOnMaterialChange=async function(){
-    var mid=Number((document.getElementById('ls-f-material')||{}).value||0);
-    var part=document.getElementById('ls-f-part'), wrap=document.getElementById('ls-part-wrap'), chap=document.getElementById('ls-f-chapter');
-    if(part)part.innerHTML='<option value="">— اختر نوع/جزء المادة —</option>';
-    if(chap)chap.innerHTML='<option value="">— اختر الشابتر —</option>';
-    if(wrap)wrap.style.display='none';
-    if(!mid)return;
-    try{
-      var rows=await _lsLoadParts(mid);
-      if(!rows.length){ return; }
-      if(part)part.innerHTML='<option value="">— اختر نوع/جزء المادة —</option>'+rows.map(function(x){return '<option value="'+x.id+'">'+(x.icon||'📂')+' '+_fcEsc(x.title)+'</option>';}).join('');
-      if(wrap)wrap.style.display='block';
-    }catch(e){
-      var msg=document.getElementById('ls-modal-msg');if(msg)msg.textContent='❌ تعذّر تحميل أجزاء المادة: '+(e.message||'');
-    }
-  };
-
-  window.lsOnPartChange=async function(){
-    var pid=Number((document.getElementById('ls-f-part')||{}).value||0), chap=document.getElementById('ls-f-chapter');
-    if(chap)chap.innerHTML='<option value="">— اختر الشابتر —</option>';
-    if(!pid)return;
-    try{
-      var rows=await _lsLoadChapters(pid);
-      if(chap)chap.innerHTML='<option value="">— اختر الشابتر —</option>'+rows.map(function(x){return '<option value="'+x.id+'">'+(x.icon||'📄')+' '+_fcEsc(x.title)+'</option>';}).join('');
-    }catch(e){
-      var msg=document.getElementById('ls-modal-msg');if(msg)msg.textContent='❌ تعذّر تحميل الشباتر: '+(e.message||'');
-    }
-  };
-
-  window._lsPrepareEditRow=async function(row){
-    if(!row||!row.chapter_id)return;
-    try{
-      var d=await _fcDB();
-      var r=await d.from('site_sections').select('id,parent_id').eq('id',Number(row.chapter_id)).maybeSingle();
-      if(r.error)throw r.error;
-      if(!r.data)return;
-      var partId=Number(r.data.parent_id||0);
-      var r2=await d.from('site_sections').select('id,parent_id').eq('id',partId).maybeSingle();
-      if(r2.error)throw r2.error;
-      var courseId=Number(row.course_id||0);
-      var materialId=0;
-      var isDirectChapter=!!(r2.data && Number(r2.data.parent_id||0)===courseId);
-      if(isDirectChapter){
-        materialId=partId; /* chapter is direct child of material */
-      }else{
-        materialId=r2.data ? Number(r2.data.parent_id||0) : 0; /* part -> material */
-      }
-      if(!materialId) materialId=partId;
-      var mat=document.getElementById('ls-f-material'), part=document.getElementById('ls-f-part'), wrap=document.getElementById('ls-part-wrap');
-      if(mat){
-        mat.value=String(materialId);
-        await lsOnMaterialChange();
-      }
-      if(!isDirectChapter && part && partId && partId!==materialId && part.options.length){
-        part.value=String(partId);
-        if(part.value){ if(wrap)wrap.style.display='block'; await lsOnPartChange(); }
-      }else{
-        /* المادة بدون مستوى وسيط: أبناء المادة هم الشباتر. */
-        var rows=await _lsLoadChapters(materialId);
-        var ch=document.getElementById('ls-f-chapter');
-        if(ch)ch.innerHTML='<option value="">— اختر الشابتر —</option>'+rows.map(function(x){return '<option value="'+x.id+'">'+(x.icon||'📄')+' '+_fcEsc(x.title)+'</option>';}).join('');
-      }
-      var ch=document.getElementById('ls-f-chapter'); if(ch)ch.value=String(row.chapter_id);
-    }catch(e){console.error('[LS EDIT HIERARCHY]',e);}
-  };
-
-  window.lsSave=async function(){
-    var msg=document.getElementById('ls-modal-msg');
-    try{
-      var courseId=Number((document.getElementById('ls-f-course')||{}).value||0);
-      var chapterId=Number((document.getElementById('ls-f-chapter')||{}).value||0);
-      var title=(document.getElementById('ls-f-title')||{}).value.trim();
-      var desc=(document.getElementById('ls-f-desc')||{}).value.trim();
-      var start=(document.getElementById('ls-f-start')||{}).value;
-      var end=(document.getElementById('ls-f-end')||{}).value;
-      if(!courseId||!chapterId||!title||!start){
-        if(msg)msg.textContent='⚠️ اختر الكورس والمادة والشابتر، واكتب العنوان وموعد البداية.';
-        return;
-      }
-      var reminders=[];
-      if(document.getElementById('ls-rem-1440').checked)reminders.push(1440);
-      if(document.getElementById('ls-rem-60').checked)reminders.push(60);
-      if(document.getElementById('ls-rem-15').checked)reminders.push(15);
-      var payload={
-        course_id:courseId,
-        chapter_id:chapterId,
-        title:title,
-        description:desc||null,
-        start_at:new Date(start).toISOString(),
-        end_at:end?new Date(end).toISOString():null,
-        reminder_minutes:reminders.length?reminders:[1440,60,15]
-      };
-      var d=await _fcDB();
-      var res=window._lsEditId ? await d.from('course_lecture_schedules').update(payload).eq('id',window._lsEditId) : await d.from('course_lecture_schedules').insert(payload);
-      if(res.error)throw res.error;
-      document.getElementById('ls-modal-overlay').remove();
-      if(typeof _showToast==='function')_showToast('✅ تم حفظ الموعد وربطه بالشابتر الصحيح','success');
-      if(typeof lsLoad==='function')lsLoad();
-    }catch(e){
-      console.error('[LS SAVE HIERARCHY]',e);
-      if(msg)msg.textContent='❌ '+(e.message||'فشل الحفظ');
-    }
-  };
-
-  /* ============================================================
-     3) sender_phone: لا نغيّر RPC ولا نظام الاشتراك.
-     فقط نوضح الخطأ الحقيقي إذا فشل طلب RPC قبل وصول استجابة HTTP.
-     ============================================================ */
-  window._pmRpcRequestSubscription=async function(db, payload){
-    try{
-      return await db.rpc('request_subscription',payload);
-    }catch(e){
-      console.error('[PAYMENT][request_subscription] network failure',e,payload);
-      throw new Error('تعذّر الاتصال بخدمة طلب الاشتراك. لم يتم تغيير بيانات الاشتراك. افتح Console لمعرفة سبب الاتصال.');
-    }
-  };
-
-  /* استبدال استدعاء RPC الحالي فقط، بدون تغيير الـ6 parameters. */
-  if(typeof window._pmSubmit === 'function'){
-    var oldSubmit=window._pmSubmit;
-    /* لا نلف الدالة نفسها حتى لا نكرر رفع الإيصال؛ نستبدل rpc في مسار الطلب
-       عبر db proxy محلي عند التنفيذ. */
-    window._pmSubmit = async function(){
-      return oldSubmit.apply(this,arguments);
-    };
-  }
-
-  console.log('%c[FINAL CONTINUATION] Subscription hierarchy + schedule hierarchy loaded','color:#17a589;font-weight:700');
-})();
-</script>
-
 </body>
 </html>
