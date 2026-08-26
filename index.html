@@ -11,7 +11,7 @@
   const DEBUG_MODE = true;
   window.__BSM_DEBUG_MODE = DEBUG_MODE;
   // Keep Service Worker/PWA untouched during frontend protection debugging.
-  window.__BSM_DEBUG_KEEP_SW = false;
+  window.__BSM_DEBUG_KEEP_SW = true;
   if (DEBUG_MODE) { try { document.documentElement.classList.add('bsm-debug-mode'); } catch (e) {} }
   window.isIOSDevice = function () {
     var ua = navigator.userAgent || '';
@@ -48,20 +48,85 @@
 
 <script>
 (function(){
-  if (!window.__BSM_DEBUG_MODE || window.__BSM_DEBUG_KEEP_SW) return;
-  try {
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.getRegistrations().then(function(regs){
-        return Promise.all(regs.map(function(r){ return r.unregister(); }));
-      }).then(function(){
-        if (window.caches && caches.keys) {
-          return caches.keys().then(function(keys){
-            return Promise.all(keys.map(function(k){ return caches.delete(k); }));
-          });
+  // DEBUG لا يعطّل Service Worker؛ التحديث التلقائي للتطبيق يظل مفعّلًا.
+})();
+</script>
+
+<!-- PWA AUTO UPDATE: يضمن وصول تحديثات الموقع للتطبيق المثبت بدون إعادة تثبيت -->
+<script>
+(function(){
+  if (!('serviceWorker' in navigator)) return;
+  var BUILD = (window.__APP_BUILD_VERSION || '2026-08-26-auto-update-admin-sidebar-v2');
+  var SW_URL = './service-worker.js?v=' + encodeURIComponent(BUILD);
+  var hadController = !!navigator.serviceWorker.controller;
+  var reloaded = false;
+
+  function reloadOnce(){
+    if (reloaded) return;
+    reloaded = true;
+    try { window.location.reload(); } catch(e) {}
+  }
+
+  navigator.serviceWorker.addEventListener('controllerchange', function(){
+    // لا نعمل reload عند أول تثبيت؛ فقط عندما ينتقل التطبيق إلى Worker جديد.
+    if (hadController) reloadOnce();
+  });
+
+  window.addEventListener('load', function(){
+    navigator.serviceWorker.register(SW_URL, {
+      scope: './',
+      updateViaCache: 'none'
+    }).then(function(reg){
+      function activateWaiting(){
+        if (reg.waiting) {
+          try { reg.waiting.postMessage({type:'BSM_SKIP_WAITING'}); } catch(e) {}
         }
+      }
+      activateWaiting();
+      try { reg.update(); } catch(e) {}
+      reg.addEventListener('updatefound', function(){
+        var worker = reg.installing;
+        if (!worker) return;
+        worker.addEventListener('statechange', function(){
+          if (worker.state === 'installed' && navigator.serviceWorker.controller) activateWaiting();
+        });
+      });
+      // فحص دوري أثناء بقاء التطبيق مفتوحًا.
+      setInterval(function(){
+        if (document.visibilityState === 'visible') {
+          try { reg.update(); } catch(e) {}
+        }
+      }, 60000);
+      document.addEventListener('visibilitychange', function(){
+        if (document.visibilityState === 'visible') { try { reg.update(); } catch(e) {} }
+      });
+    }).catch(function(err){
+      console.warn('[PWA UPDATE] Service Worker registration failed:', err && err.message ? err.message : err);
+    });
+  });
+})();
+</script>
+
+<!-- PWA UPDATE BOOST: فحص أسرع عند الرجوع للتطبيق بدون إعادة تثبيت -->
+<script>
+(function(){
+  if (!('serviceWorker' in navigator)) return;
+  var lastUpdateCheck = 0;
+  function checkAppUpdate(force){
+    var now = Date.now();
+    if (!force && now - lastUpdateCheck < 15000) return;
+    lastUpdateCheck = now;
+    try {
+      navigator.serviceWorker.getRegistration('./').then(function(reg){
+        if (reg) reg.update();
       }).catch(function(){});
-    }
-  } catch(e){}
+    } catch(e) {}
+  }
+  window.addEventListener('focus', function(){ checkAppUpdate(false); });
+  window.addEventListener('pageshow', function(){ checkAppUpdate(true); });
+  document.addEventListener('visibilitychange', function(){
+    if (document.visibilityState === 'visible') checkAppUpdate(false);
+  });
 })();
 </script>
 
@@ -69,13 +134,13 @@
 <script>
 (function () {
   try {
-    window.__APP_BUILD_VERSION = '2026-08-26-admin-tabs-content-hierarchy-refresh-v1';
+    window.__APP_BUILD_VERSION = '2026-08-26-auto-update-admin-sidebar-v2';
   } catch (e) {}
 })();
 </script>
 <meta name="google-site-verification" content="my6dMoAsuc_97Jks_OQF75GK_f1PGWqz2Kng2obkIgE" />
 <meta charset="UTF-8">
-<meta name="app-build" content="2026-08-26-admin-tabs-content-hierarchy-refresh-v1-DEBUG">
+<meta name="app-build" content="2026-08-26-auto-update-admin-sidebar-v2-DEBUG">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <!-- ==================== PWA: manifest + platform metadata ==================== -->
 <link rel="manifest" href="./manifest.json">
@@ -7546,15 +7611,25 @@ async function _loadBranchAdminScope(userId) {
     if (!saRes.error && Array.isArray(saRes.data)) {
       saRes.data.forEach(function(row) {
         if (!row.section_id) return;
-        if (roots.some(function(r) { return r.id === row.section_id; })) return; // إزالة تكرار لو موجود بالفعل من المصدر القديم
+        var existing = roots.find(function(r) { return Number(r.id) === Number(row.section_id); });
+        if (existing) {
+          // مهم جدًا: لو نفس الكورس موجود في profiles.managed_section_id وفي
+          // section_admins، فـ section_admins هو المصدر الأحدث والأدق للدور.
+          // بدون هذا الدمج كان Owner (role='owner') يتحول بالخطأ إلى admin
+          // بمجرد وجود managed_section_id، فتظهر له "أدمن الكورسات" بدل
+          // "إضافة أدمن مساعد".
+          existing.title = (row.site_sections && row.site_sections.title) || existing.title;
+          existing.permissions = row.permissions || null;
+          existing.role = row.role || 'admin';
+          existing._source = 'section_admins';
+          return;
+        }
         roots.push({
           id: row.section_id,
           title: (row.site_sections && row.site_sections.title) || ('#' + row.section_id),
-          // ✅ الصلاحيات الحقيقية القادمة من قاعدة البيانات فعلاً
           permissions: row.permissions || null,
-          // ✅ الدور الفعلي (admin/owner) — يُستخدم لإخفاء تبويب "أدمن الكورسات"
-          // الكامل عن الـOwner دائمًا (بند Owner المنفصل)، بغض النظر عن أي صلاحية أخرى.
-          role: row.role || 'admin'
+          role: row.role || 'admin',
+          _source: 'section_admins'
         });
       });
     }
@@ -7576,9 +7651,45 @@ async function _loadBranchAdminScope(userId) {
     // اشتراكات كل الكورسات المُسندة له مع بعض هنا، مش كورس واحد بس.
     window._branchAdminOwnSectionIds = roots.map(function(r) { return Number(r.id); }).filter(function(id) { return Number.isFinite(id); });
 
-    // لو عنده أكثر من شعبة، يفضل نفس اختياره السابق لو لسه صالح، وإلا أول شعبة في القائمة
-    var activeId = (window._branchAdminActiveRoot && roots.some(function(r) { return r.id === window._branchAdminActiveRoot; }))
-      ? window._branchAdminActiveRoot : roots[0].id;
+    // اختيار الكورس الحالي تلقائيًا:
+    // 1) لو المستخدم داخل كورس/فصل من نفس الشجرة، نختار الـroot المطابق له.
+    // 2) وإلا نحافظ على الاختيار السابق لو ما زال صالحًا.
+    // 3) وإلا نفضّل Owner أولاً، ثم أول كورس.
+    var activeId = null;
+    var routeSectionId = null;
+    try {
+      routeSectionId = Number(window._activeSectionId || 0) || null;
+      var hash = String(window.location.hash || '');
+      var m = hash.match(/#\/?section\/(\d+)/i);
+      if (!routeSectionId && m) routeSectionId = Number(m[1]);
+    } catch(e) {}
+
+    if (routeSectionId) {
+      // لو الـroute نفسه هو root.
+      var directRoot = roots.find(function(r) { return Number(r.id) === Number(routeSectionId); });
+      if (directRoot) activeId = directRoot.id;
+      // أو لو الـroute مادة/شابتر داخل root، نمشي لأعلى في parent_id.
+      if (!activeId) {
+        var cursor = routeSectionId;
+        for (var depth = 0; depth < 12 && cursor; depth++) {
+          var hit = roots.find(function(r) { return Number(r.id) === Number(cursor); });
+          if (hit) { activeId = hit.id; break; }
+          try {
+            var parentRes = await window.supabase.from('site_sections').select('parent_id').eq('id', cursor).maybeSingle();
+            if (parentRes.error || !parentRes.data) break;
+            cursor = parentRes.data.parent_id;
+          } catch(e) { break; }
+        }
+      }
+    }
+
+    if (!activeId && window._branchAdminActiveRoot && roots.some(function(r) { return Number(r.id) === Number(window._branchAdminActiveRoot); })) {
+      activeId = window._branchAdminActiveRoot;
+    }
+    if (!activeId) {
+      var ownerRoot = roots.find(function(r) { return r.role === 'owner'; });
+      activeId = ownerRoot ? ownerRoot.id : roots[0].id;
+    }
     await window._selectBranchAdminRoot(activeId);
 
     // ✅ FIX: نطاق المحتوى الكامل (subtree) لكل الكورسات المُسندة مجتمعة معًا — يُستخدم
@@ -8209,14 +8320,37 @@ window.checkBanStatus = async function(email) {
 }
 .ap-close-btn:hover { background: rgba(255,255,255,.35); }
 
+/* لوحة التحكم المنظمة: مجموعات واضحة + شريط جانبي على الهاتف */
+.ap-modal {
+  display: grid;
+  grid-template-columns: 215px minmax(0, 1fr);
+  grid-template-areas:
+    "header header"
+    "switcher switcher"
+    "quick quick"
+    "nav body";
+  align-items: start;
+}
+.ap-header { grid-area: header; }
+#ap-branch-switcher { grid-area: switcher; }
+#ap-branch-switcher + div { grid-area: quick; }
+.ap-nav { grid-area: nav; }
+.ap-body { grid-area: body; min-width: 0; }
+
 /* Nav Tabs */
 .ap-nav {
   display: flex;
+  flex-direction: column;
+  align-self: stretch;
   background: var(--bg-card, #fff);
-  border-bottom: 2px solid #e3eaf5;
-  overflow-x: auto;
-  gap: 0;
-  scrollbar-width: none;
+  border-left: 1px solid #e3eaf5;
+  border-bottom: none;
+  overflow-y: auto;
+  overflow-x: hidden;
+  max-height: calc(100vh - 210px);
+  scrollbar-width: thin;
+  padding: 8px;
+  gap: 8px;
 }
 .ap-nav::-webkit-scrollbar { display: none; }
 /* ✅ FIX (Aug 2026): على الشاشات الواسعة (كمبيوتر) كانت التبويبات الزايدة عن
@@ -8226,13 +8360,36 @@ window.checkBanStatus = async function(email) {
    بتظهر بالتمرير، لكن على الكمبيوتر مفيش أي إشارة إن فيه المزيد). الحل:
    من عرض معين وفوق نخلي التبويبات تعمل wrap على أكتر من سطر بدل ما تتقص. */
 @media (min-width: 900px) {
-  .ap-nav {
-    flex-wrap: wrap;
-    overflow-x: visible;
-  }
+  .ap-nav { flex-wrap: nowrap; }
+}
+/* لوحة الإدارة: شريط جانبي ثابت على الكمبيوتر والموبايل، مع تمرير داخلي فقط */
+.ap-nav { min-width: 0; }
+.ap-nav-group { min-width: 0; }
+.ap-nav-btn { overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 899px) {
+  .ap-modal { grid-template-columns: 132px minmax(0,1fr); }
+  .ap-nav { position: relative; overflow-y: auto; overflow-x: hidden; }
+  .ap-body { min-width: 0; overflow-x: hidden; }
+}
+
+.ap-nav-group {
+  background: rgba(234,244,251,.58);
+  border: 1px solid #e3eaf5;
+  border-radius: 12px;
+  padding: 5px;
+}
+.ap-nav-group-title {
+  font-size: .68rem;
+  font-weight: 900;
+  color: #0a3d62;
+  padding: 7px 8px 5px;
+  line-height: 1.4;
 }
 .ap-nav-btn {
-  padding: 13px 18px;
+  width: 100%;
+  justify-content: flex-start;
+  text-align: right;
+  padding: 10px 9px;
   border: none;
   background: transparent;
   color: #666;
@@ -8393,12 +8550,28 @@ window.checkBanStatus = async function(email) {
 
 /* ---- Responsive ---- */
 @media (max-width: 600px) {
-  #admin-panel { padding: 64px 8px 8px; }
-  .ap-body { padding: 14px; }
-  .ap-nav-btn { padding: 11px 12px; font-size: .75rem; }
-  .ap-stats-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
-  .ap-header { padding: 14px 16px; }
-  .ap-table th, .ap-table td { padding: 8px 10px; font-size: .74rem; }
+  #admin-panel { padding: 64px 4px 4px; }
+  .ap-modal {
+    grid-template-columns: 128px minmax(0, 1fr);
+    grid-template-areas:
+      "header header"
+      "switcher switcher"
+      "quick quick"
+      "nav body";
+    border-radius: 16px;
+  }
+  .ap-nav { padding: 5px; gap: 5px; max-height: calc(100vh - 190px); }
+  .ap-nav-group { border-radius: 9px; padding: 3px; }
+  .ap-nav-group-title { font-size: .59rem; padding: 6px 5px 4px; }
+  .ap-nav-btn { padding: 9px 6px; font-size: .66rem; gap: 4px; white-space: normal; line-height: 1.35; }
+  .ap-body { padding: 10px; }
+  .ap-stats-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+  .ap-header { padding: 12px 13px; }
+  .ap-table th, .ap-table td { padding: 8px 8px; font-size: .7rem; }
+}
+@media (max-width: 380px) {
+  .ap-modal { grid-template-columns: 112px minmax(0, 1fr); }
+  .ap-nav-btn { font-size: .61rem; }
 }
 
 /* Dark Mode */
@@ -8613,34 +8786,52 @@ window.checkBanStatus = async function(email) {
     </div>
 
     <!-- Navigation Tabs -->
-    <nav class="ap-nav" role="tablist">
-      <button class="ap-nav-btn active" onclick="apSwitchTab('dashboard')" id="ap-tab-dashboard" role="tab">📊 Dashboard</button>
-      <button class="ap-nav-btn" onclick="apSwitchTab('courseAdminPhone')" id="ap-tab-courseAdminPhone" role="tab">📱 <span>رقم أدمن / دكتور الكورس</span></button>
-      <button class="ap-nav-btn" onclick="openOwnerAssistantFromNav()" id="ap-tab-ownerAssistant" role="button">➕ <span>إضافة أدمن مساعد</span></button>
-      <button class="ap-nav-btn" onclick="apSwitchTab('notifications')" id="ap-tab-notifications" role="tab">🔔 الإشعارات</button>
-      <button class="ap-nav-btn" onclick="apSwitchTab('requests')"  id="ap-tab-requests"  role="tab">📝 Requests</button>
-      <button class="ap-nav-btn" onclick="apSwitchTab('divsubs')"   id="ap-tab-divsubs"   role="tab">🎓 إدارة الاشتراكات</button>
-      <button class="ap-nav-btn" onclick="apSwitchTab('payments')"  id="ap-tab-payments"  role="tab">💳 إدارة المدفوعات</button>
-      <button class="ap-nav-btn" onclick="apSwitchTab('sectionsmgmt')" id="ap-tab-sectionsmgmt" role="tab">🗂️ الشعب / المواد / الفصول</button>
-      <button class="ap-nav-btn" onclick="apSwitchTab('paths')"      id="ap-tab-paths"      role="tab">🎯 إدارة المسارات</button>
-      <button class="ap-nav-btn" onclick="apSwitchTab('ads')"       id="ap-tab-ads"        role="tab">📢 إدارة الإعلانات</button>
-      <button class="ap-nav-btn" onclick="apSwitchTab('monthlystats')" id="ap-tab-monthlystats" role="tab">📈 إحصائيات شهرية</button>
-      <button class="ap-nav-btn" onclick="apSwitchTab('usermgmt')"  id="ap-tab-usermgmt"  role="tab">👥 إدارة المستخدمين</button>
-      <button class="ap-nav-btn" onclick="apSwitchTab('users')"     id="ap-tab-users"     role="tab">🔒 الحظر</button>
-      <button class="ap-nav-btn" onclick="apSwitchTab('messages')"  id="ap-tab-messages"  role="tab">💬 الرسائل</button>
-      <button class="ap-nav-btn" onclick="apSwitchTab('content')"   id="ap-tab-content"   role="tab">➕ المحتوى</button>
-      <button class="ap-nav-btn" onclick="apSwitchTab('subcontent')" id="ap-tab-subcontent" role="tab">🔐 محتوى الاشتراك</button>
-      <button class="ap-nav-btn" onclick="apSwitchTab('quizzes')"   id="ap-tab-quizzes"   role="tab">📝 الاختبارات</button>
-      <button class="ap-nav-btn" onclick="apSwitchTab('courseStudents')" id="ap-tab-courseStudents" role="tab">👥 الطلاب</button>
-      <button class="ap-nav-btn" onclick="apSwitchTab('courseStats')" id="ap-tab-courseStats" role="tab">📊 إحصائيات</button>
-      <button class="ap-nav-btn" onclick="apSwitchTab('branchsettings')" id="ap-tab-branchsettings" role="tab">⚙️ إعدادات الشعبة</button>
-      <button class="ap-nav-btn" onclick="apSwitchTab('studentlevels')" id="ap-tab-studentlevels" role="tab">📈 مستويات الطلاب</button>
-      <button class="ap-nav-btn" onclick="apSwitchTab('platformSettings')" id="ap-tab-platformSettings" role="tab">⚙️ إعدادات المنصة</button>
-      <button class="ap-nav-btn" onclick="apSwitchTab('sectionchat')" id="ap-tab-sectionchat" role="tab">💬 محادثة الكورس</button>
-      <button class="ap-nav-btn" onclick="apSwitchTab('branchadmins')" id="ap-tab-branchadmins" role="tab">🛡️ أدمن الكورسات</button>
-      <button class="ap-nav-btn" onclick="apSwitchTab('lectures')" id="ap-tab-lectures" role="tab">📅 مواعيد المحاضرات</button>
-      <button class="ap-nav-btn" onclick="apSwitchTab('announcements')" id="ap-tab-announcements" role="tab">📢 إعلانات الكورس</button>
-      <button class="ap-nav-btn" onclick="apSwitchTab('auditlog')" id="ap-tab-auditlog" role="tab">🧾 سجل العمليات</button>
+    <nav class="ap-nav" role="tablist" aria-label="أقسام لوحة التحكم">
+      <div class="ap-nav-group ap-nav-group-core">
+        <div class="ap-nav-group-title">⭐ الرئيسية</div>
+        <button class="ap-nav-btn active" onclick="apSwitchTab('dashboard')" id="ap-tab-dashboard" role="tab">📊 Dashboard</button>
+        <button class="ap-nav-btn" onclick="apSwitchTab('courseAdminPhone')" id="ap-tab-courseAdminPhone" role="tab">📱 <span>رقم أدمن / دكتور الكورس</span></button>
+        <button class="ap-nav-btn" onclick="openOwnerAssistantFromNav()" id="ap-tab-ownerAssistant" role="button">➕ <span>إضافة أدمن مساعد</span></button>
+        <button class="ap-nav-btn" onclick="apSwitchTab('notifications')" id="ap-tab-notifications" role="tab">🔔 الإشعارات</button>
+      </div>
+      <div class="ap-nav-group">
+        <div class="ap-nav-group-title">💳 الاشتراكات والمدفوعات</div>
+        <button class="ap-nav-btn" onclick="apSwitchTab('requests')" id="ap-tab-requests" role="tab">📝 Requests</button>
+        <button class="ap-nav-btn" onclick="apSwitchTab('divsubs')" id="ap-tab-divsubs" role="tab">🎓 إدارة الاشتراكات</button>
+        <button class="ap-nav-btn" onclick="apSwitchTab('payments')" id="ap-tab-payments" role="tab">💳 إدارة المدفوعات</button>
+      </div>
+      <div class="ap-nav-group">
+        <div class="ap-nav-group-title">📚 المحتوى والتعلم</div>
+        <button class="ap-nav-btn" onclick="apSwitchTab('sectionsmgmt')" id="ap-tab-sectionsmgmt" role="tab">🗂️ الشعب / المواد / الفصول</button>
+        <button class="ap-nav-btn" onclick="apSwitchTab('paths')" id="ap-tab-paths" role="tab">🎯 إدارة المسارات</button>
+        <button class="ap-nav-btn" onclick="apSwitchTab('content')" id="ap-tab-content" role="tab">➕ المحتوى</button>
+        <button class="ap-nav-btn" onclick="apSwitchTab('subcontent')" id="ap-tab-subcontent" role="tab">🔐 محتوى الاشتراك</button>
+        <button class="ap-nav-btn" onclick="apSwitchTab('quizzes')" id="ap-tab-quizzes" role="tab">📝 الاختبارات</button>
+      </div>
+      <div class="ap-nav-group">
+        <div class="ap-nav-group-title">👥 المستخدمون والتواصل</div>
+        <button class="ap-nav-btn" onclick="apSwitchTab('usermgmt')" id="ap-tab-usermgmt" role="tab">👥 إدارة المستخدمين</button>
+        <button class="ap-nav-btn" onclick="apSwitchTab('users')" id="ap-tab-users" role="tab">🔒 الحظر</button>
+        <button class="ap-nav-btn" onclick="apSwitchTab('messages')" id="ap-tab-messages" role="tab">💬 الرسائل</button>
+      </div>
+      <div class="ap-nav-group">
+        <div class="ap-nav-group-title">🏫 إدارة الكورسات</div>
+        <button class="ap-nav-btn" onclick="apSwitchTab('courseStudents')" id="ap-tab-courseStudents" role="tab">👥 الطلاب</button>
+        <button class="ap-nav-btn" onclick="apSwitchTab('courseStats')" id="ap-tab-courseStats" role="tab">📊 إحصائيات</button>
+        <button class="ap-nav-btn" onclick="apSwitchTab('branchsettings')" id="ap-tab-branchsettings" role="tab">⚙️ إعدادات الشعبة</button>
+        <button class="ap-nav-btn" onclick="apSwitchTab('studentlevels')" id="ap-tab-studentlevels" role="tab">📈 مستويات الطلاب</button>
+        <button class="ap-nav-btn" onclick="apSwitchTab('sectionchat')" id="ap-tab-sectionchat" role="tab">💬 محادثة الكورس</button>
+        <button class="ap-nav-btn" onclick="apSwitchTab('branchadmins')" id="ap-tab-branchadmins" role="tab">🛡️ أدمن الكورسات</button>
+        <button class="ap-nav-btn" onclick="apSwitchTab('lectures')" id="ap-tab-lectures" role="tab">📅 مواعيد المحاضرات</button>
+        <button class="ap-nav-btn" onclick="apSwitchTab('announcements')" id="ap-tab-announcements" role="tab">📢 إعلانات الكورس</button>
+      </div>
+      <div class="ap-nav-group">
+        <div class="ap-nav-group-title">⚙️ المنصة والتقارير</div>
+        <button class="ap-nav-btn" onclick="apSwitchTab('ads')" id="ap-tab-ads" role="tab">📢 إدارة الإعلانات</button>
+        <button class="ap-nav-btn" onclick="apSwitchTab('monthlystats')" id="ap-tab-monthlystats" role="tab">📈 إحصائيات شهرية</button>
+        <button class="ap-nav-btn" onclick="apSwitchTab('platformSettings')" id="ap-tab-platformSettings" role="tab">⚙️ إعدادات المنصة</button>
+        <button class="ap-nav-btn" onclick="apSwitchTab('auditlog')" id="ap-tab-auditlog" role="tab">🧾 سجل العمليات</button>
+      </div>
     </nav>
 
     <!-- Body -->
@@ -9884,8 +10075,14 @@ async function adminLoadSections() {
     if (selMat)  selMat.innerHTML  = '<option value="">— اختر المادة —</option>' + opts;
     if (selList) selList.innerHTML = '<option value="">اختر القسم لعرض محتواه</option>' + opts;
     // ✅ FIX 3: إعادة ضبط خطوة الشابتر عند إعادة تحميل الأقسام (مثلاً بعد تبديل شعبة أدمن الفرع)
+    var subWrap = document.getElementById('admin-submaterial-wrap');
+    var subSel = document.getElementById('admin-submaterial-select');
     var chapterWrap = document.getElementById('admin-chapter-wrap');
+    var chapterSel = document.getElementById('admin-chapter-select');
+    if (subWrap) subWrap.style.display = 'none';
+    if (subSel) subSel.innerHTML = '<option value="">— اختر داخل المادة —</option>';
     if (chapterWrap) chapterWrap.style.display = 'none';
+    if (chapterSel) chapterSel.innerHTML = '<option value="">— اختر الشابتر —</option>';
   } catch(e) { console.error('adminLoadSections error:', e); }
 }
 
@@ -10658,7 +10855,13 @@ function _applyBranchAdminPanelGating() {
   // العادي صاحب can_manage_admins فيحصل على تاب "أدمن الكورسات" الكامل بدلاً
   // من هذا الزر (أعلاه في baTab).
   var ownerNav = document.getElementById('ap-tab-ownerAssistant');
-  if (ownerNav) ownerNav.style.display = (isOwnerActive || canManageAdmins) ? '' : 'none';
+  if (ownerNav) {
+    ownerNav.style.display = (isOwnerActive || canManageAdmins) ? '' : 'none';
+    ownerNav.setAttribute('aria-hidden', (isOwnerActive || canManageAdmins) ? 'false' : 'true');
+  }
+  // الـOwner لا يحتاج تبويب "أدمن الكورسات" الكامل؛ واجهته المختصرة هي زر
+  // "➕ إضافة أدمن مساعد" الموجود مباشرة تحت Dashboard.
+  if (baTab && isOwnerActive) baTab.style.display = 'none';
   var pathsTab = document.getElementById('ap-tab-paths');
   if (pathsTab) pathsTab.style.display = (perms.can_manage_materials || perms.can_manage_chapters) ? '' : 'none';
   // ✅ جديد: "🔐 محتوى الاشتراك" — نفس نطاق صلاحية "المحتوى/الشعب" (اختيار أي
@@ -16161,8 +16364,15 @@ window.toggleAdminPanel = async function() {
     _secAlert('⛔ صلاحيات الأدمن مطلوبة');
     return;
   }
+  // قبل إظهار اللوحة، حدّث نطاق الأدمن من section_admins مرة أخرى حتى لا
+  // تعتمد الواجهة على حالة قديمة من تسجيل الدخول، خصوصًا عند تبديل الحسابات
+  // أو تغيير دور Owner/Admin من لوحة المنصة.
+  if (check.isBranchAdmin && check.user && typeof _loadBranchAdminScope === 'function') {
+    try { await _loadBranchAdminScope(check.user.id); } catch(e) { console.warn('[ADMIN PANEL] scope refresh:', e && e.message); }
+  }
   var result = await _origToggleAdmin();
   if (typeof _applyBranchAdminPanelRestrictions === 'function') _applyBranchAdminPanelRestrictions();
+  if (typeof _applyBranchAdminPanelGating === 'function') _applyBranchAdminPanelGating();
   return result;
 };
 
