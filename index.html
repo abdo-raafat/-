@@ -8343,6 +8343,7 @@ window.checkBanStatus = async function(email) {
       <button class="ap-nav-btn" onclick="apSwitchTab('users')"     id="ap-tab-users"     role="tab">🔒 الحظر</button>
       <button class="ap-nav-btn" onclick="apSwitchTab('messages')"  id="ap-tab-messages"  role="tab">💬 الرسائل</button>
       <button class="ap-nav-btn" onclick="apSwitchTab('content')"   id="ap-tab-content"   role="tab">➕ المحتوى</button>
+      <button class="ap-nav-btn" onclick="apSwitchTab('subcontent')" id="ap-tab-subcontent" role="tab">🔐 محتوى الاشتراك</button>
       <button class="ap-nav-btn" onclick="apSwitchTab('quizzes')"   id="ap-tab-quizzes"   role="tab">📝 الاختبارات</button>
       <button class="ap-nav-btn" onclick="apSwitchTab('courseStudents')" id="ap-tab-courseStudents" role="tab">👥 الطلاب</button>
       <button class="ap-nav-btn" onclick="apSwitchTab('courseStats')" id="ap-tab-courseStats" role="tab">📊 إحصائيات</button>
@@ -8516,7 +8517,7 @@ window.checkBanStatus = async function(email) {
               </div>
               <div class="ap-field"><label class="ap-label">التصنيف (Category) — اختياري</label><input class="ap-input" id="sm-f-category" type="text"></div>
               <div class="ap-field"><label class="ap-label">Tags — اختياري (مفصولة بفاصلة)</label><input class="ap-input" id="sm-f-tags" type="text"></div>
-              <div class="ap-field"><label class="ap-label">رقم أدمن/دكتور الكورس — اختياري (يظهر للطلاب داخل هذا القسم فقط)</label><input class="ap-input" id="sm-f-course-admin-phone" type="text" style="direction:ltr;text-align:right;" placeholder="01xxxxxxxxx"></div>
+              <div class="ap-field" id="sm-course-admin-phone-wrap"><label class="ap-label">📱 رقم أدمن/دكتور الكورس — اختياري (يظهر للطلاب داخل هذا القسم فقط) — إدارة المنصة فقط</label><input class="ap-input" id="sm-f-course-admin-phone" type="text" style="direction:ltr;text-align:right;" placeholder="01xxxxxxxxx"></div>
               <div class="ap-field" style="display:flex;align-items:center;gap:8px;background:#eefaf6;border:1px solid #b8e6d8;border-radius:10px;padding:10px 12px;">
                 <input type="checkbox" id="sm-f-is-course" style="width:auto;">
                 <label class="ap-label" style="margin:0;" for="sm-f-is-course">📚 هذا العنصر دورة (Course) — يظهر في صفحة "الدورات"</label>
@@ -8924,6 +8925,24 @@ window.checkBanStatus = async function(email) {
       <div class="ap-tab-panel" id="ap-panel-platformSettings" role="tabpanel">
         <div class="ap-section-heading">⚙️ إعدادات المنصة</div>
         <div id="ps-settings-body"><div class="ap-loading"><div class="spinner"></div> جاري التحميل...</div></div>
+      </div>
+
+      <!-- ═══════════════════ TAB: SUBSCRIPTION CONTENT ACCESS (محتوى الاشتراك) ═══════════════════
+           جديد — يحدد أي أقسام (مواد/فصول) داخل الكورس يغطيها الاشتراك، عبر جدول
+           subscription_content_access (section_id, requires_subscription). لا يعدّل
+           site_sections.requires_subscription (بوابة الكورس نفسه) ولا أي جدول آخر. -->
+      <div class="ap-tab-panel" id="ap-panel-subcontent" role="tabpanel">
+        <div class="ap-section-heading">🔐 محتوى الاشتراك</div>
+        <div style="font-size:.72rem;color:#999;margin-bottom:10px;">
+          حدد أي مادة/فصل داخل الكورس يتطلب اشتراكًا فعالًا لعرضه. الأقسام غير المحدَّدة هنا تتبع سلوك النظام الحالي كما هو (بدون أي تغيير).
+        </div>
+        <div id="sc-course-picker-wrap" style="margin-bottom:12px;">
+          <label class="ap-label">📚 الشعبة/الكورس</label>
+          <select id="sc-course-picker" class="ap-select" onchange="scLoadCourse()">
+            <option value="">— جاري التحميل —</option>
+          </select>
+        </div>
+        <div id="sc-content-body"><div class="ap-loading"><div class="spinner"></div> جاري التحميل...</div></div>
       </div>
 
       <!-- ═══════════════════ TAB: CONTENT ═══════════════════ -->
@@ -10277,8 +10296,12 @@ function _applyBranchAdminPanelGating() {
     // مستخدم عادي أو أدمن المنصة: أظهر كل التابات كما هي
     ['ap-tab-requests','ap-tab-usermgmt','ap-tab-users','ap-tab-messages','ap-tab-divsubs','ap-tab-content','ap-tab-dashboard',
      'ap-tab-payments','ap-tab-sectionsmgmt','ap-tab-paths','ap-tab-ads','ap-tab-monthlystats','ap-tab-sectionchat','ap-tab-auditlog','ap-tab-notifications',
-     'ap-tab-branchsettings','ap-tab-studentlevels','ap-tab-lectures','ap-tab-announcements']
+     'ap-tab-branchsettings','ap-tab-studentlevels','ap-tab-lectures','ap-tab-announcements','ap-tab-subcontent']
       .forEach(function(id) { var el = document.getElementById(id); if (el) el.style.display = ''; });
+    // ✅ حقل رقم أدمن/دكتور الكورس داخل "🗂️ الشعب/المواد/الفصول" يظل خاصًا بلوحة
+    // تحكم المنصة فقط (أدمن المنصة الحقيقي، وليس أدمن الكورس/الشعبة) — يظهر هنا.
+    var cpWrap0 = document.getElementById('sm-course-admin-phone-wrap');
+    if (cpWrap0) cpWrap0.style.display = '';
     return;
   }
 
@@ -10290,8 +10313,16 @@ function _applyBranchAdminPanelGating() {
   });
   var smTab = document.getElementById('ap-tab-sectionsmgmt');
   if (smTab) smTab.style.display = (perms.can_manage_materials || perms.can_manage_chapters) ? '' : 'none';
+  // ✅ حقل رقم أدمن/دكتور الكورس يبقى مقصورًا على لوحة تحكم المنصة فقط — يُخفى من
+  // أدمن الكورس/الشعبة حتى لو كان يملك صلاحية الوصول لتاب "الشعب/المواد/الفصول".
+  var cpWrap = document.getElementById('sm-course-admin-phone-wrap');
+  if (cpWrap) cpWrap.style.display = 'none';
   var pathsTab = document.getElementById('ap-tab-paths');
   if (pathsTab) pathsTab.style.display = (perms.can_manage_materials || perms.can_manage_chapters) ? '' : 'none';
+  // ✅ جديد: "🔐 محتوى الاشتراك" — نفس نطاق صلاحية "المحتوى/الشعب" (اختيار أي
+  // مادة/فصل داخل كورسه يغطيه الاشتراك)، بدون صلاحية جديدة مستقلة.
+  var scTab = document.getElementById('ap-tab-subcontent');
+  if (scTab) scTab.style.display = (perms.can_manage_materials || perms.can_manage_chapters) ? '' : 'none';
   var divsubsTab = document.getElementById('ap-tab-divsubs');
   if (divsubsTab) divsubsTab.style.display = (perms.can_manage_subscriptions || perms.can_manage_payments) ? '' : 'none';
   var quizTab = document.getElementById('ap-tab-quizzes');
@@ -10652,6 +10683,7 @@ function apSwitchTab(tab) {
   else if (tab === 'announcements') cnLoad();
   else if (tab === 'branchsettings') { if (typeof bsInit === 'function') bsInit(); }
   else if (tab === 'studentlevels')  { if (typeof slInit === 'function') slInit(); }
+  else if (tab === 'subcontent')     { if (typeof scInit === 'function') scInit(); }
 }
 
 // ── لوحة إحصائيات مقيَّدة بشعبة أدمن الكورس فقط (تقرأ من site_sections + section_content + subscriptions) ──
@@ -24102,6 +24134,140 @@ NOTIFY pgrst, 'reload schema';
   return sql;
 };
 console.log('%c[BranchSettings] اكتب printBranchSettingsSQL() في الـ Console لعرض + نسخ SQL عمود subscription_days', 'color:#0a3d62;font-weight:bold;font-size:12px');
+})();
+</script>
+
+<script>
+// ════════════════════════════════════════════════════════════════
+// ✅ جديد — تاب "🔐 محتوى الاشتراك": يحدد أي section (مادة/فصل) داخل كورس معيّن
+// يتطلب اشتراكًا فعالًا، عبر جدول subscription_content_access الموجود بالفعل
+// (section_id UNIQUE, requires_subscription boolean). طبقة عرض/تحرير فقط —
+// لا تلمس site_sections.requires_subscription ولا can_access_learning_section
+// ولا أي RLS/Function أخرى. يعيد استخدام site_sections + _adminCourseOptions()
+// الموجودتين، وبدون إنشاء أي شجرة أو نظام محتوى جديد.
+// ════════════════════════════════════════════════════════════════
+(function(){
+'use strict';
+
+window._scNodes = [];
+window._scAccessMap = {};
+
+// يبني شجرة كل الأبناء (مواد + فصول، بلا حد أقصى للعمق العملي) تحت كورس معيّن،
+// بنفس جدول site_sections وعمود parent_id الموجودين بالفعل — بدون أي جدول جديد.
+async function _scFetchSubtree(rootId) {
+  var db = window.supabase;
+  var nodes = [];
+  var queue = [{ id: rootId, depth: 0 }];
+  var guard = 0;
+  while (queue.length && guard < 500) {
+    guard++;
+    var batchIds = queue.map(function(q){ return q.id; });
+    var depthById = {};
+    queue.forEach(function(q){ depthById[q.id] = q.depth; });
+    queue = [];
+    var res = await db.from('site_sections').select('id,title,icon,parent_id').in('parent_id', batchIds).order('display_order', { ascending: true });
+    if (res.error) throw res.error;
+    (res.data || []).forEach(function(row){
+      var d = (depthById[row.parent_id] || 0) + 1;
+      nodes.push({ id: row.id, title: row.title, icon: row.icon, parent_id: row.parent_id, depth: d });
+      if (d < 6) queue.push({ id: row.id, depth: d });
+    });
+  }
+  return nodes;
+}
+
+function _scRenderTree(nodes, accessMap) {
+  if (!nodes.length) {
+    return '<div class="ap-empty">لا يوجد محتوى (مواد/فصول) داخل هذا الكورس بعد.</div>';
+  }
+  var rows = nodes.map(function(n) {
+    var locked = !!accessMap[n.id];
+    var indent = (n.depth - 1) * 20;
+    return '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 10px;border-bottom:1px solid #eee;margin-right:' + indent + 'px;">'
+      + '<span>' + (n.icon || (n.depth <= 1 ? '📘' : '📄')) + ' ' + _apEsc(n.title) + '</span>'
+      + '<button class="ap-btn ' + (locked ? 'ap-btn-ghost' : 'ap-btn-primary') + '" style="padding:5px 12px;font-size:.76rem;white-space:nowrap;" onclick="scToggle(' + n.id + ',' + (!locked) + ')">'
+      + (locked ? '🔒 يتطلب اشتراك' : '🔓 مجاني')
+      + '</button></div>';
+  }).join('');
+  return '<div class="ap-card" style="padding:6px;">' + rows + '</div>';
+}
+
+window.scInit = async function() {
+  var picker = document.getElementById('sc-course-picker');
+  var body = document.getElementById('sc-content-body');
+  if (!picker || !body || !window.supabase) return;
+  picker.innerHTML = '<option value="">— جاري التحميل —</option>';
+  body.innerHTML = '<div class="ap-loading"><div class="spinner"></div> جاري التحميل...</div>';
+  try {
+    var rows = typeof _adminCourseOptions === 'function' ? await _adminCourseOptions() : [];
+    if (!rows.length) {
+      picker.innerHTML = '<option value="">لا توجد كورسات متاحة</option>';
+      body.innerHTML = '<div class="ap-empty">لا توجد كورسات مُسندة إليك بعد.</div>';
+      return;
+    }
+    picker.innerHTML = rows.map(function(r){ return '<option value="' + r.id + '">' + (r.icon || '🎓') + ' ' + _apEsc(r.title) + '</option>'; }).join('');
+    picker.value = rows[0].id;
+    window.scLoadCourse();
+  } catch (e) {
+    console.error('[scInit]', e);
+    picker.innerHTML = '<option value="">تعذّر التحميل</option>';
+    body.innerHTML = '<div class="ap-empty" style="color:#e74c3c;">❌ ' + _apEsc(e.message || '') + '</div>';
+  }
+};
+
+window.scLoadCourse = async function() {
+  var picker = document.getElementById('sc-course-picker');
+  var body = document.getElementById('sc-content-body');
+  if (!picker || !body || !window.supabase) return;
+  var courseId = Number(picker.value || 0);
+  if (!courseId) { body.innerHTML = '<div class="ap-empty">اختر كورسًا أولاً.</div>'; return; }
+  body.innerHTML = '<div class="ap-loading"><div class="spinner"></div> جاري التحميل...</div>';
+  window._scCurrentCourseId = courseId;
+  try {
+    var nodes = await _scFetchSubtree(courseId);
+    var ids = nodes.map(function(n){ return n.id; });
+    var accessMap = {};
+    if (ids.length) {
+      var accRes = await window.supabase.from('subscription_content_access').select('section_id,requires_subscription').in('section_id', ids);
+      if (accRes.error) throw accRes.error;
+      (accRes.data || []).forEach(function(r){ if (r.requires_subscription) accessMap[r.section_id] = true; });
+    }
+    window._scNodes = nodes;
+    window._scAccessMap = accessMap;
+    body.innerHTML = _scRenderTree(nodes, accessMap);
+  } catch (e) {
+    console.error('[scLoadCourse]', e);
+    body.innerHTML = '<div class="ap-empty" style="color:#e74c3c;">❌ تعذّر تحميل محتوى الكورس: ' + _apEsc(e.message || '') + '</div>';
+  }
+};
+
+// makeLocked=true  → UPSERT (section_id, requires_subscription=true)
+// makeLocked=false → DELETE سجل هذا section_id (رجوع لسلوك النظام الحالي كما هو)
+window.scToggle = async function(sectionId, makeLocked) {
+  var db = window.supabase;
+  if (!db) return;
+  try {
+    if (makeLocked) {
+      var res = await db.from('subscription_content_access')
+        .upsert({ section_id: sectionId, requires_subscription: true }, { onConflict: 'section_id' });
+      if (res.error) throw res.error;
+    } else {
+      var res2 = await db.from('subscription_content_access').delete().eq('section_id', sectionId);
+      if (res2.error) throw res2.error;
+    }
+    window._scAccessMap = window._scAccessMap || {};
+    if (makeLocked) window._scAccessMap[sectionId] = true; else delete window._scAccessMap[sectionId];
+    var body = document.getElementById('sc-content-body');
+    if (body && Array.isArray(window._scNodes)) body.innerHTML = _scRenderTree(window._scNodes, window._scAccessMap);
+    if (typeof _showToast === 'function') {
+      _showToast(makeLocked ? '🔒 أصبح هذا القسم يتطلب اشتراكًا' : '🔓 أصبح هذا القسم مجانيًا', 'success');
+    }
+  } catch (e) {
+    console.error('[scToggle]', e);
+    if (typeof _showToast === 'function') _showToast('❌ فشل الحفظ: ' + (e.message || ''), 'error');
+    else alert('فشل الحفظ: ' + (e.message || ''));
+  }
+};
 })();
 </script>
 
