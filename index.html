@@ -3273,6 +3273,7 @@ function stLogout() {
       <p id="dynamic-section-sub"></p>
     </div>
     <div id="dynamic-section-chat-entry"></div>
+    <div id="dynamic-section-admin-phone"></div>
     <div id="dynamic-section-course-widgets"></div>
     <div id="dynamic-section-resources-container"></div>
     <div class="cards-grid" id="dynamic-section-grid">
@@ -4147,15 +4148,18 @@ async function renderHomeSections() {
     } catch(e) { _paintedInstantly = false; }
   }
 
-  // ✅ FIXED: زيادة timeout لـ 20 ثانية على الموبايل
+  // ✅ (بند 5 — إصلاح Loading بعد Refresh): قُلّل من 20 ثانية إلى 9 ثوانٍ —
+  // الصفحة الرئيسية لا تحتاج فعليًا لهذا الانتظار الطويل؛ لو الشبكة أبطأ من كده،
+  // fallback يظهر بعد 9 ثوانٍ بدل ما يفضل الـspinner عالقًا لمدة أطول بلا داعٍ.
+  // نفس منطق fallback/retry كما هو، فقط القيمة اتقلّلت.
   var _loadingTimeout = setTimeout(function() {
     var el = document.getElementById('dynamic-home-sections');
-    _boot('8-TIMEOUT', '20s timeout fired — el found=' + !!el + ', has .spinner=' + !!(el && el.querySelector('.spinner')));
+    _boot('8-TIMEOUT', '9s timeout fired — el found=' + !!el + ', has .spinner=' + !!(el && el.querySelector('.spinner')));
     if (el && el.querySelector('.spinner') && !_paintedInstantly) {
       console.warn('[renderHomeSections] timeout — عرض الـ fallback');
       renderHomeFallback();
     }
-  }, 20000);
+  }, 9000);
 
   try {
     const sections = await loadSections(null);
@@ -4246,6 +4250,22 @@ async function _renderDynamicSectionPage(sec) {
   window._currentDynamicSec = sec; // حفظ للتحديث التلقائي
   document.getElementById('dynamic-section-title').textContent = sec.title;
   document.getElementById('dynamic-section-sub').textContent = sec.subtitle || '';
+
+  // ✅ رقم أدمن/دكتور الكورس — يُقرأ مباشرة من نفس صف site_sections الخاص بهذا
+  // القسم (sec.course_admin_phone، عمود موجود بالفعل عبر select('*'))، فيظهر
+  // فقط داخل صفحة هذا القسم بالذات ولا يُخزَّن/يُشارَك مع أي قسم آخر. لا صندوق
+  // يظهر أصلاً إذا كان الحقل فارغاً/غير موجود.
+  var adminPhoneEl = document.getElementById('dynamic-section-admin-phone');
+  if (adminPhoneEl) {
+    var coursePhone = (sec && sec.course_admin_phone) ? String(sec.course_admin_phone).trim() : '';
+    adminPhoneEl.innerHTML = coursePhone
+      ? '<div style="background:#eefaf6;border:1px solid #b8e6d8;border-radius:12px;padding:12px 16px;margin:10px 0;text-align:center;">'
+        + '<div style="font-size:.85rem;color:#0a3d62;font-weight:700;margin-bottom:4px;">للتواصل والاستفسار</div>'
+        + '<div style="font-size:.8rem;color:#555;margin-bottom:8px;">تواصل مع دكتور الكورس</div>'
+        + '<a href="tel:' + coursePhone.replace(/[^0-9+]/g,'') + '" style="display:inline-block;background:linear-gradient(135deg,#0a3d62,#17a589);color:#fff;text-decoration:none;padding:8px 20px;border-radius:20px;font-weight:700;font-size:.9rem;direction:ltr;">📞 ' + coursePhone + '</a>'
+        + '</div>'
+      : '';
+  }
 
   showLoading('dynamic-section-grid');
   // ✅ FIX (Aug 2026) — "أم المشكلة": الصفحة كانت ممكن تفضل معلّقة للأبد على
@@ -7034,6 +7054,7 @@ async function _renderUserBox(user, role, mySeq) {
     window._branchAdminSectionIds = [];
     window._branchAdminPerms = null;
     window._branchAdminRoots = [];
+    window._branchAdminActiveRole = null;
     window._currentAuthUser = null;
     _teardownOwnAdminStatusRealtime();
     document.body.classList.remove('is-admin');
@@ -7226,7 +7247,9 @@ async function _loadBranchAdminScope(userId) {
         title: (profRes.data.site_sections && profRes.data.site_sections.title) || ('#' + profRes.data.managed_section_id),
         // النظام القديم managed_section_id مفيش فيه عمود صلاحيات أصلاً — نفس السلوك
         // القديم بالظبط: كل الصلاحيات مفعّلة، عشان مانكسرش أي أدمن مُعيّن بالطريقة القديمة.
-        permissions: null
+        permissions: null,
+        // النظام القديم يسبق مفهوم Owner أصلاً — يُعامل دائمًا كـ admin عادي
+        role: 'admin'
       });
     }
 
@@ -7244,7 +7267,10 @@ async function _loadBranchAdminScope(userId) {
           id: row.section_id,
           title: (row.site_sections && row.site_sections.title) || ('#' + row.section_id),
           // ✅ الصلاحيات الحقيقية القادمة من قاعدة البيانات فعلاً
-          permissions: row.permissions || null
+          permissions: row.permissions || null,
+          // ✅ الدور الفعلي (admin/owner) — يُستخدم لإخفاء تبويب "أدمن الكورسات"
+          // الكامل عن الـOwner دائمًا (بند Owner المنفصل)، بغض النظر عن أي صلاحية أخرى.
+          role: row.role || 'admin'
         });
       });
     }
@@ -7301,6 +7327,10 @@ window._selectBranchAdminRoot = async function(rootId) {
   // بالظبط السلوك القديم، عشان محدش ينكسر فجأة. can_manage_chats موجودة هنا
   // للتوافق مع كود قديم بيقرأها بنفس الاسم القديم.
   var _dbPerms = (rootMeta && rootMeta.permissions) || {};
+  // ✅ دور المستخدم الفعلي (admin/owner) على الشعبة المختارة حاليًا — يُستخدم لإخفاء
+  // تبويب "أدمن الكورسات" الكامل عن الـOwner (بند Owner) وقفل صلاحية can_manage_admins
+  // في مودال الإضافة عند فتحه من طرف الـOwner.
+  window._branchAdminActiveRole = (rootMeta && rootMeta.role) || 'admin';
   window._branchAdminPerms = {
     can_manage_materials:        _dbPerms.can_manage_materials        !== undefined ? _dbPerms.can_manage_materials        : true,
     can_manage_chapters:         _dbPerms.can_manage_chapters         !== undefined ? _dbPerms.can_manage_chapters         : true,
@@ -8486,6 +8516,7 @@ window.checkBanStatus = async function(email) {
               </div>
               <div class="ap-field"><label class="ap-label">التصنيف (Category) — اختياري</label><input class="ap-input" id="sm-f-category" type="text"></div>
               <div class="ap-field"><label class="ap-label">Tags — اختياري (مفصولة بفاصلة)</label><input class="ap-input" id="sm-f-tags" type="text"></div>
+              <div class="ap-field"><label class="ap-label">رقم أدمن/دكتور الكورس — اختياري (يظهر للطلاب داخل هذا القسم فقط)</label><input class="ap-input" id="sm-f-course-admin-phone" type="text" style="direction:ltr;text-align:right;" placeholder="01xxxxxxxxx"></div>
               <div class="ap-field" style="display:flex;align-items:center;gap:8px;background:#eefaf6;border:1px solid #b8e6d8;border-radius:10px;padding:10px 12px;">
                 <input type="checkbox" id="sm-f-is-course" style="width:auto;">
                 <label class="ap-label" style="margin:0;" for="sm-f-is-course">📚 هذا العنصر دورة (Course) — يظهر في صفحة "الدورات"</label>
@@ -10234,10 +10265,13 @@ function _applyBranchAdminPanelGating() {
   var perms = window._branchAdminPerms || {};
 
   // تاب "أدمن الكورسات" (= "إدارة الأدمنات") لأدمن المنصة دايمًا، أو لأدمن الكورس
-  // لو معاه صلاحية can_manage_admins — ده كان مكتوب في التعليق فوق كنية لكنه ماكانش
-  // مطبّق فعليًا (كان دايمًا isSuper فقط)، فتم تفعيله هنا فعليًا (طلب المستخدم).
+  // العادي لو معاه صلاحية can_manage_admins. ✅ بند Owner (منفصل): الـOwner لا يرى
+  // هذا التبويب الكامل نهائيًا مهما كانت قيمة can_manage_admins — الشرط هنا صريح
+  // ومستقل عن الصلاحية، وليس معتمدًا عليها ضمنيًا فقط. الـOwner يحصل بدلاً من ذلك
+  // على زر "➕ إضافة أدمن مساعد" مستقل داخل Dashboard الخاص به (_apLoadBranchDashboard).
+  var isOwnerActive = window._branchAdminActiveRole === 'owner';
   var baTab = document.getElementById('ap-tab-branchadmins');
-  if (baTab) baTab.style.display = (isSuper || (isBranch && perms.can_manage_admins)) ? '' : 'none';
+  if (baTab) baTab.style.display = (isSuper || (isBranch && !isOwnerActive && perms.can_manage_admins)) ? '' : 'none';
 
   if (!isBranch) {
     // مستخدم عادي أو أدمن المنصة: أظهر كل التابات كما هي
@@ -11523,6 +11557,16 @@ function baOpenAssignModal(sectionId, sectionTitle, mode, targetRowId, targetRol
     cb.checked = _baModalPerms[key] !== undefined ? !!_baModalPerms[key] : true;
   });
 
+  // ✅ بند Owner (منفصل): لو اللي فاتح المودال هو الـOwner نفسه (مش أدمن المنصة)،
+  // صلاحية "تعيين أدمن آخر لنفس الشعبة" (can_manage_admins) تُقفل تمامًا — مغلقة
+  // افتراضيًا وغير قابلة للتفعيل من هنا؛ منح هذه الصلاحية يبقى حصراً لأدمن المنصة.
+  var _baCanManageAdminsCb = document.querySelector('#ba-perm-checks input[data-perm="can_manage_admins"]');
+  if (_baCanManageAdminsCb) {
+    var _baOwnerIsOpening = !window._isSuperAdmin && window._branchAdminActiveRole === 'owner';
+    _baCanManageAdminsCb.disabled = _baOwnerIsOpening;
+    if (_baOwnerIsOpening) _baCanManageAdminsCb.checked = false;
+  }
+
   overlay.style.display = 'flex';
   setTimeout(function(){ searchInput.focus(); }, 50);
 }
@@ -11598,6 +11642,12 @@ async function baConfirmAssign() {
     document.querySelectorAll('#ba-perm-checks input[data-perm]').forEach(function(cb) {
       _baPerms[cb.getAttribute('data-perm')] = !!cb.checked;
     });
+    // ✅ بند Owner (شبكة أمان إضافية في الواجهة فقط): الـOwner (وليس أدمن المنصة)
+    // لا يقدر يمنح can_manage_admins للأدمن المساعد اللي بيضيفه، حتى لو تم العبث
+    // بالـcheckbox من الـDOM مباشرة. الحماية الحقيقية تبقى في RLS/الدوال كما هي.
+    if (!window._isSuperAdmin && window._branchAdminActiveRole === 'owner') {
+      _baPerms.can_manage_admins = false;
+    }
 
     // section_admins هو المصدر الوحيد الآن للكتابة. UNIQUE(user_id, section_id) في الجدول
     // يعني upsert آمن: لو المستخدم كان أدمن غير فعّال لنفس الشعبة من قبل، يُعاد تفعيله فقط.
@@ -11649,6 +11699,7 @@ async function baConfirmAssign() {
 // الواعي وقت التعيين، مش تغييراً في الإعداد الافتراضي الآمن للنظام.
 function baToggleAllPerms(checked) {
   document.querySelectorAll('#ba-perm-checks input[type="checkbox"]').forEach(function(cb) {
+    if (cb.disabled) return; // ✅ بند Owner: لا يُفعَّل can_manage_admins عبر "تحديد الكل" وهو مقفول
     cb.checked = checked;
   });
 }
@@ -13249,7 +13300,7 @@ async function smMove(id, dir) {
 
 function smOpenAdd() {
   document.getElementById('sm-modal-title').textContent = '➕ إضافة عنصر جديد' + (_smStack.length ? (' داخل "' + _smStack[_smStack.length-1].title + '"') : ' (شعبة رئيسية)');
-  ['sm-f-title','sm-f-subtitle','sm-f-icon','sm-f-category','sm-f-tags','sm-f-pay-number'].forEach(function(id){ document.getElementById(id).value = ''; });
+  ['sm-f-title','sm-f-subtitle','sm-f-icon','sm-f-category','sm-f-tags','sm-f-pay-number','sm-f-course-admin-phone'].forEach(function(id){ document.getElementById(id).value = ''; });
   document.getElementById('sm-f-order').value = 0;
   document.getElementById('sm-f-price').value = '';
   document.getElementById('sm-f-pay-method').value = 'Vodafone Cash';
@@ -13271,6 +13322,7 @@ function smOpenEdit(id) {
   document.getElementById('sm-f-order').value    = s.display_order || 0;
   document.getElementById('sm-f-category').value = s.category || '';
   document.getElementById('sm-f-tags').value     = s.tags || '';
+  document.getElementById('sm-f-course-admin-phone').value = s.course_admin_phone || '';
   document.getElementById('sm-f-requires-sub').checked = !!s.requires_subscription;
   document.getElementById('sm-f-is-course').checked = (s.type === 'course');
   document.getElementById('sm-payment-fields').style.display = s.requires_subscription ? 'block' : 'none';
@@ -13305,6 +13357,7 @@ async function smSave() {
     display_order: parseInt(document.getElementById('sm-f-order').value, 10) || 0,
     category: document.getElementById('sm-f-category').value.trim() || null,
     tags: document.getElementById('sm-f-tags').value.trim() || null,
+    course_admin_phone: document.getElementById('sm-f-course-admin-phone').value.trim() || null,
     type: document.getElementById('sm-f-is-course').checked ? 'course' : null,
     requires_subscription: requiresSub,
     payment_method: requiresSub ? document.getElementById('sm-f-pay-method').value : null,
@@ -14046,7 +14099,7 @@ NOTIFY pgrst,'reload schema';
 <!-- SITE ALERT MODAL — نظام التنبيهات الاحترافي v3             -->
 <!-- يظهر فوق كل العناصر — مرتبط بجدول site_messages            -->
 <!-- ============================================================ -->
-<div id="sm-overlay" role="dialog" aria-modal="true" aria-labelledby="sm-header-title" aria-describedby="sm-message-text">
+<div id="sm-overlay" role="dialog" aria-modal="true" aria-labelledby="sm-header-title" aria-describedby="sm-message-text" onclick="if(event.target===this) smClose()">
   <div id="sm-card">
     <!-- Header -->
     <div id="sm-header">
@@ -14130,7 +14183,11 @@ function toggleDarkMode() {
   'use strict';
 // ── ثوابت ────────────────────────────────────────────────
 var LS_PREFIX     = 'sm_seen_v3_';
-var FETCH_TIMEOUT = 20000;   // ⬅️ زودناه لتفادي GitHub Pages timeout
+// ✅ (بند 5 — إصلاح Loading بعد Refresh): قُلّل من 20 ثانية إلى 7 ثوانٍ — Site
+// Alert مستقل بالكامل عن الصفحة الرئيسية أصلاً (IIFE منفصل، لا أحد ينتظره)،
+// فتقليل هذه القيمة لا يؤثر على ظهور الصفحة، فقط يجعل Site Alert نفسه يتخلى عن
+// المحاولة أسرع لو الشبكة بطيئة/فشلت، بدل الانتظار الطويل بلا داعٍ.
+var FETCH_TIMEOUT = 7000;
 var MAX_RETRIES   = 1;       // ⬅️ قللنا retries عشان ما يعلقش
 var RETRY_DELAY   = 1000;
 var _initialized  = false;
@@ -14269,9 +14326,10 @@ function _waitClient(timeoutMs, cb) {
     // تخزين الـ row للـ close
     overlay._smRow = row;
 
-    // أتاح إغلاق بالـ Enter فقط (ليس ESC — الـ ESC قد يكون مستخدماً لـ PDF viewer)
+    // أتاح إغلاق بالـ Enter أو Escape (بند 3/6 — إصلاح الـScroll: نفس آلية
+    // الإغلاق الحالية بالضبط، فقط أضيف مفتاح Escape بجانب Enter الموجود أصلاً)
     overlay._smKeyHandler = function(e) {
-      if (e.key === 'Enter') { e.preventDefault(); smClose(); }
+      if (e.key === 'Enter' || e.key === 'Escape' || e.key === 'Esc') { e.preventDefault(); smClose(); }
     };
     document.addEventListener('keydown', overlay._smKeyHandler);
 
@@ -14294,14 +14352,18 @@ function _waitClient(timeoutMs, cb) {
   // ── إغلاق الـ Modal (global — accessible from HTML) ───────
   window.smClose = function() {
     var overlay = document.getElementById('sm-overlay');
+
+    // ✅ حماية إضافية (بند 6 — إصلاح الـScroll): إزالة sm-open من body دائمًا
+    // وبشكل غير مشروط، بغض النظر عن حالة الـoverlay الحالية — حتى لو حصل مسار
+    // غير متوقع واختفى الـoverlay أو فقد class sm-visible قبل استدعاء smClose()،
+    // القفل يجب ألا يبقى عالقاً على body أبداً.
+    document.body.classList.remove('sm-open');
+
     if (!overlay || !overlay.classList.contains('sm-visible')) return;
 
     // تشغيل animation الإغلاق
     overlay.classList.remove('sm-visible');
     overlay.classList.add('sm-hiding');
-
-    // إزالة منع الـ scroll
-    document.body.classList.remove('sm-open');
 
     // حفظ أن الرسالة شُوفت
     if (overlay._smRow) _markSeen(overlay._smRow);
@@ -18804,6 +18866,16 @@ window.diagnose = async function() {
   display: block; margin: 8px auto 0; border: none; background: #fdecea; color: #c0392b;
   font-size: .74rem; font-weight: 800; padding: 6px 14px; border-radius: 8px; cursor: pointer;
 }
+.pm-sender-phone-label {
+  display: block; font-size: .82rem; font-weight: 800; color: var(--primary);
+  margin-bottom: 6px;
+}
+.pm-sender-phone-input {
+  width: 100%; box-sizing: border-box; border: 2px solid #d7e6f2; border-radius: 12px;
+  padding: 12px 14px; font-size: .88rem; font-weight: 700; color: var(--text-main, #243342);
+  background: #f5f9fd; text-align: right; direction: ltr; transition: border-color .15s;
+}
+.pm-sender-phone-input:focus { outline: none; border-color: var(--primary); background: #fff; }
 .pm-msg { font-size: .78rem; min-height: 18px; margin-bottom: 8px; font-weight: 700; }
 .pm-submit-btn {
   width: 100%; border: none; background: linear-gradient(135deg,#0a3d62,#1a5276);
@@ -19118,6 +19190,11 @@ window.diagnose = async function() {
       </div>
     </div>
 
+    <div class="pm-upload-field pm-sender-phone-field">
+      <label class="pm-sender-phone-label" for="pm-sender-phone-input" id="pm-sender-phone-label-text">📱 اكتب الرقم اللي اتحول منه</label>
+      <input type="tel" id="pm-sender-phone-input" placeholder="مثال: 01XXXXXXXXX" class="pm-sender-phone-input" inputmode="numeric" autocomplete="off">
+    </div>
+
     <div class="pm-msg" id="pm-msg"></div>
     <button class="pm-submit-btn" id="pm-submit-btn" onclick="_pmSubmit()">🚀 إرسال الطلب</button>
   </div>
@@ -19157,6 +19234,8 @@ window.diagnose = async function() {
     }
 
     _pmRemoveFile();
+    var senderPhoneInput = document.getElementById('pm-sender-phone-input');
+    if (senderPhoneInput) senderPhoneInput.value = '';
     document.getElementById('pm-msg').textContent = '';
     document.getElementById('pm-submit-btn').disabled = false;
     document.getElementById('pm-submit-btn').textContent = '🚀 إرسال الطلب';
@@ -19236,6 +19315,13 @@ window.diagnose = async function() {
       msgEl.style.color = '#e74c3c'; msgEl.textContent = '❌ الرجاء رفع صورة إيصال التحويل أولاً';
       return;
     }
+    var senderPhoneInput = document.getElementById('pm-sender-phone-input');
+    var senderPhone = senderPhoneInput ? senderPhoneInput.value.trim() : '';
+    if (!senderPhone) {
+      msgEl.style.color = '#e74c3c'; msgEl.textContent = 'من فضلك اكتب الرقم الذي تم التحويل منه.';
+      if (senderPhoneInput) senderPhoneInput.focus();
+      return;
+    }
     var db = window.supabase;
     if (!db) { msgEl.style.color = '#e74c3c'; msgEl.textContent = '❌ تعذّر الاتصال، حاول مجدداً'; return; }
 
@@ -19258,13 +19344,14 @@ window.diagnose = async function() {
       //    راجع تقرير "Database issues" لتفاصيل هذا الخطر).
       var subPrice  = (_pmAnchor.price != null && String(_pmAnchor.price).trim() !== '') ? Number(_pmAnchor.price) : null;
       var subMethod = _pmAnchor.payment_method || 'Vodafone Cash';
-      var subNumber = _pmAnchor.payment_number || null;
+      var subNumber = _pmAnchor.payment_number || null; // رقم المستقبِل/رقم الدفع الخاص بالكورس — لا يتغيّر معناه
       var rpcRes = await db.rpc('request_subscription', {
         p_section_id: _pmAnchor.id,
         p_payment_method: subMethod,
         p_payment_number: subNumber,
         p_amount: subPrice,
-        p_receipt_image: 'receipts/' + path
+        p_receipt_image: 'receipts/' + path,
+        p_sender_phone: senderPhone // رقم الطالب الذي تم التحويل منه
       });
       if (rpcRes.error) throw rpcRes.error;
 
@@ -24774,6 +24861,22 @@ var labels=document.querySelectorAll('#admin-panel .ap-label');labels.forEach(fu
         act.innerHTML='<div style="font-size:.82rem;color:#667;line-height:1.9">👥 الطلاب: '+users.size+
           ' — 🟢 النشطون: '+active+' — ⏳ الطلبات المعلقة: '+pending+
           ' — 💳 إيصالات معلقة: '+pendingPay+' — 📚 المحتوى: '+(contentR.error?'—':(contentR.count||0))+'</div>';
+
+        // ✅ بند Owner (منفصل): الـOwner لا يرى تبويب "أدمن الكورسات" الكامل، لكن
+        // يحصل هنا فقط على زر مستقل لإضافة أدمن مساعد لشعبته/كورسه هو تحديداً —
+        // نفس المودال الموجود بالفعل (baOpenAssignModal mode='add')، بدون أي واجهة
+        // إضافية جديدة ولا مساس بصف الـOwner نفسه (لا تعيين/تغيير/حذف Owner من هنا).
+        if (!window._isSuperAdmin && window._branchAdminActiveRole === 'owner') {
+          var ownerSectionId = window._branchAdminCourseId || ownIds[0];
+          var ownerSectionTitle = (function(){
+            var r = (window._branchAdminRoots||[]).find(function(x){ return Number(x.id) === Number(ownerSectionId); });
+            return (r && r.title) || ('#' + ownerSectionId);
+          })();
+          var ownerTitleEsc = String(ownerSectionTitle).replace(/'/g, "\\'");
+          act.innerHTML += '<div style="margin-top:14px;"><button class="ap-btn ap-btn-success" '
+            + 'onclick="baOpenAssignModal(' + Number(ownerSectionId) + ', \'' + ownerTitleEsc + '\', \'add\')">'
+            + '➕ إضافة أدمن مساعد</button></div>';
+        }
       }
     }catch(e){
       console.error('[DEBUG FIX BRANCH DASHBOARD]',e);
