@@ -2506,6 +2506,14 @@ img, video {
   body { display: none !important; }
 }
 </style>
+
+<style id="admin-special-nav-styles">
+  .ap-nav-btn.owner-only-nav, .ap-nav-btn.platform-only-nav { display:none; }
+  .ap-nav-btn.special-action-nav { font-weight:800; }
+  @media (max-width: 760px){
+    #ap-panel-courseAdminPhone .ap-card > div[style*="grid-template-columns"]{grid-template-columns:1fr !important;}
+  }
+</style>
 </head>
 <body>
 <script>
@@ -8344,6 +8352,8 @@ window.checkBanStatus = async function(email) {
         <div class="ap-nav-group">
           <div class="ap-nav-group-title">الرئيسية</div>
           <button class="ap-nav-btn active" onclick="apSwitchTab('dashboard')" id="ap-tab-dashboard" role="tab">📊 <span>لوحة المعلومات</span></button>
+          <button class="ap-nav-btn platform-only-nav" onclick="apSwitchTab('courseAdminPhone')" id="ap-tab-courseAdminPhone" role="tab">📱 <span>رقم أدمن / دكتور الكورس</span></button>
+          <button class="ap-nav-btn owner-only-nav" onclick="openOwnerAssistantFromNav()" id="ap-tab-ownerAssistant" role="button">➕ <span>إضافة أدمن مساعد</span></button>
           <button class="ap-nav-btn" onclick="apSwitchTab('notifications')" id="ap-tab-notifications" role="tab">🔔 <span>الإشعارات</span></button>
         </div>
 
@@ -8409,6 +8419,33 @@ window.checkBanStatus = async function(email) {
         <div class="ap-section-heading" style="margin-top:20px;">🕐 آخر النشاطات</div>
         <div id="ap-recent-activity">
           <div class="ap-loading"><div class="spinner"></div> جاري التحميل...</div>
+        </div>
+      </div>
+
+      <!-- ═══════════════════ TAB: COURSE ADMIN PHONE ═══════════════════ -->
+      <div class="ap-tab-panel" id="ap-panel-courseAdminPhone" role="tabpanel">
+        <div class="ap-section-heading">📱 رقم أدمن / دكتور الكورس</div>
+        <div class="ap-card" style="padding:18px;max-width:760px;">
+          <div style="font-size:.82rem;color:#667;line-height:1.8;margin-bottom:14px;">
+            اختر الكورس ثم سجّل رقم أدمن/دكتور هذا الكورس. الرقم يُحفظ على الكورس نفسه ويظهر للطلاب داخل الكورس المحدد فقط.
+          </div>
+          <div style="display:grid;grid-template-columns:minmax(220px,1fr) minmax(220px,1fr);gap:14px;align-items:end;">
+            <div>
+              <label class="ap-label">📚 الكورس</label>
+              <select id="cap-course-select" class="ap-select" onchange="capLoadCourse()">
+                <option value="">— جاري تحميل الكورسات —</option>
+              </select>
+            </div>
+            <div>
+              <label class="ap-label">📱 رقم أدمن / دكتور الكورس</label>
+              <input id="cap-phone-input" class="ap-input" type="text" inputmode="tel" dir="ltr" style="text-align:right;" placeholder="01xxxxxxxxx">
+            </div>
+          </div>
+          <div id="cap-save-msg" style="font-size:.8rem;margin-top:12px;"></div>
+          <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap;">
+            <button class="ap-btn ap-btn-primary" onclick="capSave()">💾 حفظ رقم الكورس</button>
+            <button class="ap-btn ap-btn-ghost" onclick="capInit()">🔄 تحديث الكورسات</button>
+          </div>
         </div>
       </div>
 
@@ -10335,12 +10372,16 @@ function _applyBranchAdminPanelGating() {
     // مستخدم عادي أو أدمن المنصة: أظهر كل التابات كما هي
     ['ap-tab-requests','ap-tab-usermgmt','ap-tab-users','ap-tab-messages','ap-tab-divsubs','ap-tab-content','ap-tab-dashboard',
      'ap-tab-payments','ap-tab-sectionsmgmt','ap-tab-paths','ap-tab-ads','ap-tab-monthlystats','ap-tab-sectionchat','ap-tab-auditlog','ap-tab-notifications',
-     'ap-tab-branchsettings','ap-tab-studentlevels','ap-tab-lectures','ap-tab-announcements','ap-tab-subcontent']
+     'ap-tab-branchsettings','ap-tab-studentlevels','ap-tab-lectures','ap-tab-announcements','ap-tab-subcontent','ap-tab-courseAdminPhone','ap-tab-ownerAssistant']
       .forEach(function(id) { var el = document.getElementById(id); if (el) el.style.display = ''; });
     // ✅ حقل رقم أدمن/دكتور الكورس داخل "🗂️ الشعب/المواد/الفصول" يظل خاصًا بلوحة
     // تحكم المنصة فقط (أدمن المنصة الحقيقي، وليس أدمن الكورس/الشعبة) — يظهر هنا.
     var cpWrap0 = document.getElementById('sm-course-admin-phone-wrap');
     if (cpWrap0) { cpWrap0.style.display = 'block'; cpWrap0.classList.add('platform-only-phone'); }
+    var capNav0 = document.getElementById('ap-tab-courseAdminPhone');
+    if (capNav0) capNav0.style.display = '';
+    var ownerNav0 = document.getElementById('ap-tab-ownerAssistant');
+    if (ownerNav0) ownerNav0.style.display = 'none';
     return;
   }
 
@@ -10385,6 +10426,10 @@ function _applyBranchAdminPanelGating() {
   if (slTab) slTab.style.display = '';
   var psTab = document.getElementById('ap-tab-platformSettings');
   if (psTab) psTab.style.display = 'none';
+  var capNav = document.getElementById('ap-tab-courseAdminPhone');
+  if (capNav) capNav.style.display = 'none';
+  var ownerNav = document.getElementById('ap-tab-ownerAssistant');
+  if (ownerNav) ownerNav.style.display = isOwnerActive ? '' : 'none';
 
   var notifTab = document.getElementById('ap-tab-notifications');
   if (notifTab) notifTab.style.display = 'none';
@@ -10668,6 +10713,72 @@ window._refreshNotifBadge = async function() {
   }
 };
 
+// ════════════════════════════════════════════════════════════════
+// 📱 COURSE ADMIN PHONE — لوحة مستقلة للـOwner/Platform Admin
+// ════════════════════════════════════════════════════════════════
+window._capCourses = [];
+window.capInit = async function(){
+  var sel=document.getElementById('cap-course-select');
+  var phone=document.getElementById('cap-phone-input');
+  var msg=document.getElementById('cap-save-msg');
+  if(!sel) return;
+  if(!window._isSuperAdmin){
+    sel.innerHTML='<option value="">غير متاح</option>';
+    if(msg) msg.textContent='⛔ هذه الصفحة متاحة للـOwner / أدمن المنصة فقط.';
+    return;
+  }
+  sel.innerHTML='<option value="">— جاري تحميل الكورسات —</option>';
+  if(msg) msg.textContent='';
+  try{
+    var rows=await _adminCourseOptions();
+    window._capCourses=rows||[];
+    if(!rows.length){sel.innerHTML='<option value="">لا توجد كورسات</option>';if(phone)phone.value='';return;}
+    sel.innerHTML='<option value="">— اختر الكورس —</option>'+rows.map(function(c){return '<option value="'+c.id+'">'+(c.icon||'📚')+' '+_apEsc(c.title)+'</option>';}).join('');
+    sel.value=String(rows[0].id);
+    await capLoadCourse();
+  }catch(e){
+    console.error('[CourseAdminPhone] init',e);
+    sel.innerHTML='<option value="">تعذر تحميل الكورسات</option>';
+    if(msg) {msg.style.color='#e74c3c';msg.textContent='❌ تعذر تحميل الكورسات: '+_apEsc(e.message||'');}
+  }
+};
+window.capLoadCourse = async function(){
+  var sel=document.getElementById('cap-course-select'),phone=document.getElementById('cap-phone-input'),msg=document.getElementById('cap-save-msg');
+  var id=Number(sel&&sel.value||0);
+  if(!id){if(phone)phone.value='';return;}
+  var row=(window._capCourses||[]).find(function(x){return Number(x.id)===id;});
+  if(phone)phone.value=(row&&row.course_admin_phone)||'';
+  if(msg)msg.textContent='';
+};
+window.capSave = async function(){
+  var sel=document.getElementById('cap-course-select'),phone=document.getElementById('cap-phone-input'),msg=document.getElementById('cap-save-msg');
+  if(!window._isSuperAdmin){return;}
+  var id=Number(sel&&sel.value||0), value=(phone&&phone.value||'').trim();
+  if(!id){if(msg){msg.style.color='#e74c3c';msg.textContent='❌ اختر الكورس أولاً';}return;}
+  if(msg){msg.style.color='#667';msg.textContent='⏳ جاري الحفظ...';}
+  try{
+    var res=await window.supabase.from('site_sections').update({course_admin_phone:value||null}).eq('id',id);
+    if(res.error) throw res.error;
+    var row=(window._capCourses||[]).find(function(x){return Number(x.id)===id;});
+    if(row)row.course_admin_phone=value||null;
+    if(msg){msg.style.color='#17a589';msg.textContent='✅ تم حفظ رقم أدمن/دكتور الكورس بنجاح';}
+    if(typeof _showToast==='function')_showToast('✅ تم حفظ رقم الكورس','success');
+  }catch(e){
+    console.error('[CourseAdminPhone] save',e);
+    if(msg){msg.style.color='#e74c3c';msg.textContent='❌ فشل الحفظ: '+_apEsc(e.message||'');}
+  }
+};
+
+// ➕ Owner: زر مستقل تحت لوحة المعلومات يفتح نفس مودال إضافة الأدمن المساعد الموجود بالفعل.
+window.openOwnerAssistantFromNav = function(){
+  if(window._isSuperAdmin || window._branchAdminActiveRole!=='owner') return;
+  var id=Number(window._branchAdminCourseId || window._activeSectionId || ((window._branchAdminOwnSectionIds||[])[0]) || 0);
+  if(!id){if(typeof _showToast==='function')_showToast('❌ تعذر تحديد الكورس الحالي','error');return;}
+  var title=(window._branchAdminRoots||[]).find(function(x){return Number(x.id)===id;});
+  var titleText=title&&title.title ? title.title : ('#'+id);
+  baOpenAssignModal(id,titleText,'add');
+};
+
 // ── apSwitchTab ─────────────────────────────────────────────────
 function apSwitchTab(tab) {
   // Update nav buttons
@@ -10686,6 +10797,7 @@ function apSwitchTab(tab) {
 
   // Lazy load data
   if (tab === 'dashboard')     apLoadDashboard();
+  else if (tab === 'courseAdminPhone') { if(typeof capInit==='function') capInit(); }
   else if (tab === 'auditlog') apLoadAuditLog();
   else if (tab === 'notifications') apLoadNotificationsPanel();
   else if (tab === 'requests') apLoadRequests();
