@@ -8,7 +8,11 @@
 -->
 <script>
 (function () {
-  window.__BSM_DEBUG_MODE = false;
+  const DEBUG_MODE = true;
+  window.__BSM_DEBUG_MODE = DEBUG_MODE;
+  // Keep Service Worker/PWA untouched during frontend protection debugging.
+  window.__BSM_DEBUG_KEEP_SW = true;
+  if (DEBUG_MODE) { try { document.documentElement.classList.add('bsm-debug-mode'); } catch (e) {} }
   window.isIOSDevice = function () {
     var ua = navigator.userAgent || '';
     return /iPhone|iPad|iPod/i.test(ua) ||
@@ -37,7 +41,7 @@
       return _isAndroidAppEarly() || (window.isIOSDevice() && window.isIOSStandalone());
     } catch (e) { return false; }
   };
-  window.__bsmGateBlocked = !window.isOfficialApp();
+  window.__bsmGateBlocked = DEBUG_MODE ? false : !window.isOfficialApp();
   try { document.documentElement.style.visibility = 'visible'; } catch (e) {}
 })();
 </script>
@@ -2532,8 +2536,21 @@ img, video {
   -webkit-user-drag: none;
   user-drag: none;
 }
+html.bsm-debug-mode body {
+  -webkit-user-select: text !important;
+  -moz-user-select: text !important;
+  -ms-user-select: text !important;
+  user-select: text !important;
+  -webkit-touch-callout: default !important;
+}
+html.bsm-debug-mode img,
+html.bsm-debug-mode video {
+  -webkit-user-drag: auto !important;
+  user-drag: auto !important;
+}
 @media print {
   body { display: none !important; }
+  html.bsm-debug-mode body { display: block !important; }
 }
 </style>
 </head>
@@ -2701,6 +2718,12 @@ img, video {
 <script>
 (function () {
   try {
+    if (typeof DEBUG_MODE !== 'undefined' && DEBUG_MODE) {
+      var debugGate = document.getElementById('bsm-app-gate');
+      if (debugGate) debugGate.style.display = 'none';
+      document.documentElement.style.visibility = 'visible';
+      return;
+    }
     if (!window.__bsmGateBlocked) {
       // تطبيق رسمي (Android/iOS): اعرض الموقع فورًا كالمعتاد — لا تغيير في التوقيت أو السلوك إطلاقاً
       document.documentElement.style.visibility = 'visible';
@@ -16102,6 +16125,7 @@ function _applyBranchAdminPanelRestrictions() {
 (function() {
   // منع Right Click للمحتوى المحمي (لغير الأدمن)
   document.addEventListener('contextmenu', function(e) {
+    if (DEBUG_MODE) return;
     if (!window._isAdminUser && document.body.classList.contains('content-protected')) {
       e.preventDefault();
     }
@@ -16109,6 +16133,7 @@ function _applyBranchAdminPanelRestrictions() {
 
   // منع keyboard shortcuts للنسخ في المحتوى المحمي
   document.addEventListener('keydown', function(e) {
+    if (DEBUG_MODE) return;
     if (window._isAdminUser) return;
     if (!document.body.classList.contains('content-protected')) return;
 
@@ -16131,6 +16156,7 @@ function _applyBranchAdminPanelRestrictions() {
 
   // منع Print Screen (لا يمنع تماماً لكن يُصعّب)
   document.addEventListener('keyup', function(e) {
+    if (DEBUG_MODE) return;
     if (window._isAdminUser) return;
     if (e.key === 'PrintScreen') {
       try { navigator.clipboard && navigator.clipboard.writeText(''); } catch(x) {}
@@ -16139,11 +16165,13 @@ function _applyBranchAdminPanelRestrictions() {
 
   // منع Copy و Cut
   document.addEventListener('copy', function(e) {
+    if (DEBUG_MODE) return;
     if (!window._isAdminUser && document.body.classList.contains('content-protected')) {
       e.preventDefault();
     }
   });
   document.addEventListener('cut', function(e) {
+    if (DEBUG_MODE) return;
     if (!window._isAdminUser && document.body.classList.contains('content-protected')) {
       e.preventDefault();
     }
@@ -16151,6 +16179,7 @@ function _applyBranchAdminPanelRestrictions() {
 
   // منع Select All
   document.addEventListener('selectstart', function(e) {
+    if (DEBUG_MODE) return;
     if (!window._isAdminUser && document.body.classList.contains('content-protected')) {
       e.preventDefault();
     }
@@ -16158,11 +16187,13 @@ function _applyBranchAdminPanelRestrictions() {
 
   // منع Drag & Drop للمحتوى المحمي
   document.addEventListener('dragstart', function(e) {
+    if (DEBUG_MODE) return;
     if (!window._isAdminUser && document.body.classList.contains('content-protected')) {
       e.preventDefault();
     }
   });
   document.addEventListener('drop', function(e) {
+    if (DEBUG_MODE) return;
     if (!window._isAdminUser && document.body.classList.contains('content-protected')) {
       e.preventDefault();
     }
@@ -18457,7 +18488,7 @@ window.diagnose = async function() {
   // DEBUG: disable/unregister Service Worker to prevent stale cache during testing.
   window.__BSM_DEBUG_SW_DISABLED = true;
   window.addEventListener('load', function () {
-    if (!window.__BSM_DEBUG_MODE) return;
+    if (!window.__BSM_DEBUG_MODE || window.__BSM_DEBUG_KEEP_SW) return;
     try {
       if ('serviceWorker' in navigator) {
         navigator.serviceWorker.getRegistrations().then(function (regs) {
@@ -23374,6 +23405,7 @@ window.qzShowPastReview = qzShowPastReview;
 // اختصارات لوحة المفاتيح (طباعة/حفظ/عرض المصدر/أدوات المطور).
 // ============================================================
 (function(){
+  if (typeof DEBUG_MODE !== 'undefined' && DEBUG_MODE) return;
   function _isEditableTarget(el){
     if (!el) return false;
     var tag = (el.tagName || '').toLowerCase();
@@ -23422,6 +23454,7 @@ window.qzShowPastReview = qzShowPastReview;
 <script>
 (function () {
   'use strict';
+  if (typeof DEBUG_MODE !== 'undefined' && DEBUG_MODE) return;
 
   // أي عنصر إدخال حقيقي (أو داخل عنصر إدخال) يُستثنى دائماً من الحماية
   function nearestFormField(el) {
