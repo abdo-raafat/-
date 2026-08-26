@@ -6482,14 +6482,13 @@ const ResourceViewer = (function() {
           <span style="font-size:.75rem;color:#999;direction:ltr;word-break:break-all;flex:1;max-width:55%" id="rv-url-display" class="admin-only-el" style="display:none">${escHtml(url.length > 60 ? url.substring(0,57)+'...' : url)}</span>
           <div class="rv-footer-btns">
             ${(type !== 'fallback' && type !== 'invalid') ? `<button class="rv-btn rv-btn-outline" onclick="ResourceViewer._reload()">🔄 إعادة التحميل</button>` : ''}
-            ${(type === 'html' || type === 'external_link' || type === 'fallback') ? `<button class="rv-btn rv-btn-outline" onclick="(window._origWindowOpen||window.open)('${escUrl(url)}','_blank','noopener')">↗️ افتح في تبويب جديد</button>` : ''}
             ${(type === 'pdf' || type === 'gdrive_pdf' || type === 'image' || type === 'audio' || type === 'video_direct') ? `<button class="rv-btn rv-btn-primary admin-only-el" onclick="if(window._isAdminUser){var a=document.createElement('a');a.href='${escUrl(url)}';a.setAttribute('download','');document.body.appendChild(a);a.click();document.body.removeChild(a);}" style="display:none">&#11015;&#65039; تحميل (أدمن)</button>` : ''}
           </div>
-          <!-- ✅ FIX (Aug 2026 — كويز "مفيش حاجة بتظهر"): بعض منصات الكويز/الاستبيانات
-               ترفض الظهور جوه iframe (X-Frame-Options) بصمت تام — الـ iframe يبعت
-               onload عادي فمفيش أي رسالة خطأ تظهر، وكل اللي الطالب شايفه شاشة فاضية.
-               الزرار فوق "↗️ افتح في تبويب جديد" دايمًا ظاهر لأي نوع محتوى بيتفتح
-               بطريقة iframe، فيبقى للطالب مخرج مضمون دايمًا حتى لو الـ iframe فشل بصمت. -->
+          <!-- ✅ إزالة (Aug 2026 — طلب صريح من الأدمن): زر "↗️ افتح في تبويب جديد" تم حذفه
+               نهائيًا من واجهة ResourceViewer لكل الأنواع (html/external_link/fallback)
+               بدون استثناء. ملاحظة: لو منصة خارجية (كويز/استبيان..) ترفض الـ embedding
+               جوه iframe (X-Frame-Options) هتظهر شاشة فاضية بصمت للطالب بدون أي مخرج —
+               ده تريد-أوف واعي طُلب صراحةً، مش خطأ. -->
         </div>
       </div>`;
 
@@ -6665,17 +6664,39 @@ const ResourceViewer = (function() {
       try {
         var video  = document.getElementById('rv-video-el');
         var iframe = document.getElementById('rv-embed-iframe');
-        var target = iframe || video || modal;
 
-        // iOS Safari: الفيديو (فقط) يدعم ملء شاشة حقيقي عبر webkitEnterFullscreen
-        // (وليس عبر Fullscreen API القياسي الغير مدعوم إطلاقًا هناك).
-        if (video && typeof video.webkitEnterFullscreen === 'function' && !video.requestFullscreen && !video.webkitRequestFullscreen) {
+        // ✅ FIX الحقيقي (السبب الفعلي لفشل Fullscreen سابقًا): كانت الدالة
+        // تطلب الـ Fullscreen على iframe/video نفسه لوحده بدل الـmodal بالكامل.
+        // هذا كان يخفي الهيدر وشريط أدوات التحكم (rv-media-tools/rv-embed-tools)
+        // والفوتر تمامًا أثناء ملء الشاشة الحقيقي، لأنها عناصر شقيقة خارج
+        // عنصر الـFullscreen الفعلي — رغم أن قواعد CSS (.rv-modal:fullscreen)
+        // مكتوبة أصلاً على افتراض أن الـmodal نفسه هو من يدخل Fullscreen (نفس
+        // النمط المستخدم بنجاح في عارض الـPDF عبر #native-pdf-modal). الحل:
+        // نطلب الـFullscreen على الـmodal ليبقى كل شيء (فيديو/iframe + شريط
+        // التحكم) ظاهرًا معًا، تمامًا كما هو مصمم في التنسيقات الحالية.
+        if (video && typeof video.webkitEnterFullscreen === 'function' &&
+            !video.requestFullscreen && !video.webkitRequestFullscreen &&
+            !modal.requestFullscreen && !modal.webkitRequestFullscreen) {
+          // iOS Safari: هذا هو الاستثناء الوحيد — لا يوجد فيه أي دعم لـ
+          // Fullscreen API على أي حاوية عامة (لا div ولا iframe)، والفيديو
+          // وحده قادر على ملء شاشة حقيقي عبر webkitEnterFullscreen.
           video.webkitEnterFullscreen();
         } else {
-          var req = target.requestFullscreen || target.webkitRequestFullscreen ||
-                    modal.requestFullscreen || modal.webkitRequestFullscreen;
+          var req = modal.requestFullscreen || modal.webkitRequestFullscreen;
+          var req_target = modal;
+          if (!req) {
+            // fallback نادر جدًا: متصفح يدعم Fullscreen API لكن يرفضه على div
+            // عام — نجرب iframe ثم الفيديو كبديل أخير قبل الاستسلام.
+            if (iframe && (iframe.requestFullscreen || iframe.webkitRequestFullscreen)) {
+              req = iframe.requestFullscreen || iframe.webkitRequestFullscreen;
+              req_target = iframe;
+            } else if (video && (video.requestFullscreen || video.webkitRequestFullscreen)) {
+              req = video.requestFullscreen || video.webkitRequestFullscreen;
+              req_target = video;
+            }
+          }
           if (req) {
-            var result = req.call(target);
+            var result = req.call(req_target);
             if (result && typeof result.catch === 'function') {
               result.catch(function(err) {
                 // فشل Fullscreen API الحقيقي — لا مشكلة، التكبير البصري (rv-force-enlarged) شغّال بالفعل.
@@ -6750,7 +6771,6 @@ const ResourceViewer = (function() {
     const safeUrl = (url || '').replace(/'/g, '%27');
     const actionsHtml = (isAdmin && url) ? `
       <div style="display:flex;gap:10px;justify-content:center;margin-top:14px;flex-wrap:wrap">
-        <button class="rv-btn rv-btn-outline" onclick="window.open('${safeUrl}','_blank')">↗️ فتح الملف</button>
         <button class="rv-btn rv-btn-outline" onclick="(function(){var a=document.createElement('a');a.href='${safeUrl}';a.setAttribute('download','');document.body.appendChild(a);a.click();document.body.removeChild(a);})()">⬇️ تحميل الملف</button>
       </div>` : '';
     body.innerHTML = `
@@ -7321,9 +7341,16 @@ async function _resolveAdminStatus(userId) {
       hasSectionAdminRows = !saCheck.error && (saCheck.count || 0) > 0;
     } catch(e) { console.warn('[section_admins] check failed:', e && e.message); }
   }
-  // المصدر الرسمي للدور: profiles.role فقط.
-  // section_admins يُستخدم لتحديد الكورس المعيّن، وليس لمنح دور جديد لمستخدم student.
-  var isBranchAdmin = isLegacyBranchAdmin;
+  // ✅ FIX (Aug 2026): كان هذا السطر = isLegacyBranchAdmin فقط، أي أنه كان يتجاهل
+  // hasSectionAdminRows المحسوبة فوق تمامًا رغم قراءتها من section_admins بشكل صحيح
+  // (بما فيها role='owner'). ده كان يعني عمليًا: أي أدمن مُعيّن فقط عبر جدول
+  // section_admins (زي Owner الكورس اللي profiles.role بتاعه مش 'admin' ولا
+  // 'branch_admin') يرجع منه isBranchAdmin=false و isAdmin=false بالكامل —
+  // فلوحة التحكم (زرار ⚙️ تحكم) ماكانتش بتظهر له أصلاً، وبالتبعية كل التابات
+  // (بما فيها 📱 رقم أدمن/دكتور الكورس و➕ إضافة أدمن مساعد) ماكانتش بتتحمّل
+  // ولا تتفحص حتى. الحل: نعتمد على *أي* مصدر من الاثنين (القديم أو الجديد)،
+  // بالظبط زي ما التعليق فوق بيقول إنه المفروض يحصل.
+  var isBranchAdmin = isLegacyBranchAdmin || hasSectionAdminRows;
   // isSectionAdmin: اسم بديل مطابق تمامًا لـ isBranchAdmin — نفس القيمة، فقط للتوافق
   // مع أي كود جديد يتوقع هذا الاسم تحديدًا (المصطلح الرسمي الآن هو "Section Admin")
   return {
@@ -15219,7 +15246,6 @@ var NativePDFViewer = (function() {
       var safeUrl = url.replace(/'/g, '%27');
       actionsHtml =
         '<div style="display:flex;gap:10px;justify-content:center;margin-top:14px;flex-wrap:wrap">' +
-          '<button class="pdfv-btn" style="width:auto;padding:0 16px;background:rgba(255,255,255,.15)" onclick="(window._origWindowOpen||window.open)(\'' + safeUrl + '\',\'_blank\',\'noopener,noreferrer\')">↗️ فتح الملف</button>' +
           '<button class="pdfv-btn" style="width:auto;padding:0 16px;background:rgba(255,255,255,.15)" onclick="(function(){var a=document.createElement(\'a\');a.href=\'' + safeUrl + '\';a.setAttribute(\'download\',\'\');document.body.appendChild(a);a.click();document.body.removeChild(a);})()">⬇️ تحميل الملف</button>' +
         '</div>';
     } else {
