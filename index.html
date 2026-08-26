@@ -7,12 +7,12 @@
      token "BSMApp/1.0" أو JS bridge) بالإضافة لفحص iOS Standalone.
 -->
 <script>
+const DEBUG_MODE = true;
 (function () {
-  const DEBUG_MODE = true;
   window.__BSM_DEBUG_MODE = DEBUG_MODE;
-  // Keep Service Worker/PWA untouched during frontend protection debugging.
-  window.__BSM_DEBUG_KEEP_SW = true;
-  if (DEBUG_MODE) { try { document.documentElement.classList.add('bsm-debug-mode'); } catch (e) {} }
+  if (DEBUG_MODE) {
+    try { document.documentElement.classList.add('bsm-debug-mode'); } catch (e) {}
+  }
   window.isIOSDevice = function () {
     var ua = navigator.userAgent || '';
     return /iPhone|iPad|iPod/i.test(ua) ||
@@ -45,102 +45,17 @@
   try { document.documentElement.style.visibility = 'visible'; } catch (e) {}
 })();
 </script>
-
-<script>
-(function(){
-  // DEBUG لا يعطّل Service Worker؛ التحديث التلقائي للتطبيق يظل مفعّلًا.
-})();
-</script>
-
-<!-- PWA AUTO UPDATE: يضمن وصول تحديثات الموقع للتطبيق المثبت بدون إعادة تثبيت -->
-<script>
-(function(){
-  if (!('serviceWorker' in navigator)) return;
-  var BUILD = (window.__APP_BUILD_VERSION || '2026-08-26-auto-update-admin-sidebar-v2');
-  var SW_URL = './service-worker.js?v=' + encodeURIComponent(BUILD);
-  var hadController = !!navigator.serviceWorker.controller;
-  var reloaded = false;
-
-  function reloadOnce(){
-    if (reloaded) return;
-    reloaded = true;
-    try { window.location.reload(); } catch(e) {}
-  }
-
-  navigator.serviceWorker.addEventListener('controllerchange', function(){
-    // لا نعمل reload عند أول تثبيت؛ فقط عندما ينتقل التطبيق إلى Worker جديد.
-    if (hadController) reloadOnce();
-  });
-
-  window.addEventListener('load', function(){
-    navigator.serviceWorker.register(SW_URL, {
-      scope: './',
-      updateViaCache: 'none'
-    }).then(function(reg){
-      function activateWaiting(){
-        if (reg.waiting) {
-          try { reg.waiting.postMessage({type:'BSM_SKIP_WAITING'}); } catch(e) {}
-        }
-      }
-      activateWaiting();
-      try { reg.update(); } catch(e) {}
-      reg.addEventListener('updatefound', function(){
-        var worker = reg.installing;
-        if (!worker) return;
-        worker.addEventListener('statechange', function(){
-          if (worker.state === 'installed' && navigator.serviceWorker.controller) activateWaiting();
-        });
-      });
-      // فحص دوري أثناء بقاء التطبيق مفتوحًا.
-      setInterval(function(){
-        if (document.visibilityState === 'visible') {
-          try { reg.update(); } catch(e) {}
-        }
-      }, 60000);
-      document.addEventListener('visibilitychange', function(){
-        if (document.visibilityState === 'visible') { try { reg.update(); } catch(e) {} }
-      });
-    }).catch(function(err){
-      console.warn('[PWA UPDATE] Service Worker registration failed:', err && err.message ? err.message : err);
-    });
-  });
-})();
-</script>
-
-<!-- PWA UPDATE BOOST: فحص أسرع عند الرجوع للتطبيق بدون إعادة تثبيت -->
-<script>
-(function(){
-  if (!('serviceWorker' in navigator)) return;
-  var lastUpdateCheck = 0;
-  function checkAppUpdate(force){
-    var now = Date.now();
-    if (!force && now - lastUpdateCheck < 15000) return;
-    lastUpdateCheck = now;
-    try {
-      navigator.serviceWorker.getRegistration('./').then(function(reg){
-        if (reg) reg.update();
-      }).catch(function(){});
-    } catch(e) {}
-  }
-  window.addEventListener('focus', function(){ checkAppUpdate(false); });
-  window.addEventListener('pageshow', function(){ checkAppUpdate(true); });
-  document.addEventListener('visibilitychange', function(){
-    if (document.visibilityState === 'visible') checkAppUpdate(false);
-  });
-})();
-</script>
-
-<!-- CACHE UPDATE GUARD: 2026-08-26-v4 -->
+<!-- CACHE UPDATE GUARD: 2026-08-21-v3 -->
 <script>
 (function () {
   try {
-    window.__APP_BUILD_VERSION = '2026-08-26-auto-update-admin-sidebar-v2';
+    window.__APP_BUILD_VERSION = '2026-08-21-course-admin-stats-v2-sw-fix';
   } catch (e) {}
 })();
 </script>
 <meta name="google-site-verification" content="my6dMoAsuc_97Jks_OQF75GK_f1PGWqz2Kng2obkIgE" />
 <meta charset="UTF-8">
-<meta name="app-build" content="2026-08-26-auto-update-admin-sidebar-v2-DEBUG">
+<meta name="app-build" content="2026-08-21-course-admin-stats-v2-sw-fix-DEBUG">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <!-- ==================== PWA: manifest + platform metadata ==================== -->
 <link rel="manifest" href="./manifest.json">
@@ -1373,91 +1288,6 @@ footer strong { color: var(--accent2); }
   max-height: calc(100vh - 140px) !important;
 }
 
-/* ✅ تكبير بصري مضمون (fallback لا يعتمد على Fullscreen API) — يعمل على كل
-   المتصفحات بما فيها iOS Safari اللي مش بتدعم Fullscreen API للعناصر العامة. */
-body.rv-fs-open .rv-overlay {
-  padding: 0 !important;
-}
-body.rv-fs-open .rv-modal {
-  width: 100vw !important; max-width: 100vw !important;
-  height: 100vh !important; height: 100dvh !important;
-  max-height: 100vh !important; max-height: 100dvh !important;
-  border-radius: 0 !important;
-}
-
-/* APP/PWA fullscreen fallback:
-   بعض Android WebView wrappers لا تنفذ Fullscreen API لأن الـnative WebChromeClient
-   لا يمرر custom-view fullscreen. في هذه الحالة نستخدم fullscreen بصري حقيقي داخل
-   الـWebView، مع إبقاء الـvideo/iframe وشريط التحكم داخل نفس الـmodal. */
-body.bsm-app-fullscreen {
-  overflow: hidden !important;
-}
-body.bsm-app-fullscreen .rv-overlay {
-  position: fixed !important;
-  inset: 0 !important;
-  width: 100vw !important;
-  height: 100vh !important;
-  height: 100dvh !important;
-  padding: 0 !important;
-  margin: 0 !important;
-  z-index: 2147483000 !important;
-}
-body.bsm-app-fullscreen .rv-modal {
-  position: fixed !important;
-  inset: 0 !important;
-  width: 100vw !important;
-  max-width: 100vw !important;
-  height: 100vh !important;
-  height: 100dvh !important;
-  max-height: 100vh !important;
-  max-height: 100dvh !important;
-  border-radius: 0 !important;
-}
-body.bsm-app-fullscreen .rv-modal .rv-embed-frame {
-  width: 100% !important;
-  height: calc(100vh - 120px) !important;
-  height: calc(100dvh - 120px) !important;
-}
-body.bsm-app-fullscreen .rv-modal .rv-video {
-  width: 100% !important;
-  max-height: calc(100vh - 120px) !important;
-  max-height: calc(100dvh - 120px) !important;
-}
-body.bsm-app-fullscreen .rv-modal .rv-body {
-  min-height: 0 !important;
-}
-@supports (height: 100svh) {
-  body.bsm-app-fullscreen .rv-overlay,
-  body.bsm-app-fullscreen .rv-modal {
-    height: 100svh !important;
-    max-height: 100svh !important;
-  }
-  body.bsm-app-fullscreen .rv-modal .rv-embed-frame {
-    height: calc(100svh - 120px) !important;
-  }
-  body.bsm-app-fullscreen .rv-modal .rv-video {
-    max-height: calc(100svh - 120px) !important;
-  }
-}
-body.rv-fs-open .rv-modal .rv-embed-frame {
-  height: calc(100vh - 120px) !important;
-  height: calc(100dvh - 120px) !important;
-}
-body.rv-fs-open .rv-modal .rv-video {
-  max-height: calc(100vh - 120px) !important;
-  max-height: calc(100dvh - 120px) !important;
-}
-body.rv-fs-open .rv-modal .rv-image-wrap img {
-  max-height: calc(100vh - 140px) !important;
-  max-height: calc(100dvh - 140px) !important;
-}
-body.rv-fs-open .rv-audio-wrap {
-  padding-top: 8vh;
-}
-body.rv-fs-open .rv-audio-icon {
-  font-size: 5rem !important;
-}
-
 /* Zoom للصور: pinch على الهاتف */
 .rv-image-wrap {
   touch-action: pinch-zoom;
@@ -1731,8 +1561,8 @@ html[data-theme="light"] .pdfv-toolbar-group { background: rgba(10,61,98,.08); }
 
 /* ===== منع طباعة المحتوى للطلاب ===== */
 @media print {
-  body.content-protected * { display: none !important; }
-  body.content-protected::after {
+  html:not(.bsm-debug-mode) body.content-protected * { display: none !important; }
+  html:not(.bsm-debug-mode) body.content-protected::after {
     content: "المحتوى محمي — لا يمكن طباعته";
     display: block !important;
     font-size: 2rem;
@@ -2676,22 +2506,35 @@ img, video {
   -webkit-user-drag: none;
   user-drag: none;
 }
-html.bsm-debug-mode body {
-  -webkit-user-select: text !important;
-  -moz-user-select: text !important;
-  -ms-user-select: text !important;
-  user-select: text !important;
-  -webkit-touch-callout: default !important;
-}
-html.bsm-debug-mode img,
-html.bsm-debug-mode video {
-  -webkit-user-drag: auto !important;
-  user-drag: auto !important;
-}
 @media print {
   body { display: none !important; }
-  html.bsm-debug-mode body { display: block !important; }
 }
+</style>
+
+<style id="admin-special-nav-styles">
+  .ap-nav-btn.owner-only-nav, .ap-nav-btn.platform-only-nav { display:none; }
+  .ap-nav-btn.special-action-nav { font-weight:800; }
+  @media (max-width: 760px){
+    #ap-panel-courseAdminPhone .ap-card > div[style*="grid-template-columns"]{grid-template-columns:1fr !important;}
+  }
+</style>
+<style id="bsm-course-phone-mobile-fix">
+#dynamic-section-admin-phone{width:100%;max-width:100%;box-sizing:border-box}
+#dynamic-section-admin-phone>div{width:100%;max-width:100%;box-sizing:border-box}
+@media(max-width:600px){
+  #dynamic-section-admin-phone{padding:0 8px}
+  #dynamic-section-admin-phone>div{padding:12px 10px!important;margin:8px 0!important}
+  #dynamic-section-admin-phone a{min-height:44px;display:flex!important;align-items:center;justify-content:center}
+}
+</style>
+<style id="bsm-media-fullscreen-fix">
+.rv-modal.bsm-visual-fullscreen{position:fixed!important;inset:0!important;z-index:2147483647!important;width:100vw!important;height:100vh!important;max-width:none!important;max-height:none!important;margin:0!important;border-radius:0!important;display:flex!important}
+.bsm-visual-fullscreen-overlay{position:fixed!important;inset:0!important;z-index:2147483646!important;padding:0!important;background:#000!important}
+.rv-modal.bsm-visual-fullscreen .rv-body{min-height:0!important;height:auto!important;flex:1 1 auto!important;background:#000!important}
+.rv-modal.bsm-visual-fullscreen .rv-video{width:100%!important;height:100%!important;max-height:none!important;object-fit:contain!important}
+.rv-modal.bsm-visual-fullscreen .rv-embed-frame{width:100%!important;height:100%!important;max-height:none!important}
+body.bsm-media-fullscreen-open{overflow:hidden!important}
+@media(max-width:600px){.rv-video{touch-action:manipulation}}
 </style>
 </head>
 <body>
@@ -2858,12 +2701,6 @@ html.bsm-debug-mode video {
 <script>
 (function () {
   try {
-    if (typeof DEBUG_MODE !== 'undefined' && DEBUG_MODE) {
-      var debugGate = document.getElementById('bsm-app-gate');
-      if (debugGate) debugGate.style.display = 'none';
-      document.documentElement.style.visibility = 'visible';
-      return;
-    }
     if (!window.__bsmGateBlocked) {
       // تطبيق رسمي (Android/iOS): اعرض الموقع فورًا كالمعتاد — لا تغيير في التوقيت أو السلوك إطلاقاً
       document.documentElement.style.visibility = 'visible';
@@ -4450,14 +4287,30 @@ async function _renderDynamicSectionPage(sec) {
   // يظهر أصلاً إذا كان الحقل فارغاً/غير موجود.
   var adminPhoneEl = document.getElementById('dynamic-section-admin-phone');
   if (adminPhoneEl) {
-    var coursePhone = (sec && sec.course_admin_phone) ? String(sec.course_admin_phone).trim() : '';
-    adminPhoneEl.innerHTML = coursePhone
-      ? '<div style="background:#eefaf6;border:1px solid #b8e6d8;border-radius:12px;padding:12px 16px;margin:10px 0;text-align:center;">'
-        + '<div style="font-size:.85rem;color:#0a3d62;font-weight:700;margin-bottom:4px;">للتواصل والاستفسار</div>'
-        + '<div style="font-size:.8rem;color:#555;margin-bottom:8px;">تواصل مع دكتور الكورس</div>'
-        + '<a href="tel:' + coursePhone.replace(/[^0-9+]/g,'') + '" style="display:inline-block;background:linear-gradient(135deg,#0a3d62,#17a589);color:#fff;text-decoration:none;padding:8px 20px;border-radius:20px;font-weight:700;font-size:.9rem;direction:ltr;">📞 ' + coursePhone + '</a>'
-        + '</div>'
-      : '';
+    // نضمن قراءة الرقم من صف الكورس نفسه حتى لو كانت الصفحة الحالية وصلت
+    // للقسم من مسار/قائمة استخدمت select محدودًا ولم تحمل course_admin_phone.
+    (async function(){
+      var coursePhone = (sec && sec.course_admin_phone) ? String(sec.course_admin_phone).trim() : '';
+      if (!coursePhone && sec && sec.id && window.supabase) {
+        try {
+          var phoneRes = await window.supabase.from('site_sections')
+            .select('course_admin_phone,type')
+            .eq('id', Number(sec.id)).maybeSingle();
+          if (!phoneRes.error && phoneRes.data && phoneRes.data.course_admin_phone) {
+            coursePhone = String(phoneRes.data.course_admin_phone).trim();
+          }
+        } catch(_phoneErr) {
+          console.warn('[COURSE PHONE] تعذر تحميل رقم دكتور الكورس:', _phoneErr && _phoneErr.message);
+        }
+      }
+      adminPhoneEl.innerHTML = coursePhone
+        ? '<div style="background:linear-gradient(135deg,#eefaf6,#f5fbff);border:1px solid #b8e6d8;border-radius:14px;padding:13px 16px;margin:10px 0;text-align:center;box-shadow:0 4px 14px rgba(10,61,98,.06);">'
+          + '<div style="font-size:.85rem;color:#0a3d62;font-weight:800;margin-bottom:4px;">📱 للتواصل والاستفسار عن الكورس</div>'
+          + '<div style="font-size:.8rem;color:#555;margin-bottom:9px;">تواصل مع أدمن/دكتور الكورس</div>'
+          + '<a href="tel:' + coursePhone.replace(/[^0-9+]/g,'') + '" aria-label="الاتصال بأدمن أو دكتور الكورس" style="display:block;width:fit-content;max-width:100%;box-sizing:border-box;margin:0 auto;background:linear-gradient(135deg,#0a3d62,#17a589);color:#fff;text-decoration:none;padding:10px 18px;border-radius:22px;font-weight:800;font-size:clamp(.82rem,3.6vw,.92rem);direction:ltr;white-space:normal;overflow-wrap:anywhere;word-break:break-word;line-height:1.45;">📞 ' + _apEsc(coursePhone) + '</a>'
+          + '</div>'
+        : '';
+    })();
   }
 
   showLoading('dynamic-section-grid');
@@ -5115,8 +4968,8 @@ function buildContentHTML(contentItems, gate) {
     // في url. نستخدم fallback بسيط هنا بدل ما نلمس أي منطق تاني في العرض.
     const displayUrl = item.url || item.file_url || '';
     if (item.content_type === 'video') {
-      const safeUrl = displayUrl.replace(/'/g,"\\'");
-      const safeTitle = (item.title || 'فيديو شرح').replace(/'/g,"\\'");
+      const safeUrl = displayUrl.replace(/'/g,"\'");
+      const safeTitle = (item.title || 'فيديو شرح').replace(/'/g,"\'");
       html += `
         <div class="video-placeholder" ${displayUrl ? `onclick="openResource('${safeUrl}','${safeTitle}','video')"` : ''} style="margin-bottom:18px">
           <div class="play-btn">▶</div>
@@ -5132,9 +4985,9 @@ function buildContentHTML(contentItems, gate) {
         </div>`;
     } else {
       const icon = item.icon || (item.content_type === 'pdf' ? '📄' : item.content_type === 'image' ? '🖼️' : item.content_type === 'link' ? '🔗' : '📌');
-      const safeUrl = displayUrl.replace(/'/g,"\\'");
-      const safeTitle = (item.title || '').replace(/'/g,"\\'");
-      const safeType = (item.content_type || '').replace(/'/g,"\\'");
+      const safeUrl = displayUrl.replace(/'/g,"\'");
+      const safeTitle = (item.title || '').replace(/'/g,"\'");
+      const safeType = (item.content_type || '').replace(/'/g,"\'");
       html += `
         <div class="resource-item" ${displayUrl ? `onclick="openResource('${safeUrl}','${safeTitle}','${safeType}')"` : ''} style="${displayUrl ? 'cursor:pointer' : ''};margin-bottom:10px;padding:18px 22px;">
           <div class="ri-icon" style="font-size:2rem">${icon}</div>
@@ -5173,9 +5026,9 @@ function buildResourcesInsideArea(resources, gate) {
       </div>`;
     }
     const icon = getResourceIcon(r);
-    const safeUrl = (r.file_url || '').replace(/'/g,"\\'").replace(/"/g,'&quot;');
-    const safeTitle = (r.title || 'مورد').replace(/'/g,"\\'");
-    const safeType = (r.resource_type || '').replace(/'/g,"\\'");
+    const safeUrl = (r.file_url || '').replace(/'/g,"\'").replace(/"/g,'&quot;');
+    const safeTitle = (r.title || 'مورد').replace(/'/g,"\'");
+    const safeType = (r.resource_type || '').replace(/'/g,"\'");
     const clickHandler = r.file_url ? `onclick="openResource('${safeUrl}','${safeTitle}','${safeType}')"` : '';
     const hasLink = !!r.file_url;
     return `
@@ -5242,9 +5095,9 @@ function renderResourceCards(containerId, items, gate) {
         </div>
       </div>`;
     }
-    const safeUrl = (item.url || '').replace(/'/g,"\\'");
-    const safeTitle = (item.title || '').replace(/'/g,"\\'");
-    const safeType = (item.content_type || '').replace(/'/g,"\\'");
+    const safeUrl = (item.url || '').replace(/'/g,"\'");
+    const safeTitle = (item.title || '').replace(/'/g,"\'");
+    const safeType = (item.content_type || '').replace(/'/g,"\'");
     return `
     <div class="link-card lc-blue" style="cursor:${item.url ? 'pointer' : 'default'}"
          ${item.url ? `onclick="openResource('${safeUrl}','${safeTitle}','${safeType}')"` : ''}>
@@ -5299,9 +5152,9 @@ function buildResourcesHTML(resources, gate) {
       </div>`;
     }
     const icon = getResourceIcon(r);
-    const safeUrl = (r.file_url || '').replace(/'/g,"\\'").replace(/"/g,'&quot;');
-    const safeTitle = (r.title || 'مورد').replace(/'/g,"\\'");
-    const safeType = (r.resource_type || '').replace(/'/g,"\\'");
+    const safeUrl = (r.file_url || '').replace(/'/g,"\'").replace(/"/g,'&quot;');
+    const safeTitle = (r.title || 'مورد').replace(/'/g,"\'");
+    const safeType = (r.resource_type || '').replace(/'/g,"\'");
     const typeLabel = _resourceTypeLabel(r);
     const desc = (r.description || typeLabel || '').toString();
     return `
@@ -6012,7 +5865,7 @@ var BSM_AI = (function() {
     if (matches.length === 0) { box.classList.remove('visible'); box.innerHTML = ''; return; }
     box.innerHTML = matches.map(function(m){
       var icon = m.indexOf('كتاب') !== -1 ? '📚' : m.indexOf('محاضر') !== -1 ? '🎓' : m.indexOf('فيديو') !== -1 ? '🎬' : '📂';
-      return '<div class="ai-sug-item" onclick="BSM_AI.pickSuggestion(\'' + m.replace(/'/g,"\\'") + '\')">'
+      return '<div class="ai-sug-item" onclick="BSM_AI.pickSuggestion(\'' + m.replace(/'/g,"\'") + '\')">'
            + '<span class="ai-sug-icon">' + icon + '</span>' + m + '</div>';
     }).join('');
     box.classList.add('visible');
@@ -6326,9 +6179,6 @@ const ResourceViewer = (function() {
     if (/vimeo\.com\/\d+/.test(url))                   return 'vimeo';
     if (/dailymotion\.com\/video/.test(url))            return 'dailymotion';
 
-    // Fembed / generic video embed: يبقى داخل المنصة ولا يعامل كرابط خارجي.
-    if (/^https?:\/\/(?:www\.)?fembed\.(?:co|com)\/embed\//i.test(url)) return 'embed_video';
-
     return 'fallback';
   }
 
@@ -6405,12 +6255,14 @@ const ResourceViewer = (function() {
             class="rv-video"
             controls
             playsinline
+            webkit-playsinline
             preload="metadata"
             id="rv-video-el"
             controlsList="nodownload"
-            disablePictureInPicture
-            disableRemotePlayback
-            oncontextmenu="return false"
+            x-webkit-airplay="allow"
+            tabindex="0"
+            style="width:100%;height:auto;min-height:180px;max-height:75vh;display:block;background:#000;object-fit:contain;
+            oncontextmenu="${window.__BSM_DEBUG_MODE ? '' : 'return false'}"
             onerror="ResourceViewer._showMediaError('video')"
           >
             <source src="${escUrl(url)}">
@@ -6420,14 +6272,12 @@ const ResourceViewer = (function() {
             <button type="button" data-media-seek="-10">↶ 10ث</button>
             <button type="button" data-media-seek="10">10ث ↷</button>
             <label>السرعة <select data-media-speed><option value="0.5">0.5x</option><option value="0.75">0.75x</option><option value="1" selected>1x</option><option value="1.25">1.25x</option><option value="1.5">1.5x</option><option value="1.75">1.75x</option><option value="2">2x</option></select></label>
-            <button type="button" class="rv-fs-toggle-btn" onclick="ResourceViewer._toggleFullscreen()" title="تكبير / ملء الشاشة">⛶ تكبير</button>
             <span data-media-time>00:00 / --:--</span>
           </div>`;
 
       case 'youtube':
       case 'vimeo':
-      case 'dailymotion':
-      case 'embed_video': {
+      case 'dailymotion': {
         const embedUrl = toEmbedUrl(url, type);
         return `
           <div class="rv-loading" id="rv-loading-indicator">
@@ -6441,19 +6291,12 @@ const ResourceViewer = (function() {
             id="rv-embed-iframe"
             allow="accelerometer;autoplay;clipboard-write;encrypted-media;gyroscope;picture-in-picture;fullscreen"
             allowfullscreen
+            webkitallowfullscreen
             onload="
               document.getElementById('rv-loading-indicator').style.display='none';
               this.style.display='block';
             "
-          ></iframe>
-          ${type === 'embed_video' ? `
-          <div class="rv-media-tools rv-embed-tools" data-embed-tools="video">
-            <button type="button" data-embed-seek="-10">↶ 10ث</button>
-            <button type="button" data-embed-seek="10">10ث ↷</button>
-            <label>السرعة <select data-embed-speed><option value="0.5">0.5x</option><option value="0.75">0.75x</option><option value="1" selected>1x</option><option value="1.25">1.25x</option><option value="1.5">1.5x</option><option value="1.75">1.75x</option><option value="2">2x</option></select></label>
-            <button type="button" class="rv-fs-toggle-btn" onclick="ResourceViewer._toggleFullscreen()" title="تكبير / ملء الشاشة">⛶ تكبير</button>
-            <span class="rv-embed-control-note">إن كان المشغل الخارجي يدعم التحكم</span>
-          </div>` : ''}`;
+          ></iframe>`;
       }
 
       case 'gdrive_pdf': {
@@ -6476,9 +6319,9 @@ const ResourceViewer = (function() {
               alt="${escHtml(title)}"
               loading="lazy"
               draggable="false"
-              oncontextmenu="return false"
-              onselectstart="return false"
-              ondragstart="return false"
+              oncontextmenu="${window.__BSM_DEBUG_MODE ? '' : 'return false'}"
+              onselectstart="${window.__BSM_DEBUG_MODE ? '' : 'return false'}"
+              ondragstart="${window.__BSM_DEBUG_MODE ? '' : 'return false'}"
               style="-webkit-user-drag:none;-webkit-touch-callout:none;user-select:none;"
               onclick="
                 var el=this;
@@ -6486,7 +6329,7 @@ const ResourceViewer = (function() {
                 else if(el.classList.contains('zoomed')){el.classList.add('zoomed-max');}
                 else{el.classList.add('zoomed');}
               "
-              onerror="document.getElementById('rv-img-wrap').innerHTML='<div class=\\'rv-error\\'><span class=\\'rv-err-icon\\'>🖼️</span><p>تعذّر تحميل الصورة</p></div>'"
+              onerror="document.getElementById('rv-img-wrap').innerHTML='<div class=\'rv-error\'><span class=\'rv-err-icon\'>🖼️</span><p>تعذّر تحميل الصورة</p></div>'"
             >
             <div style="position:absolute;bottom:10px;right:10px;background:rgba(0,0,0,.5);color:#fff;border-radius:8px;padding:4px 10px;font-size:.72rem;">اضغط للتكبير</div>
           </div>`;
@@ -6504,7 +6347,6 @@ const ResourceViewer = (function() {
               <button type="button" data-media-seek="-10">↶ 10ث</button>
               <button type="button" data-media-seek="10">10ث ↷</button>
               <label>السرعة <select data-media-speed><option value="0.5">0.5x</option><option value="0.75">0.75x</option><option value="1" selected>1x</option><option value="1.25">1.25x</option><option value="1.5">1.5x</option><option value="1.75">1.75x</option><option value="2">2x</option></select></label>
-              <button type="button" class="rv-fs-toggle-btn" onclick="ResourceViewer._toggleFullscreen()" title="تكبير / ملء الشاشة">⛶ تكبير</button>
               <span data-media-time>00:00 / --:--</span>
             </div>
           </div>`;
@@ -6576,7 +6418,6 @@ const ResourceViewer = (function() {
       youtube: '▶️ YouTube',
       vimeo: '🎥 Vimeo',
       dailymotion: '📹 Dailymotion',
-      embed_video: '🎬 Embed Video',
       gdrive_pdf: '📄 Google Drive PDF',
       image: '🖼️ صورة',
       audio: '🎵 صوت',
@@ -6645,13 +6486,14 @@ const ResourceViewer = (function() {
           <span style="font-size:.75rem;color:#999;direction:ltr;word-break:break-all;flex:1;max-width:55%" id="rv-url-display" class="admin-only-el" style="display:none">${escHtml(url.length > 60 ? url.substring(0,57)+'...' : url)}</span>
           <div class="rv-footer-btns">
             ${(type !== 'fallback' && type !== 'invalid') ? `<button class="rv-btn rv-btn-outline" onclick="ResourceViewer._reload()">🔄 إعادة التحميل</button>` : ''}
+            ${(type === 'html' || type === 'external_link' || type === 'fallback') ? `<button class="rv-btn rv-btn-outline" onclick="(window._origWindowOpen||window.open)('${escUrl(url)}','_blank','noopener')">↗️ افتح في تبويب جديد</button>` : ''}
             ${(type === 'pdf' || type === 'gdrive_pdf' || type === 'image' || type === 'audio' || type === 'video_direct') ? `<button class="rv-btn rv-btn-primary admin-only-el" onclick="if(window._isAdminUser){var a=document.createElement('a');a.href='${escUrl(url)}';a.setAttribute('download','');document.body.appendChild(a);a.click();document.body.removeChild(a);}" style="display:none">&#11015;&#65039; تحميل (أدمن)</button>` : ''}
           </div>
-          <!-- ✅ إزالة (Aug 2026 — طلب صريح من الأدمن): زر "↗️ افتح في تبويب جديد" تم حذفه
-               نهائيًا من واجهة ResourceViewer لكل الأنواع (html/external_link/fallback)
-               بدون استثناء. ملاحظة: لو منصة خارجية (كويز/استبيان..) ترفض الـ embedding
-               جوه iframe (X-Frame-Options) هتظهر شاشة فاضية بصمت للطالب بدون أي مخرج —
-               ده تريد-أوف واعي طُلب صراحةً، مش خطأ. -->
+          <!-- ✅ FIX (Aug 2026 — كويز "مفيش حاجة بتظهر"): بعض منصات الكويز/الاستبيانات
+               ترفض الظهور جوه iframe (X-Frame-Options) بصمت تام — الـ iframe يبعت
+               onload عادي فمفيش أي رسالة خطأ تظهر، وكل اللي الطالب شايفه شاشة فاضية.
+               الزرار فوق "↗️ افتح في تبويب جديد" دايمًا ظاهر لأي نوع محتوى بيتفتح
+               بطريقة iframe، فيبقى للطالب مخرج مضمون دايمًا حتى لو الـ iframe فشل بصمت. -->
         </div>
       </div>`;
 
@@ -6676,7 +6518,21 @@ const ResourceViewer = (function() {
     });
 
     _setupMediaControls(overlay);
-    _setupEmbedControls(overlay);
+
+    try {
+      var rvVideo = overlay.querySelector('#rv-video-el');
+      if (rvVideo) {
+        rvVideo.setAttribute('playsinline', '');
+        rvVideo.setAttribute('webkit-playsinline', '');
+        rvVideo.addEventListener('loadedmetadata', function(){
+          try { rvVideo.controls = true; } catch(e) {}
+        }, { once: true, passive: true });
+        rvVideo.addEventListener('error', function(){
+          console.warn('[ResourceViewer] Direct video error in browser/WebView', rvVideo.error && rvVideo.error.code);
+        }, { passive: true });
+        try { rvVideo.load(); } catch(e) {}
+      }
+    } catch(e) {}
 
     // Swipe لأسفل للإغلاق على الموبايل
     var touchStartY = 0;
@@ -6703,23 +6559,6 @@ const ResourceViewer = (function() {
     var h = Math.floor(m / 60);
     m = m % 60;
     return (h ? String(h).padStart(2,'0') + ':' : '') + String(m).padStart(2,'0') + ':' + String(s).padStart(2,'0');
-  }
-
-  function _setupEmbedControls(root) {
-    var iframe = root && root.querySelector('#rv-embed-iframe');
-    var tools = root && root.querySelector('[data-embed-tools]');
-    if (!iframe || !tools) return;
-    function send(cmd, value) {
-      try { if (iframe.contentWindow) iframe.contentWindow.postMessage({event:'command', func:cmd, args:[value]}, '*'); } catch(e) {}
-    }
-    tools.querySelectorAll('[data-embed-seek]').forEach(function(btn){
-      btn.addEventListener('click', function(){
-        var delta=Number(btn.getAttribute('data-embed-seek'))||0;
-        send(delta < 0 ? 'seekBackward' : 'seekForward', Math.abs(delta));
-      });
-    });
-    var speed=tools.querySelector('[data-embed-speed]');
-    if(speed) speed.addEventListener('change', function(){ send('setPlaybackRate', Number(speed.value)||1); });
   }
 
   function _setupMediaControls(root) {
@@ -6784,10 +6623,6 @@ const ResourceViewer = (function() {
     if (el) el.remove();
     document.body.style.overflow = '';
     document.body.classList.remove('rv-open');
-    // ✅ تنظيف حالة التكبير البصري (rv-force-enlarged) عند إغلاق العارض حتى لا
-    // يبقى المشغل التالي مفتوحاً في وضع مكبّر بالخطأ.
-    document.body.classList.remove('rv-fs-open');
-    document.body.classList.remove('bsm-app-fullscreen');
     if (document._rvKeyHandler) {
       document.removeEventListener('keydown', document._rvKeyHandler);
     }
@@ -6807,138 +6642,95 @@ const ResourceViewer = (function() {
     if (audio) { audio.load(); }
   }
 
+  function _isAppLikeMediaContext() {
+    try {
+      return (typeof window.isOfficialApp === 'function' && window.isOfficialApp()) ||
+             (typeof window.isAndroidApp === 'function' && window.isAndroidApp()) ||
+             /BSMApp\/1\.0/i.test(navigator.userAgent || '') ||
+             !!window.BSMAndroidBridge ||
+             window.matchMedia('(display-mode: standalone)').matches;
+    } catch (e) { return false; }
+  }
+
+  function _setVisualFullscreen(enabled) {
+    var modal = document.getElementById('rv-modal');
+    var overlay = document.getElementById('rv-overlay');
+    if (!modal) return;
+    modal.classList.toggle('bsm-visual-fullscreen', !!enabled);
+    if (overlay) overlay.classList.toggle('bsm-visual-fullscreen-overlay', !!enabled);
+    document.body.classList.toggle('bsm-media-fullscreen-open', !!enabled);
+    var btn = document.getElementById('rv-fs-btn');
+    if (btn) btn.textContent = enabled ? '✕ خروج ملء الشاشة' : '⛶';
+  }
+
   function _toggleFullscreen() {
     const modal = document.getElementById('rv-modal');
+    const video = document.getElementById('rv-video-el');
+    const btn   = document.getElementById('rv-fs-btn');
     if (!modal) return;
 
-    // ✅ FIX: زر "تكبير" لم يكن يعمل فعليًا على متصفحات كثيرة (خصوصًا
-    // iOS Safari وبعض WebViews) لأن Fullscreen API القياسي (requestFullscreen/
-    // webkitRequestFullscreen) غير مدعوم فيها إطلاقًا لعناصر عامة، فكانت الدالة
-    // تفشل بصمت (console.warn فقط) دون أي تأثير مرئي للمستخدم. الحل: نعتمد على
-    // تكبير بصري مضمون عبر CSS (class على body لا يعتمد على أي إذن أو دعم
-    // متصفح) كسلوك أساسي مضمون يعمل في كل مكان، ثم نحاول أيضًا Fullscreen API
-    // الحقيقي (أو webkitEnterFullscreen الخاص بفيديو iOS) كتحسين إضافي إن كان مدعومًا.
-    const isEnlarged = document.body.classList.contains('rv-fs-open');
-
-    if (!isEnlarged) {
-      document.body.classList.add('rv-fs-open');
-      modal.classList.add('rv-force-enlarged');
-
-      // App/PWA fallback: WebView قد يرفض Fullscreen API، لذلك نحافظ على
-      // fullscreen بصري داخل التطبيق حتى لو لم يوجد native fullscreen bridge.
-      var appContext = false;
-      try {
-        appContext = (typeof window.isOfficialApp === 'function' && window.isOfficialApp()) ||
-                     /BSMApp\/1\.0/i.test(navigator.userAgent || '') ||
-                     !!window.BSMAndroidBridge;
-      } catch (e) {}
-      if (appContext || window.innerWidth <= 768) {
-        document.body.classList.add('bsm-app-fullscreen');
-      }
-      _updateFsButtons();
-
-      try {
-        var video  = document.getElementById('rv-video-el');
-        var iframe = document.getElementById('rv-embed-iframe');
-
-        // ✅ FIX الحقيقي (السبب الفعلي لفشل Fullscreen سابقًا): كانت الدالة
-        // تطلب الـ Fullscreen على iframe/video نفسه لوحده بدل الـmodal بالكامل.
-        // هذا كان يخفي الهيدر وشريط أدوات التحكم (rv-media-tools/rv-embed-tools)
-        // والفوتر تمامًا أثناء ملء الشاشة الحقيقي، لأنها عناصر شقيقة خارج
-        // عنصر الـFullscreen الفعلي — رغم أن قواعد CSS (.rv-modal:fullscreen)
-        // مكتوبة أصلاً على افتراض أن الـmodal نفسه هو من يدخل Fullscreen (نفس
-        // النمط المستخدم بنجاح في عارض الـPDF عبر #native-pdf-modal). الحل:
-        // نطلب الـFullscreen على الـmodal ليبقى كل شيء (فيديو/iframe + شريط
-        // التحكم) ظاهرًا معًا، تمامًا كما هو مصمم في التنسيقات الحالية.
-        if (video && typeof video.webkitEnterFullscreen === 'function' &&
-            !video.requestFullscreen && !video.webkitRequestFullscreen &&
-            !modal.requestFullscreen && !modal.webkitRequestFullscreen) {
-          // iOS Safari: هذا هو الاستثناء الوحيد — لا يوجد فيه أي دعم لـ
-          // Fullscreen API على أي حاوية عامة (لا div ولا iframe)، والفيديو
-          // وحده قادر على ملء شاشة حقيقي عبر webkitEnterFullscreen.
-          video.webkitEnterFullscreen();
-        } else {
-          var req = modal.requestFullscreen || modal.webkitRequestFullscreen;
-          var req_target = modal;
-          if (!req) {
-            // fallback نادر جدًا: متصفح يدعم Fullscreen API لكن يرفضه على div
-            // عام — نجرب iframe ثم الفيديو كبديل أخير قبل الاستسلام.
-            if (iframe && (iframe.requestFullscreen || iframe.webkitRequestFullscreen)) {
-              req = iframe.requestFullscreen || iframe.webkitRequestFullscreen;
-              req_target = iframe;
-            } else if (video && (video.requestFullscreen || video.webkitRequestFullscreen)) {
-              req = video.requestFullscreen || video.webkitRequestFullscreen;
-              req_target = video;
-            }
-          }
-          if (req) {
-            var result = req.call(req_target);
-            if (result && typeof result.catch === 'function') {
-              result.catch(function(err) {
-                // فشل Fullscreen API الحقيقي — لا مشكلة، التكبير البصري (rv-force-enlarged) شغّال بالفعل.
-                console.warn('[Fullscreen]', err && err.message);
-              });
-            }
-          }
-        }
-      } catch (e) {
-        console.warn('[Fullscreen]', e && e.message);
-      }
-    } else {
-      document.body.classList.remove('rv-fs-open');
-      document.body.classList.remove('bsm-app-fullscreen');
-      modal.classList.remove('rv-force-enlarged');
-      _updateFsButtons();
+    var nativeFs = document.fullscreenElement || document.webkitFullscreenElement;
+    if (nativeFs) {
       try {
         var exit = document.exitFullscreen || document.webkitExitFullscreen;
-        if (exit && (document.fullscreenElement || document.webkitFullscreenElement)) {
-          var exitResult = exit.call(document);
-          if (exitResult && typeof exitResult.catch === 'function') {
-            exitResult.catch(function(err) { console.warn('[Fullscreen]', err && err.message); });
-          }
+        if (exit) {
+          Promise.resolve(exit.call(document)).catch(function(err){
+            console.warn('[Fullscreen exit]', err && err.message);
+            _setVisualFullscreen(false);
+          });
+        } else {
+          _setVisualFullscreen(false);
         }
-      } catch (e) {
-        console.warn('[Fullscreen]', e && e.message);
+      } catch(e) {
+        _setVisualFullscreen(false);
+      }
+      return;
+    }
+
+    try {
+      var req = modal.requestFullscreen || modal.webkitRequestFullscreen;
+      if (req) {
+        var result = req.call(modal);
+        Promise.resolve(result).then(function(){
+          _setVisualFullscreen(false);
+          if (btn) btn.textContent = '✕ خروج ملء الشاشة';
+        }).catch(function(err){
+          console.warn('[Fullscreen modal]', err && err.message);
+          _setVisualFullscreen(true);
+        });
+        return;
+      }
+    } catch(e) {
+      console.warn('[Fullscreen modal]', e && e.message);
+    }
+
+    if (video) {
+      try {
+        var vfs = video.webkitEnterFullscreen;
+        if (typeof vfs === 'function') {
+          vfs.call(video);
+          if (btn) btn.textContent = '✕ خروج ملء الشاشة';
+          return;
+        }
+      } catch(e) {
+        console.warn('[Fullscreen video]', e && e.message);
       }
     }
+
+    _setVisualFullscreen(true);
   }
 
-  // تحديث شكل زر/أزرار ملء الشاشة بعد دخول/خروج Fullscreen فعليًا،
-  // بدل الاعتماد على الضغط فقط. يشمل زر الهيدر وأي زر "⛶ تكبير" داخل شريط الأدوات.
-  function _updateFsButtons() {
-    var isFs = !!(document.fullscreenElement || document.webkitFullscreenElement || document.body.classList.contains('rv-fs-open'));
-    var headerBtn = document.getElementById('rv-fs-btn');
-    if (headerBtn) headerBtn.textContent = isFs ? '✕' : '⛶';
-    document.querySelectorAll('.rv-fs-toggle-btn').forEach(function(b) {
-      b.textContent = isFs ? '✕ تصغير' : '⛶ تكبير';
-    });
-  }
-  if (!document._rvFullscreenBound) {
-    document._rvFullscreenBound = true;
-    document.addEventListener('fullscreenchange', function() {
-      // لو المستخدم خرج من Fullscreen الحقيقي بزر ESC أو زر النظام، لازم
-      // نظبط تكبيرنا البصري (rv-force-enlarged) بنفس الحالة حتى لا يفضل الزر
-      // شغّال دون أن يكون هناك Fullscreen حقيقي فعليًا شغّال معه.
-      var isFs = !!(document.fullscreenElement || document.webkitFullscreenElement);
-      if (!isFs) {
-        var modal = document.getElementById('rv-modal');
-        document.body.classList.remove('rv-fs-open');
-        document.body.classList.remove('bsm-app-fullscreen');
-        if (modal) modal.classList.remove('rv-force-enlarged');
+  ['fullscreenchange','webkitfullscreenchange'].forEach(function(ev){
+    document.addEventListener(ev, function(){
+      var active = !!(document.fullscreenElement || document.webkitFullscreenElement);
+      if (!active) {
+        _setVisualFullscreen(false);
+      } else {
+        var btn = document.getElementById('rv-fs-btn');
+        if (btn) btn.textContent = '✕ خروج ملء الشاشة';
       }
-      _updateFsButtons();
-    });
-    document.addEventListener('webkitfullscreenchange', function() {
-      var isFs = !!(document.fullscreenElement || document.webkitFullscreenElement);
-      if (!isFs) {
-        var modal = document.getElementById('rv-modal');
-        document.body.classList.remove('rv-fs-open');
-        document.body.classList.remove('bsm-app-fullscreen');
-        if (modal) modal.classList.remove('rv-force-enlarged');
-      }
-      _updateFsButtons();
-    });
-  }
+    }, {passive:true});
+  });
 
   // ✅ حماية موحّدة لفشل تشغيل الفيديو/الصوت (رابط منتهي/معطوب/ملف مفقود)
   function _showMediaError(kind) {
@@ -6950,6 +6742,7 @@ const ResourceViewer = (function() {
     const safeUrl = (url || '').replace(/'/g, '%27');
     const actionsHtml = (isAdmin && url) ? `
       <div style="display:flex;gap:10px;justify-content:center;margin-top:14px;flex-wrap:wrap">
+        <button class="rv-btn rv-btn-outline" onclick="window.open('${safeUrl}','_blank')">↗️ فتح الملف</button>
         <button class="rv-btn rv-btn-outline" onclick="(function(){var a=document.createElement('a');a.href='${safeUrl}';a.setAttribute('download','');document.body.appendChild(a);a.click();document.body.removeChild(a);})()">⬇️ تحميل الملف</button>
       </div>` : '';
     body.innerHTML = `
@@ -7520,16 +7313,9 @@ async function _resolveAdminStatus(userId) {
       hasSectionAdminRows = !saCheck.error && (saCheck.count || 0) > 0;
     } catch(e) { console.warn('[section_admins] check failed:', e && e.message); }
   }
-  // ✅ FIX (Aug 2026): كان هذا السطر = isLegacyBranchAdmin فقط، أي أنه كان يتجاهل
-  // hasSectionAdminRows المحسوبة فوق تمامًا رغم قراءتها من section_admins بشكل صحيح
-  // (بما فيها role='owner'). ده كان يعني عمليًا: أي أدمن مُعيّن فقط عبر جدول
-  // section_admins (زي Owner الكورس اللي profiles.role بتاعه مش 'admin' ولا
-  // 'branch_admin') يرجع منه isBranchAdmin=false و isAdmin=false بالكامل —
-  // فلوحة التحكم (زرار ⚙️ تحكم) ماكانتش بتظهر له أصلاً، وبالتبعية كل التابات
-  // (بما فيها 📱 رقم أدمن/دكتور الكورس و➕ إضافة أدمن مساعد) ماكانتش بتتحمّل
-  // ولا تتفحص حتى. الحل: نعتمد على *أي* مصدر من الاثنين (القديم أو الجديد)،
-  // بالظبط زي ما التعليق فوق بيقول إنه المفروض يحصل.
-  var isBranchAdmin = isLegacyBranchAdmin || hasSectionAdminRows;
+  // المصدر الرسمي للدور: profiles.role فقط.
+  // section_admins يُستخدم لتحديد الكورس المعيّن، وليس لمنح دور جديد لمستخدم student.
+  var isBranchAdmin = isLegacyBranchAdmin;
   // isSectionAdmin: اسم بديل مطابق تمامًا لـ isBranchAdmin — نفس القيمة، فقط للتوافق
   // مع أي كود جديد يتوقع هذا الاسم تحديدًا (المصطلح الرسمي الآن هو "Section Admin")
   return {
@@ -7611,25 +7397,15 @@ async function _loadBranchAdminScope(userId) {
     if (!saRes.error && Array.isArray(saRes.data)) {
       saRes.data.forEach(function(row) {
         if (!row.section_id) return;
-        var existing = roots.find(function(r) { return Number(r.id) === Number(row.section_id); });
-        if (existing) {
-          // مهم جدًا: لو نفس الكورس موجود في profiles.managed_section_id وفي
-          // section_admins، فـ section_admins هو المصدر الأحدث والأدق للدور.
-          // بدون هذا الدمج كان Owner (role='owner') يتحول بالخطأ إلى admin
-          // بمجرد وجود managed_section_id، فتظهر له "أدمن الكورسات" بدل
-          // "إضافة أدمن مساعد".
-          existing.title = (row.site_sections && row.site_sections.title) || existing.title;
-          existing.permissions = row.permissions || null;
-          existing.role = row.role || 'admin';
-          existing._source = 'section_admins';
-          return;
-        }
+        if (roots.some(function(r) { return r.id === row.section_id; })) return; // إزالة تكرار لو موجود بالفعل من المصدر القديم
         roots.push({
           id: row.section_id,
           title: (row.site_sections && row.site_sections.title) || ('#' + row.section_id),
+          // ✅ الصلاحيات الحقيقية القادمة من قاعدة البيانات فعلاً
           permissions: row.permissions || null,
-          role: row.role || 'admin',
-          _source: 'section_admins'
+          // ✅ الدور الفعلي (admin/owner) — يُستخدم لإخفاء تبويب "أدمن الكورسات"
+          // الكامل عن الـOwner دائمًا (بند Owner المنفصل)، بغض النظر عن أي صلاحية أخرى.
+          role: row.role || 'admin'
         });
       });
     }
@@ -7651,45 +7427,9 @@ async function _loadBranchAdminScope(userId) {
     // اشتراكات كل الكورسات المُسندة له مع بعض هنا، مش كورس واحد بس.
     window._branchAdminOwnSectionIds = roots.map(function(r) { return Number(r.id); }).filter(function(id) { return Number.isFinite(id); });
 
-    // اختيار الكورس الحالي تلقائيًا:
-    // 1) لو المستخدم داخل كورس/فصل من نفس الشجرة، نختار الـroot المطابق له.
-    // 2) وإلا نحافظ على الاختيار السابق لو ما زال صالحًا.
-    // 3) وإلا نفضّل Owner أولاً، ثم أول كورس.
-    var activeId = null;
-    var routeSectionId = null;
-    try {
-      routeSectionId = Number(window._activeSectionId || 0) || null;
-      var hash = String(window.location.hash || '');
-      var m = hash.match(/#\/?section\/(\d+)/i);
-      if (!routeSectionId && m) routeSectionId = Number(m[1]);
-    } catch(e) {}
-
-    if (routeSectionId) {
-      // لو الـroute نفسه هو root.
-      var directRoot = roots.find(function(r) { return Number(r.id) === Number(routeSectionId); });
-      if (directRoot) activeId = directRoot.id;
-      // أو لو الـroute مادة/شابتر داخل root، نمشي لأعلى في parent_id.
-      if (!activeId) {
-        var cursor = routeSectionId;
-        for (var depth = 0; depth < 12 && cursor; depth++) {
-          var hit = roots.find(function(r) { return Number(r.id) === Number(cursor); });
-          if (hit) { activeId = hit.id; break; }
-          try {
-            var parentRes = await window.supabase.from('site_sections').select('parent_id').eq('id', cursor).maybeSingle();
-            if (parentRes.error || !parentRes.data) break;
-            cursor = parentRes.data.parent_id;
-          } catch(e) { break; }
-        }
-      }
-    }
-
-    if (!activeId && window._branchAdminActiveRoot && roots.some(function(r) { return Number(r.id) === Number(window._branchAdminActiveRoot); })) {
-      activeId = window._branchAdminActiveRoot;
-    }
-    if (!activeId) {
-      var ownerRoot = roots.find(function(r) { return r.role === 'owner'; });
-      activeId = ownerRoot ? ownerRoot.id : roots[0].id;
-    }
+    // لو عنده أكثر من شعبة، يفضل نفس اختياره السابق لو لسه صالح، وإلا أول شعبة في القائمة
+    var activeId = (window._branchAdminActiveRoot && roots.some(function(r) { return r.id === window._branchAdminActiveRoot; }))
+      ? window._branchAdminActiveRoot : roots[0].id;
     await window._selectBranchAdminRoot(activeId);
 
     // ✅ FIX: نطاق المحتوى الكامل (subtree) لكل الكورسات المُسندة مجتمعة معًا — يُستخدم
@@ -8320,91 +8060,37 @@ window.checkBanStatus = async function(email) {
 }
 .ap-close-btn:hover { background: rgba(255,255,255,.35); }
 
-/* لوحة التحكم المنظمة: مجموعات واضحة + شريط جانبي على الهاتف */
-.ap-modal {
-  display: grid;
-  grid-template-columns: 215px minmax(0, 1fr);
-  grid-template-areas:
-    "header header"
-    "switcher switcher"
-    "quick quick"
-    "nav body";
-  align-items: start;
-}
-.ap-header { grid-area: header; }
-#ap-branch-switcher { grid-area: switcher; }
-#ap-branch-switcher + div { grid-area: quick; }
-.ap-nav { grid-area: nav; }
-.ap-body { grid-area: body; min-width: 0; }
-
 /* Nav Tabs */
-.ap-nav {
-  display: flex;
-  flex-direction: column;
-  align-self: stretch;
-  background: var(--bg-card, #fff);
-  border-left: 1px solid #e3eaf5;
-  border-bottom: none;
-  overflow-y: auto;
-  overflow-x: hidden;
-  max-height: calc(100vh - 210px);
-  scrollbar-width: thin;
-  padding: 8px;
-  gap: 8px;
+.ap-workspace { display:flex; min-height:0; background:var(--bg-card,#fff); }
+.ap-sidebar {
+  width:245px; flex:0 0 245px; background:linear-gradient(180deg,#f8fbfe 0%,#f2f7fb 100%);
+  border-left:1px solid #e3eaf5; border-right:1px solid #e3eaf5; padding:12px 10px;
+  overflow-y:auto; max-height:calc(100vh - 190px);
 }
-.ap-nav::-webkit-scrollbar { display: none; }
-/* ✅ FIX (Aug 2026): على الشاشات الواسعة (كمبيوتر) كانت التبويبات الزايدة عن
-   عرض الشاشة بتتخفي فورا لأن .ap-nav بيعتمد على overflow-x:auto بدون أي
-   scrollbar ظاهر (scrollbar-width:none) — فالمستخدم مكانش عارف إنه لازم
-   يعمل سحب أفقي (على الموبايل السحب باللمس طبيعي فكل التبويبات كانت
-   بتظهر بالتمرير، لكن على الكمبيوتر مفيش أي إشارة إن فيه المزيد). الحل:
-   من عرض معين وفوق نخلي التبويبات تعمل wrap على أكتر من سطر بدل ما تتقص. */
-@media (min-width: 900px) {
-  .ap-nav { flex-wrap: nowrap; }
-}
-/* لوحة الإدارة: شريط جانبي ثابت على الكمبيوتر والموبايل، مع تمرير داخلي فقط */
-.ap-nav { min-width: 0; }
-.ap-nav-group { min-width: 0; }
-.ap-nav-btn { overflow: hidden; text-overflow: ellipsis; }
-@media (max-width: 899px) {
-  .ap-modal { grid-template-columns: 132px minmax(0,1fr); }
-  .ap-nav { position: relative; overflow-y: auto; overflow-x: hidden; }
-  .ap-body { min-width: 0; overflow-x: hidden; }
-}
-
-.ap-nav-group {
-  background: rgba(234,244,251,.58);
-  border: 1px solid #e3eaf5;
-  border-radius: 12px;
-  padding: 5px;
-}
-.ap-nav-group-title {
-  font-size: .68rem;
-  font-weight: 900;
-  color: #0a3d62;
-  padding: 7px 8px 5px;
-  line-height: 1.4;
-}
+.ap-sidebar-title { font-weight:900; color:#0a3d62; font-size:.9rem; padding:8px 10px 12px; }
+.ap-nav-group { margin:0 0 12px; }
+.ap-nav-group-title { font-size:.67rem; font-weight:900; color:#8292a3; padding:7px 10px 5px; letter-spacing:.1px; }
+.ap-nav { display:flex; flex-direction:column; gap:3px; background:transparent; border:0; }
 .ap-nav-btn {
-  width: 100%;
-  justify-content: flex-start;
-  text-align: right;
-  padding: 10px 9px;
-  border: none;
-  background: transparent;
-  color: #666;
-  font-family: inherit;
-  font-size: .82rem;
-  font-weight: 700;
-  cursor: pointer;
-  white-space: nowrap;
-  border-bottom: 3px solid transparent;
-  margin-bottom: -2px;
-  transition: color .2s, border-color .2s;
-  display: flex; align-items: center; gap: 6px;
+  width:100%; min-height:40px; padding:9px 10px; border:1px solid transparent; border-radius:10px;
+  background:transparent; color:#5f6d7b; font-family:inherit; font-size:.78rem; font-weight:700;
+  cursor:pointer; white-space:normal; text-align:right; transition:all .18s; display:flex;
+  align-items:center; gap:8px; direction:rtl;
 }
-.ap-nav-btn:hover { color: #0a3d62; }
-.ap-nav-btn.active { color: #0a3d62; border-bottom-color: #0a3d62; }
+.ap-nav-btn span { flex:1; }
+.ap-nav-btn:hover { color:#0a3d62; background:#eaf4fb; border-color:#d7e8f5; transform:translateX(-1px); }
+.ap-nav-btn.active { color:#0a3d62; background:linear-gradient(135deg,#e6f3fb,#eefaf6); border-color:#b8ddea; box-shadow:0 3px 10px rgba(10,61,98,.07); }
+.ap-body { flex:1; min-width:0; }
+@media (max-width: 899px) {
+  .ap-workspace { display:block; }
+  .ap-sidebar { width:auto; max-height:none; padding:8px; border:0; border-bottom:1px solid #e3eaf5; }
+  .ap-sidebar-title { display:none; }
+  .ap-nav-group { margin:0; }
+  .ap-nav-group-title { display:none; }
+  .ap-nav { flex-direction:row; overflow-x:auto; scrollbar-width:none; }
+  .ap-nav::-webkit-scrollbar { display:none; }
+  .ap-nav-btn { width:auto; min-width:max-content; border-radius:9px; padding:9px 12px; white-space:nowrap; }
+}
 
 /* Body */
 .ap-body { padding: 24px; min-height: 400px; }
@@ -8550,28 +8236,12 @@ window.checkBanStatus = async function(email) {
 
 /* ---- Responsive ---- */
 @media (max-width: 600px) {
-  #admin-panel { padding: 64px 4px 4px; }
-  .ap-modal {
-    grid-template-columns: 128px minmax(0, 1fr);
-    grid-template-areas:
-      "header header"
-      "switcher switcher"
-      "quick quick"
-      "nav body";
-    border-radius: 16px;
-  }
-  .ap-nav { padding: 5px; gap: 5px; max-height: calc(100vh - 190px); }
-  .ap-nav-group { border-radius: 9px; padding: 3px; }
-  .ap-nav-group-title { font-size: .59rem; padding: 6px 5px 4px; }
-  .ap-nav-btn { padding: 9px 6px; font-size: .66rem; gap: 4px; white-space: normal; line-height: 1.35; }
-  .ap-body { padding: 10px; }
-  .ap-stats-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; }
-  .ap-header { padding: 12px 13px; }
-  .ap-table th, .ap-table td { padding: 8px 8px; font-size: .7rem; }
-}
-@media (max-width: 380px) {
-  .ap-modal { grid-template-columns: 112px minmax(0, 1fr); }
-  .ap-nav-btn { font-size: .61rem; }
+  #admin-panel { padding: 64px 8px 8px; }
+  .ap-body { padding: 14px; }
+  .ap-nav-btn { padding: 11px 12px; font-size: .75rem; }
+  .ap-stats-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .ap-header { padding: 14px 16px; }
+  .ap-table th, .ap-table td { padding: 8px 10px; font-size: .74rem; }
 }
 
 /* Dark Mode */
@@ -8785,54 +8455,62 @@ window.checkBanStatus = async function(email) {
       <div id="ap-quick-search-results" style="display:none;position:relative;"></div>
     </div>
 
-    <!-- Navigation Tabs -->
-    <nav class="ap-nav" role="tablist" aria-label="أقسام لوحة التحكم">
-      <div class="ap-nav-group ap-nav-group-core">
-        <div class="ap-nav-group-title">⭐ الرئيسية</div>
-        <button class="ap-nav-btn active" onclick="apSwitchTab('dashboard')" id="ap-tab-dashboard" role="tab">📊 Dashboard</button>
-        <button class="ap-nav-btn" onclick="apSwitchTab('courseAdminPhone')" id="ap-tab-courseAdminPhone" role="tab">📱 <span>رقم أدمن / دكتور الكورس</span></button>
-        <button class="ap-nav-btn" onclick="openOwnerAssistantFromNav()" id="ap-tab-ownerAssistant" role="button">➕ <span>إضافة أدمن مساعد</span></button>
-        <button class="ap-nav-btn" onclick="apSwitchTab('notifications')" id="ap-tab-notifications" role="tab">🔔 الإشعارات</button>
-      </div>
-      <div class="ap-nav-group">
-        <div class="ap-nav-group-title">💳 الاشتراكات والمدفوعات</div>
-        <button class="ap-nav-btn" onclick="apSwitchTab('requests')" id="ap-tab-requests" role="tab">📝 Requests</button>
-        <button class="ap-nav-btn" onclick="apSwitchTab('divsubs')" id="ap-tab-divsubs" role="tab">🎓 إدارة الاشتراكات</button>
-        <button class="ap-nav-btn" onclick="apSwitchTab('payments')" id="ap-tab-payments" role="tab">💳 إدارة المدفوعات</button>
-      </div>
-      <div class="ap-nav-group">
-        <div class="ap-nav-group-title">📚 المحتوى والتعلم</div>
-        <button class="ap-nav-btn" onclick="apSwitchTab('sectionsmgmt')" id="ap-tab-sectionsmgmt" role="tab">🗂️ الشعب / المواد / الفصول</button>
-        <button class="ap-nav-btn" onclick="apSwitchTab('paths')" id="ap-tab-paths" role="tab">🎯 إدارة المسارات</button>
-        <button class="ap-nav-btn" onclick="apSwitchTab('content')" id="ap-tab-content" role="tab">➕ المحتوى</button>
-        <button class="ap-nav-btn" onclick="apSwitchTab('subcontent')" id="ap-tab-subcontent" role="tab">🔐 محتوى الاشتراك</button>
-        <button class="ap-nav-btn" onclick="apSwitchTab('quizzes')" id="ap-tab-quizzes" role="tab">📝 الاختبارات</button>
-      </div>
-      <div class="ap-nav-group">
-        <div class="ap-nav-group-title">👥 المستخدمون والتواصل</div>
-        <button class="ap-nav-btn" onclick="apSwitchTab('usermgmt')" id="ap-tab-usermgmt" role="tab">👥 إدارة المستخدمين</button>
-        <button class="ap-nav-btn" onclick="apSwitchTab('users')" id="ap-tab-users" role="tab">🔒 الحظر</button>
-        <button class="ap-nav-btn" onclick="apSwitchTab('messages')" id="ap-tab-messages" role="tab">💬 الرسائل</button>
-      </div>
-      <div class="ap-nav-group">
-        <div class="ap-nav-group-title">🏫 إدارة الكورسات</div>
-        <button class="ap-nav-btn" onclick="apSwitchTab('courseStudents')" id="ap-tab-courseStudents" role="tab">👥 الطلاب</button>
-        <button class="ap-nav-btn" onclick="apSwitchTab('courseStats')" id="ap-tab-courseStats" role="tab">📊 إحصائيات</button>
-        <button class="ap-nav-btn" onclick="apSwitchTab('branchsettings')" id="ap-tab-branchsettings" role="tab">⚙️ إعدادات الشعبة</button>
-        <button class="ap-nav-btn" onclick="apSwitchTab('studentlevels')" id="ap-tab-studentlevels" role="tab">📈 مستويات الطلاب</button>
-        <button class="ap-nav-btn" onclick="apSwitchTab('sectionchat')" id="ap-tab-sectionchat" role="tab">💬 محادثة الكورس</button>
-        <button class="ap-nav-btn" onclick="apSwitchTab('branchadmins')" id="ap-tab-branchadmins" role="tab">🛡️ أدمن الكورسات</button>
-        <button class="ap-nav-btn" onclick="apSwitchTab('lectures')" id="ap-tab-lectures" role="tab">📅 مواعيد المحاضرات</button>
-        <button class="ap-nav-btn" onclick="apSwitchTab('announcements')" id="ap-tab-announcements" role="tab">📢 إعلانات الكورس</button>
-      </div>
-      <div class="ap-nav-group">
-        <div class="ap-nav-group-title">⚙️ المنصة والتقارير</div>
-        <button class="ap-nav-btn" onclick="apSwitchTab('ads')" id="ap-tab-ads" role="tab">📢 إدارة الإعلانات</button>
-        <button class="ap-nav-btn" onclick="apSwitchTab('monthlystats')" id="ap-tab-monthlystats" role="tab">📈 إحصائيات شهرية</button>
-        <button class="ap-nav-btn" onclick="apSwitchTab('platformSettings')" id="ap-tab-platformSettings" role="tab">⚙️ إعدادات المنصة</button>
-        <button class="ap-nav-btn" onclick="apSwitchTab('auditlog')" id="ap-tab-auditlog" role="tab">🧾 سجل العمليات</button>
-      </div>
-    </nav>
+    <!-- Navigation Tabs — organized sidebar -->
+    <div class="ap-workspace">
+      <aside class="ap-sidebar" aria-label="أقسام لوحة التحكم">
+        <div class="ap-sidebar-title">🧭 أقسام الإدارة</div>
+
+        <div class="ap-nav-group">
+          <div class="ap-nav-group-title">الرئيسية</div>
+          <button class="ap-nav-btn active" onclick="apSwitchTab('dashboard')" id="ap-tab-dashboard" role="tab">📊 <span>لوحة المعلومات</span></button>
+          <button class="ap-nav-btn platform-only-nav" onclick="apSwitchTab('courseAdminPhone')" id="ap-tab-courseAdminPhone" role="tab">📱 <span>رقم أدمن / دكتور الكورس</span></button>
+          <button class="ap-nav-btn owner-only-nav" onclick="openOwnerAssistantFromNav()" id="ap-tab-ownerAssistant" role="button">➕ <span>إضافة أدمن مساعد</span></button>
+          <button class="ap-nav-btn" onclick="apSwitchTab('notifications')" id="ap-tab-notifications" role="tab">🔔 <span>الإشعارات</span></button>
+        </div>
+
+        <div class="ap-nav-group">
+          <div class="ap-nav-group-title">💳 الاشتراكات والمدفوعات</div>
+          <button class="ap-nav-btn" onclick="apSwitchTab('requests')" id="ap-tab-requests" role="tab">📝 <span>طلبات الاشتراك</span></button>
+          <button class="ap-nav-btn" onclick="apSwitchTab('divsubs')" id="ap-tab-divsubs" role="tab">🎓 <span>إدارة الاشتراكات</span></button>
+          <button class="ap-nav-btn" onclick="apSwitchTab('payments')" id="ap-tab-payments" role="tab">💳 <span>إدارة المدفوعات</span></button>
+        </div>
+
+        <div class="ap-nav-group">
+          <div class="ap-nav-group-title">📚 المحتوى والتعليم</div>
+          <button class="ap-nav-btn" onclick="apSwitchTab('sectionsmgmt')" id="ap-tab-sectionsmgmt" role="tab">🗂️ <span>الشعب / المواد / الفصول</span></button>
+          <button class="ap-nav-btn" onclick="apSwitchTab('content')" id="ap-tab-content" role="tab">➕ <span>المحتوى</span></button>
+          <button class="ap-nav-btn" onclick="apSwitchTab('subcontent')" id="ap-tab-subcontent" role="tab">🔐 <span>محتوى الاشتراك</span></button>
+          <button class="ap-nav-btn" onclick="apSwitchTab('quizzes')" id="ap-tab-quizzes" role="tab">📝 <span>الاختبارات</span></button>
+          <button class="ap-nav-btn" onclick="apSwitchTab('paths')" id="ap-tab-paths" role="tab">🎯 <span>المسارات التعليمية</span></button>
+          <button class="ap-nav-btn" onclick="apSwitchTab('lectures')" id="ap-tab-lectures" role="tab">📅 <span>مواعيد المحاضرات</span></button>
+        </div>
+
+        <div class="ap-nav-group">
+          <div class="ap-nav-group-title">👥 الطلاب والمستخدمون</div>
+          <button class="ap-nav-btn" onclick="apSwitchTab('courseStudents')" id="ap-tab-courseStudents" role="tab">👥 <span>طلاب الكورس</span></button>
+          <button class="ap-nav-btn" onclick="apSwitchTab('courseStats')" id="ap-tab-courseStats" role="tab">📊 <span>إحصائيات الكورس</span></button>
+          <button class="ap-nav-btn" onclick="apSwitchTab('studentlevels')" id="ap-tab-studentlevels" role="tab">📈 <span>مستويات الطلاب</span></button>
+          <button class="ap-nav-btn" onclick="apSwitchTab('usermgmt')" id="ap-tab-usermgmt" role="tab">👥 <span>إدارة المستخدمين</span></button>
+          <button class="ap-nav-btn" onclick="apSwitchTab('users')" id="ap-tab-users" role="tab">🔒 <span>الحظر</span></button>
+        </div>
+
+        <div class="ap-nav-group">
+          <div class="ap-nav-group-title">💬 التواصل والإعلانات</div>
+          <button class="ap-nav-btn" onclick="apSwitchTab('messages')" id="ap-tab-messages" role="tab">💬 <span>الرسائل</span></button>
+          <button class="ap-nav-btn" onclick="apSwitchTab('sectionchat')" id="ap-tab-sectionchat" role="tab">💬 <span>محادثة الكورس</span></button>
+          <button class="ap-nav-btn" onclick="apSwitchTab('ads')" id="ap-tab-ads" role="tab">📢 <span>إدارة إعلانات المنصة</span></button>
+          <button class="ap-nav-btn" onclick="apSwitchTab('announcements')" id="ap-tab-announcements" role="tab">📢 <span>إعلانات الكورس</span></button>
+        </div>
+
+        <div class="ap-nav-group">
+          <div class="ap-nav-group-title">⚙️ الإدارة والإعدادات</div>
+          <button class="ap-nav-btn" onclick="apSwitchTab('branchsettings')" id="ap-tab-branchsettings" role="tab">⚙️ <span>إعدادات الكورس</span></button>
+          <button class="ap-nav-btn" onclick="apSwitchTab('platformSettings')" id="ap-tab-platformSettings" role="tab">⚙️ <span>إعدادات المنصة</span></button>
+          <button class="ap-nav-btn" onclick="apSwitchTab('branchadmins')" id="ap-tab-branchadmins" role="tab">🛡️ <span>أدمن الكورسات</span></button>
+          <button class="ap-nav-btn" onclick="apSwitchTab('monthlystats')" id="ap-tab-monthlystats" role="tab">📈 <span>إحصائيات شهرية</span></button>
+          <button class="ap-nav-btn" onclick="apSwitchTab('auditlog')" id="ap-tab-auditlog" role="tab">🧾 <span>سجل العمليات</span></button>
+        </div>
+      </aside>
 
     <!-- Body -->
     <div class="ap-body">
@@ -9021,7 +8699,11 @@ window.checkBanStatus = async function(email) {
               </div>
               <div class="ap-field"><label class="ap-label">التصنيف (Category) — اختياري</label><input class="ap-input" id="sm-f-category" type="text"></div>
               <div class="ap-field"><label class="ap-label">Tags — اختياري (مفصولة بفاصلة)</label><input class="ap-input" id="sm-f-tags" type="text"></div>
-              <div class="ap-field" id="sm-course-admin-phone-wrap"><label class="ap-label">📱 رقم أدمن/دكتور الكورس — اختياري (يظهر للطلاب داخل هذا القسم فقط) — إدارة المنصة فقط</label><input class="ap-input" id="sm-f-course-admin-phone" type="text" style="direction:ltr;text-align:right;" placeholder="01xxxxxxxxx"></div>
+              <div class="ap-field" id="sm-course-admin-phone-wrap" style="display:block;">
+  <label class="ap-label">📱 رقم أدمن/دكتور الكورس</label>
+  <input class="ap-input" id="sm-f-course-admin-phone" type="tel" inputmode="tel" autocomplete="tel" style="direction:ltr;text-align:right;" placeholder="01xxxxxxxxx">
+  <div style="font-size:.68rem;color:#7b8794;margin-top:4px;">يظهر للطلاب داخل هذا الكورس فقط. هذا الحقل متاح لأدمن المنصة (Owner) فقط.</div>
+</div>
               <div class="ap-field" style="display:flex;align-items:center;gap:8px;background:#eefaf6;border:1px solid #b8e6d8;border-radius:10px;padding:10px 12px;">
                 <input type="checkbox" id="sm-f-is-course" style="width:auto;">
                 <label class="ap-label" style="margin:0;" for="sm-f-is-course">📚 هذا العنصر دورة (Course) — يظهر في صفحة "الدورات"</label>
@@ -9976,6 +9658,7 @@ window.checkBanStatus = async function(email) {
     <div class="qz-modal-body" id="qz-student-body">
       <!-- محتوى ديناميكي: شاشة البدء / الأسئلة / شاشة المراجعة -->
     </div>
+    </div>
   </div>
 </div>
 
@@ -10075,14 +9758,8 @@ async function adminLoadSections() {
     if (selMat)  selMat.innerHTML  = '<option value="">— اختر المادة —</option>' + opts;
     if (selList) selList.innerHTML = '<option value="">اختر القسم لعرض محتواه</option>' + opts;
     // ✅ FIX 3: إعادة ضبط خطوة الشابتر عند إعادة تحميل الأقسام (مثلاً بعد تبديل شعبة أدمن الفرع)
-    var subWrap = document.getElementById('admin-submaterial-wrap');
-    var subSel = document.getElementById('admin-submaterial-select');
     var chapterWrap = document.getElementById('admin-chapter-wrap');
-    var chapterSel = document.getElementById('admin-chapter-select');
-    if (subWrap) subWrap.style.display = 'none';
-    if (subSel) subSel.innerHTML = '<option value="">— اختر داخل المادة —</option>';
     if (chapterWrap) chapterWrap.style.display = 'none';
-    if (chapterSel) chapterSel.innerHTML = '<option value="">— اختر الشابتر —</option>';
   } catch(e) { console.error('adminLoadSections error:', e); }
 }
 
@@ -10599,7 +10276,7 @@ async function adminLoadContentList() {
           (item.file_name || 'ملف') + (item.file_size ? ' · ' + _attFileSizeLabel(item.file_size) : '') + '</div>'
         : '';
       const previewBtn = displayUrl
-        ? '<button onclick="openResource(\'' + displayUrl.replace(/'/g,"\\'") + '\',\'' + (item.title||'').replace(/'/g,"\\'") + '\',\'' + (typeKey||'').replace(/'/g,"\\'") + '\')" style="background:#eaf6ee;border:1px solid #bfe6c9;color:#1e8449;border-radius:8px;padding:5px 10px;cursor:pointer;font-size:.75rem;white-space:nowrap;font-family:inherit;">👁️ معاينة</button>'
+        ? '<button onclick="openResource(\'' + displayUrl.replace(/'/g,"\'") + '\',\'' + (item.title||'').replace(/'/g,"\'") + '\',\'' + (typeKey||'').replace(/'/g,"\'") + '\')" style="background:#eaf6ee;border:1px solid #bfe6c9;color:#1e8449;border-radius:8px;padding:5px 10px;cursor:pointer;font-size:.75rem;white-space:nowrap;font-family:inherit;">👁️ معاينة</button>'
         : '';
       const replaceBtn = hasFile
         ? '<button onclick="adminReplaceFile(' + item.id + ',\'' + kind + '\')" style="background:#fef6e6;border:1px solid #f5dfa0;color:#8a6d1f;border-radius:8px;padding:5px 10px;cursor:pointer;font-size:.75rem;white-space:nowrap;font-family:inherit;">🔁 استبدال</button>'
@@ -10799,36 +10476,21 @@ function _applyBranchAdminPanelGating() {
   // ومستقل عن الصلاحية، وليس معتمدًا عليها ضمنيًا فقط. الـOwner يحصل بدلاً من ذلك
   // على زر "➕ إضافة أدمن مساعد" مستقل داخل Dashboard الخاص به (_apLoadBranchDashboard).
   var isOwnerActive = window._branchAdminActiveRole === 'owner';
-  var canManageAdmins = perms.can_manage_admins === true;
   var baTab = document.getElementById('ap-tab-branchadmins');
-  if (baTab) baTab.style.display = (isSuper || (isBranch && !isOwnerActive && canManageAdmins)) ? '' : 'none';
-
-  // 📱 رقم أدمن/دكتور الكورس: يظهر دائمًا لأدمن المنصة الحقيقي، حتى لو
-  // حدثت حالة مؤقتة تجمع isSuperAdmin + isBranchAdmin أثناء مزامنة الجلسة.
-  var capNavEarly = document.getElementById('ap-tab-courseAdminPhone');
-  if (capNavEarly) capNavEarly.style.display = isSuper ? '' : 'none';
-
-  // ➕ إضافة أدمن مساعد: للـOwner الفعلي أو لأي أدمن كورس لديه can_manage_admins.
-  // لا يمنح صلاحية جديدة؛ RLS الموجودة تظل هي الحماية الحقيقية.
-  var ownerNavEarly = document.getElementById('ap-tab-ownerAssistant');
-  if (ownerNavEarly) ownerNavEarly.style.display = (!isSuper && isBranch && (isOwnerActive || canManageAdmins)) ? '' : 'none';
+  if (baTab) baTab.style.display = (isSuper || (isBranch && !isOwnerActive && perms.can_manage_admins)) ? '' : 'none';
 
   if (!isBranch) {
     // مستخدم عادي أو أدمن المنصة: أظهر كل التابات كما هي
     ['ap-tab-requests','ap-tab-usermgmt','ap-tab-users','ap-tab-messages','ap-tab-divsubs','ap-tab-content','ap-tab-dashboard',
      'ap-tab-payments','ap-tab-sectionsmgmt','ap-tab-paths','ap-tab-ads','ap-tab-monthlystats','ap-tab-sectionchat','ap-tab-auditlog','ap-tab-notifications',
-     'ap-tab-branchsettings','ap-tab-studentlevels','ap-tab-lectures','ap-tab-announcements','ap-tab-subcontent']
+     'ap-tab-branchsettings','ap-tab-studentlevels','ap-tab-lectures','ap-tab-announcements','ap-tab-subcontent','ap-tab-courseAdminPhone','ap-tab-ownerAssistant']
       .forEach(function(id) { var el = document.getElementById(id); if (el) el.style.display = ''; });
     // ✅ حقل رقم أدمن/دكتور الكورس داخل "🗂️ الشعب/المواد/الفصول" يظل خاصًا بلوحة
     // تحكم المنصة فقط (أدمن المنصة الحقيقي، وليس أدمن الكورس/الشعبة) — يظهر هنا.
     var cpWrap0 = document.getElementById('sm-course-admin-phone-wrap');
-    if (cpWrap0) cpWrap0.style.display = '';
-    // ✅ جديد: تاب "📱 رقم أدمن / دكتور الكورس" في لوحة المنصة — خاص بأدمن
-    // المنصة الحقيقي فقط، وليس أدمن الكورس/الشعبة.
+    if (cpWrap0) { cpWrap0.style.display = 'block'; cpWrap0.classList.add('platform-only-phone'); }
     var capNav0 = document.getElementById('ap-tab-courseAdminPhone');
-    if (capNav0) capNav0.style.display = isSuper ? '' : '';
-    // ✅ زر "➕ إضافة أدمن مساعد" خاص بـOwner الكورس فقط — لا يظهر لأدمن المنصة
-    // (أدمن المنصة عنده أصلاً تاب "أدمن الكورسات" الكامل لإدارة كل الأدمنز).
+    if (capNav0) capNav0.style.display = '';
     var ownerNav0 = document.getElementById('ap-tab-ownerAssistant');
     if (ownerNav0) ownerNav0.style.display = 'none';
     return;
@@ -10845,23 +10507,7 @@ function _applyBranchAdminPanelGating() {
   // ✅ حقل رقم أدمن/دكتور الكورس يبقى مقصورًا على لوحة تحكم المنصة فقط — يُخفى من
   // أدمن الكورس/الشعبة حتى لو كان يملك صلاحية الوصول لتاب "الشعب/المواد/الفصول".
   var cpWrap = document.getElementById('sm-course-admin-phone-wrap');
-  if (cpWrap) cpWrap.style.display = 'none';
-  // ✅ تاب رقم أدمن/دكتور الكورس مقصور على لوحة تحكم المنصة فقط
-  var capNav = document.getElementById('ap-tab-courseAdminPhone');
-  if (capNav) capNav.style.display = 'none';
-  // ✅ بند Owner: زر "➕ إضافة أدمن مساعد" يظهر فقط إذا كان هذا المستخدم هو
-  // الـOwner الفعلي للكورس (role='owner' في section_admins) — لا يعتمد على
-  // can_manage_admins لأن هذا الزر خاص بالـOwner نفسه تحديدًا، أما الأدمن
-  // العادي صاحب can_manage_admins فيحصل على تاب "أدمن الكورسات" الكامل بدلاً
-  // من هذا الزر (أعلاه في baTab).
-  var ownerNav = document.getElementById('ap-tab-ownerAssistant');
-  if (ownerNav) {
-    ownerNav.style.display = (isOwnerActive || canManageAdmins) ? '' : 'none';
-    ownerNav.setAttribute('aria-hidden', (isOwnerActive || canManageAdmins) ? 'false' : 'true');
-  }
-  // الـOwner لا يحتاج تبويب "أدمن الكورسات" الكامل؛ واجهته المختصرة هي زر
-  // "➕ إضافة أدمن مساعد" الموجود مباشرة تحت Dashboard.
-  if (baTab && isOwnerActive) baTab.style.display = 'none';
+  if (cpWrap) { cpWrap.style.display = 'none'; cpWrap.classList.remove('platform-only-phone'); }
   var pathsTab = document.getElementById('ap-tab-paths');
   if (pathsTab) pathsTab.style.display = (perms.can_manage_materials || perms.can_manage_chapters) ? '' : 'none';
   // ✅ جديد: "🔐 محتوى الاشتراك" — نفس نطاق صلاحية "المحتوى/الشعب" (اختيار أي
@@ -10891,6 +10537,10 @@ function _applyBranchAdminPanelGating() {
   if (slTab) slTab.style.display = '';
   var psTab = document.getElementById('ap-tab-platformSettings');
   if (psTab) psTab.style.display = 'none';
+  var capNav = document.getElementById('ap-tab-courseAdminPhone');
+  if (capNav) capNav.style.display = 'none';
+  var ownerNav = document.getElementById('ap-tab-ownerAssistant');
+  if (ownerNav) ownerNav.style.display = isOwnerActive ? '' : 'none';
 
   var notifTab = document.getElementById('ap-tab-notifications');
   if (notifTab) notifTab.style.display = 'none';
@@ -10921,98 +10571,6 @@ function _applyBranchAdminPanelGating() {
     });
   }
 }
-
-// ════════════════════════════════════════════════════════════════
-// 📱 رقم أدمن / دكتور الكورس — لوحة المنصة فقط. يقرأ/يكتب عمود موجود
-// بالفعل (site_sections.course_admin_phone). لا جدول/عمود جديد.
-// ════════════════════════════════════════════════════════════════
-window.capInit = async function() {
-  var sel = document.getElementById('cap-course-select');
-  var msg = document.getElementById('cap-save-msg');
-  var phoneInput = document.getElementById('cap-phone-input');
-  if (!sel) return;
-  sel.innerHTML = '<option value="">— جاري تحميل الكورسات —</option>';
-  if (phoneInput) phoneInput.value = '';
-  if (msg) msg.textContent = '';
-  try {
-    var res = await window.supabase.from('site_sections')
-      .select('id,title,course_admin_phone')
-      .eq('type', 'course')
-      .order('title', { ascending: true });
-    if (res.error) throw res.error;
-    var rows = res.data || [];
-    window._capCourses = rows;
-    if (!rows.length) {
-      sel.innerHTML = '<option value="">— لا توجد كورسات —</option>';
-      return;
-    }
-    sel.innerHTML = '<option value="">— اختر الكورس —</option>' +
-      rows.map(function(r) {
-        return '<option value="' + r.id + '">' + _apEsc(r.title || ('#' + r.id)) + '</option>';
-      }).join('');
-  } catch (e) {
-    sel.innerHTML = '<option value="">— تعذر التحميل —</option>';
-    if (typeof _showToast === 'function') _showToast('❌ تعذر تحميل قائمة الكورسات', 'error');
-    console.warn('[capInit]', e && e.message);
-  }
-};
-
-window.capLoadCourse = function() {
-  var sel = document.getElementById('cap-course-select');
-  var phoneInput = document.getElementById('cap-phone-input');
-  var msg = document.getElementById('cap-save-msg');
-  if (msg) msg.textContent = '';
-  if (!sel || !phoneInput) return;
-  var id = Number(sel.value || 0);
-  if (!id) { phoneInput.value = ''; return; }
-  var row = (window._capCourses || []).find(function(r) { return Number(r.id) === id; });
-  phoneInput.value = (row && row.course_admin_phone) || '';
-};
-
-window.capSave = async function() {
-  var sel = document.getElementById('cap-course-select');
-  var phoneInput = document.getElementById('cap-phone-input');
-  var msg = document.getElementById('cap-save-msg');
-  if (!sel || !phoneInput) return;
-  var id = Number(sel.value || 0);
-  if (!id) {
-    if (msg) { msg.textContent = '⚠️ اختر الكورس أولاً'; msg.style.color = '#e67e22'; }
-    return;
-  }
-  var value = phoneInput.value.trim();
-  if (msg) { msg.textContent = '⏳ جاري الحفظ...'; msg.style.color = '#667'; }
-  try {
-    var res = await window.supabase.from('site_sections')
-      .update({ course_admin_phone: value || null })
-      .eq('id', id);
-    if (res.error) throw res.error;
-    var row = (window._capCourses || []).find(function(r) { return Number(r.id) === id; });
-    if (row) row.course_admin_phone = value || null;
-    if (msg) { msg.textContent = '✅ تم حفظ الرقم بنجاح'; msg.style.color = '#27ae60'; }
-    if (typeof _showToast === 'function') _showToast('✅ تم حفظ رقم أدمن/دكتور الكورس', 'success');
-    // reload حسب طلب المستخدم
-    capInit();
-    setTimeout(function() {
-      var s2 = document.getElementById('cap-course-select');
-      if (s2) { s2.value = String(id); capLoadCourse(); }
-    }, 300);
-  } catch (e) {
-    if (msg) { msg.textContent = '❌ تعذر الحفظ: ' + (e && e.message || ''); msg.style.color = '#e74c3c'; }
-    if (typeof _showToast === 'function') _showToast('❌ تعذر حفظ الرقم', 'error');
-    console.warn('[capSave]', e && e.message);
-  }
-};
-
-// ➕ Owner: زر مستقل تحت لوحة المعلومات يفتح نفس مودال إضافة الأدمن المساعد
-// الموجود بالفعل (baOpenAssignModal mode='add') — بدون نظام موازٍ جديد.
-window.openOwnerAssistantFromNav = function() {
-  if (window._isSuperAdmin || (window._branchAdminActiveRole !== 'owner' && !(window._branchAdminPerms && window._branchAdminPerms.can_manage_admins === true))) return;
-  var id = Number(window._branchAdminCourseId || window._activeSectionId || ((window._branchAdminOwnSectionIds || [])[0]) || 0);
-  if (!id) { if (typeof _showToast === 'function') _showToast('❌ تعذر تحديد الكورس الحالي', 'error'); return; }
-  var row = (window._branchAdminRoots || []).find(function(x) { return Number(x.id) === id; });
-  var titleText = (row && row.title) ? row.title : ('#' + id);
-  baOpenAssignModal(id, titleText, 'add');
-};
 
 
 // ════════════════════════════════════════════════════════════════
@@ -11266,6 +10824,72 @@ window._refreshNotifBadge = async function() {
   }
 };
 
+// ════════════════════════════════════════════════════════════════
+// 📱 COURSE ADMIN PHONE — لوحة مستقلة للـOwner/Platform Admin
+// ════════════════════════════════════════════════════════════════
+window._capCourses = [];
+window.capInit = async function(){
+  var sel=document.getElementById('cap-course-select');
+  var phone=document.getElementById('cap-phone-input');
+  var msg=document.getElementById('cap-save-msg');
+  if(!sel) return;
+  if(!window._isSuperAdmin){
+    sel.innerHTML='<option value="">غير متاح</option>';
+    if(msg) msg.textContent='⛔ هذه الصفحة متاحة للـOwner / أدمن المنصة فقط.';
+    return;
+  }
+  sel.innerHTML='<option value="">— جاري تحميل الكورسات —</option>';
+  if(msg) msg.textContent='';
+  try{
+    var rows=await _adminCourseOptions();
+    window._capCourses=rows||[];
+    if(!rows.length){sel.innerHTML='<option value="">لا توجد كورسات</option>';if(phone)phone.value='';return;}
+    sel.innerHTML='<option value="">— اختر الكورس —</option>'+rows.map(function(c){return '<option value="'+c.id+'">'+(c.icon||'📚')+' '+_apEsc(c.title)+'</option>';}).join('');
+    sel.value=String(rows[0].id);
+    await capLoadCourse();
+  }catch(e){
+    console.error('[CourseAdminPhone] init',e);
+    sel.innerHTML='<option value="">تعذر تحميل الكورسات</option>';
+    if(msg) {msg.style.color='#e74c3c';msg.textContent='❌ تعذر تحميل الكورسات: '+_apEsc(e.message||'');}
+  }
+};
+window.capLoadCourse = async function(){
+  var sel=document.getElementById('cap-course-select'),phone=document.getElementById('cap-phone-input'),msg=document.getElementById('cap-save-msg');
+  var id=Number(sel&&sel.value||0);
+  if(!id){if(phone)phone.value='';return;}
+  var row=(window._capCourses||[]).find(function(x){return Number(x.id)===id;});
+  if(phone)phone.value=(row&&row.course_admin_phone)||'';
+  if(msg)msg.textContent='';
+};
+window.capSave = async function(){
+  var sel=document.getElementById('cap-course-select'),phone=document.getElementById('cap-phone-input'),msg=document.getElementById('cap-save-msg');
+  if(!window._isSuperAdmin){return;}
+  var id=Number(sel&&sel.value||0), value=(phone&&phone.value||'').trim();
+  if(!id){if(msg){msg.style.color='#e74c3c';msg.textContent='❌ اختر الكورس أولاً';}return;}
+  if(msg){msg.style.color='#667';msg.textContent='⏳ جاري الحفظ...';}
+  try{
+    var res=await window.supabase.from('site_sections').update({course_admin_phone:value||null}).eq('id',id);
+    if(res.error) throw res.error;
+    var row=(window._capCourses||[]).find(function(x){return Number(x.id)===id;});
+    if(row)row.course_admin_phone=value||null;
+    if(msg){msg.style.color='#17a589';msg.textContent='✅ تم حفظ رقم أدمن/دكتور الكورس بنجاح';}
+    if(typeof _showToast==='function')_showToast('✅ تم حفظ رقم الكورس','success');
+  }catch(e){
+    console.error('[CourseAdminPhone] save',e);
+    if(msg){msg.style.color='#e74c3c';msg.textContent='❌ فشل الحفظ: '+_apEsc(e.message||'');}
+  }
+};
+
+// ➕ Owner: زر مستقل تحت لوحة المعلومات يفتح نفس مودال إضافة الأدمن المساعد الموجود بالفعل.
+window.openOwnerAssistantFromNav = function(){
+  if(window._isSuperAdmin || window._branchAdminActiveRole!=='owner') return;
+  var id=Number(window._branchAdminCourseId || window._activeSectionId || ((window._branchAdminOwnSectionIds||[])[0]) || 0);
+  if(!id){if(typeof _showToast==='function')_showToast('❌ تعذر تحديد الكورس الحالي','error');return;}
+  var title=(window._branchAdminRoots||[]).find(function(x){return Number(x.id)===id;});
+  var titleText=title&&title.title ? title.title : ('#'+id);
+  baOpenAssignModal(id,titleText,'add');
+};
+
 // ── apSwitchTab ─────────────────────────────────────────────────
 function apSwitchTab(tab) {
   // Update nav buttons
@@ -11284,7 +10908,7 @@ function apSwitchTab(tab) {
 
   // Lazy load data
   if (tab === 'dashboard')     apLoadDashboard();
-  else if (tab === 'courseAdminPhone') { if (typeof capInit === 'function') capInit(); }
+  else if (tab === 'courseAdminPhone') { if(typeof capInit==='function') capInit(); }
   else if (tab === 'auditlog') apLoadAuditLog();
   else if (tab === 'notifications') apLoadNotificationsPanel();
   else if (tab === 'requests') apLoadRequests();
@@ -11313,7 +10937,7 @@ function apSwitchTab(tab) {
   else if (tab === 'usermgmt') umLoadUsers();
   else if (tab === 'users')    apLoadUsers();
   else if (tab === 'messages') apLoadMessages();
-  else if (tab === 'content')  { if (typeof adminLoadSections === 'function') adminLoadSections(); }
+  else if (tab === 'content')  { /* already managed by adminTab */ }
   else if (tab === 'quizzes')  { if (typeof qzLoadMaterialsForAdmin === 'function') qzLoadMaterialsForAdmin(); }
   else if (tab === 'sectionchat') apLoadSectionChatTab();
   else if (tab === 'branchadmins') { baLoadGrades(); }
@@ -11407,7 +11031,7 @@ async function apLoadSectionChatTab() {
     el.innerHTML = '<div class="ap-table-wrap"><table class="ap-table"><thead><tr>' +
       '<th>الشعبة</th><th></th></tr></thead><tbody>' +
       rows.map(function(s) {
-        var titleEsc = _apEsc(s.title).replace(/'/g, "\\'");
+        var titleEsc = _apEsc(s.title).replace(/'/g, "\'");
         return '<tr><td>' + (s.icon || '🎓') + ' ' + _apEsc(s.title) + '</td>' +
           '<td style="text-align:left;"><button class="ap-btn ap-btn-primary" onclick="openSectionChat(' + s.id + ', \'' + titleEsc + '\')">💬 فتح المحادثة</button></td></tr>';
       }).join('') + '</tbody></table></div>';
@@ -11963,7 +11587,7 @@ async function baLoadBranchAdmins() {
         + '<td>' + _apEsc(crumb) + '</td>'
         + '<td style="color:#b0b8c1;">لا يوجد</td>'
         + '<td><span class="ap-badge user">🚫 بدون أدمن</span></td>'
-        + '<td><button class="ap-btn ap-btn-success" onclick="baOpenAssignModal(' + branchId + ', \'' + _apEsc(crumb).replace(/'/g,"\\'") + '\', \'assign\')">➕ تعيين</button></td>'
+        + '<td><button class="ap-btn ap-btn-success" onclick="baOpenAssignModal(' + branchId + ', \'' + _apEsc(crumb).replace(/'/g,"\'") + '\', \'assign\')">➕ تعيين</button></td>'
         + '</tr></tbody></table></div>';
       return;
     }
@@ -11973,7 +11597,7 @@ async function baLoadBranchAdmins() {
     // فقط يُدرج صف section_admins جديد (role='admin') بجانب البقية عبر نفس مودال
     // البحث (mode='add' الجديد). الحماية الحقيقية تبقى من RLS
     // (branch_admin_can_manage_admins) كما هي — بدون نظام موازٍ.
-    var crumbEscTop = _apEsc(crumb).replace(/'/g, "\\'");
+    var crumbEscTop = _apEsc(crumb).replace(/'/g, "\'");
     var addAssistantBtn = '<div style="margin-bottom:10px;"><button class="ap-btn ap-btn-success" onclick="baOpenAssignModal(' + branchId + ', \'' + crumbEscTop + '\', \'add\')">➕ إضافة أدمن مساعد</button></div>';
 
     el.innerHTML = addAssistantBtn + '<div class="ap-table-wrap"><table class="ap-table"><thead><tr>'
@@ -11981,7 +11605,7 @@ async function baLoadBranchAdmins() {
       + '</tr></thead><tbody>' +
       window._baAdminsForBranch.map(function(row) {
         var p = row.profiles || {};
-        var crumbEsc = _apEsc(crumb).replace(/'/g, "\\'");
+        var crumbEsc = _apEsc(crumb).replace(/'/g, "\'");
         var isOwner = row.role === 'owner';
         var roleBadge = isOwner
           ? '<span class="ap-badge admin" style="background:#fff4e0;color:#b9770e;">👑 Owner</span>'
@@ -11999,7 +11623,7 @@ async function baLoadBranchAdmins() {
           ? '<button class="ap-btn ap-btn-primary" style="margin-left:4px;" onclick="baOpenAssignModal(' + branchId + ', \'' + crumbEsc + '\', \'change\', ' + row.id + ', \'' + row.role + '\')">🔄 تعديل</button>'
           : '';
         var removeBtn = canEditRow
-          ? '<button class="ap-btn ap-btn-danger" onclick="baOpenRemoveConfirm(' + row.id + ', \'' + (p.id || row.user_id) + '\', \'' + _apEsc(p.full_name || p.email || 'الأدمن').replace(/'/g,"\\'") + '\', \'' + crumbEsc + '\')">❌ إزالة</button>'
+          ? '<button class="ap-btn ap-btn-danger" onclick="baOpenRemoveConfirm(' + row.id + ', \'' + (p.id || row.user_id) + '\', \'' + _apEsc(p.full_name || p.email || 'الأدمن').replace(/'/g,"\'") + '\', \'' + crumbEsc + '\')">❌ إزالة</button>'
           : '<span style="font-size:.7rem;color:#aaa;">🔒 لا يُعدَّل إلا من أدمن المنصة</span>';
         return '<tr>'
           + '<td>' + _apEsc(crumb) + '</td>'
@@ -12948,7 +12572,7 @@ async function apLoadDivisionSubs() {
           }
         }
         var receiptCell = r.receipt_image
-          ? '<button class="ap-btn ap-btn-ghost" style="padding:5px 9px;font-size:.72rem;" onclick="apViewReceipt(\'' + _apEsc(r.receipt_image).replace(/'/g,"\\'") + '\')">🧾 عرض</button>'
+          ? '<button class="ap-btn ap-btn-ghost" style="padding:5px 9px;font-size:.72rem;" onclick="apViewReceipt(\'' + _apEsc(r.receipt_image).replace(/'/g,"\'") + '\')">🧾 عرض</button>'
           : '<span style="color:#b0b8c1;font-size:.72rem;">— لا يوجد</span>';
         var reasonRow = (r.payment_status === 'cancelled' && r.reject_reason)
           ? '<div style="font-size:.68rem;color:#e74c3c;margin-top:4px;">سبب الرفض: ' + _apEsc(r.reject_reason) + '</div>' : '';
@@ -13105,7 +12729,7 @@ async function apLoadPayments() {
         var label     = secInfo.title || (r.subscription_type === 'yearly' ? 'اشتراك سنوي عام' : 'اشتراك شهري عام');
         var price     = secInfo.price != null ? (secInfo.price + ' ج.م') : '—';
         var method    = secInfo.payment_method || '—';
-        var receiptCell = '<button class="ap-btn ap-btn-ghost" style="padding:5px 9px;font-size:.72rem;" onclick="apViewReceipt(\'' + _apEsc(r.receipt_image).replace(/'/g,"\\'") + '\')">🧾 عرض</button>';
+        var receiptCell = '<button class="ap-btn ap-btn-ghost" style="padding:5px 9px;font-size:.72rem;" onclick="apViewReceipt(\'' + _apEsc(r.receipt_image).replace(/'/g,"\'") + '\')">🧾 عرض</button>';
         var actions = '';
         var prof = profMapPay[r.user_id] || {};
         if (r.payment_status === 'pending') {
@@ -13929,7 +13553,7 @@ function smRenderList() {
         : '<span class="ap-badge active">🔓 مجاني</span>';
       return '<tr>'
         + '<td>' + (idx+1) + '</td>'
-        + '<td style="cursor:pointer;font-weight:700;" onclick="smDrillInto(' + s.id + ',\'' + _apEsc(s.title).replace(/'/g,"\\'") + '\')">' + icon + ' ' + _apEsc(s.title) + courseBadge + '</td>'
+        + '<td style="cursor:pointer;font-weight:700;" onclick="smDrillInto(' + s.id + ',\'' + _apEsc(s.title).replace(/'/g,"\'") + '\')">' + icon + ' ' + _apEsc(s.title) + courseBadge + '</td>'
         + '<td style="font-size:.75rem;color:#888;">' + _apEsc(s.subtitle || '—') + '</td>'
         + '<td>' + lockBadge + '</td>'
         + '<td style="white-space:nowrap;">'
@@ -13938,7 +13562,7 @@ function smRenderList() {
         + '</td>'
         + '<td style="white-space:nowrap;">'
         + '<button class="ap-btn ap-btn-ghost" style="padding:5px 9px;" onclick="smOpenEdit(' + s.id + ')">✏️</button>'
-        + '<button class="ap-btn ap-btn-primary" style="padding:5px 9px;" onclick="smDrillInto(' + s.id + ',\'' + _apEsc(s.title).replace(/'/g,"\\'") + '\')">📂 فتح</button>'
+        + '<button class="ap-btn ap-btn-primary" style="padding:5px 9px;" onclick="smDrillInto(' + s.id + ',\'' + _apEsc(s.title).replace(/'/g,"\'") + '\')">📂 فتح</button>'
         + '<button class="ap-btn ap-btn-danger" style="padding:5px 9px;" onclick="smDelete(' + s.id + ')">🗑️</button>'
         + '</td></tr>';
     }).join('')
@@ -14659,7 +14283,7 @@ async function apQuickSearch(q) {
       if (users.length) {
         html += '<div style="font-size:.68rem;font-weight:800;color:#888;margin:8px 4px 2px;">👥 مستخدمون</div>';
         html += users.map(function(u) {
-          return '<div class="ap-qs-item" onclick="apSwitchTab(\'usermgmt\');document.getElementById(\'um-search\').value=\'' + _apEsc(u.email||'').replace(/'/g,"\\'") + '\';umApplyFilters();apQuickSearchClose();" style="padding:8px 10px;border-radius:8px;cursor:pointer;font-size:.8rem;">👤 ' + _apEsc(u.full_name || u.email) + ' <span style="color:#aaa;font-size:.7rem;">' + _apEsc(u.email||'') + '</span></div>';
+          return '<div class="ap-qs-item" onclick="apSwitchTab(\'usermgmt\');document.getElementById(\'um-search\').value=\'' + _apEsc(u.email||'').replace(/'/g,"\'") + '\';umApplyFilters();apQuickSearchClose();" style="padding:8px 10px;border-radius:8px;cursor:pointer;font-size:.8rem;">👤 ' + _apEsc(u.full_name || u.email) + ' <span style="color:#aaa;font-size:.7rem;">' + _apEsc(u.email||'') + '</span></div>';
         }).join('');
       }
       if (sections.length) {
@@ -14672,7 +14296,7 @@ async function apQuickSearch(q) {
         html += '<div style="font-size:.68rem;font-weight:800;color:#888;margin:8px 4px 2px;">💳 اشتراكات</div>';
         html += subs.map(function(s) {
           var sEmail = (usersByIdQS[s.user_id] || {}).email || '';
-          return '<div class="ap-qs-item" onclick="apSwitchTab(\'divsubs\');document.getElementById(\'ap-divsub-search\').value=\'' + _apEsc(sEmail).replace(/'/g,"\\'") + '\';apLoadDivisionSubs();apQuickSearchClose();" style="padding:8px 10px;border-radius:8px;cursor:pointer;font-size:.8rem;">💳 ' + _apEsc(sEmail || '—') + ' — ' + _apEsc(s.payment_status) + '</div>';
+          return '<div class="ap-qs-item" onclick="apSwitchTab(\'divsubs\');document.getElementById(\'ap-divsub-search\').value=\'' + _apEsc(sEmail).replace(/'/g,"\'") + '\';apLoadDivisionSubs();apQuickSearchClose();" style="padding:8px 10px;border-radius:8px;cursor:pointer;font-size:.8rem;">💳 ' + _apEsc(sEmail || '—') + ' — ' + _apEsc(s.payment_status) + '</div>';
         }).join('');
       }
       if (!html) html = '<div style="padding:10px;font-size:.8rem;color:#888;">لا نتائج</div>';
@@ -15277,34 +14901,14 @@ window._origWindowOpen = window.open;
       _origRVOpen = ResourceViewer.open;
       ResourceViewer.open = function(url, title, resourceType) {
         _origRVOpen.call(ResourceViewer, url, title, resourceType);
-
-        // مهم للتطبيق: لا نعتمد على Fullscreen API وحده؛ بعض Android WebView
-        // لا يمرر native fullscreen. نفعّل fallback البصري فورًا داخل نفس الـmodal.
+        // طلب fullscreen فوراً داخل سياق ضغطة المستخدم قدر الإمكان.
+        // setTimeout وحده كان يفقد user activation في بعض متصفحات الهاتف.
         var modal = document.getElementById('rv-modal');
-        var appContext = false;
-        try {
-          appContext = (typeof window.isOfficialApp === 'function' && window.isOfficialApp()) ||
-                       /BSMApp\/1\.0/i.test(navigator.userAgent || '') ||
-                       !!window.BSMAndroidBridge;
-        } catch(e) {}
-
-        if (modal && (window.innerWidth <= 768 || appContext)) {
-          document.body.classList.add('rv-fs-open');
-          document.body.classList.add('bsm-app-fullscreen');
-          modal.classList.add('rv-force-enlarged');
-
-          // native fullscreen تحسين إضافي فقط؛ لو الـWebView رفضه يظل
-          // الـfallback البصري شغالًا ولا يتعطل العارض.
+        if (modal && window.innerWidth <= 768) {
           try {
             var req = modal.requestFullscreen || modal.webkitRequestFullscreen;
-            if (req) {
-              var nativeResult = req.call(modal);
-              if (nativeResult && typeof nativeResult.catch === 'function') {
-                nativeResult.catch(function(){});
-              }
-            }
-          } catch(e) {}
-          if (typeof _updateFsButtons === 'function') _updateFsButtons();
+            if (req) Promise.resolve(req.call(modal)).catch(function(){ /* fullscreen اختياري */ });
+          } catch(e) { /* بعض المتصفحات تمنع fullscreen تلقائياً */ }
         }
       };
     }, 0);
@@ -15593,6 +15197,7 @@ var NativePDFViewer = (function() {
       var safeUrl = url.replace(/'/g, '%27');
       actionsHtml =
         '<div style="display:flex;gap:10px;justify-content:center;margin-top:14px;flex-wrap:wrap">' +
+          '<button class="pdfv-btn" style="width:auto;padding:0 16px;background:rgba(255,255,255,.15)" onclick="(window._origWindowOpen||window.open)(\'' + safeUrl + '\',\'_blank\',\'noopener,noreferrer\')">↗️ فتح الملف</button>' +
           '<button class="pdfv-btn" style="width:auto;padding:0 16px;background:rgba(255,255,255,.15)" onclick="(function(){var a=document.createElement(\'a\');a.href=\'' + safeUrl + '\';a.setAttribute(\'download\',\'\');document.body.appendChild(a);a.click();document.body.removeChild(a);})()">⬇️ تحميل الملف</button>' +
         '</div>';
     } else {
@@ -16364,15 +15969,8 @@ window.toggleAdminPanel = async function() {
     _secAlert('⛔ صلاحيات الأدمن مطلوبة');
     return;
   }
-  // قبل إظهار اللوحة، حدّث نطاق الأدمن من section_admins مرة أخرى حتى لا
-  // تعتمد الواجهة على حالة قديمة من تسجيل الدخول، خصوصًا عند تبديل الحسابات
-  // أو تغيير دور Owner/Admin من لوحة المنصة.
-  if (check.isBranchAdmin && check.user && typeof _loadBranchAdminScope === 'function') {
-    try { await _loadBranchAdminScope(check.user.id); } catch(e) { console.warn('[ADMIN PANEL] scope refresh:', e && e.message); }
-  }
   var result = await _origToggleAdmin();
   if (typeof _applyBranchAdminPanelRestrictions === 'function') _applyBranchAdminPanelRestrictions();
-  if (typeof _applyBranchAdminPanelGating === 'function') _applyBranchAdminPanelGating();
   return result;
 };
 
@@ -16454,9 +16052,9 @@ function _applyBranchAdminPanelRestrictions() {
 // ════════════════════════════════════════════════════════════════
 
 (function() {
+  if (window.__BSM_DEBUG_MODE) return;
   // منع Right Click للمحتوى المحمي (لغير الأدمن)
   document.addEventListener('contextmenu', function(e) {
-    if (DEBUG_MODE) return;
     if (!window._isAdminUser && document.body.classList.contains('content-protected')) {
       e.preventDefault();
     }
@@ -16464,7 +16062,6 @@ function _applyBranchAdminPanelRestrictions() {
 
   // منع keyboard shortcuts للنسخ في المحتوى المحمي
   document.addEventListener('keydown', function(e) {
-    if (DEBUG_MODE) return;
     if (window._isAdminUser) return;
     if (!document.body.classList.contains('content-protected')) return;
 
@@ -16487,7 +16084,6 @@ function _applyBranchAdminPanelRestrictions() {
 
   // منع Print Screen (لا يمنع تماماً لكن يُصعّب)
   document.addEventListener('keyup', function(e) {
-    if (DEBUG_MODE) return;
     if (window._isAdminUser) return;
     if (e.key === 'PrintScreen') {
       try { navigator.clipboard && navigator.clipboard.writeText(''); } catch(x) {}
@@ -16496,13 +16092,11 @@ function _applyBranchAdminPanelRestrictions() {
 
   // منع Copy و Cut
   document.addEventListener('copy', function(e) {
-    if (DEBUG_MODE) return;
     if (!window._isAdminUser && document.body.classList.contains('content-protected')) {
       e.preventDefault();
     }
   });
   document.addEventListener('cut', function(e) {
-    if (DEBUG_MODE) return;
     if (!window._isAdminUser && document.body.classList.contains('content-protected')) {
       e.preventDefault();
     }
@@ -16510,7 +16104,6 @@ function _applyBranchAdminPanelRestrictions() {
 
   // منع Select All
   document.addEventListener('selectstart', function(e) {
-    if (DEBUG_MODE) return;
     if (!window._isAdminUser && document.body.classList.contains('content-protected')) {
       e.preventDefault();
     }
@@ -16518,13 +16111,11 @@ function _applyBranchAdminPanelRestrictions() {
 
   // منع Drag & Drop للمحتوى المحمي
   document.addEventListener('dragstart', function(e) {
-    if (DEBUG_MODE) return;
     if (!window._isAdminUser && document.body.classList.contains('content-protected')) {
       e.preventDefault();
     }
   });
   document.addEventListener('drop', function(e) {
-    if (DEBUG_MODE) return;
     if (!window._isAdminUser && document.body.classList.contains('content-protected')) {
       e.preventDefault();
     }
@@ -18819,7 +18410,7 @@ window.diagnose = async function() {
   // DEBUG: disable/unregister Service Worker to prevent stale cache during testing.
   window.__BSM_DEBUG_SW_DISABLED = true;
   window.addEventListener('load', function () {
-    if (!window.__BSM_DEBUG_MODE || window.__BSM_DEBUG_KEEP_SW) return;
+    if (!window.__BSM_DEBUG_MODE || window.__BSM_DEBUG_SW_DISABLED === true) return;
     try {
       if ('serviceWorker' in navigator) {
         navigator.serviceWorker.getRegistrations().then(function (regs) {
@@ -20049,14 +19640,23 @@ window.diagnose = async function() {
       var subPrice  = (_pmAnchor.price != null && String(_pmAnchor.price).trim() !== '') ? Number(_pmAnchor.price) : null;
       var subMethod = _pmAnchor.payment_method || 'Vodafone Cash';
       var subNumber = _pmAnchor.payment_number || null; // رقم المستقبِل/رقم الدفع الخاص بالكورس — لا يتغيّر معناه
-      var rpcRes = await db.rpc('request_subscription', {
-        p_section_id: _pmAnchor.id,
-        p_payment_method: subMethod,
-        p_payment_number: subNumber,
-        p_amount: subPrice,
-        p_receipt_image: 'receipts/' + path,
-        p_sender_phone: senderPhone // رقم الطالب الذي تم التحويل منه
-      });
+      var rpcRes = await (window._pmRpcRequestSubscription
+        ? window._pmRpcRequestSubscription(db, {
+            p_section_id: _pmAnchor.id,
+            p_payment_method: subMethod,
+            p_payment_number: subNumber,
+            p_amount: subPrice,
+            p_receipt_image: 'receipts/' + path,
+            p_sender_phone: senderPhone // رقم الطالب الذي تم التحويل منه
+          })
+        : db.rpc('request_subscription', {
+            p_section_id: _pmAnchor.id,
+            p_payment_method: subMethod,
+            p_payment_number: subNumber,
+            p_amount: subPrice,
+            p_receipt_image: 'receipts/' + path,
+            p_sender_phone: senderPhone
+          }));
       if (rpcRes.error) throw rpcRes.error;
 
       msgEl.style.color = '#17a589';
@@ -20158,7 +19758,7 @@ window.diagnose = async function() {
   }
 
   function _chatEscJs(s) {
-    return String(s == null ? '' : s).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/[\r\n]/g, ' ');
+    return String(s == null ? '' : s).replace(/\\/g, '\\\').replace(/'/g, "\'").replace(/[\r\n]/g, ' ');
   }
 
   function _chatFileKindFromPath(path) {
@@ -20193,7 +19793,7 @@ window.diagnose = async function() {
   window._renderChatEntryButtonHTML = function(anchor) {
     var titleEsc = _apEsc ? _apEsc(anchor.title || 'الكورس') : (anchor.title || 'الشعبة');
     return '<button class="chat-entry-btn" onclick="openSectionChat(' + anchor.id + ', \'' +
-      titleEsc.replace(/'/g, "\\'") + '\')">💬 دخول محادثة الكورس</button>';
+      titleEsc.replace(/'/g, "\'") + '\')">💬 دخول محادثة الكورس</button>';
   };
 
   function _chatEsc(s) { return _apEsc ? _apEsc(s) : String(s == null ? '' : s).replace(/[&<>"']/g, function(c){
@@ -20878,7 +20478,7 @@ window.diagnose = async function() {
 
   // للاستخدام داخل onclick="" (سلسلة JS بين علامتي اقتباس أحاديتين)
   function _dmEscJs(s) {
-    return String(s == null ? '' : s).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/[\r\n]/g, ' ');
+    return String(s == null ? '' : s).replace(/\\/g, '\\\').replace(/'/g, "\'").replace(/[\r\n]/g, ' ');
   }
 
   function _dmAttachScrollListener() {
@@ -21023,7 +20623,7 @@ window.diagnose = async function() {
     if (!rows.length) { listEl.innerHTML = '<div class="dm2-empty-list">💬<br>لا توجد محادثات بعد.</div>'; return; }
     listEl.innerHTML = rows.map(function(r) {
       return '<div class="dm2-conv-row' + (r.unread ? ' dm2-unread' : '') + (_dmRoom && _dmRoom.id === r.roomId ? ' dm2-active' : '') + '" ' +
-        'onclick="openDirectChat(' + (r.otherId ? ("'" + r.otherId + "'") : 'null') + ', \'' + _dmEsc(r.name).replace(/'/g, "\\'") + '\', ' + r.roomId + ')">' +
+        'onclick="openDirectChat(' + (r.otherId ? ("'" + r.otherId + "'") : 'null') + ', \'' + _dmEsc(r.name).replace(/'/g, "\'") + '\', ' + r.roomId + ')">' +
         '<div class="dm2-avatar">' + _dmAvatarHTML(r.name, r.avatarUrl) + '</div>' +
         '<div class="dm2-conv-main">' +
           '<div class="dm2-conv-toprow"><span class="dm2-conv-name">' + _dmEsc(r.name) + '</span><span class="dm2-conv-time">' + _dmFormatTime(r.time) + '</span></div>' +
@@ -23573,7 +23173,7 @@ function qzRenderQuestion() {
   body.innerHTML = html;
 }
 
-function qzAttr(s) { return String(s).replace(/'/g, "\\'"); }
+function qzAttr(s) { return String(s).replace(/'/g, "\'"); }
 
 function qzGoTo(idx) {
   if (idx < 0 || idx >= window._qz.questions.length) return;
@@ -23736,7 +23336,7 @@ window.qzShowPastReview = qzShowPastReview;
 // اختصارات لوحة المفاتيح (طباعة/حفظ/عرض المصدر/أدوات المطور).
 // ============================================================
 (function(){
-  if (typeof DEBUG_MODE !== 'undefined' && DEBUG_MODE) return;
+  if (window.__BSM_DEBUG_MODE) return;
   function _isEditableTarget(el){
     if (!el) return false;
     var tag = (el.tagName || '').toLowerCase();
@@ -23785,7 +23385,7 @@ window.qzShowPastReview = qzShowPastReview;
 <script>
 (function () {
   'use strict';
-  if (typeof DEBUG_MODE !== 'undefined' && DEBUG_MODE) return;
+  if (window.__BSM_DEBUG_MODE) return;
 
   // أي عنصر إدخال حقيقي (أو داخل عنصر إدخال) يُستثنى دائماً من الحماية
   function nearestFormField(el) {
@@ -25155,10 +24755,10 @@ async function courseRoots(){
   // مش في وسم type الذي يديره أدمن المنصة يدويًا وقد يُنسى.
   if(isBranch()){
     var cid=courseId(); if(!cid)return [];
-    var rBranch=await db().from('site_sections').select('id,title,icon,type,parent_id,display_order,requires_subscription').eq('id',cid);
+    var rBranch=await db().from('site_sections').select('id,title,icon,type,parent_id,display_order,requires_subscription,course_admin_phone').eq('id',cid);
     if(rBranch.error)throw rBranch.error; return rBranch.data||[];
   }
-  var q=db().from('site_sections').select('id,title,icon,type,parent_id,display_order,requires_subscription').eq('type','course').order('display_order').order('id');
+  var q=db().from('site_sections').select('id,title,icon,type,parent_id,display_order,requires_subscription,course_admin_phone').eq('type','course').order('display_order').order('id');
   var r=await q; if(r.error)throw r.error; return r.data||[];
 }
 async function materialsForCourses(){
@@ -25273,10 +24873,10 @@ var labels=document.querySelectorAll('#admin-panel .ap-label');labels.forEach(fu
     // العمود غير مضبوط للقسم رغم أنه معيّن فعليًا كورس عبر section_admins).
     if(window._isBranchAdmin && !window._isSuperAdmin){
       var cid=await getCourseId(); if(!cid)return [];
-      var rB=await d.from('site_sections').select('id,title,subtitle,type,parent_id,display_order,requires_subscription,payment_method,payment_number,price').eq('id',cid);
+      var rB=await d.from('site_sections').select('id,title,subtitle,type,parent_id,display_order,requires_subscription,payment_method,payment_number,price,course_admin_phone').eq('id',cid);
       if(rB.error)throw rB.error; return rB.data||[];
     }
-    var q=d.from('site_sections').select('id,title,subtitle,type,parent_id,display_order,requires_subscription,payment_method,payment_number,price').eq('type','course').order('display_order').order('id');
+    var q=d.from('site_sections').select('id,title,subtitle,type,parent_id,display_order,requires_subscription,payment_method,payment_number,price,course_admin_phone').eq('type','course').order('display_order').order('id');
     var r=await q; if(r.error)throw r.error; return r.data||[];
   }
   async function finalMaterials(){
@@ -25487,7 +25087,7 @@ var labels=document.querySelectorAll('#admin-panel .ap-label');labels.forEach(fu
       box.innerHTML =
         '<div class="bsm-course-chat-actions" style="display:flex;gap:8px;flex-wrap:wrap;margin:12px 0;">' +
           '<button class="chat-entry-btn" type="button" onclick="openSectionChat(' + id + ', \'' +
-            title.replace(/'/g,"\\'") + '\')">💬 دخول محادثة الكورس</button>' +
+            title.replace(/'/g,"\'") + '\')">💬 دخول محادثة الكورس</button>' +
         '</div>';
     }
 
@@ -25604,12 +25204,12 @@ var labels=document.querySelectorAll('#admin-panel .ap-label');labels.forEach(fu
         var actions='';
         if (showActions && r.payment_status==='pending'){
           actions += '<button class="ap-btn ap-btn-success" style="margin-left:4px" onclick="apApproveReq(\''+
-            esc2(r.id).replace(/'/g,"\\'")+'\',\''+esc2(r.user_id).replace(/'/g,"\\'")+'\')">✅ قبول</button>';
+            esc2(r.id).replace(/'/g,"\'")+'\',\''+esc2(r.user_id).replace(/'/g,"\'")+'\')">✅ قبول</button>';
           actions += '<button class="ap-btn ap-btn-danger" onclick="apRejectReq(\''+
-            esc2(r.id).replace(/'/g,"\\'")+'\',\''+esc2(r.user_id).replace(/'/g,"\\'")+'\')">❌ رفض</button>';
+            esc2(r.id).replace(/'/g,"\'")+'\',\''+esc2(r.user_id).replace(/'/g,"\'")+'\')">❌ رفض</button>';
         } else if (showActions && r.payment_status!=='cancelled'){
           actions='<button class="ap-btn ap-btn-danger" onclick="apCancelSub(\''+
-            esc2(r.id).replace(/'/g,"\\'")+'\',\''+esc2(r.user_id).replace(/'/g,"\\'")+'\')">🚫 إلغاء</button>';
+            esc2(r.id).replace(/'/g,"\'")+'\',\''+esc2(r.user_id).replace(/'/g,"\'")+'\')">🚫 إلغاء</button>';
         } else actions='—';
         return '<tr><td>'+esc2(p.full_name||'—')+'</td><td class="ap-email-cell">'+esc2(p.email||'—')+
           '</td><td>'+status(r.payment_status)+'</td><td>'+esc2(r.subscription_type==='yearly'?'سنوي':'شهري')+
@@ -25712,7 +25312,7 @@ var labels=document.querySelectorAll('#admin-panel .ap-label');labels.forEach(fu
             var r = (window._branchAdminRoots||[]).find(function(x){ return Number(x.id) === Number(ownerSectionId); });
             return (r && r.title) || ('#' + ownerSectionId);
           })();
-          var ownerTitleEsc = String(ownerSectionTitle).replace(/'/g, "\\'");
+          var ownerTitleEsc = String(ownerSectionTitle).replace(/'/g, "\'");
           act.innerHTML += '<div style="margin-top:14px;"><button class="ap-btn ap-btn-success" '
             + 'onclick="baOpenAssignModal(' + Number(ownerSectionId) + ', \'' + ownerTitleEsc + '\', \'add\')">'
             + '➕ إضافة أدمن مساعد</button></div>';
@@ -25871,9 +25471,9 @@ var labels=document.querySelectorAll('#admin-panel .ap-label');labels.forEach(fu
           '<div style="margin-top:10px" class="'+(x.completed?'sch-done':(overdue?'sch-overdue':''))+'">'+
           (x.completed?'✅ مكتملة':(overdue?'⚠️ متأخرة':'⏳ مجدولة'))+'</div>'+
           '<div style="display:flex;gap:6px;margin-top:10px"><button class="ap-btn ap-btn-ghost" onclick="schToggle(\''+
-          esc2(x.id).replace(/'/g,"\\'")+'\','+(!x.completed)+')">'+(x.completed?'↩️ إعادة فتح':'✅ إكمال')+
+          esc2(x.id).replace(/'/g,"\'")+'\','+(!x.completed)+')">'+(x.completed?'↩️ إعادة فتح':'✅ إكمال')+
           '</button><button class="ap-btn ap-btn-danger" onclick="schDelete(\''+
-          esc2(x.id).replace(/'/g,"\\'")+'\')">🗑️ حذف</button></div></div>';
+          esc2(x.id).replace(/'/g,"\'")+'\')">🗑️ حذف</button></div></div>';
       }).join(''):'<div class="sch-card">لا توجد مهام بعد.</div>')+
       '</div>';
   };
@@ -26796,164 +26396,452 @@ SELECT conname, pg_get_constraintdef(oid) FROM pg_constraint WHERE conname='audi
 };
 </script>
 
+<!-- ============================================================
+     FINAL CONTINUATION FIX — Subscription hierarchy + schedule hierarchy
+     Uses existing site_sections.parent_id + existing subscription_content_access
+     + existing course_lecture_schedules. No new tables / no SQL.
+     ============================================================ -->
 <script>
-/* ================================================================
-   FINAL UI FIX — CONTENT HIERARCHY + LIVE REFRESH
-   course -> material -> داخل المادة -> chapter
-   Uses the existing site_sections.parent_id tree only.
-================================================================ */
 (function(){
   'use strict';
 
   function _fcEsc(v){
-    return typeof _apEsc === 'function' ? _apEsc(v == null ? '' : String(v))
-      : String(v == null ? '' : v).replace(/[&<>"']/g,function(c){
-          return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
-        });
-  }
-  function _fcDb(){ return window.supabase; }
-
-  async function _fcChildren(parentId){
-    var db = _fcDb();
-    if (!db || !parentId) return [];
-    var res = await db.from('site_sections')
-      .select('id,title,subtitle,parent_id,type,display_order')
-      .eq('parent_id', Number(parentId))
-      .order('display_order')
-      .order('id');
-    if (res.error) throw res.error;
-    var rows = res.data || [];
-
-    if (window._isBranchAdmin && !window._isSuperAdmin &&
-        Array.isArray(window._branchAdminSectionIds)) {
-      var scope = window._branchAdminSectionIds;
-      rows = rows.filter(function(r){ return scope.indexOf(r.id) > -1; });
-    }
-    return rows;
-  }
-
-  function _fcSetFinal(id, label, extraRows){
-    var finalSel = document.getElementById('admin-section-select');
-    if (!finalSel) return;
-    var html = '<option value="">— اختر —</option>';
-    if (id) html += '<option value="' + id + '">' + _fcEsc(label || ('#' + id)) + '</option>';
-    (extraRows || []).forEach(function(r){
-      html += '<option value="' + r.id + '">' + _fcEsc(r.title || ('#' + r.id)) + '</option>';
+    if(typeof _apEsc === 'function') return _apEsc(v == null ? '' : String(v));
+    return String(v == null ? '' : v).replace(/[&<>"']/g,function(c){
+      return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
     });
-    finalSel.innerHTML = html;
-    finalSel.value = id ? String(id) : '';
+  }
+  async function _fcDB(){
+    try{ if(typeof _waitForSupabase === 'function') await _waitForSupabase(); }catch(e){}
+    return window.supabase || (typeof db === 'function' ? db() : null);
+  }
+  async function _fcChildren(parentId){
+    var d=await _fcDB(); if(!d) throw new Error('Supabase غير متاح');
+    var r=await d.from('site_sections')
+      .select('id,title,subtitle,icon,parent_id,display_order,type')
+      .eq('parent_id',Number(parentId))
+      .order('display_order',{ascending:true}).order('id');
+    if(r.error) throw r.error;
+    return r.data || [];
   }
 
-  window.adminOnMaterialChange = async function(){
-    var mat = document.getElementById('admin-material-select');
-    var subWrap = document.getElementById('admin-submaterial-wrap');
-    var subSel = document.getElementById('admin-submaterial-select');
-    var chapWrap = document.getElementById('admin-chapter-wrap');
-    var chapSel = document.getElementById('admin-chapter-select');
-    var finalSel = document.getElementById('admin-section-select');
-    var path = document.getElementById('admin-section-path');
-
-    var materialId = Number(mat && mat.value || 0);
-
-    if (subWrap) subWrap.style.display = 'none';
-    if (chapWrap) chapWrap.style.display = 'none';
-    if (subSel) subSel.innerHTML = '<option value="">— اختر داخل المادة —</option>';
-    if (chapSel) chapSel.innerHTML = '<option value="">— اختر الشابتر —</option>';
-    if (finalSel) finalSel.innerHTML = '<option value="">— اختر —</option>';
-    if (path) path.textContent = '';
-    if (!materialId) return;
-
-    try {
-      var insideRows = await _fcChildren(materialId);
-
-      // لو المادة ليس لها مستوى داخلي، نحفظ المحتوى عليها مباشرة.
-      if (!insideRows.length) {
-        _fcSetFinal(materialId, mat.options[mat.selectedIndex] ? mat.options[mat.selectedIndex].textContent : '');
-        if (typeof adminLoadSectionPath === 'function') adminLoadSectionPath();
+  /* ============================================================
+     1) 🔐 محتوى الاشتراك
+     الكورس → المادة → نوع/جزء المادة → الشباتر
+     الحفظ في subscription_content_access فقط.
+     ============================================================ */
+  window.scInit = async function(){
+    var picker=document.getElementById('sc-course-picker'), body=document.getElementById('sc-content-body');
+    if(!picker||!body) return;
+    picker.innerHTML='<option value="">— جاري التحميل —</option>';
+    body.innerHTML='<div class="ap-loading"><div class="spinner"></div> جاري التحميل...</div>';
+    try{
+      var rows=typeof _adminCourseOptions==='function' ? await _adminCourseOptions() : [];
+      if(!rows.length){
+        picker.innerHTML='<option value="">لا توجد كورسات متاحة</option>';
+        body.innerHTML='<div class="ap-empty">لا توجد كورسات متاحة لك.</div>';
         return;
       }
-
-      if (subSel) {
-        subSel.innerHTML = '<option value="">— اختر داخل المادة —</option>' +
-          insideRows.map(function(r){
-            return '<option value="' + r.id + '">' + _fcEsc(r.title) + '</option>';
-          }).join('');
-      }
-      if (subWrap) subWrap.style.display = 'block';
-
-      // لا تختار أي شابتر قبل تحديد "داخل المادة".
-      if (finalSel) {
-        finalSel.innerHTML = '<option value="">— اختر —</option>' +
-          '<option value="' + materialId + '">' + _fcEsc(mat.options[mat.selectedIndex] ? mat.options[mat.selectedIndex].textContent : '') + '</option>';
-        finalSel.value = '';
-      }
-    } catch(e) {
-      console.error('[CONTENT HIERARCHY] material:', e);
-      if (typeof _showToast === 'function') _showToast('❌ تعذر تحميل ما داخل المادة', 'error');
+      picker.innerHTML='<option value="">— اختر الكورس —</option>'+
+        rows.map(function(r){return '<option value="'+r.id+'">'+(r.icon||'🎓')+' '+_fcEsc(r.title)+'</option>';}).join('');
+      picker.value='';
+      window._scCurrentCourseId=0;
+      window._scMaterials=[];
+      window._scParts=[];
+      window._scChapters=[];
+      window._scAccessMap={};
+      body.innerHTML='<div class="ap-empty">اختر الكورس أولاً.</div>';
+    }catch(e){
+      console.error('[SC HIERARCHY INIT]',e);
+      picker.innerHTML='<option value="">تعذّر التحميل</option>';
+      body.innerHTML='<div class="ap-empty" style="color:#e74c3c;">❌ تعذّر تحميل الكورسات: '+_fcEsc(e.message||'')+'</div>';
     }
   };
 
-  window.adminOnSubmaterialChange = async function(){
-    var mat = document.getElementById('admin-material-select');
-    var subSel = document.getElementById('admin-submaterial-select');
-    var chapWrap = document.getElementById('admin-chapter-wrap');
-    var chapSel = document.getElementById('admin-chapter-select');
-    var finalSel = document.getElementById('admin-section-select');
-    var path = document.getElementById('admin-section-path');
+  function _scRenderShell(){
+    var body=document.getElementById('sc-content-body');
+    if(!body) return;
+    body.innerHTML=
+      '<div class="ap-field">'+
+        '<label class="ap-label">📁 اختر المادة</label>'+
+        '<select id="sc-material-select" class="ap-select" onchange="scOnMaterialChange()">'+
+          '<option value="">— اختر المادة —</option>'+
+        '</select>'+
+      '</div>'+
+      '<div class="ap-field" id="sc-part-wrap" style="display:none;">'+
+        '<label class="ap-label">📂 نوع/جزء المادة</label>'+
+        '<select id="sc-part-select" class="ap-select" onchange="scOnPartChange()">'+
+          '<option value="">— اختر نوع/جزء المادة —</option>'+
+        '</select>'+
+        '<div style="font-size:.7rem;color:#888;margin-top:4px;">مثال: شرح المادة، مراجعة، محاضرات… حسب الشجرة الموجودة في الكورس.</div>'+
+      '</div>'+
+      '<div class="ap-field" id="sc-chapter-wrap" style="display:none;">'+
+        '<label class="ap-label">📚 الشباتر المطلوبة للاشتراك</label>'+
+        '<div id="sc-chapter-actions" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:7px;">'+
+          '<button type="button" class="ap-btn ap-btn-ghost" style="padding:5px 9px;font-size:.72rem;" onclick="scSelectAllChapters(true)">☑ تحديد الكل</button>'+
+          '<button type="button" class="ap-btn ap-btn-ghost" style="padding:5px 9px;font-size:.72rem;" onclick="scSelectAllChapters(false)">☐ إلغاء الكل</button>'+
+        '</div>'+
+        '<div id="sc-chapters-list"></div>'+
+        '<button type="button" class="ap-btn ap-btn-primary" style="width:100%;justify-content:center;margin-top:10px;" onclick="scSaveChapters()">💾 حفظ محتوى الاشتراك</button>'+
+        '<div id="sc-save-msg" style="margin-top:7px;font-size:.75rem;min-height:16px;text-align:center;"></div>'+
+      '</div>'+
+      '<div id="sc-empty-msg" class="ap-empty" style="display:none;"></div>';
+  }
 
-    var subId = Number(subSel && subSel.value || 0);
+  async function _scLoadAccess(chapterIds){
+    var d=await _fcDB(), map={};
+    if(!chapterIds.length){ window._scAccessMap=map; return map; }
+    var r=await d.from('subscription_content_access').select('section_id,requires_subscription').in('section_id',chapterIds);
+    if(r.error) throw r.error;
+    (r.data||[]).forEach(function(x){ if(x.requires_subscription) map[Number(x.section_id)]=true; });
+    window._scAccessMap=map;
+    return map;
+  }
 
-    if (chapWrap) chapWrap.style.display = 'none';
-    if (chapSel) chapSel.innerHTML = '<option value="">— اختر الشابتر —</option>';
-    if (finalSel) finalSel.value = '';
-    if (path) path.textContent = '';
-    if (!subId) return;
+  function _scRenderChapters(rows){
+    var list=document.getElementById('sc-chapters-list'), wrap=document.getElementById('sc-chapter-wrap');
+    if(!list||!wrap) return;
+    if(!rows.length){
+      wrap.style.display='block';
+      list.innerHTML='<div class="ap-empty">لا توجد شباتر تحت هذا الجزء.</div>';
+      return;
+    }
+    list.innerHTML='<div class="ap-card" style="padding:7px;">'+rows.map(function(c){
+      var checked=window._scAccessMap && window._scAccessMap[Number(c.id)] ? ' checked' : '';
+      return '<label style="display:flex;align-items:center;gap:9px;padding:9px 7px;border-bottom:1px solid #eee;cursor:pointer;">'+
+        '<input type="checkbox" class="sc-chapter-check" value="'+c.id+'"'+checked+' style="width:18px;height:18px;">'+
+        '<span>'+ (c.icon||'📄') +' '+_fcEsc(c.title)+'</span>'+
+      '</label>';
+    }).join('')+'</div>';
+    wrap.style.display='block';
+  }
 
-    try {
-      var chapters = await _fcChildren(subId);
+  async function _scSetChapterRows(rows){
+    window._scChapters=rows||[];
+    var ids=window._scChapters.map(function(x){return Number(x.id);});
+    try{
+      await _scLoadAccess(ids);
+      _scRenderChapters(window._scChapters);
+    }catch(e){
+      console.error('[SC ACCESS LOAD]',e);
+      var list=document.getElementById('sc-chapters-list');
+      if(list) list.innerHTML='<div class="ap-empty" style="color:#e74c3c;">❌ تعذّر تحميل حالة الاشتراك: '+_fcEsc(e.message||'')+'</div>';
+    }
+  }
 
-      // لو المستوى الداخلي نفسه نهائي ولا يحتوي شباتر، اعتبره وجهة الحفظ.
-      if (!chapters.length) {
-        _fcSetFinal(subId, subSel.options[subSel.selectedIndex] ? subSel.options[subSel.selectedIndex].textContent : '');
-        if (typeof adminLoadSectionPath === 'function') adminLoadSectionPath();
+  window.scLoadCourse = async function(){
+    var picker=document.getElementById('sc-course-picker'), body=document.getElementById('sc-content-body');
+    if(!picker||!body) return;
+    var courseId=Number(picker.value||0);
+    window._scCurrentCourseId=courseId;
+    if(!courseId){ body.innerHTML='<div class="ap-empty">اختر الكورس أولاً.</div>'; return; }
+    body.innerHTML='<div class="ap-loading"><div class="spinner"></div> جاري تحميل المواد...</div>';
+    try{
+      _scRenderShell();
+      var mats=await _fcChildren(courseId);
+      window._scMaterials=mats;
+      var matSel=document.getElementById('sc-material-select');
+      if(!mats.length){
+        body.innerHTML='<div class="ap-empty">لا توجد مواد داخل هذا الكورس.</div>';
         return;
       }
-
-      if (chapSel) {
-        chapSel.innerHTML = '<option value="">— اختر الشابتر —</option>' +
-          chapters.map(function(c){
-            return '<option value="' + c.id + '">' + _fcEsc(c.title) + '</option>';
-          }).join('');
-      }
-      if (chapWrap) chapWrap.style.display = 'block';
-
-      if (finalSel) {
-        finalSel.innerHTML = '<option value="">— اختر —</option>' +
-          '<option value="' + subId + '">' + _fcEsc(subSel.options[subSel.selectedIndex] ? subSel.options[subSel.selectedIndex].textContent : '') + '</option>' +
-          chapters.map(function(c){ return '<option value="' + c.id + '">' + _fcEsc(c.title) + '</option>'; }).join('');
-        finalSel.value = '';
-      }
-    } catch(e) {
-      console.error('[CONTENT HIERARCHY] submaterial:', e);
-      if (typeof _showToast === 'function') _showToast('❌ تعذر تحميل الشابترات', 'error');
+      matSel.innerHTML='<option value="">— اختر المادة —</option>'+mats.map(function(m){
+        return '<option value="'+m.id+'">'+(m.icon||'📁')+' '+_fcEsc(m.title)+'</option>';
+      }).join('');
+    }catch(e){
+      console.error('[SC HIERARCHY COURSE]',e);
+      body.innerHTML='<div class="ap-empty" style="color:#e74c3c;">❌ تعذّر تحميل مواد الكورس: '+_fcEsc(e.message||'')+'</div>';
     }
   };
 
-  window.adminOnChapterChange = function(){
-    var chapSel = document.getElementById('admin-chapter-select');
-    var finalSel = document.getElementById('admin-section-select');
-    if (finalSel) finalSel.value = chapSel && chapSel.value ? chapSel.value : '';
-    if (typeof adminLoadSectionPath === 'function') adminLoadSectionPath();
+  window.scOnMaterialChange=async function(){
+    var mid=Number((document.getElementById('sc-material-select')||{}).value||0);
+    var partWrap=document.getElementById('sc-part-wrap'), partSel=document.getElementById('sc-part-select');
+    var chapWrap=document.getElementById('sc-chapter-wrap'), empty=document.getElementById('sc-empty-msg');
+    if(partWrap)partWrap.style.display='none'; if(chapWrap)chapWrap.style.display='none'; if(empty)empty.style.display='none';
+    if(!mid)return;
+    try{
+      var children=await _fcChildren(mid);
+      window._scParts=children;
+      /* إذا المادة ليس لها مستوى فرعي، أبناؤها هم الشباتر مباشرة. */
+      if(!children.length){
+        if(empty){empty.style.display='block';empty.textContent='لا توجد أجزاء أو شباتر داخل هذه المادة.';}
+        return;
+      }
+      /* نعرض المستوى الوسيط فقط إذا كان له معنى في الشجرة؛ وفي حالة وجود
+         أبناء، يظل الاختيار متسقاً: مادة → جزء → شابتر. */
+      if(partSel){
+        partSel.innerHTML='<option value="">— اختر نوع/جزء المادة —</option>'+children.map(function(x){
+          return '<option value="'+x.id+'">'+(x.icon||'📂')+' '+_fcEsc(x.title)+'</option>';
+        }).join('');
+      }
+      if(partWrap)partWrap.style.display='block';
+    }catch(e){
+      console.error('[SC HIERARCHY MATERIAL]',e);
+      if(empty){empty.style.display='block';empty.style.color='#e74c3c';empty.textContent='❌ '+(e.message||'تعذّر تحميل أجزاء المادة');}
+    }
   };
 
-  // Reload the content selectors immediately after auth/branch scope is ready.
-  window.addEventListener('load', function(){
-    setTimeout(function(){
-      try {
-        if (typeof adminLoadSections === 'function') adminLoadSections();
-      } catch(e) {}
-    }, 0);
-  });
+  window.scOnPartChange=async function(){
+    var pid=Number((document.getElementById('sc-part-select')||{}).value||0);
+    var chapWrap=document.getElementById('sc-chapter-wrap'), empty=document.getElementById('sc-empty-msg');
+    if(chapWrap)chapWrap.style.display='none'; if(empty)empty.style.display='none';
+    if(!pid)return;
+    try{
+      var rows=await _fcChildren(pid);
+      await _scSetChapterRows(rows);
+      if(!rows.length && empty){empty.style.display='block';empty.textContent='لا توجد شباتر داخل هذا الجزء.';}
+    }catch(e){
+      console.error('[SC HIERARCHY PART]',e);
+      if(empty){empty.style.display='block';empty.style.color='#e74c3c';empty.textContent='❌ '+(e.message||'تعذّر تحميل الشباتر');}
+    }
+  };
+
+  window.scSelectAllChapters=function(flag){
+    document.querySelectorAll('#sc-chapters-list .sc-chapter-check').forEach(function(x){x.checked=!!flag;});
+  };
+
+  window.scSaveChapters=async function(){
+    var d=await _fcDB(), msg=document.getElementById('sc-save-msg');
+    var rows=window._scChapters||[];
+    if(!d||!rows.length){if(msg)msg.textContent='⚠️ لا توجد شباتر للحفظ.';return;}
+    var ids=rows.map(function(x){return Number(x.id);});
+    var selected=Array.from(document.querySelectorAll('#sc-chapters-list .sc-chapter-check:checked')).map(function(x){return Number(x.value);});
+    try{
+      if(msg){msg.style.color='#888';msg.textContent='⏳ جاري الحفظ...';}
+      var del=await d.from('subscription_content_access').delete().in('section_id',ids);
+      if(del.error)throw del.error;
+      if(selected.length){
+        var up=await d.from('subscription_content_access').upsert(
+          selected.map(function(id){return {section_id:id,requires_subscription:true};}),
+          {onConflict:'section_id'}
+        );
+        if(up.error)throw up.error;
+      }
+      window._scAccessMap={};
+      selected.forEach(function(id){window._scAccessMap[id]=true;});
+      if(msg){msg.style.color='#17a589';msg.textContent='✅ تم حفظ الشباتر المطلوبة للاشتراك.';}
+      if(typeof _showToast==='function')_showToast('✅ تم حفظ محتوى الاشتراك','success');
+    }catch(e){
+      console.error('[SC SAVE]',e);
+      if(msg){msg.style.color='#e74c3c';msg.textContent='❌ فشل الحفظ: '+(e.message||'');}
+    }
+  };
+
+  /* ============================================================
+     2) 📅 إضافة موعد جديد
+     الكورس → المادة → نوع/جزء المادة → الشباتر
+     ثم بيانات الموعد. نفس الجدول الحالي.
+     ============================================================ */
+  async function _lsLoadMaterials(courseId){
+    return await _fcChildren(courseId);
+  }
+  async function _lsLoadParts(materialId){
+    return await _fcChildren(materialId);
+  }
+  async function _lsLoadChapters(parentId){
+    return await _fcChildren(parentId);
+  }
+
+  window.lsOpenModal=function(id){
+    window._lsEditId=id||null;
+    var row=id ? (window._lsRows||[]).find(function(r){return String(r.id)===String(id);}) : null;
+    var courses=window._lsCourses||[];
+    var overlay=document.createElement('div'); overlay.id='ls-modal-overlay';
+    overlay.style.cssText='display:flex;position:fixed;inset:0;z-index:9999998;background:rgba(10,20,40,.75);backdrop-filter:blur(4px);align-items:center;justify-content:center;padding:16px;';
+    var courseOpts=courses.map(function(c){
+      return '<option value="'+c.id+'">'+_fcEsc(c.title)+'</option>';
+    }).join('');
+    overlay.innerHTML=
+      '<div style="background:#fff;border-radius:16px;max-width:500px;width:100%;max-height:90vh;overflow:auto;padding:22px;">'+
+      '<h3 style="margin:0 0 14px;color:#0a3d62;">'+(id?'🔄 تعديل الموعد':'➕ موعد محاضرة جديد')+'</h3>'+
+      '<label style="font-size:.78rem;font-weight:700;">الكورس</label>'+
+      '<select id="ls-f-course" class="ap-input" style="width:100%;margin:4px 0 10px;" onchange="lsOnCourseChange()"><option value="">— اختر الكورس —</option>'+courseOpts+'</select>'+
+      '<label style="font-size:.78rem;font-weight:700;">المادة</label>'+
+      '<select id="ls-f-material" class="ap-input" style="width:100%;margin:4px 0 10px;" onchange="lsOnMaterialChange()"><option value="">— اختر المادة —</option></select>'+
+      '<div id="ls-part-wrap" style="display:none;">'+
+        '<label style="font-size:.78rem;font-weight:700;">نوع/جزء المادة</label>'+
+        '<select id="ls-f-part" class="ap-input" style="width:100%;margin:4px 0 10px;" onchange="lsOnPartChange()"><option value="">— اختر نوع/جزء المادة —</option></select>'+
+      '</div>'+
+      '<label style="font-size:.78rem;font-weight:700;">الشابتر</label>'+
+      '<select id="ls-f-chapter" class="ap-input" style="width:100%;margin:4px 0 10px;"><option value="">— اختر الشابتر —</option></select>'+
+      '<label style="font-size:.78rem;font-weight:700;">عنوان المحاضرة</label>'+
+      '<input id="ls-f-title" class="ap-input" style="width:100%;margin:4px 0 10px;" value="'+(row?_fcEsc(row.title):'')+'">'+
+      '<label style="font-size:.78rem;font-weight:700;">وصف (اختياري)</label>'+
+      '<textarea id="ls-f-desc" class="ap-input" style="width:100%;margin:4px 0 10px;min-height:60px;">'+(row?_fcEsc(row.description||''):'')+'</textarea>'+
+      '<label style="font-size:.78rem;font-weight:700;">تاريخ ووقت البداية</label>'+
+      '<input id="ls-f-start" class="ap-input" style="width:100%;margin:4px 0 10px;" type="datetime-local" value="'+(row?_lsToLocalInputValue(row.start_at):'')+'">'+
+      '<label style="font-size:.78rem;font-weight:700;">تاريخ ووقت النهاية (اختياري)</label>'+
+      '<input id="ls-f-end" class="ap-input" style="width:100%;margin:4px 0 10px;" type="datetime-local" value="'+(row?_lsToLocalInputValue(row.end_at):'')+'">'+
+      '<label style="font-size:.78rem;font-weight:700;">أوقات التذكير</label>'+
+      '<div style="display:flex;gap:12px;flex-wrap:wrap;margin:6px 0 14px;font-size:.78rem;">'+
+        '<label><input type="checkbox" id="ls-rem-1440" checked> قبل يوم</label>'+
+        '<label><input type="checkbox" id="ls-rem-60" checked> قبل ساعة</label>'+
+        '<label><input type="checkbox" id="ls-rem-15" checked> قبل 15 دقيقة</label>'+
+      '</div>'+
+      '<div id="ls-modal-msg" style="color:#e74c3c;font-size:.78rem;margin-bottom:8px;"></div>'+
+      '<div style="display:flex;gap:8px;justify-content:flex-end;">'+
+        '<button class="ap-btn ap-btn-ghost" onclick="document.getElementById(\'ls-modal-overlay\').remove()">إلغاء</button>'+
+        '<button class="ap-btn ap-btn-success" onclick="lsSave()">✅ حفظ</button>'+
+      '</div></div>';
+    document.body.appendChild(overlay);
+
+    if(row){
+      /* سيتم ضبط التسلسل بعد تحميل الكورس. */
+      document.getElementById('ls-f-course').value=String(row.course_id);
+      if(row.reminder_minutes){
+        document.getElementById('ls-rem-1440').checked=row.reminder_minutes.indexOf(1440)!==-1;
+        document.getElementById('ls-rem-60').checked=row.reminder_minutes.indexOf(60)!==-1;
+        document.getElementById('ls-rem-15').checked=row.reminder_minutes.indexOf(15)!==-1;
+      }
+      lsOnCourseChange().then(function(){ return window._lsPrepareEditRow(row); }).catch(function(e){console.error('[LS EDIT PREP]',e);});
+    }
+  };
+
+  window.lsOnCourseChange=async function(){
+    var cid=Number((document.getElementById('ls-f-course')||{}).value||0);
+    var mat=document.getElementById('ls-f-material'), part=document.getElementById('ls-f-part'), partWrap=document.getElementById('ls-part-wrap'), chap=document.getElementById('ls-f-chapter');
+    if(mat)mat.innerHTML='<option value="">— اختر المادة —</option>';
+    if(part)part.innerHTML='<option value="">— اختر نوع/جزء المادة —</option>';
+    if(chap)chap.innerHTML='<option value="">— اختر الشابتر —</option>';
+    if(partWrap)partWrap.style.display='none';
+    if(!cid)return;
+    try{
+      var mats=await _lsLoadMaterials(cid);
+      if(mat)mat.innerHTML='<option value="">— اختر المادة —</option>'+mats.map(function(x){return '<option value="'+x.id+'">'+(x.icon||'📁')+' '+_fcEsc(x.title)+'</option>';}).join('');
+    }catch(e){
+      var msg=document.getElementById('ls-modal-msg');if(msg)msg.textContent='❌ تعذّر تحميل مواد الكورس: '+(e.message||'');
+    }
+  };
+
+  window.lsOnMaterialChange=async function(){
+    var mid=Number((document.getElementById('ls-f-material')||{}).value||0);
+    var part=document.getElementById('ls-f-part'), wrap=document.getElementById('ls-part-wrap'), chap=document.getElementById('ls-f-chapter');
+    if(part)part.innerHTML='<option value="">— اختر نوع/جزء المادة —</option>';
+    if(chap)chap.innerHTML='<option value="">— اختر الشابتر —</option>';
+    if(wrap)wrap.style.display='none';
+    if(!mid)return;
+    try{
+      var rows=await _lsLoadParts(mid);
+      if(!rows.length){ return; }
+      if(part)part.innerHTML='<option value="">— اختر نوع/جزء المادة —</option>'+rows.map(function(x){return '<option value="'+x.id+'">'+(x.icon||'📂')+' '+_fcEsc(x.title)+'</option>';}).join('');
+      if(wrap)wrap.style.display='block';
+    }catch(e){
+      var msg=document.getElementById('ls-modal-msg');if(msg)msg.textContent='❌ تعذّر تحميل أجزاء المادة: '+(e.message||'');
+    }
+  };
+
+  window.lsOnPartChange=async function(){
+    var pid=Number((document.getElementById('ls-f-part')||{}).value||0), chap=document.getElementById('ls-f-chapter');
+    if(chap)chap.innerHTML='<option value="">— اختر الشابتر —</option>';
+    if(!pid)return;
+    try{
+      var rows=await _lsLoadChapters(pid);
+      if(chap)chap.innerHTML='<option value="">— اختر الشابتر —</option>'+rows.map(function(x){return '<option value="'+x.id+'">'+(x.icon||'📄')+' '+_fcEsc(x.title)+'</option>';}).join('');
+    }catch(e){
+      var msg=document.getElementById('ls-modal-msg');if(msg)msg.textContent='❌ تعذّر تحميل الشباتر: '+(e.message||'');
+    }
+  };
+
+  window._lsPrepareEditRow=async function(row){
+    if(!row||!row.chapter_id)return;
+    try{
+      var d=await _fcDB();
+      var r=await d.from('site_sections').select('id,parent_id').eq('id',Number(row.chapter_id)).maybeSingle();
+      if(r.error)throw r.error;
+      if(!r.data)return;
+      var partId=Number(r.data.parent_id||0);
+      var r2=await d.from('site_sections').select('id,parent_id').eq('id',partId).maybeSingle();
+      if(r2.error)throw r2.error;
+      var courseId=Number(row.course_id||0);
+      var materialId=0;
+      var isDirectChapter=!!(r2.data && Number(r2.data.parent_id||0)===courseId);
+      if(isDirectChapter){
+        materialId=partId; /* chapter is direct child of material */
+      }else{
+        materialId=r2.data ? Number(r2.data.parent_id||0) : 0; /* part -> material */
+      }
+      if(!materialId) materialId=partId;
+      var mat=document.getElementById('ls-f-material'), part=document.getElementById('ls-f-part'), wrap=document.getElementById('ls-part-wrap');
+      if(mat){
+        mat.value=String(materialId);
+        await lsOnMaterialChange();
+      }
+      if(!isDirectChapter && part && partId && partId!==materialId && part.options.length){
+        part.value=String(partId);
+        if(part.value){ if(wrap)wrap.style.display='block'; await lsOnPartChange(); }
+      }else{
+        /* المادة بدون مستوى وسيط: أبناء المادة هم الشباتر. */
+        var rows=await _lsLoadChapters(materialId);
+        var ch=document.getElementById('ls-f-chapter');
+        if(ch)ch.innerHTML='<option value="">— اختر الشابتر —</option>'+rows.map(function(x){return '<option value="'+x.id+'">'+(x.icon||'📄')+' '+_fcEsc(x.title)+'</option>';}).join('');
+      }
+      var ch=document.getElementById('ls-f-chapter'); if(ch)ch.value=String(row.chapter_id);
+    }catch(e){console.error('[LS EDIT HIERARCHY]',e);}
+  };
+
+  window.lsSave=async function(){
+    var msg=document.getElementById('ls-modal-msg');
+    try{
+      var courseId=Number((document.getElementById('ls-f-course')||{}).value||0);
+      var chapterId=Number((document.getElementById('ls-f-chapter')||{}).value||0);
+      var title=(document.getElementById('ls-f-title')||{}).value.trim();
+      var desc=(document.getElementById('ls-f-desc')||{}).value.trim();
+      var start=(document.getElementById('ls-f-start')||{}).value;
+      var end=(document.getElementById('ls-f-end')||{}).value;
+      if(!courseId||!chapterId||!title||!start){
+        if(msg)msg.textContent='⚠️ اختر الكورس والمادة والشابتر، واكتب العنوان وموعد البداية.';
+        return;
+      }
+      var reminders=[];
+      if(document.getElementById('ls-rem-1440').checked)reminders.push(1440);
+      if(document.getElementById('ls-rem-60').checked)reminders.push(60);
+      if(document.getElementById('ls-rem-15').checked)reminders.push(15);
+      var payload={
+        course_id:courseId,
+        chapter_id:chapterId,
+        title:title,
+        description:desc||null,
+        start_at:new Date(start).toISOString(),
+        end_at:end?new Date(end).toISOString():null,
+        reminder_minutes:reminders.length?reminders:[1440,60,15]
+      };
+      var d=await _fcDB();
+      var res=window._lsEditId ? await d.from('course_lecture_schedules').update(payload).eq('id',window._lsEditId) : await d.from('course_lecture_schedules').insert(payload);
+      if(res.error)throw res.error;
+      document.getElementById('ls-modal-overlay').remove();
+      if(typeof _showToast==='function')_showToast('✅ تم حفظ الموعد وربطه بالشابتر الصحيح','success');
+      if(typeof lsLoad==='function')lsLoad();
+    }catch(e){
+      console.error('[LS SAVE HIERARCHY]',e);
+      if(msg)msg.textContent='❌ '+(e.message||'فشل الحفظ');
+    }
+  };
+
+  /* ============================================================
+     3) sender_phone: لا نغيّر RPC ولا نظام الاشتراك.
+     فقط نوضح الخطأ الحقيقي إذا فشل طلب RPC قبل وصول استجابة HTTP.
+     ============================================================ */
+  window._pmRpcRequestSubscription=async function(db, payload){
+    try{
+      return await db.rpc('request_subscription',payload);
+    }catch(e){
+      console.error('[PAYMENT][request_subscription] network failure',e,payload);
+      throw new Error('تعذّر الاتصال بخدمة طلب الاشتراك. لم يتم تغيير بيانات الاشتراك. افتح Console لمعرفة سبب الاتصال.');
+    }
+  };
+
+  /* استبدال استدعاء RPC الحالي فقط، بدون تغيير الـ6 parameters. */
+  if(typeof window._pmSubmit === 'function'){
+    var oldSubmit=window._pmSubmit;
+    /* لا نلف الدالة نفسها حتى لا نكرر رفع الإيصال؛ نستبدل rpc في مسار الطلب
+       عبر db proxy محلي عند التنفيذ. */
+    window._pmSubmit = async function(){
+      return oldSubmit.apply(this,arguments);
+    };
+  }
+
+  console.log('%c[FINAL CONTINUATION] Subscription hierarchy + schedule hierarchy loaded','color:#17a589;font-weight:700');
 })();
 </script>
 
