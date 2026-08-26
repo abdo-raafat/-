@@ -10429,7 +10429,10 @@ function _applyBranchAdminPanelGating() {
   var capNav = document.getElementById('ap-tab-courseAdminPhone');
   if (capNav) capNav.style.display = 'none';
   var ownerNav = document.getElementById('ap-tab-ownerAssistant');
-  if (ownerNav) ownerNav.style.display = isOwnerActive ? '' : 'none';
+  if (ownerNav) {
+    // Owner الكورس فقط يرى زر إضافة الأدمن المساعد؛ الأدمن المساعد العادي لا يراه.
+    ownerNav.style.display = (isOwnerActive && !window._isSuperAdmin) ? '' : 'none';
+  }
 
   var notifTab = document.getElementById('ap-tab-notifications');
   if (notifTab) notifTab.style.display = 'none';
@@ -10722,15 +10725,28 @@ window.capInit = async function(){
   var phone=document.getElementById('cap-phone-input');
   var msg=document.getElementById('cap-save-msg');
   if(!sel) return;
-  if(!window._isSuperAdmin){
+  // 📱 هذه الصفحة خاصة بـOwner المنصة فقط. Owner المنصة الحقيقي هو profiles.role='admin'،
+  // وليس _isSuperAdmin إذا كان الاسم الداخلي مختلفًا في الواجهة.
+  // لا نمنح أدمن الكورس/branch_admin صلاحية الوصول هنا.
+  var _canManageCoursePhones = window._isSuperAdmin === true ||
+    (window._currentUserProfile && window._currentUserProfile.role === 'admin') ||
+    window._currentUserRole === 'admin';
+  if(!_canManageCoursePhones){
     sel.innerHTML='<option value="">غير متاح</option>';
-    if(msg) msg.textContent='⛔ هذه الصفحة متاحة للـOwner / أدمن المنصة فقط.';
+    if(msg) msg.textContent='⛔ هذه الصفحة متاحة لمالك المنصة فقط.';
     return;
   }
   sel.innerHTML='<option value="">— جاري تحميل الكورسات —</option>';
   if(msg) msg.textContent='';
   try{
-    var rows=await _adminCourseOptions();
+    // لا نعتمد على requires_subscription هنا؛ رقم الدكتور خاص بالكورس نفسه،
+    // ولذلك يجب أن تظهر كل الصفوف التي تمثل كورسًا فعليًا في site_sections.
+    var {data: rows, error: rowsErr}=await window.supabase
+      .from('site_sections')
+      .select('id,title,icon,course_admin_phone,type,parent_id')
+      .eq('type','course')
+      .order('title');
+    if(rowsErr) throw rowsErr;
     window._capCourses=rows||[];
     if(!rows.length){sel.innerHTML='<option value="">لا توجد كورسات</option>';if(phone)phone.value='';return;}
     sel.innerHTML='<option value="">— اختر الكورس —</option>'+rows.map(function(c){return '<option value="'+c.id+'">'+(c.icon||'📚')+' '+_apEsc(c.title)+'</option>';}).join('');
@@ -10752,7 +10768,10 @@ window.capLoadCourse = async function(){
 };
 window.capSave = async function(){
   var sel=document.getElementById('cap-course-select'),phone=document.getElementById('cap-phone-input'),msg=document.getElementById('cap-save-msg');
-  if(!window._isSuperAdmin){return;}
+  var _canManageCoursePhones = window._isSuperAdmin === true ||
+    (window._currentUserProfile && window._currentUserProfile.role === 'admin') ||
+    window._currentUserRole === 'admin';
+  if(!_canManageCoursePhones){return;}
   var id=Number(sel&&sel.value||0), value=(phone&&phone.value||'').trim();
   if(!id){if(msg){msg.style.color='#e74c3c';msg.textContent='❌ اختر الكورس أولاً';}return;}
   if(msg){msg.style.color='#667';msg.textContent='⏳ جاري الحفظ...';}
@@ -10763,6 +10782,14 @@ window.capSave = async function(){
     if(row)row.course_admin_phone=value||null;
     if(msg){msg.style.color='#17a589';msg.textContent='✅ تم حفظ رقم أدمن/دكتور الكورس بنجاح';}
     if(typeof _showToast==='function')_showToast('✅ تم حفظ رقم الكورس','success');
+    // إعادة تحميل البيانات من Supabase بعد الحفظ للتأكد أن القيمة المعروضة هي القيمة الفعلية.
+    var _savedCourseId = id;
+    await capInit();
+    var _reloadedSel = document.getElementById('cap-course-select');
+    if (_reloadedSel) {
+      _reloadedSel.value = String(_savedCourseId);
+      await capLoadCourse();
+    }
   }catch(e){
     console.error('[CourseAdminPhone] save',e);
     if(msg){msg.style.color='#e74c3c';msg.textContent='❌ فشل الحفظ: '+_apEsc(e.message||'');}
@@ -10770,6 +10797,17 @@ window.capSave = async function(){
 };
 
 // ➕ Owner: زر مستقل تحت لوحة المعلومات يفتح نفس مودال إضافة الأدمن المساعد الموجود بالفعل.
+// صلاحية واجهة موحّدة: Owner للكورس أو Owner المنصة فقط.
+window._canCurrentUserAddCourseAssistant = function(sectionId){
+  var id = Number(sectionId || window._branchAdminCourseId || 0);
+  if (window._isSuperAdmin === true) return true;
+  if (window._branchAdminActiveRole === 'owner' && id) return true;
+  var roots = Array.isArray(window._branchAdminRoots) ? window._branchAdminRoots : [];
+  return !!roots.find(function(r){
+    return Number(r && r.id) === id && (r.role === 'owner' || (r.permissions && r.permissions.can_manage_admins === true));
+  });
+};
+
 window.openOwnerAssistantFromNav = function(){
   if(window._isSuperAdmin || window._branchAdminActiveRole!=='owner') return;
   var id=Number(window._branchAdminCourseId || window._activeSectionId || ((window._branchAdminOwnSectionIds||[])[0]) || 0);
@@ -25192,15 +25230,16 @@ var labels=document.querySelectorAll('#admin-panel .ap-label');labels.forEach(fu
         // يحصل هنا فقط على زر مستقل لإضافة أدمن مساعد لشعبته/كورسه هو تحديداً —
         // نفس المودال الموجود بالفعل (baOpenAssignModal mode='add')، بدون أي واجهة
         // إضافية جديدة ولا مساس بصف الـOwner نفسه (لا تعيين/تغيير/حذف Owner من هنا).
-        if (!window._isSuperAdmin && window._branchAdminActiveRole === 'owner') {
-          var ownerSectionId = window._branchAdminCourseId || ownIds[0];
+        var ownerSectionId = window._branchAdminCourseId || ownIds[0];
+        if (window._canCurrentUserAddCourseAssistant(ownerSectionId)) {
+          var _ownerSectionIdForButton = ownerSectionId;
           var ownerSectionTitle = (function(){
             var r = (window._branchAdminRoots||[]).find(function(x){ return Number(x.id) === Number(ownerSectionId); });
             return (r && r.title) || ('#' + ownerSectionId);
           })();
           var ownerTitleEsc = String(ownerSectionTitle).replace(/'/g, "\'");
           act.innerHTML += '<div style="margin-top:14px;"><button class="ap-btn ap-btn-success" '
-            + 'onclick="baOpenAssignModal(' + Number(ownerSectionId) + ', \'' + ownerTitleEsc + '\', \'add\')">'
+            + 'onclick="baOpenAssignModal(' + Number(_ownerSectionIdForButton) + ', \'' + ownerTitleEsc + '\', \'add\')">'
             + '➕ إضافة أدمن مساعد</button></div>';
         }
       }
