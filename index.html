@@ -4257,14 +4257,30 @@ async function _renderDynamicSectionPage(sec) {
   // يظهر أصلاً إذا كان الحقل فارغاً/غير موجود.
   var adminPhoneEl = document.getElementById('dynamic-section-admin-phone');
   if (adminPhoneEl) {
-    var coursePhone = (sec && sec.course_admin_phone) ? String(sec.course_admin_phone).trim() : '';
-    adminPhoneEl.innerHTML = coursePhone
-      ? '<div style="background:#eefaf6;border:1px solid #b8e6d8;border-radius:12px;padding:12px 16px;margin:10px 0;text-align:center;">'
-        + '<div style="font-size:.85rem;color:#0a3d62;font-weight:700;margin-bottom:4px;">للتواصل والاستفسار</div>'
-        + '<div style="font-size:.8rem;color:#555;margin-bottom:8px;">تواصل مع دكتور الكورس</div>'
-        + '<a href="tel:' + coursePhone.replace(/[^0-9+]/g,'') + '" style="display:inline-block;background:linear-gradient(135deg,#0a3d62,#17a589);color:#fff;text-decoration:none;padding:8px 20px;border-radius:20px;font-weight:700;font-size:.9rem;direction:ltr;">📞 ' + coursePhone + '</a>'
-        + '</div>'
-      : '';
+    // نضمن قراءة الرقم من صف الكورس نفسه حتى لو كانت الصفحة الحالية وصلت
+    // للقسم من مسار/قائمة استخدمت select محدودًا ولم تحمل course_admin_phone.
+    (async function(){
+      var coursePhone = (sec && sec.course_admin_phone) ? String(sec.course_admin_phone).trim() : '';
+      if (!coursePhone && sec && sec.id && window.supabase) {
+        try {
+          var phoneRes = await window.supabase.from('site_sections')
+            .select('course_admin_phone,type')
+            .eq('id', Number(sec.id)).maybeSingle();
+          if (!phoneRes.error && phoneRes.data && phoneRes.data.course_admin_phone) {
+            coursePhone = String(phoneRes.data.course_admin_phone).trim();
+          }
+        } catch(_phoneErr) {
+          console.warn('[COURSE PHONE] تعذر تحميل رقم دكتور الكورس:', _phoneErr && _phoneErr.message);
+        }
+      }
+      adminPhoneEl.innerHTML = coursePhone
+        ? '<div style="background:linear-gradient(135deg,#eefaf6,#f5fbff);border:1px solid #b8e6d8;border-radius:14px;padding:13px 16px;margin:10px 0;text-align:center;box-shadow:0 4px 14px rgba(10,61,98,.06);">'
+          + '<div style="font-size:.85rem;color:#0a3d62;font-weight:800;margin-bottom:4px;">📱 للتواصل والاستفسار عن الكورس</div>'
+          + '<div style="font-size:.8rem;color:#555;margin-bottom:9px;">تواصل مع أدمن/دكتور الكورس</div>'
+          + '<a href="tel:' + coursePhone.replace(/[^0-9+]/g,'') + '" style="display:inline-block;background:linear-gradient(135deg,#0a3d62,#17a589);color:#fff;text-decoration:none;padding:9px 22px;border-radius:22px;font-weight:800;font-size:.92rem;direction:ltr;">📞 ' + _apEsc(coursePhone) + '</a>'
+          + '</div>'
+        : '';
+    })();
   }
 
   showLoading('dynamic-section-grid');
@@ -7926,44 +7942,36 @@ window.checkBanStatus = async function(email) {
 .ap-close-btn:hover { background: rgba(255,255,255,.35); }
 
 /* Nav Tabs */
-.ap-nav {
-  display: flex;
-  background: var(--bg-card, #fff);
-  border-bottom: 2px solid #e3eaf5;
-  overflow-x: auto;
-  gap: 0;
-  scrollbar-width: none;
+.ap-workspace { display:flex; min-height:0; background:var(--bg-card,#fff); }
+.ap-sidebar {
+  width:245px; flex:0 0 245px; background:linear-gradient(180deg,#f8fbfe 0%,#f2f7fb 100%);
+  border-left:1px solid #e3eaf5; border-right:1px solid #e3eaf5; padding:12px 10px;
+  overflow-y:auto; max-height:calc(100vh - 190px);
 }
-.ap-nav::-webkit-scrollbar { display: none; }
-/* ✅ FIX (Aug 2026): على الشاشات الواسعة (كمبيوتر) كانت التبويبات الزايدة عن
-   عرض الشاشة بتتخفي فورا لأن .ap-nav بيعتمد على overflow-x:auto بدون أي
-   scrollbar ظاهر (scrollbar-width:none) — فالمستخدم مكانش عارف إنه لازم
-   يعمل سحب أفقي (على الموبايل السحب باللمس طبيعي فكل التبويبات كانت
-   بتظهر بالتمرير، لكن على الكمبيوتر مفيش أي إشارة إن فيه المزيد). الحل:
-   من عرض معين وفوق نخلي التبويبات تعمل wrap على أكتر من سطر بدل ما تتقص. */
-@media (min-width: 900px) {
-  .ap-nav {
-    flex-wrap: wrap;
-    overflow-x: visible;
-  }
-}
+.ap-sidebar-title { font-weight:900; color:#0a3d62; font-size:.9rem; padding:8px 10px 12px; }
+.ap-nav-group { margin:0 0 12px; }
+.ap-nav-group-title { font-size:.67rem; font-weight:900; color:#8292a3; padding:7px 10px 5px; letter-spacing:.1px; }
+.ap-nav { display:flex; flex-direction:column; gap:3px; background:transparent; border:0; }
 .ap-nav-btn {
-  padding: 13px 18px;
-  border: none;
-  background: transparent;
-  color: #666;
-  font-family: inherit;
-  font-size: .82rem;
-  font-weight: 700;
-  cursor: pointer;
-  white-space: nowrap;
-  border-bottom: 3px solid transparent;
-  margin-bottom: -2px;
-  transition: color .2s, border-color .2s;
-  display: flex; align-items: center; gap: 6px;
+  width:100%; min-height:40px; padding:9px 10px; border:1px solid transparent; border-radius:10px;
+  background:transparent; color:#5f6d7b; font-family:inherit; font-size:.78rem; font-weight:700;
+  cursor:pointer; white-space:normal; text-align:right; transition:all .18s; display:flex;
+  align-items:center; gap:8px; direction:rtl;
 }
-.ap-nav-btn:hover { color: #0a3d62; }
-.ap-nav-btn.active { color: #0a3d62; border-bottom-color: #0a3d62; }
+.ap-nav-btn span { flex:1; }
+.ap-nav-btn:hover { color:#0a3d62; background:#eaf4fb; border-color:#d7e8f5; transform:translateX(-1px); }
+.ap-nav-btn.active { color:#0a3d62; background:linear-gradient(135deg,#e6f3fb,#eefaf6); border-color:#b8ddea; box-shadow:0 3px 10px rgba(10,61,98,.07); }
+.ap-body { flex:1; min-width:0; }
+@media (max-width: 899px) {
+  .ap-workspace { display:block; }
+  .ap-sidebar { width:auto; max-height:none; padding:8px; border:0; border-bottom:1px solid #e3eaf5; }
+  .ap-sidebar-title { display:none; }
+  .ap-nav-group { margin:0; }
+  .ap-nav-group-title { display:none; }
+  .ap-nav { flex-direction:row; overflow-x:auto; scrollbar-width:none; }
+  .ap-nav::-webkit-scrollbar { display:none; }
+  .ap-nav-btn { width:auto; min-width:max-content; border-radius:9px; padding:9px 12px; white-space:nowrap; }
+}
 
 /* Body */
 .ap-body { padding: 24px; min-height: 400px; }
@@ -8328,34 +8336,60 @@ window.checkBanStatus = async function(email) {
       <div id="ap-quick-search-results" style="display:none;position:relative;"></div>
     </div>
 
-    <!-- Navigation Tabs -->
-    <nav class="ap-nav" role="tablist">
-      <button class="ap-nav-btn active" onclick="apSwitchTab('dashboard')" id="ap-tab-dashboard" role="tab">📊 Dashboard</button>
-      <button class="ap-nav-btn" onclick="apSwitchTab('notifications')" id="ap-tab-notifications" role="tab">🔔 الإشعارات</button>
-      <button class="ap-nav-btn" onclick="apSwitchTab('requests')"  id="ap-tab-requests"  role="tab">📝 Requests</button>
-      <button class="ap-nav-btn" onclick="apSwitchTab('divsubs')"   id="ap-tab-divsubs"   role="tab">🎓 إدارة الاشتراكات</button>
-      <button class="ap-nav-btn" onclick="apSwitchTab('payments')"  id="ap-tab-payments"  role="tab">💳 إدارة المدفوعات</button>
-      <button class="ap-nav-btn" onclick="apSwitchTab('sectionsmgmt')" id="ap-tab-sectionsmgmt" role="tab">🗂️ الشعب / المواد / الفصول</button>
-      <button class="ap-nav-btn" onclick="apSwitchTab('paths')"      id="ap-tab-paths"      role="tab">🎯 إدارة المسارات</button>
-      <button class="ap-nav-btn" onclick="apSwitchTab('ads')"       id="ap-tab-ads"        role="tab">📢 إدارة الإعلانات</button>
-      <button class="ap-nav-btn" onclick="apSwitchTab('monthlystats')" id="ap-tab-monthlystats" role="tab">📈 إحصائيات شهرية</button>
-      <button class="ap-nav-btn" onclick="apSwitchTab('usermgmt')"  id="ap-tab-usermgmt"  role="tab">👥 إدارة المستخدمين</button>
-      <button class="ap-nav-btn" onclick="apSwitchTab('users')"     id="ap-tab-users"     role="tab">🔒 الحظر</button>
-      <button class="ap-nav-btn" onclick="apSwitchTab('messages')"  id="ap-tab-messages"  role="tab">💬 الرسائل</button>
-      <button class="ap-nav-btn" onclick="apSwitchTab('content')"   id="ap-tab-content"   role="tab">➕ المحتوى</button>
-      <button class="ap-nav-btn" onclick="apSwitchTab('subcontent')" id="ap-tab-subcontent" role="tab">🔐 محتوى الاشتراك</button>
-      <button class="ap-nav-btn" onclick="apSwitchTab('quizzes')"   id="ap-tab-quizzes"   role="tab">📝 الاختبارات</button>
-      <button class="ap-nav-btn" onclick="apSwitchTab('courseStudents')" id="ap-tab-courseStudents" role="tab">👥 الطلاب</button>
-      <button class="ap-nav-btn" onclick="apSwitchTab('courseStats')" id="ap-tab-courseStats" role="tab">📊 إحصائيات</button>
-      <button class="ap-nav-btn" onclick="apSwitchTab('branchsettings')" id="ap-tab-branchsettings" role="tab">⚙️ إعدادات الشعبة</button>
-      <button class="ap-nav-btn" onclick="apSwitchTab('studentlevels')" id="ap-tab-studentlevels" role="tab">📈 مستويات الطلاب</button>
-      <button class="ap-nav-btn" onclick="apSwitchTab('platformSettings')" id="ap-tab-platformSettings" role="tab">⚙️ إعدادات المنصة</button>
-      <button class="ap-nav-btn" onclick="apSwitchTab('sectionchat')" id="ap-tab-sectionchat" role="tab">💬 محادثة الكورس</button>
-      <button class="ap-nav-btn" onclick="apSwitchTab('branchadmins')" id="ap-tab-branchadmins" role="tab">🛡️ أدمن الكورسات</button>
-      <button class="ap-nav-btn" onclick="apSwitchTab('lectures')" id="ap-tab-lectures" role="tab">📅 مواعيد المحاضرات</button>
-      <button class="ap-nav-btn" onclick="apSwitchTab('announcements')" id="ap-tab-announcements" role="tab">📢 إعلانات الكورس</button>
-      <button class="ap-nav-btn" onclick="apSwitchTab('auditlog')" id="ap-tab-auditlog" role="tab">🧾 سجل العمليات</button>
-    </nav>
+    <!-- Navigation Tabs — organized sidebar -->
+    <div class="ap-workspace">
+      <aside class="ap-sidebar" aria-label="أقسام لوحة التحكم">
+        <div class="ap-sidebar-title">🧭 أقسام الإدارة</div>
+
+        <div class="ap-nav-group">
+          <div class="ap-nav-group-title">الرئيسية</div>
+          <button class="ap-nav-btn active" onclick="apSwitchTab('dashboard')" id="ap-tab-dashboard" role="tab">📊 <span>لوحة المعلومات</span></button>
+          <button class="ap-nav-btn" onclick="apSwitchTab('notifications')" id="ap-tab-notifications" role="tab">🔔 <span>الإشعارات</span></button>
+        </div>
+
+        <div class="ap-nav-group">
+          <div class="ap-nav-group-title">💳 الاشتراكات والمدفوعات</div>
+          <button class="ap-nav-btn" onclick="apSwitchTab('requests')" id="ap-tab-requests" role="tab">📝 <span>طلبات الاشتراك</span></button>
+          <button class="ap-nav-btn" onclick="apSwitchTab('divsubs')" id="ap-tab-divsubs" role="tab">🎓 <span>إدارة الاشتراكات</span></button>
+          <button class="ap-nav-btn" onclick="apSwitchTab('payments')" id="ap-tab-payments" role="tab">💳 <span>إدارة المدفوعات</span></button>
+        </div>
+
+        <div class="ap-nav-group">
+          <div class="ap-nav-group-title">📚 المحتوى والتعليم</div>
+          <button class="ap-nav-btn" onclick="apSwitchTab('sectionsmgmt')" id="ap-tab-sectionsmgmt" role="tab">🗂️ <span>الشعب / المواد / الفصول</span></button>
+          <button class="ap-nav-btn" onclick="apSwitchTab('content')" id="ap-tab-content" role="tab">➕ <span>المحتوى</span></button>
+          <button class="ap-nav-btn" onclick="apSwitchTab('subcontent')" id="ap-tab-subcontent" role="tab">🔐 <span>محتوى الاشتراك</span></button>
+          <button class="ap-nav-btn" onclick="apSwitchTab('quizzes')" id="ap-tab-quizzes" role="tab">📝 <span>الاختبارات</span></button>
+          <button class="ap-nav-btn" onclick="apSwitchTab('paths')" id="ap-tab-paths" role="tab">🎯 <span>المسارات التعليمية</span></button>
+          <button class="ap-nav-btn" onclick="apSwitchTab('lectures')" id="ap-tab-lectures" role="tab">📅 <span>مواعيد المحاضرات</span></button>
+        </div>
+
+        <div class="ap-nav-group">
+          <div class="ap-nav-group-title">👥 الطلاب والمستخدمون</div>
+          <button class="ap-nav-btn" onclick="apSwitchTab('courseStudents')" id="ap-tab-courseStudents" role="tab">👥 <span>طلاب الكورس</span></button>
+          <button class="ap-nav-btn" onclick="apSwitchTab('courseStats')" id="ap-tab-courseStats" role="tab">📊 <span>إحصائيات الكورس</span></button>
+          <button class="ap-nav-btn" onclick="apSwitchTab('studentlevels')" id="ap-tab-studentlevels" role="tab">📈 <span>مستويات الطلاب</span></button>
+          <button class="ap-nav-btn" onclick="apSwitchTab('usermgmt')" id="ap-tab-usermgmt" role="tab">👥 <span>إدارة المستخدمين</span></button>
+          <button class="ap-nav-btn" onclick="apSwitchTab('users')" id="ap-tab-users" role="tab">🔒 <span>الحظر</span></button>
+        </div>
+
+        <div class="ap-nav-group">
+          <div class="ap-nav-group-title">💬 التواصل والإعلانات</div>
+          <button class="ap-nav-btn" onclick="apSwitchTab('messages')" id="ap-tab-messages" role="tab">💬 <span>الرسائل</span></button>
+          <button class="ap-nav-btn" onclick="apSwitchTab('sectionchat')" id="ap-tab-sectionchat" role="tab">💬 <span>محادثة الكورس</span></button>
+          <button class="ap-nav-btn" onclick="apSwitchTab('ads')" id="ap-tab-ads" role="tab">📢 <span>إدارة إعلانات المنصة</span></button>
+          <button class="ap-nav-btn" onclick="apSwitchTab('announcements')" id="ap-tab-announcements" role="tab">📢 <span>إعلانات الكورس</span></button>
+        </div>
+
+        <div class="ap-nav-group">
+          <div class="ap-nav-group-title">⚙️ الإدارة والإعدادات</div>
+          <button class="ap-nav-btn" onclick="apSwitchTab('branchsettings')" id="ap-tab-branchsettings" role="tab">⚙️ <span>إعدادات الكورس</span></button>
+          <button class="ap-nav-btn" onclick="apSwitchTab('platformSettings')" id="ap-tab-platformSettings" role="tab">⚙️ <span>إعدادات المنصة</span></button>
+          <button class="ap-nav-btn" onclick="apSwitchTab('branchadmins')" id="ap-tab-branchadmins" role="tab">🛡️ <span>أدمن الكورسات</span></button>
+          <button class="ap-nav-btn" onclick="apSwitchTab('monthlystats')" id="ap-tab-monthlystats" role="tab">📈 <span>إحصائيات شهرية</span></button>
+          <button class="ap-nav-btn" onclick="apSwitchTab('auditlog')" id="ap-tab-auditlog" role="tab">🧾 <span>سجل العمليات</span></button>
+        </div>
+      </aside>
 
     <!-- Body -->
     <div class="ap-body">
@@ -8517,7 +8551,11 @@ window.checkBanStatus = async function(email) {
               </div>
               <div class="ap-field"><label class="ap-label">التصنيف (Category) — اختياري</label><input class="ap-input" id="sm-f-category" type="text"></div>
               <div class="ap-field"><label class="ap-label">Tags — اختياري (مفصولة بفاصلة)</label><input class="ap-input" id="sm-f-tags" type="text"></div>
-              <div class="ap-field" id="sm-course-admin-phone-wrap"><label class="ap-label">📱 رقم أدمن/دكتور الكورس — اختياري (يظهر للطلاب داخل هذا القسم فقط) — إدارة المنصة فقط</label><input class="ap-input" id="sm-f-course-admin-phone" type="text" style="direction:ltr;text-align:right;" placeholder="01xxxxxxxxx"></div>
+              <div class="ap-field" id="sm-course-admin-phone-wrap" style="display:block;">
+  <label class="ap-label">📱 رقم أدمن/دكتور الكورس</label>
+  <input class="ap-input" id="sm-f-course-admin-phone" type="tel" inputmode="tel" autocomplete="tel" style="direction:ltr;text-align:right;" placeholder="01xxxxxxxxx">
+  <div style="font-size:.68rem;color:#7b8794;margin-top:4px;">يظهر للطلاب داخل هذا الكورس فقط. هذا الحقل متاح لأدمن المنصة (Owner) فقط.</div>
+</div>
               <div class="ap-field" style="display:flex;align-items:center;gap:8px;background:#eefaf6;border:1px solid #b8e6d8;border-radius:10px;padding:10px 12px;">
                 <input type="checkbox" id="sm-f-is-course" style="width:auto;">
                 <label class="ap-label" style="margin:0;" for="sm-f-is-course">📚 هذا العنصر دورة (Course) — يظهر في صفحة "الدورات"</label>
@@ -9472,6 +9510,7 @@ window.checkBanStatus = async function(email) {
     <div class="qz-modal-body" id="qz-student-body">
       <!-- محتوى ديناميكي: شاشة البدء / الأسئلة / شاشة المراجعة -->
     </div>
+    </div>
   </div>
 </div>
 
@@ -10301,7 +10340,7 @@ function _applyBranchAdminPanelGating() {
     // ✅ حقل رقم أدمن/دكتور الكورس داخل "🗂️ الشعب/المواد/الفصول" يظل خاصًا بلوحة
     // تحكم المنصة فقط (أدمن المنصة الحقيقي، وليس أدمن الكورس/الشعبة) — يظهر هنا.
     var cpWrap0 = document.getElementById('sm-course-admin-phone-wrap');
-    if (cpWrap0) cpWrap0.style.display = '';
+    if (cpWrap0) { cpWrap0.style.display = 'block'; cpWrap0.classList.add('platform-only-phone'); }
     return;
   }
 
@@ -10316,7 +10355,7 @@ function _applyBranchAdminPanelGating() {
   // ✅ حقل رقم أدمن/دكتور الكورس يبقى مقصورًا على لوحة تحكم المنصة فقط — يُخفى من
   // أدمن الكورس/الشعبة حتى لو كان يملك صلاحية الوصول لتاب "الشعب/المواد/الفصول".
   var cpWrap = document.getElementById('sm-course-admin-phone-wrap');
-  if (cpWrap) cpWrap.style.display = 'none';
+  if (cpWrap) { cpWrap.style.display = 'none'; cpWrap.classList.remove('platform-only-phone'); }
   var pathsTab = document.getElementById('ap-tab-paths');
   if (pathsTab) pathsTab.style.display = (perms.can_manage_materials || perms.can_manage_chapters) ? '' : 'none';
   // ✅ جديد: "🔐 محتوى الاشتراك" — نفس نطاق صلاحية "المحتوى/الشعب" (اختيار أي
@@ -24490,10 +24529,10 @@ async function courseRoots(){
   // مش في وسم type الذي يديره أدمن المنصة يدويًا وقد يُنسى.
   if(isBranch()){
     var cid=courseId(); if(!cid)return [];
-    var rBranch=await db().from('site_sections').select('id,title,icon,type,parent_id,display_order,requires_subscription').eq('id',cid);
+    var rBranch=await db().from('site_sections').select('id,title,icon,type,parent_id,display_order,requires_subscription,course_admin_phone').eq('id',cid);
     if(rBranch.error)throw rBranch.error; return rBranch.data||[];
   }
-  var q=db().from('site_sections').select('id,title,icon,type,parent_id,display_order,requires_subscription').eq('type','course').order('display_order').order('id');
+  var q=db().from('site_sections').select('id,title,icon,type,parent_id,display_order,requires_subscription,course_admin_phone').eq('type','course').order('display_order').order('id');
   var r=await q; if(r.error)throw r.error; return r.data||[];
 }
 async function materialsForCourses(){
@@ -24608,10 +24647,10 @@ var labels=document.querySelectorAll('#admin-panel .ap-label');labels.forEach(fu
     // العمود غير مضبوط للقسم رغم أنه معيّن فعليًا كورس عبر section_admins).
     if(window._isBranchAdmin && !window._isSuperAdmin){
       var cid=await getCourseId(); if(!cid)return [];
-      var rB=await d.from('site_sections').select('id,title,subtitle,type,parent_id,display_order,requires_subscription,payment_method,payment_number,price').eq('id',cid);
+      var rB=await d.from('site_sections').select('id,title,subtitle,type,parent_id,display_order,requires_subscription,payment_method,payment_number,price,course_admin_phone').eq('id',cid);
       if(rB.error)throw rB.error; return rB.data||[];
     }
-    var q=d.from('site_sections').select('id,title,subtitle,type,parent_id,display_order,requires_subscription,payment_method,payment_number,price').eq('type','course').order('display_order').order('id');
+    var q=d.from('site_sections').select('id,title,subtitle,type,parent_id,display_order,requires_subscription,payment_method,payment_number,price,course_admin_phone').eq('type','course').order('display_order').order('id');
     var r=await q; if(r.error)throw r.error; return r.data||[];
   }
   async function finalMaterials(){
