@@ -6227,6 +6227,7 @@ const ResourceViewer = (function() {
             <button type="button" data-media-seek="-10">↶ 10ث</button>
             <button type="button" data-media-seek="10">10ث ↷</button>
             <label>السرعة <select data-media-speed><option value="0.5">0.5x</option><option value="0.75">0.75x</option><option value="1" selected>1x</option><option value="1.25">1.25x</option><option value="1.5">1.5x</option><option value="1.75">1.75x</option><option value="2">2x</option></select></label>
+            <button type="button" class="rv-fs-toggle-btn" onclick="ResourceViewer._toggleFullscreen()" title="تكبير / ملء الشاشة">⛶ تكبير</button>
             <span data-media-time>00:00 / --:--</span>
           </div>`;
 
@@ -6254,11 +6255,10 @@ const ResourceViewer = (function() {
           ></iframe>
           ${type === 'embed_video' ? `
           <div class="rv-media-tools rv-embed-tools" data-embed-tools="video">
-            <button type="button" data-embed-play>▶️ تشغيل</button>
             <button type="button" data-embed-seek="-10">↶ 10ث</button>
             <button type="button" data-embed-seek="10">10ث ↷</button>
-            <button type="button" data-embed-fullscreen>⛶ Fullscreen</button>
             <label>السرعة <select data-embed-speed><option value="0.5">0.5x</option><option value="0.75">0.75x</option><option value="1" selected>1x</option><option value="1.25">1.25x</option><option value="1.5">1.5x</option><option value="1.75">1.75x</option><option value="2">2x</option></select></label>
+            <button type="button" class="rv-fs-toggle-btn" onclick="ResourceViewer._toggleFullscreen()" title="تكبير / ملء الشاشة">⛶ تكبير</button>
             <span class="rv-embed-control-note">إن كان المشغل الخارجي يدعم التحكم</span>
           </div>` : ''}`;
       }
@@ -6311,6 +6311,7 @@ const ResourceViewer = (function() {
               <button type="button" data-media-seek="-10">↶ 10ث</button>
               <button type="button" data-media-seek="10">10ث ↷</button>
               <label>السرعة <select data-media-speed><option value="0.5">0.5x</option><option value="0.75">0.75x</option><option value="1" selected>1x</option><option value="1.25">1.25x</option><option value="1.5">1.5x</option><option value="1.75">1.75x</option><option value="2">2x</option></select></label>
+              <button type="button" class="rv-fs-toggle-btn" onclick="ResourceViewer._toggleFullscreen()" title="تكبير / ملء الشاشة">⛶ تكبير</button>
               <span data-media-time>00:00 / --:--</span>
             </div>
           </div>`;
@@ -6468,19 +6469,7 @@ const ResourceViewer = (function() {
     });
 
     // إغلاق بـ ESC
-    document._rvKeyHandler = function(e) {
-      if (e.key !== 'Escape') return;
-      // ESC first exits browser fullscreen; only a second ESC closes the viewer.
-      var fsEl = document.fullscreenElement || document.webkitFullscreenElement;
-      if (fsEl) {
-        try {
-          var exit = document.exitFullscreen || document.webkitExitFullscreen;
-          if (exit) exit.call(document);
-        } catch (err) { console.warn('[Fullscreen] ESC exit:', err && err.message); }
-        return;
-      }
-      close();
-    };
+    document._rvKeyHandler = function(e) { if (e.key === 'Escape') close(); };
     document.addEventListener('keydown', document._rvKeyHandler);
 
     document.body.appendChild(overlay);
@@ -6528,36 +6517,17 @@ const ResourceViewer = (function() {
     var iframe = root && root.querySelector('#rv-embed-iframe');
     var tools = root && root.querySelector('[data-embed-tools]');
     if (!iframe || !tools) return;
-
-    // Embed controls are best-effort only. We never try to bypass Same-Origin Policy.
-    // Providers that support postMessage may respond; providers that do not simply ignore it.
     function send(cmd, value) {
-      try {
-        if (!iframe.contentWindow) return;
-        iframe.contentWindow.postMessage({event:'command', func:cmd, args:[value]}, '*');
-        // Common player-style messages used by some providers.
-        iframe.contentWindow.postMessage({type:'command', action:cmd, value:value}, '*');
-      } catch(e) { /* cross-origin messaging is intentionally best-effort */ }
+      try { if (iframe.contentWindow) iframe.contentWindow.postMessage({event:'command', func:cmd, args:[value]}, '*'); } catch(e) {}
     }
-    var playBtn = tools.querySelector('[data-embed-play]');
-    var playing = false;
-    if (playBtn) playBtn.addEventListener('click', function(){
-      playing = !playing;
-      send(playing ? 'playVideo' : 'pauseVideo');
-      playBtn.textContent = playing ? '⏸️ إيقاف' : '▶️ تشغيل';
-    });
     tools.querySelectorAll('[data-embed-seek]').forEach(function(btn){
       btn.addEventListener('click', function(){
-        var delta = Number(btn.getAttribute('data-embed-seek')) || 0;
+        var delta=Number(btn.getAttribute('data-embed-seek'))||0;
         send(delta < 0 ? 'seekBackward' : 'seekForward', Math.abs(delta));
       });
     });
-    var speed = tools.querySelector('[data-embed-speed]');
-    if (speed) speed.addEventListener('change', function(){
-      send('setPlaybackRate', Number(speed.value) || 1);
-    });
-    var fsBtn = tools.querySelector('[data-embed-fullscreen]');
-    if (fsBtn) fsBtn.addEventListener('click', function(){ _toggleFullscreen(); });
+    var speed=tools.querySelector('[data-embed-speed]');
+    if(speed) speed.addEventListener('change', function(){ send('setPlaybackRate', Number(speed.value)||1); });
   }
 
   function _setupMediaControls(root) {
@@ -6648,78 +6618,77 @@ const ResourceViewer = (function() {
 
     try {
       const fsEl = document.fullscreenElement || document.webkitFullscreenElement;
-      if (fsEl) {
+      if (!fsEl) {
+        // الفيديو المباشر: ادخل ملء الشاشة على عنصر الفيديو نفسه.
+        // Embed: ادخل ملء الشاشة على الـiframe نفسه أولًا.
+        // fallback: المودال كاملًا إذا منع المتصفح Fullscreen للعنصر.
+        var target =
+          document.getElementById('rv-embed-iframe') ||
+          document.getElementById('rv-video-el') ||
+          modal;
+
+        var req =
+          target.requestFullscreen ||
+          target.webkitRequestFullscreen ||
+          modal.requestFullscreen ||
+          modal.webkitRequestFullscreen;
+
+        if (!req) {
+          console.warn('[Fullscreen] Fullscreen API غير مدعوم في هذا المتصفح.');
+          return;
+        }
+
+        var result = req.call(target);
+        if (result && typeof result.catch === 'function') {
+          result.catch(function(err) {
+            // محاولة أخيرة: Fullscreen للمودال.
+            try {
+              var fallbackReq = modal.requestFullscreen || modal.webkitRequestFullscreen;
+              if (fallbackReq && target !== modal) {
+                var fallbackResult = fallbackReq.call(modal);
+                if (fallbackResult && typeof fallbackResult.catch === 'function') {
+                  fallbackResult.catch(function(e2) {
+                    console.warn('[Fullscreen]', e2 && e2.message);
+                  });
+                }
+              } else {
+                console.warn('[Fullscreen]', err && err.message);
+              }
+            } catch (e2) {
+              console.warn('[Fullscreen]', e2 && e2.message);
+            }
+          });
+        }
+      } else {
         var exit = document.exitFullscreen || document.webkitExitFullscreen;
         if (exit) {
           var exitResult = exit.call(document);
-          if (exitResult && typeof exitResult.catch === 'function') exitResult.catch(function(err){
-            console.warn('[Fullscreen] exit:', err && err.message);
-          });
-        }
-        return;
-      }
-
-      var iframe = document.getElementById('rv-embed-iframe');
-      var video = document.getElementById('rv-video-el');
-      // Direct video -> video element. Embed -> iframe element. This preserves the
-      // native player/fullscreen behavior instead of faking fullscreen with CSS.
-      var target = iframe || video || modal;
-      var req = target.requestFullscreen || target.webkitRequestFullscreen || target.webkitEnterFullscreen;
-      if (!req) {
-        // Final fallback for browsers that only allow the modal itself.
-        req = modal.requestFullscreen || modal.webkitRequestFullscreen || modal.webkitEnterFullscreen;
-        target = modal;
-      }
-      if (!req) {
-        console.warn('[Fullscreen] Fullscreen API غير مدعوم في هذا المتصفح.');
-        return;
-      }
-
-      var result = req.call(target);
-      if (result && typeof result.catch === 'function') {
-        result.catch(function(err) {
-          // If the iframe/player rejects fullscreen, try the modal without attempting
-          // to access iframe internals or bypass Same-Origin Policy.
-          if (target !== modal) {
-            try {
-              var fallbackReq = modal.requestFullscreen || modal.webkitRequestFullscreen;
-              if (fallbackReq) {
-                var fallbackResult = fallbackReq.call(modal);
-                if (fallbackResult && typeof fallbackResult.catch === 'function') {
-                  fallbackResult.catch(function(e2){ console.warn('[Fullscreen]', e2 && e2.message); });
-                }
-                return;
-              }
-            } catch(e2) { console.warn('[Fullscreen]', e2 && e2.message); }
+          if (exitResult && typeof exitResult.catch === 'function') {
+            exitResult.catch(function(err) {
+              console.warn('[Fullscreen]', err && err.message);
+            });
           }
-          console.warn('[Fullscreen]', err && err.message);
-        });
+        }
       }
     } catch(e) {
       console.warn('[Fullscreen]', e && e.message);
     }
   }
 
-  // تحديث شكل زر ملء الشاشة بعد دخول/خروج Fullscreen فعليًا،
-  // بدل الاعتماد على الضغط فقط.
+  // تحديث شكل زر/أزرار ملء الشاشة بعد دخول/خروج Fullscreen فعليًا،
+  // بدل الاعتماد على الضغط فقط. يشمل زر الهيدر وأي زر "⛶ تكبير" داخل شريط الأدوات.
+  function _updateFsButtons() {
+    var isFs = !!(document.fullscreenElement || document.webkitFullscreenElement);
+    var headerBtn = document.getElementById('rv-fs-btn');
+    if (headerBtn) headerBtn.textContent = isFs ? '✕' : '⛶';
+    document.querySelectorAll('.rv-fs-toggle-btn').forEach(function(b) {
+      b.textContent = isFs ? '✕ تصغير' : '⛶ تكبير';
+    });
+  }
   if (!document._rvFullscreenBound) {
     document._rvFullscreenBound = true;
-    document.addEventListener('fullscreenchange', function() {
-      const btn = document.getElementById('rv-fs-btn');
-      if (!btn) return;
-      btn.textContent =
-        (document.fullscreenElement || document.webkitFullscreenElement)
-          ? '✕'
-          : '⛶';
-    });
-    document.addEventListener('webkitfullscreenchange', function() {
-      const btn = document.getElementById('rv-fs-btn');
-      if (!btn) return;
-      btn.textContent =
-        (document.fullscreenElement || document.webkitFullscreenElement)
-          ? '✕'
-          : '⛶';
-    });
+    document.addEventListener('fullscreenchange', _updateFsButtons);
+    document.addEventListener('webkitfullscreenchange', _updateFsButtons);
   }
 
   // ✅ حماية موحّدة لفشل تشغيل الفيديو/الصوت (رابط منتهي/معطوب/ملف مفقود)
@@ -8072,6 +8041,7 @@ window.checkBanStatus = async function(email) {
     overflow-x: visible;
   }
 }
+.ap-nav-btn.owner-only-nav, .ap-nav-btn.platform-only-nav { display:none; }
 .ap-nav-btn {
   padding: 13px 18px;
   border: none;
@@ -8456,6 +8426,8 @@ window.checkBanStatus = async function(email) {
     <!-- Navigation Tabs -->
     <nav class="ap-nav" role="tablist">
       <button class="ap-nav-btn active" onclick="apSwitchTab('dashboard')" id="ap-tab-dashboard" role="tab">📊 Dashboard</button>
+      <button class="ap-nav-btn platform-only-nav" onclick="apSwitchTab('courseAdminPhone')" id="ap-tab-courseAdminPhone" role="tab">📱 <span>رقم أدمن / دكتور الكورس</span></button>
+      <button class="ap-nav-btn owner-only-nav" onclick="openOwnerAssistantFromNav()" id="ap-tab-ownerAssistant" role="button">➕ <span>إضافة أدمن مساعد</span></button>
       <button class="ap-nav-btn" onclick="apSwitchTab('notifications')" id="ap-tab-notifications" role="tab">🔔 الإشعارات</button>
       <button class="ap-nav-btn" onclick="apSwitchTab('requests')"  id="ap-tab-requests"  role="tab">📝 Requests</button>
       <button class="ap-nav-btn" onclick="apSwitchTab('divsubs')"   id="ap-tab-divsubs"   role="tab">🎓 إدارة الاشتراكات</button>
@@ -8497,19 +8469,36 @@ window.checkBanStatus = async function(email) {
           <div class="ap-stat-card"><div class="ap-stat-icon">💬</div><div class="ap-stat-num" id="ap-stat-msgs">—</div><div class="ap-stat-lbl">الرسائل</div></div>
           <div class="ap-stat-card"><div class="ap-stat-icon">📁</div><div class="ap-stat-num" id="ap-stat-content">—</div><div class="ap-stat-lbl">عناصر المحتوى</div></div>
         </div>
-        <div id="ap-course-admin-tools" class="ap-card" style="margin-top:18px;display:none;">
-          <div class="ap-section-heading" style="margin:0 0 10px;border:none;padding:0;">📱 رقم أدمن / دكتور الكورس</div>
-          <div style="font-size:.76rem;color:#7a8794;margin-bottom:10px;">لصاحب المنصة فقط — يتم الحفظ مباشرة في site_sections.course_admin_phone.</div>
-          <div style="display:grid;grid-template-columns:minmax(220px,1fr) minmax(180px,260px) auto;gap:10px;align-items:end;">
-            <div><label class="ap-label">الكورس</label><select id="ap-course-admin-phone-course" class="ap-input"></select></div>
-            <div><label class="ap-label">رقم الأدمن / الدكتور</label><input id="ap-course-admin-phone-value" class="ap-input" type="tel" inputmode="tel" placeholder="أدخل الرقم"></div>
-            <button id="ap-course-admin-phone-save" class="ap-btn ap-btn-primary" onclick="apSaveCourseAdminPhone()">💾 حفظ</button>
-          </div>
-          <div id="ap-course-admin-phone-msg" style="margin-top:8px;font-size:.78rem;min-height:18px;"></div>
-        </div>
         <div class="ap-section-heading" style="margin-top:20px;">🕐 آخر النشاطات</div>
         <div id="ap-recent-activity">
           <div class="ap-loading"><div class="spinner"></div> جاري التحميل...</div>
+        </div>
+      </div>
+
+      <!-- ═══════════════════ TAB: COURSE ADMIN PHONE ═══════════════════ -->
+      <div class="ap-tab-panel" id="ap-panel-courseAdminPhone" role="tabpanel">
+        <div class="ap-section-heading">📱 رقم أدمن / دكتور الكورس</div>
+        <div class="ap-card" style="padding:18px;max-width:760px;">
+          <div style="font-size:.82rem;color:#667;line-height:1.8;margin-bottom:14px;">
+            اختر الكورس ثم سجّل رقم أدمن/دكتور هذا الكورس. الرقم يُحفظ على الكورس نفسه ويظهر للطلاب داخل الكورس المحدد فقط.
+          </div>
+          <div style="display:grid;grid-template-columns:minmax(220px,1fr) minmax(220px,1fr);gap:14px;align-items:end;">
+            <div>
+              <label class="ap-label">📚 الكورس</label>
+              <select id="cap-course-select" class="ap-select" onchange="capLoadCourse()">
+                <option value="">— جاري تحميل الكورسات —</option>
+              </select>
+            </div>
+            <div>
+              <label class="ap-label">📱 رقم أدمن / دكتور الكورس</label>
+              <input id="cap-phone-input" class="ap-input" type="text" inputmode="tel" dir="ltr" style="text-align:right;" placeholder="01xxxxxxxxx">
+            </div>
+          </div>
+          <div id="cap-save-msg" style="font-size:.8rem;margin-top:12px;"></div>
+          <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap;">
+            <button class="ap-btn ap-btn-primary" onclick="capSave()">💾 حفظ رقم الكورس</button>
+            <button class="ap-btn ap-btn-ghost" onclick="capInit()">🔄 تحديث الكورسات</button>
+          </div>
         </div>
       </div>
 
@@ -10417,8 +10406,6 @@ function _applyBranchAdminPanelGating() {
   var _TEMP_HIDE_PATHS_AUDIT = false;
 
   var perms = window._branchAdminPerms || {};
-  var ownerPhoneTool = document.getElementById('ap-course-admin-tools');
-  if (ownerPhoneTool) ownerPhoneTool.style.display = 'none';
 
   // تاب "أدمن الكورسات" (= "إدارة الأدمنات") لأدمن المنصة دايمًا، أو لأدمن الكورس
   // العادي لو معاه صلاحية can_manage_admins. ✅ بند Owner (منفصل): الـOwner لا يرى
@@ -10439,6 +10426,14 @@ function _applyBranchAdminPanelGating() {
     // تحكم المنصة فقط (أدمن المنصة الحقيقي، وليس أدمن الكورس/الشعبة) — يظهر هنا.
     var cpWrap0 = document.getElementById('sm-course-admin-phone-wrap');
     if (cpWrap0) cpWrap0.style.display = '';
+    // ✅ جديد: تاب "📱 رقم أدمن / دكتور الكورس" في لوحة المنصة — خاص بأدمن
+    // المنصة الحقيقي فقط، وليس أدمن الكورس/الشعبة.
+    var capNav0 = document.getElementById('ap-tab-courseAdminPhone');
+    if (capNav0) capNav0.style.display = '';
+    // ✅ زر "➕ إضافة أدمن مساعد" خاص بـOwner الكورس فقط — لا يظهر لأدمن المنصة
+    // (أدمن المنصة عنده أصلاً تاب "أدمن الكورسات" الكامل لإدارة كل الأدمنز).
+    var ownerNav0 = document.getElementById('ap-tab-ownerAssistant');
+    if (ownerNav0) ownerNav0.style.display = 'none';
     return;
   }
 
@@ -10454,6 +10449,16 @@ function _applyBranchAdminPanelGating() {
   // أدمن الكورس/الشعبة حتى لو كان يملك صلاحية الوصول لتاب "الشعب/المواد/الفصول".
   var cpWrap = document.getElementById('sm-course-admin-phone-wrap');
   if (cpWrap) cpWrap.style.display = 'none';
+  // ✅ تاب رقم أدمن/دكتور الكورس مقصور على لوحة تحكم المنصة فقط
+  var capNav = document.getElementById('ap-tab-courseAdminPhone');
+  if (capNav) capNav.style.display = 'none';
+  // ✅ بند Owner: زر "➕ إضافة أدمن مساعد" يظهر فقط إذا كان هذا المستخدم هو
+  // الـOwner الفعلي للكورس (role='owner' في section_admins) — لا يعتمد على
+  // can_manage_admins لأن هذا الزر خاص بالـOwner نفسه تحديدًا، أما الأدمن
+  // العادي صاحب can_manage_admins فيحصل على تاب "أدمن الكورسات" الكامل بدلاً
+  // من هذا الزر (أعلاه في baTab).
+  var ownerNav = document.getElementById('ap-tab-ownerAssistant');
+  if (ownerNav) ownerNav.style.display = isOwnerActive ? '' : 'none';
   var pathsTab = document.getElementById('ap-tab-paths');
   if (pathsTab) pathsTab.style.display = (perms.can_manage_materials || perms.can_manage_chapters) ? '' : 'none';
   // ✅ جديد: "🔐 محتوى الاشتراك" — نفس نطاق صلاحية "المحتوى/الشعب" (اختيار أي
@@ -10513,6 +10518,98 @@ function _applyBranchAdminPanelGating() {
     });
   }
 }
+
+// ════════════════════════════════════════════════════════════════
+// 📱 رقم أدمن / دكتور الكورس — لوحة المنصة فقط. يقرأ/يكتب عمود موجود
+// بالفعل (site_sections.course_admin_phone). لا جدول/عمود جديد.
+// ════════════════════════════════════════════════════════════════
+window.capInit = async function() {
+  var sel = document.getElementById('cap-course-select');
+  var msg = document.getElementById('cap-save-msg');
+  var phoneInput = document.getElementById('cap-phone-input');
+  if (!sel) return;
+  sel.innerHTML = '<option value="">— جاري تحميل الكورسات —</option>';
+  if (phoneInput) phoneInput.value = '';
+  if (msg) msg.textContent = '';
+  try {
+    var res = await window.supabase.from('site_sections')
+      .select('id,title,course_admin_phone')
+      .eq('type', 'course')
+      .order('title', { ascending: true });
+    if (res.error) throw res.error;
+    var rows = res.data || [];
+    window._capCourses = rows;
+    if (!rows.length) {
+      sel.innerHTML = '<option value="">— لا توجد كورسات —</option>';
+      return;
+    }
+    sel.innerHTML = '<option value="">— اختر الكورس —</option>' +
+      rows.map(function(r) {
+        return '<option value="' + r.id + '">' + _apEsc(r.title || ('#' + r.id)) + '</option>';
+      }).join('');
+  } catch (e) {
+    sel.innerHTML = '<option value="">— تعذر التحميل —</option>';
+    if (typeof _showToast === 'function') _showToast('❌ تعذر تحميل قائمة الكورسات', 'error');
+    console.warn('[capInit]', e && e.message);
+  }
+};
+
+window.capLoadCourse = function() {
+  var sel = document.getElementById('cap-course-select');
+  var phoneInput = document.getElementById('cap-phone-input');
+  var msg = document.getElementById('cap-save-msg');
+  if (msg) msg.textContent = '';
+  if (!sel || !phoneInput) return;
+  var id = Number(sel.value || 0);
+  if (!id) { phoneInput.value = ''; return; }
+  var row = (window._capCourses || []).find(function(r) { return Number(r.id) === id; });
+  phoneInput.value = (row && row.course_admin_phone) || '';
+};
+
+window.capSave = async function() {
+  var sel = document.getElementById('cap-course-select');
+  var phoneInput = document.getElementById('cap-phone-input');
+  var msg = document.getElementById('cap-save-msg');
+  if (!sel || !phoneInput) return;
+  var id = Number(sel.value || 0);
+  if (!id) {
+    if (msg) { msg.textContent = '⚠️ اختر الكورس أولاً'; msg.style.color = '#e67e22'; }
+    return;
+  }
+  var value = phoneInput.value.trim();
+  if (msg) { msg.textContent = '⏳ جاري الحفظ...'; msg.style.color = '#667'; }
+  try {
+    var res = await window.supabase.from('site_sections')
+      .update({ course_admin_phone: value || null })
+      .eq('id', id);
+    if (res.error) throw res.error;
+    var row = (window._capCourses || []).find(function(r) { return Number(r.id) === id; });
+    if (row) row.course_admin_phone = value || null;
+    if (msg) { msg.textContent = '✅ تم حفظ الرقم بنجاح'; msg.style.color = '#27ae60'; }
+    if (typeof _showToast === 'function') _showToast('✅ تم حفظ رقم أدمن/دكتور الكورس', 'success');
+    // reload حسب طلب المستخدم
+    capInit();
+    setTimeout(function() {
+      var s2 = document.getElementById('cap-course-select');
+      if (s2) { s2.value = String(id); capLoadCourse(); }
+    }, 300);
+  } catch (e) {
+    if (msg) { msg.textContent = '❌ تعذر الحفظ: ' + (e && e.message || ''); msg.style.color = '#e74c3c'; }
+    if (typeof _showToast === 'function') _showToast('❌ تعذر حفظ الرقم', 'error');
+    console.warn('[capSave]', e && e.message);
+  }
+};
+
+// ➕ Owner: زر مستقل تحت لوحة المعلومات يفتح نفس مودال إضافة الأدمن المساعد
+// الموجود بالفعل (baOpenAssignModal mode='add') — بدون نظام موازٍ جديد.
+window.openOwnerAssistantFromNav = function() {
+  if (window._isSuperAdmin || window._branchAdminActiveRole !== 'owner') return;
+  var id = Number(window._branchAdminCourseId || window._activeSectionId || ((window._branchAdminOwnSectionIds || [])[0]) || 0);
+  if (!id) { if (typeof _showToast === 'function') _showToast('❌ تعذر تحديد الكورس الحالي', 'error'); return; }
+  var row = (window._branchAdminRoots || []).find(function(x) { return Number(x.id) === id; });
+  var titleText = (row && row.title) ? row.title : ('#' + id);
+  baOpenAssignModal(id, titleText, 'add');
+};
 
 
 // ════════════════════════════════════════════════════════════════
@@ -10784,6 +10881,7 @@ function apSwitchTab(tab) {
 
   // Lazy load data
   if (tab === 'dashboard')     apLoadDashboard();
+  else if (tab === 'courseAdminPhone') { if (typeof capInit === 'function') capInit(); }
   else if (tab === 'auditlog') apLoadAuditLog();
   else if (tab === 'notifications') apLoadNotificationsPanel();
   else if (tab === 'requests') apLoadRequests();
@@ -11766,18 +11864,8 @@ async function baSearchUsers(q) {
       .neq('role', 'admin') // لا نعرض أدمن المنصة كخيار لتعيينه أدمن الكورس
       .limit(8);
     if (error) throw error;
-    var currentSectionId = Number((window._baModalCtx && window._baModalCtx.sectionId) || 0);
-    var selfId = (window._currentUser && window._currentUser.id) || (window.supabase.auth && (await window.supabase.auth.getUser()).data && (await window.supabase.auth.getUser()).data.user && (await window.supabase.auth.getUser()).data.user.id);
-    var ownerIds = [];
-    if (currentSectionId) {
-      try {
-        var ownerRes = await window.supabase.from('section_admins').select('user_id').eq('section_id', currentSectionId).eq('is_active', true).eq('role', 'owner');
-        if (!ownerRes.error) ownerIds = (ownerRes.data || []).map(function(r){ return r.user_id; });
-      } catch(e) {}
-    }
-    data = (data || []).filter(function(u){ return String(u.id) !== String(selfId || '') && ownerIds.indexOf(u.id) === -1; });
-    if (!data.length) {
-      resultsEl.innerHTML = '<div style="font-size:.75rem;color:#888;padding:6px;">لا توجد نتائج صالحة — لا يمكن إضافة نفسك أو Owner جديد.</div>';
+    if (!data || !data.length) {
+      resultsEl.innerHTML = '<div style="font-size:.75rem;color:#888;padding:6px;">لا توجد نتائج — تأكد أن المستخدم سجّل دخول من قبل</div>';
       return;
     }
     resultsEl.innerHTML = data.map(function(u) {
@@ -11811,20 +11899,6 @@ async function baConfirmAssign() {
   var user = window._baSelectedUser;
   var msgEl = document.getElementById('ba-assign-msg');
   if (!ctx || !user) return;
-  var currentUserId = null;
-  try {
-    currentUserId = window._currentUser && window._currentUser.id;
-    if (!currentUserId && window.supabase.auth) { var _au = await window.supabase.auth.getUser(); currentUserId = _au.data && _au.data.user && _au.data.user.id; }
-  } catch(e) {}
-  if (currentUserId && String(currentUserId) === String(user.id)) {
-    msgEl.style.color = '#e74c3c'; msgEl.textContent = '❌ لا يمكنك إضافة نفسك كأدمن مساعد.'; return;
-  }
-  try {
-    var ownerCheck = await window.supabase.from('section_admins').select('user_id').eq('section_id', ctx.sectionId).eq('is_active', true).eq('role', 'owner').eq('user_id', user.id).maybeSingle();
-    if (!ownerCheck.error && ownerCheck.data) {
-      msgEl.style.color = '#e74c3c'; msgEl.textContent = '❌ لا يمكن إضافة Owner كأدمن مساعد.'; return;
-    }
-  } catch(e) {}
   msgEl.style.color = '#888'; msgEl.textContent = 'جاري الحفظ...';
   var confirmBtn = document.getElementById('ba-confirm-btn');
   confirmBtn.disabled = true;
@@ -12017,84 +12091,6 @@ async function _apGetProfilesMap(userIds) {
     (data || []).forEach(function(p) { map[p.id] = p; });
     return map;
   } catch (e) { return {}; }
-}
-
-// ────────────────────────────────────────────────────────────────
-// OWNER TOOL: course_admin_phone — uses the existing column only.
-// ────────────────────────────────────────────────────────────────
-async function apLoadCourseAdminPhoneTool() {
-  var wrap = document.getElementById('ap-course-admin-tools');
-  var sel = document.getElementById('ap-course-admin-phone-course');
-  var input = document.getElementById('ap-course-admin-phone-value');
-  var msg = document.getElementById('ap-course-admin-phone-msg');
-  if (!wrap || !sel || !input) return;
-
-  // Platform owner only: this project has the platform owner represented by the
-  // real platform admin account; course/branch admins are explicitly excluded.
-  var allowed = window._isAdminUser === true && window._isBranchAdmin !== true;
-  wrap.style.display = allowed ? '' : 'none';
-  if (!allowed || !window.supabase) return;
-
-  try {
-    sel.innerHTML = '<option value="">⏳ جاري تحميل الكورسات...</option>';
-    var res = await window.supabase.from('site_sections')
-      .select('id,title,course_admin_phone,type')
-      .eq('type','course')
-      .order('title');
-    if (res.error) throw res.error;
-    var courses = res.data || [];
-    sel.innerHTML = courses.length
-      ? '<option value="">— اختر الكورس —</option>' + courses.map(function(c){
-          return '<option value="' + c.id + '">' + _apEsc(c.title || ('#' + c.id)) + '</option>';
-        }).join('')
-      : '<option value="">لا توجد كورسات</option>';
-    window._apCourseAdminPhoneRows = courses;
-    input.value = '';
-    msg.textContent = '';
-    sel.onchange = function(){
-      var row = (window._apCourseAdminPhoneRows || []).find(function(c){ return String(c.id) === String(sel.value); });
-      input.value = row && row.course_admin_phone ? String(row.course_admin_phone) : '';
-      msg.textContent = '';
-    };
-  } catch (e) {
-    sel.innerHTML = '<option value="">تعذر تحميل الكورسات</option>';
-    msg.style.color = '#e74c3c';
-    msg.textContent = '❌ ' + _apEsc(e.message || e);
-  }
-}
-
-async function apSaveCourseAdminPhone() {
-  var sel = document.getElementById('ap-course-admin-phone-course');
-  var input = document.getElementById('ap-course-admin-phone-value');
-  var msg = document.getElementById('ap-course-admin-phone-msg');
-  var btn = document.getElementById('ap-course-admin-phone-save');
-  if (!sel || !input || !msg) return;
-  if (!(window._isAdminUser === true && window._isBranchAdmin !== true)) {
-    msg.style.color = '#e74c3c'; msg.textContent = '❌ هذه الخانة متاحة لصاحب المنصة فقط.'; return;
-  }
-  var courseId = Number(sel.value || 0);
-  if (!courseId) { msg.style.color = '#e74c3c'; msg.textContent = '❌ اختر الكورس أولاً.'; return; }
-  var phone = input.value.trim();
-  msg.style.color = '#0a3d62'; msg.textContent = '⏳ جاري الحفظ...';
-  if (btn) btn.disabled = true;
-  try {
-    var res = await window.supabase.from('site_sections')
-      .update({ course_admin_phone: phone || null })
-      .eq('id', courseId);
-    if (res.error) throw res.error;
-    var row = (window._apCourseAdminPhoneRows || []).find(function(c){ return Number(c.id) === courseId; });
-    if (row) row.course_admin_phone = phone || null;
-    msg.style.color = '#17a589'; msg.textContent = '✅ تم حفظ الرقم بنجاح.';
-    // Reload the exact saved value from the same row/column.
-    var fresh = await window.supabase.from('site_sections').select('id,title,course_admin_phone,type').eq('id', courseId).maybeSingle();
-    if (fresh.error) throw fresh.error;
-    input.value = fresh.data && fresh.data.course_admin_phone ? String(fresh.data.course_admin_phone) : '';
-    await apLoadCourseAdminPhoneTool();
-    sel.value = String(courseId);
-    input.value = fresh.data && fresh.data.course_admin_phone ? String(fresh.data.course_admin_phone) : '';
-  } catch (e) {
-    msg.style.color = '#e74c3c'; msg.textContent = '❌ فشل الحفظ: ' + _apEsc(e.message || e);
-  } finally { if (btn) btn.disabled = false; }
 }
 
 // ────────────────────────────────────────────────────────────────
@@ -25271,7 +25267,7 @@ var labels=document.querySelectorAll('#admin-panel .ap-label');labels.forEach(fu
         // يحصل هنا فقط على زر مستقل لإضافة أدمن مساعد لشعبته/كورسه هو تحديداً —
         // نفس المودال الموجود بالفعل (baOpenAssignModal mode='add')، بدون أي واجهة
         // إضافية جديدة ولا مساس بصف الـOwner نفسه (لا تعيين/تغيير/حذف Owner من هنا).
-        if (!window._isSuperAdmin && (window._branchAdminActiveRole === 'owner' || (window._branchAdminPerms && window._branchAdminPerms.can_manage_admins === true))) {
+        if (!window._isSuperAdmin && window._branchAdminActiveRole === 'owner') {
           var ownerSectionId = window._branchAdminCourseId || ownIds[0];
           var ownerSectionTitle = (function(){
             var r = (window._branchAdminRoots||[]).find(function(x){ return Number(x.id) === Number(ownerSectionId); });
