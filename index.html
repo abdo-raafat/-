@@ -4985,7 +4985,7 @@ async function _openContentPage(sec, _preloadedContent, _preloadedResources) {
           if (_pr.error || !_pr.data || _pr.data.parent_id == null) break;
           _pc = Number(_pr.data.parent_id);
         }
-        var _px = await window.supabase.from('subscription_content_access').select('section_id,requires_subscription').in('section_id',_pa);
+        var _px = await window.supabase.from('site_sections').select('id,requires_subscription').in('id',_pa);
         if (!_px.error) _explicitPathSub = (_px.data||[]).some(function(x){ return x.requires_subscription === true; });
       }
     } catch(_eFree) {}
@@ -28111,5 +28111,392 @@ SELECT conname, pg_get_constraintdef(oid) FROM pg_constraint WHERE conname='audi
   setTimeout(hideScheduleWarning,500);
 })();
 </script>
+
+<!-- BSM FINAL STABILITY PATCH — 2026-08-27
+     Fixes: content hierarchy runtime error, per-chapter subscription access without
+     subscription_content_access table dependency, mobile landscape fullscreen. -->
+<script>
+(function(){
+  'use strict';
+  if(window.__BSM_FINAL_STABILITY_PATCH_20260827) return;
+  window.__BSM_FINAL_STABILITY_PATCH_20260827=true;
+
+  function esc(v){
+    if(typeof window._apEsc==='function') return window._apEsc(v==null?'':String(v));
+    return String(v==null?'':v).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});
+  }
+  function getDb(){ return window.supabase || (typeof window.db==='function'?window.db():null); }
+  async function waitDb(){
+    try{ if(typeof window._waitForSupabase==='function') await window._waitForSupabase(); }catch(e){}
+    return getDb();
+  }
+  function isBranch(){ return !!(window._isBranchAdmin && !window._isSuperAdmin); }
+  function selected(v){ return Number(v||0)||0; }
+  async function rowsByParent(parentId){
+    var d=await waitDb(); if(!d) throw new Error('Supabase غير جاهز');
+    var r=await d.from('site_sections').select('id,title,subtitle,icon,parent_id,type,display_order,requires_subscription').eq('parent_id',Number(parentId)).order('display_order',{ascending:true}).order('id',{ascending:true});
+    if(r.error) throw r.error;
+    return r.data||[];
+  }
+  async function rowById(id){
+    var d=await waitDb(); if(!d)return null;
+    var r=await d.from('site_sections').select('id,title,subtitle,icon,parent_id,type,display_order,requires_subscription').eq('id',Number(id)).maybeSingle();
+    if(r.error) throw r.error; return r.data||null;
+  }
+  async function courseRootsFinal(){
+    var d=await waitDb(); if(!d)return [];
+    if(isBranch()){
+      var ids=Array.isArray(window._branchAdminOwnSectionIds)?window._branchAdminOwnSectionIds.slice():[];
+      var fallback=Number(window._branchAdminCourseId||window._activeSectionId||0);
+      if(!ids.length&&fallback) ids=[fallback];
+      if(!ids.length) return [];
+      var r=await d.from('site_sections').select('id,title,subtitle,icon,parent_id,type,display_order,requires_subscription').in('id',ids).order('display_order').order('id');
+      if(r.error) throw r.error; return r.data||[];
+    }
+    var r2=await d.from('site_sections').select('id,title,subtitle,icon,parent_id,type,display_order,requires_subscription').eq('type','course').order('display_order').order('id');
+    if(r2.error) throw r2.error; return r2.data||[];
+  }
+
+  /* ---------- ADD CONTENT: Course -> Material -> شرح المادة -> Chapter ---------- */
+  function ensureSubmaterial(){
+    var mat=document.getElementById('admin-material-select'), cw=document.getElementById('admin-chapter-wrap');
+    if(!mat||!cw)return null;
+    var old=document.getElementById('admin-submaterial-wrap');
+    if(!old){
+      old=document.createElement('div'); old.id='admin-submaterial-wrap'; old.className='ap-field'; old.style.display='none';
+      old.innerHTML='<label class="ap-label">📖 شرح المادة</label><select id="admin-submaterial-select" class="ap-select" onchange="adminOnSubmaterialChange()"><option value="">— اختر شرح المادة —</option></select>';
+      cw.parentNode.insertBefore(old,cw);
+    }
+    return old;
+  }
+  function setPathSafe(id){
+    var el=document.getElementById('admin-section-path'); if(!el||!id)return;
+    (async function(){
+      var chain=[],cur=Number(id),guard=0;
+      try{ while(cur&&guard++<15){var r=await rowById(cur);if(!r)break;chain.unshift(r.title||'');if(r.parent_id==null)break;cur=Number(r.parent_id);} el.textContent=chain.length?'📍 '+chain.join(' › '):''; }catch(e){el.textContent='';}
+    })();
+  }
+  window.adminLoadSections=async function(){
+    var course=document.getElementById('admin-course-select'), mat=document.getElementById('admin-material-select'), ch=document.getElementById('admin-chapter-select'), final=document.getElementById('admin-section-select');
+    var mw=document.getElementById('admin-material-wrap'), cw=document.getElementById('admin-chapter-wrap'), smw=ensureSubmaterial();
+    if(!mat)return;
+    if(course)course.innerHTML='<option value="">— جاري التحميل —</option>';
+    mat.innerHTML='<option value="">— اختر المادة —</option>'; if(ch)ch.innerHTML='<option value="">— اختر الشابتر —</option>'; if(final)final.innerHTML='<option value="">— اختر —</option>';
+    if(mw)mw.style.display='none';if(cw)cw.style.display='none';if(smw)smw.style.display='none';
+    try{
+      var roots=await courseRootsFinal();
+      if(course){
+        course.innerHTML=roots.length?'<option value="">— اختر الكورس —</option>'+roots.map(function(x){return '<option value="'+x.id+'">'+esc(x.title)+'</option>';}).join(''):'<option value="">— لا توجد كورسات —</option>';
+        if(isBranch()){
+          course.value=roots.length?String(roots[0].id):'';
+          var f=course.closest('.ap-field');if(f)f.style.display='none';
+        }else{var f2=course.closest('.ap-field');if(f2)f2.style.display='';}
+      }
+      window._bsmContentCourses=roots;
+      if(roots.length===1) await window.adminOnCourseChange();
+    }catch(e){
+      console.error('[BSM FINAL CONTENT LOAD]',e);
+      if(course)course.innerHTML='<option value="">— تعذر تحميل الكورسات —</option>';
+      var msg=document.getElementById('admin-msg');if(msg){msg.style.color='#c0392b';msg.textContent='❌ تعذر تحميل الكورسات: '+(e.message||'');}
+    }
+  };
+  window.adminOnCourseChange=async function(){
+    var course=document.getElementById('admin-course-select'),mat=document.getElementById('admin-material-select'),ch=document.getElementById('admin-chapter-select'),final=document.getElementById('admin-section-select'),mw=document.getElementById('admin-material-wrap'),cw=document.getElementById('admin-chapter-wrap'),smw=ensureSubmaterial();
+    var cid=selected(course&&course.value); if(!cid)return;
+    if(mat)mat.innerHTML='<option value="">— جاري تحميل المواد —</option>'; if(ch)ch.innerHTML='<option value="">— اختر الشابتر —</option>';if(final)final.innerHTML='<option value="">— اختر —</option>';if(mw)mw.style.display='none';if(cw)cw.style.display='none';if(smw)smw.style.display='none';
+    try{
+      var rows=await rowsByParent(cid);
+      mat.innerHTML='<option value="">— اختر المادة —</option>'+rows.map(function(x){return '<option value="'+x.id+'">'+esc(x.title)+'</option>';}).join('');
+      if(mw)mw.style.display=rows.length?'block':'none';
+      window._bsmCourseMaterials=rows;window._adminSelectedCourseId=cid;
+    }catch(e){console.error('[BSM FINAL MATERIALS]',e);if(mat)mat.innerHTML='<option value="">— تعذر تحميل المواد —</option>';}
+  };
+  window.adminOnMaterialChange=async function(){
+    var mat=document.getElementById('admin-material-select'),ch=document.getElementById('admin-chapter-select'),final=document.getElementById('admin-section-select'),cw=document.getElementById('admin-chapter-wrap'),smw=ensureSubmaterial(),sm=document.getElementById('admin-submaterial-select');
+    var mid=selected(mat&&mat.value);
+    if(cw)cw.style.display='none';if(smw)smw.style.display='none';if(ch)ch.innerHTML='<option value="">— اختر الشابتر —</option>';if(sm)sm.innerHTML='<option value="">— اختر شرح المادة —</option>';if(final)final.innerHTML='<option value="">— اختر —</option>';if(!mid)return;
+    try{
+      var parts=await rowsByParent(mid);
+      if(!parts.length){ if(final){final.innerHTML='<option value="">— اختر —</option><option value="'+mid+'">'+esc(mat.options[mat.selectedIndex]?mat.options[mat.selectedIndex].textContent:'')+'</option>';final.value=String(mid);}setPathSafe(mid);return; }
+      /* IMPORTANT: each p is a real site_sections row. Never use p.p.id. */
+      var childResults=await Promise.all(parts.map(function(p){ return rowsByParent(p.id); }));
+      var hasIntermediate=childResults.some(function(rows){return Array.isArray(rows)&&rows.length>0;});
+      if(hasIntermediate){
+        sm.innerHTML='<option value="">— اختر شرح المادة —</option>'+parts.map(function(p){return '<option value="'+p.id+'">'+esc(p.title)+'</option>';}).join('');
+        smw.style.display='block'; setPathSafe(mid); return;
+      }
+      ch.innerHTML='<option value="">— اختر الشابتر —</option>'+parts.map(function(c){return '<option value="'+c.id+'">'+esc(c.title)+'</option>';}).join('');
+      cw.style.display='block';setPathSafe(mid);
+    }catch(e){
+      console.error('[BSM FINAL MATERIAL CHANGE]',e);
+      if(ch)ch.innerHTML='<option value="">— تعذر تحميل الشباتر —</option>';
+      var msg=document.getElementById('admin-msg');if(msg){msg.style.color='#c0392b';msg.textContent='❌ تعذر تحميل شرح المادة/الشباتر: '+(e.message||'');}
+    }
+  };
+  window.adminOnSubmaterialChange=async function(){
+    var sm=document.getElementById('admin-submaterial-select'),ch=document.getElementById('admin-chapter-select'),cw=document.getElementById('admin-chapter-wrap'),final=document.getElementById('admin-section-select'),sid=selected(sm&&sm.value);
+    if(ch)ch.innerHTML='<option value="">— جاري تحميل الشباتر —</option>';if(cw)cw.style.display='none';if(final)final.innerHTML='<option value="">— اختر —</option>';if(!sid)return;
+    try{var rows=await rowsByParent(sid);ch.innerHTML='<option value="">— اختر الشابتر —</option>'+rows.map(function(c){return '<option value="'+c.id+'">'+esc(c.title)+'</option>';}).join('');cw.style.display=rows.length?'block':'none';if(!rows.length){final.innerHTML='<option value="">— اختر —</option><option value="'+sid+'">'+esc(sm.options[sm.selectedIndex]?sm.options[sm.selectedIndex].textContent:'')+'</option>';final.value=String(sid);}setPathSafe(sid);}catch(e){console.error('[BSM FINAL SUBMATERIAL]',e);ch.innerHTML='<option value="">— تعذر تحميل الشباتر —</option>';}
+  };
+  window.adminOnChapterChange=function(){var ch=document.getElementById('admin-chapter-select'),f=document.getElementById('admin-section-select');if(f)f.value=ch&&ch.value?ch.value:'';if(ch&&ch.value)setPathSafe(ch.value);};
+
+  /* ---------- CONTENT LIST: same hierarchy ---------- */
+  function ensureListHierarchyFinal(){
+    var old=document.getElementById('admin-list-section');if(!old)return;
+    old.style.display='none';var host=old.parentNode,box=document.getElementById('admin-list-hierarchy');
+    if(!box){box=document.createElement('div');box.id='admin-list-hierarchy';box.innerHTML='<div class="ap-field" id="admin-list-course-wrap"><label class="ap-label">🎓 اختر الكورس</label><select id="admin-list-course" class="ap-select" onchange="bsmListCourseChange()"></select></div><div class="ap-field"><label class="ap-label">📁 اختر المادة</label><select id="admin-list-material" class="ap-select" onchange="bsmListMaterialChange()"><option value="">— اختر المادة —</option></select></div><div class="ap-field" id="admin-list-sub-wrap" style="display:none;"><label class="ap-label">📖 شرح المادة</label><select id="admin-list-sub" class="ap-select" onchange="bsmListSubChange()"><option value="">— اختر شرح المادة —</option></select></div><div class="ap-field" id="admin-list-ch-wrap" style="display:none;"><label class="ap-label">📚 الشابتر</label><select id="admin-list-ch" class="ap-select" onchange="bsmListChapterChange()"><option value="">— اختر الشابتر —</option></select></div>';host.insertBefore(box,old);}
+  }
+  async function loadListCoursesFinal(){
+    ensureListHierarchyFinal();var c=document.getElementById('admin-list-course');if(!c)return;
+    try{var rows=await courseRootsFinal();c.innerHTML='<option value="">— اختر الكورس —</option>'+rows.map(function(x){return '<option value="'+x.id+'">'+esc(x.title)+'</option>';}).join('');if(isBranch()){c.value=rows.length?String(rows[0].id):'';var w=document.getElementById('admin-list-course-wrap');if(w)w.style.display='none';}else{var w2=document.getElementById('admin-list-course-wrap');if(w2)w2.style.display='block';}if(rows.length===1)await window.bsmListCourseChange();}catch(e){console.error('[BSM FINAL LIST COURSES]',e);}
+  }
+  window.bsmListCourseChange=async function(){var c=document.getElementById('admin-list-course'),m=document.getElementById('admin-list-material'),s=document.getElementById('admin-list-sub'),ch=document.getElementById('admin-list-ch'),sw=document.getElementById('admin-list-sub-wrap'),cw=document.getElementById('admin-list-ch-wrap');if(!c||!m)return;m.innerHTML='<option value="">— اختر المادة —</option>';s.innerHTML='<option value="">— اختر شرح المادة —</option>';ch.innerHTML='<option value="">— اختر الشابتر —</option>';sw.style.display='none';cw.style.display='none';var id=selected(c.value);if(!id)return;try{var rows=await rowsByParent(id);m.innerHTML='<option value="">— اختر المادة —</option>'+rows.map(function(x){return '<option value="'+x.id+'">'+esc(x.title)+'</option>';}).join('');}catch(e){console.error('[BSM FINAL LIST MATERIALS]',e);}};
+  window.bsmListMaterialChange=async function(){var m=document.getElementById('admin-list-material'),s=document.getElementById('admin-list-sub'),ch=document.getElementById('admin-list-ch'),sw=document.getElementById('admin-list-sub-wrap'),cw=document.getElementById('admin-list-ch-wrap'),old=document.getElementById('admin-list-section');if(!m)return;s.innerHTML='<option value="">— اختر شرح المادة —</option>';ch.innerHTML='<option value="">— اختر الشابتر —</option>';sw.style.display='none';cw.style.display='none';if(old)old.value='';var id=selected(m.value);if(!id)return;try{var parts=await rowsByParent(id);if(!parts.length){if(old){old.innerHTML='<option value="'+id+'">'+esc(m.options[m.selectedIndex]?m.options[m.selectedIndex].textContent:'')+'</option>';old.value=String(id);if(typeof adminLoadContentList==='function')adminLoadContentList();}return;}var childResults=await Promise.all(parts.map(function(p){return rowsByParent(p.id);}));if(childResults.some(function(r){return r.length;})){s.innerHTML='<option value="">— اختر شرح المادة —</option>'+parts.map(function(x){return '<option value="'+x.id+'">'+esc(x.title)+'</option>';}).join('');sw.style.display='block';return;}ch.innerHTML='<option value="">— اختر الشابتر —</option>'+parts.map(function(x){return '<option value="'+x.id+'">'+esc(x.title)+'</option>';}).join('');cw.style.display='block';}catch(e){console.error('[BSM FINAL LIST HIERARCHY]',e);}};
+  window.bsmListSubChange=async function(){var s=document.getElementById('admin-list-sub'),ch=document.getElementById('admin-list-ch'),cw=document.getElementById('admin-list-ch-wrap'),old=document.getElementById('admin-list-section');var id=selected(s&&s.value);ch.innerHTML='<option value="">— اختر الشابتر —</option>';cw.style.display='none';if(!id)return;try{var rows=await rowsByParent(id);ch.innerHTML='<option value="">— اختر الشابتر —</option>'+rows.map(function(x){return '<option value="'+x.id+'">'+esc(x.title)+'</option>';}).join('');cw.style.display=rows.length?'block':'none';if(!rows.length&&old){old.innerHTML='<option value="'+id+'">'+esc(s.options[s.selectedIndex]?s.options[s.selectedIndex].textContent:'')+'</option>';old.value=String(id);if(typeof adminLoadContentList==='function')adminLoadContentList();}}catch(e){console.error('[BSM FINAL LIST SUB]',e);}};
+  window.bsmListChapterChange=function(){var ch=document.getElementById('admin-list-ch'),old=document.getElementById('admin-list-section');if(ch&&ch.value&&old){old.innerHTML='<option value="'+ch.value+'">'+esc(ch.options[ch.selectedIndex]?ch.options[ch.selectedIndex].textContent:'')+'</option>';old.value=ch.value;if(typeof adminLoadContentList==='function')adminLoadContentList();}};
+
+  /* ---------- SUBSCRIPTION CONTENT: use site_sections.requires_subscription as the reliable source.
+     This removes the repeated 400s when subscription_content_access or its columns do not exist. */
+  async function readLockMap(ids){
+    var d=await waitDb();if(!d||!ids.length)return {};
+    var map={};var r=await d.from('site_sections').select('id,requires_subscription').in('id',ids);if(r.error)throw r.error;(r.data||[]).forEach(function(x){if(x.requires_subscription===true)map[Number(x.id)]={requires_subscription:true,access_mode:'instant'};});return map;
+  }
+  async function subtreeDirect(rootId){
+    var all=[],queue=[Number(rootId)],seen={};
+    while(queue.length){var ids=queue.splice(0,100);var rows=[];for(var i=0;i<ids.length;i++){var rs=await rowsByParent(ids[i]);rows=rows.concat(rs);}rows.forEach(function(x){if(!seen[x.id]){seen[x.id]=1;all.push(x);queue.push(Number(x.id));}});if(all.length>1000)break;}
+    return all;
+  }
+  window.scInit=async function(){
+    var picker=document.getElementById('sc-course-picker'),body=document.getElementById('sc-content-body');if(!picker||!body)return;
+    try{var roots=await courseRootsFinal();picker.innerHTML='<option value="">— اختر الكورس —</option>'+roots.map(function(x){return '<option value="'+x.id+'">'+(x.icon||'🎓')+' '+esc(x.title)+'</option>';}).join('');picker.value='';window._scCurrentCourseId=0;body.innerHTML='<div class="ap-empty">اختر الكورس أولاً.</div>';}catch(e){console.error('[BSM FINAL SC INIT]',e);body.innerHTML='<div class="ap-empty" style="color:#c0392b">❌ تعذر تحميل الكورسات: '+esc(e.message||'')+'</div>';}
+  };
+  function renderScShell(){var body=document.getElementById('sc-content-body');if(!body)return;body.innerHTML='<div class="ap-field"><label class="ap-label">📁 اختر المادة</label><select id="sc-material-select" class="ap-select" onchange="scOnMaterialChange()"><option value="">— اختر المادة —</option></select></div><div class="ap-field" id="sc-part-wrap" style="display:none;"><label class="ap-label">📖 شرح المادة</label><select id="sc-part-select" class="ap-select" onchange="scOnPartChange()"><option value="">— اختر شرح المادة —</option></select></div><div class="ap-field" id="sc-chapter-wrap" style="display:none;"><label class="ap-label">📚 الشباتر</label><div id="sc-chapter-actions" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:7px;"><button type="button" class="ap-btn ap-btn-ghost" onclick="scSelectAllChapters(true)">☑ تحديد الكل</button><button type="button" class="ap-btn ap-btn-ghost" onclick="scSelectAllChapters(false)">☐ إلغاء الكل</button></div><div id="sc-chapters-list"></div><div id="sc-save-msg" style="margin-top:7px;font-size:.75rem;min-height:16px;text-align:center;"></div><div style="display:flex;gap:8px;margin-top:10px;"><button type="button" class="ap-btn ap-btn-primary" style="flex:1" onclick="scSaveChapters()">💾 حفظ محتوى الاشتراك</button><button type="button" class="ap-btn ap-btn-ghost" style="flex:1" onclick="scUnlockSelected()">🔓 فتح المحدد</button></div></div><div id="sc-empty-msg" class="ap-empty" style="display:none"></div>';}
+  async function loadScChapters(rows){
+    window._scChapters=rows||[];var map=await readLockMap(window._scChapters.map(function(x){return Number(x.id);}));window._scAccessMap=map;var list=document.getElementById('sc-chapters-list'),wrap=document.getElementById('sc-chapter-wrap');if(!list||!wrap)return;wrap.style.display='block';if(!rows.length){list.innerHTML='<div class="ap-empty">لا توجد شباتر.</div>';return;}list.innerHTML='<div class="ap-card" style="padding:7px">'+rows.map(function(c){var info=map[Number(c.id)],checked=info?' checked':'';return '<label style="display:flex;align-items:center;gap:9px;padding:9px 7px;border-bottom:1px solid #eee;cursor:pointer;"><input type="checkbox" class="sc-chapter-check" value="'+c.id+'"'+checked+' style="width:18px;height:18px;"><span style="flex:1">📄 '+esc(c.title)+'</span><span style="font-size:.7rem;color:'+(info?'#0a3d62':'#17a589')+'">'+(info?'🔒 يتطلب اشتراك':'🔓 مجاني')+'</span></label>';}).join('')+'</div>';}
+  window.scLoadCourse=async function(){var picker=document.getElementById('sc-course-picker'),body=document.getElementById('sc-content-body'),id=selected(picker&&picker.value);if(!id){body.innerHTML='<div class="ap-empty">اختر الكورس أولاً.</div>';return;}window._scCurrentCourseId=id;renderScShell();try{var mats=await rowsByParent(id),sel=document.getElementById('sc-material-select');sel.innerHTML='<option value="">— اختر المادة —</option>'+mats.map(function(x){return '<option value="'+x.id+'">📁 '+esc(x.title)+'</option>';}).join('');}catch(e){console.error('[BSM FINAL SC MATERIALS]',e);body.innerHTML='<div class="ap-empty" style="color:#c0392b">❌ تعذر تحميل المواد: '+esc(e.message||'')+'</div>';}};
+  window.scOnMaterialChange=async function(){var id=selected(document.getElementById('sc-material-select')&&document.getElementById('sc-material-select').value),pw=document.getElementById('sc-part-wrap'),ps=document.getElementById('sc-part-select'),cw=document.getElementById('sc-chapter-wrap');if(pw)pw.style.display='none';if(cw)cw.style.display='none';if(!id)return;try{var parts=await rowsByParent(id);if(!parts.length){await loadScChapters([]);return;}var children=await Promise.all(parts.map(function(p){return rowsByParent(p.id);}));if(children.some(function(r){return r.length;})){ps.innerHTML='<option value="">— اختر شرح المادة —</option>'+parts.map(function(p){return '<option value="'+p.id+'">📖 '+esc(p.title)+'</option>';}).join('');pw.style.display='block';}else{await loadScChapters(parts);}}catch(e){console.error('[BSM FINAL SC MATERIAL]',e);}}
+  window.scOnPartChange=async function(){var id=selected(document.getElementById('sc-part-select')&&document.getElementById('sc-part-select').value);if(!id)return;try{await loadScChapters(await rowsByParent(id));}catch(e){console.error('[BSM FINAL SC PART]',e);}};
+  window.scSelectAllChapters=function(flag){document.querySelectorAll('#sc-chapters-list .sc-chapter-check').forEach(function(x){x.checked=!!flag;});};
+  window.scSaveChapters=async function(){var d=await waitDb(),msg=document.getElementById('sc-save-msg'),rows=window._scChapters||[];if(!d||!rows.length){if(msg)msg.textContent='⚠️ لا توجد شباتر للحفظ.';return;}var selectedIds=Array.from(document.querySelectorAll('#sc-chapters-list .sc-chapter-check:checked')).map(function(x){return Number(x.value);});try{if(msg)msg.textContent='⏳ جاري الحفظ...';var ids=rows.map(function(x){return Number(x.id);});var unlock=ids.filter(function(id){return selectedIds.indexOf(id)===-1;});if(unlock.length){var u=await d.from('site_sections').update({requires_subscription:false}).in('id',unlock);if(u.error)throw u.error;}if(selectedIds.length){var l=await d.from('site_sections').update({requires_subscription:true}).in('id',selectedIds);if(l.error)throw l.error;}await loadScChapters(rows);if(msg){msg.style.color='#17a589';msg.textContent='✅ تم حفظ حالة الاشتراك بنجاح.';}if(typeof _showToast==='function')_showToast('✅ تم حفظ محتوى الاشتراك','success');}catch(e){console.error('[BSM FINAL SC SAVE]',e);if(msg){msg.style.color='#c0392b';msg.textContent='❌ فشل الحفظ: '+(e.message||'');}}};
+  window.scUnlockSelected=async function(){var d=await waitDb(),sel=Array.from(document.querySelectorAll('#sc-chapters-list .sc-chapter-check:checked')).map(function(x){return Number(x.value);}),msg=document.getElementById('sc-save-msg');if(!d||!sel.length){if(msg)msg.textContent='⚠️ حدد شابتر أولاً.';return;}try{var r=await d.from('site_sections').update({requires_subscription:false}).in('id',sel);if(r.error)throw r.error;await loadScChapters(window._scChapters||[]);if(msg){msg.style.color='#17a589';msg.textContent='✅ تم فتح المحدد بدون اشتراك.';}}catch(e){console.error('[BSM FINAL SC UNLOCK]',e);if(msg){msg.style.color='#c0392b';msg.textContent='❌ فشل الفتح: '+(e.message||'');}}};
+
+  /* ---------- Content visibility: refresh direct content after hierarchy/save ---------- */
+  async function refreshCurrentContentIfNeeded(){
+    try{
+      var sec=window._currentContentSec||window._currentDynamicSec;
+      if(!sec||!sec.id)return;
+      if(typeof window._openContentPage==='function' && document.getElementById('page-content')?.classList.contains('active')){
+        var d=await waitDb();
+        if(!d)return;
+        var c=await d.from('section_content').select('*').eq('section_id',Number(sec.id)).order('display_order').order('id');
+        var r=await d.from('section_resources').select('*').eq('section_id',Number(sec.id)).order('sort_order').order('id');
+        if(!c.error&&!r.error && ((c.data||[]).length||(r.data||[]).length)){
+          await window._openContentPage(sec,c.data||[],r.data||[]);
+        }
+      }
+    }catch(e){console.warn('[BSM CONTENT REFRESH]',e);}
+  }
+
+  /* ---------- ACCESS GATE: no subscription_content_access requests at all. ---------- */
+  async function rootCourse(id){var cur=Number(id),last=null,guard=0;while(cur&&guard++<20){var r=await rowById(cur);if(!r)break;last=r;if(r.type==='course'||r.parent_id==null)break;cur=Number(r.parent_id);}return last;}
+  async function activeSub(uid,cid){var d=await waitDb();if(!d)return {state:'error'};var r=await d.from('subscriptions').select('*').eq('user_id',uid).eq('section_id',Number(cid)).order('created_at',{ascending:false}).limit(1).maybeSingle();if(r.error)return {state:'error'};if(!r.data)return {state:'none'};var x=r.data;if(x.payment_status==='active'&&(!x.end_date||new Date(x.end_date)>=new Date()))return {state:'active',row:x};if(x.payment_status==='pending')return {state:'pending',row:x};if(x.payment_status==='expired')return {state:'expired',row:x};return {state:'none',row:x};}
+  window.getDetailedSectionAccess=async function(sectionId){
+    try{var sec=await rowById(sectionId);if(!sec)return {state:'free',anchor:null};var requires=sec.requires_subscription===true; if(!requires)return {state:'free',anchor:null};var course=await rootCourse(sectionId);if(window._isSuperAdmin===true)return {state:'admin',anchor:course};if(isBranch())return {state:'admin',anchor:course};var sess=typeof window._getSessionSafe==='function'?await window._getSessionSafe(5000):null;var user=sess&&sess.data&&sess.data.session&&sess.data.session.user;if(!user)return {state:'guest',anchor:course};var st=await activeSub(user.id,course&&course.id);if(st.state==='active')return {state:'subscribed',anchor:course,row:st.row};return {state:st.state,anchor:course,row:st.row,user:user};}catch(e){console.error('[BSM FINAL ACCESS]',e);return {state:'free',anchor:null};}
+  };
+  window.checkSectionAccess=async function(sectionId){var g=await window.getDetailedSectionAccess(sectionId);if(!g||g.state==='free'||g.state==='admin'||g.state==='subscribed')return null;return {anchor:g.anchor,state:g.state,row:g.row,user:g.user};};
+
+  /* ---------- Mobile video fullscreen: real landscape when possible, CSS landscape fallback otherwise. ---------- */
+  var style=document.createElement('style');style.id='bsm-final-video-fs-style';style.textContent='body.bsm-video-landscape-lock{overflow:hidden!important;}#rv-overlay.rv-manual-fs{position:fixed!important;inset:0!important;width:100vw!important;height:100vh!important;z-index:2147483000!important;background:#000!important;}#rv-overlay.rv-manual-fs #rv-modal{width:100vw!important;height:100vh!important;max-width:none!important;max-height:none!important;border-radius:0!important;background:#000!important;}#rv-overlay.rv-manual-fs #rv-body{width:100%!important;height:100%!important;display:flex!important;align-items:center!important;justify-content:center!important;background:#000!important;}#rv-overlay.rv-manual-fs #rv-video-el{width:100%!important;height:100%!important;max-width:100%!important;max-height:100%!important;object-fit:contain!important;}#rv-overlay.rv-manual-fs #rv-video-fs-btn{position:fixed!important;right:14px!important;bottom:16px!important;z-index:2147483001!important;width:48px!important;height:48px!important;border-radius:50%!important;background:rgba(0,0,0,.75)!important;color:#fff!important;border:1px solid rgba(255,255,255,.35)!important;}@media (orientation:portrait) and (max-width:700px){#rv-overlay.rv-manual-fs.rv-force-landscape{transform:rotate(90deg)!important;width:100vh!important;height:100vw!important;left:calc((100vw - 100vh)/2)!important;top:calc((100vh - 100vw)/2)!important;right:auto!important;bottom:auto!important;inset:auto!important;}}';document.head.appendChild(style);
+  function ensureFsButton(){var body=document.getElementById('rv-body'),video=document.getElementById('rv-video-el');if(!body||!video)return;var b=document.getElementById('rv-video-fs-btn');if(!b){b=document.createElement('button');b.id='rv-video-fs-btn';b.type='button';b.textContent='⛶';b.setAttribute('aria-label','ملء الشاشة بالعرض');body.appendChild(b);}if(!b.__bsmBound){b.__bsmBound=true;b.addEventListener('click',function(e){e.preventDefault();e.stopPropagation();toggleVideoFs();});}}
+  async function lockLandscape(){try{if(screen.orientation&&screen.orientation.lock)await screen.orientation.lock('landscape');}catch(e){}}
+  async function unlockLandscape(){try{if(screen.orientation&&screen.orientation.unlock)screen.orientation.unlock();}catch(e){}}
+  async function toggleVideoFs(){var ov=document.getElementById('rv-overlay'),video=document.getElementById('rv-video-el'),modal=document.getElementById('rv-modal');if(!ov)return;var native=!!(document.fullscreenElement||document.webkitFullscreenElement);if(native){try{(document.exitFullscreen||document.webkitExitFullscreen).call(document);}catch(e){};await unlockLandscape();return;}if(ov.classList.contains('rv-manual-fs')){ov.classList.remove('rv-manual-fs','rv-force-landscape');document.body.classList.remove('bsm-video-landscape-lock');await unlockLandscape();return;}try{var req=(video&&(video.requestFullscreen||video.webkitRequestFullscreen))||(modal&&(modal.requestFullscreen||modal.webkitRequestFullscreen));if(req){var ret=req.call(video||modal);if(ret&&ret.catch)await ret.catch(function(){});} }catch(e){}await new Promise(function(r){setTimeout(r,250);});if(!(document.fullscreenElement||document.webkitFullscreenElement)){ov.classList.add('rv-manual-fs');document.body.classList.add('bsm-video-landscape-lock');if(window.innerWidth<window.innerHeight)ov.classList.add('rv-force-landscape');await lockLandscape();}ensureFsButton();}
+  var videoTapTimer=null, videoTapAt=0;
+  document.addEventListener('dblclick',function(e){
+    var v=document.getElementById('rv-video-el');
+    if(v && e.target===v){ e.preventDefault(); toggleVideoFs(); }
+  },true);
+
+  var obs=new MutationObserver(function(){ensureFsButton();});
+  function watchVideo(){var body=document.getElementById('rv-body');if(body&&!body.__bsmFsObs){body.__bsmFsObs=true;obs.observe(body,{childList:true,subtree:true});ensureFsButton();}}
+  var oldOpen=window.ResourceViewer&&window.ResourceViewer.open;
+  if(oldOpen&&!window.__BSM_FINAL_OPEN_PATCH){window.__BSM_FINAL_OPEN_PATCH=true;window.ResourceViewer.open=function(){var r=oldOpen.apply(this,arguments);setTimeout(watchVideo,20);setTimeout(ensureFsButton,300);return r;};}
+  document.addEventListener('fullscreenchange',function(){var ov=document.getElementById('rv-overlay');if(ov&&document.fullscreenElement){document.body.classList.add('bsm-video-landscape-lock');lockLandscape();}else if(!ov||!ov.classList.contains('rv-manual-fs')){document.body.classList.remove('bsm-video-landscape-lock');}});
+  document.addEventListener('webkitfullscreenchange',function(){setTimeout(function(){var ov=document.getElementById('rv-overlay');if(!document.webkitFullscreenElement&&!ov?.classList.contains('rv-manual-fs'))document.body.classList.remove('bsm-video-landscape-lock');},0);});
+
+  /* Hide the obsolete scheduling warning and force the corrected hierarchy on tab open. */
+  function cleanup(){var w=document.getElementById('sc-schedule-cols-warning');if(w)w.style.display='none';ensureSubmaterial();ensureListHierarchyFinal();}
+  document.addEventListener('DOMContentLoaded',function(){cleanup();setTimeout(cleanup,500);});
+  var oldTab=window.adminTab;
+  if(typeof oldTab==='function'&&!window.__BSM_FINAL_TAB_PATCH){window.__BSM_FINAL_TAB_PATCH=true;window.adminTab=function(tab){var r=oldTab.apply(this,arguments);if(tab==='add')setTimeout(window.adminLoadSections,30);if(tab==='list')setTimeout(loadListCoursesFinal,30);if(tab==='subcontent')setTimeout(window.scInit,30);return r;};}
+})();
+</script>
+
+<!-- ============================================================
+     FINAL PATCH — COURSE ADMIN DM HIERARCHY
+     Fixes: RPC called with chapter/material id while admins are
+     assigned to the parent course. No DB/RLS/Auth changes here.
+     ============================================================ -->
+<script>
+(function(){
+  'use strict';
+  if(window.__BSM_DM_COURSE_HIERARCHY_FINAL) return;
+  window.__BSM_DM_COURSE_HIERARCHY_FINAL=true;
+
+  async function resolveAdminScopes(sectionId){
+    var db=window.supabase;
+    var id=Number(sectionId);
+    if(!db || !Number.isFinite(id)) return [];
+    var out=[], seen={};
+    try{
+      for(var i=0;i<20 && id;i++){
+        if(seen[id]) break;
+        seen[id]=true;
+        out.push(id);
+        var r=await db.from('site_sections').select('id,parent_id,type').eq('id',id).maybeSingle();
+        if(r.error || !r.data || r.data.parent_id==null) break;
+        id=Number(r.data.parent_id);
+      }
+    }catch(e){ console.warn('[DM HIERARCHY] resolve ancestors:',e&&e.message); }
+    return out;
+  }
+
+  async function findCourseAdmins(sectionId){
+    var db=window.supabase;
+    if(!db) return {admins:[], scopeId:Number(sectionId)||null};
+    var scopes=await resolveAdminScopes(sectionId);
+    for(var i=0;i<scopes.length;i++){
+      try{
+        var r=await db.rpc('get_section_admins_for_messaging',{p_section_id:scopes[i]});
+        if(r.error){
+          console.warn('[DM HIERARCHY] RPC scope '+scopes[i]+':',r.error.message);
+          continue;
+        }
+        var rows=Array.isArray(r.data)?r.data:[];
+        if(rows.length) return {admins:rows,scopeId:scopes[i]};
+      }catch(e){ console.warn('[DM HIERARCHY] RPC exception:',e&&e.message); }
+    }
+    return {admins:[],scopeId:scopes.length?scopes[scopes.length-1]:(Number(sectionId)||null)};
+  }
+
+  window._renderMessageAdminEntry=async function(anchor,containerEl){
+    if(!containerEl || !anchor || !anchor.id || !window.supabase) return;
+    if(containerEl.querySelector('[data-role="msg-admin-btn"]')) return;
+    try{
+      var found=await findCourseAdmins(anchor.id);
+      var admins=found.admins||[];
+      if(!admins.length){
+        console.warn('[DM] لا يوجد أدمن للكورس أو أدمن منصة متاح عبر RPC بعد فحص التسلسل الأبوي.',{section_id:anchor.id,scopes_checked:await resolveAdminScopes(anchor.id)});
+        return;
+      }
+      var scopeId=found.scopeId || Number(anchor.id);
+      var hasCourseAdmin=admins.some(function(a){return String(a.admin_source||'')==='course';});
+      var label=hasCourseAdmin?'✉️ راسل أدمن الكورس':'✉️ راسل أدمن الشعبة';
+      var btn=document.createElement('button');
+      btn.type='button';
+      btn.className='chat-entry-btn';
+      btn.dataset.role='msg-admin-btn';
+      btn.style.background='linear-gradient(135deg,#17a589,#0a3d62)';
+      btn.textContent=label;
+      btn.onclick=function(){
+        if(admins.length===1){
+          window.openDirectChat(
+            admins[0].user_id,
+            admins[0].full_name || admins[0].email || (hasCourseAdmin?'أدمن الكورس':'أدمن الشعبة'),
+            null,
+            scopeId
+          );
+        }else if(typeof _dmOpenAdminPicker==='function'){
+          _dmOpenAdminPicker(admins,scopeId);
+        }
+      };
+      containerEl.appendChild(btn);
+    }catch(e){ console.warn('[DM] _renderMessageAdminEntry hierarchy patch:',e&&e.message); }
+  };
+
+  console.log('%c[DM FIX] Course-admin hierarchy fallback loaded — chapter → material → course','color:#17a589;font-weight:700');
+})();
+</script>
+
+<!-- ============================================================
+     OPTIONAL SQL HELPER — copy/run once in Supabase if you want
+     the database RPC itself to understand child chapters/materials.
+     The frontend above already works around old RPCs by trying the
+     ancestor course id first.
+     ============================================================ -->
+<script>
+(function(){
+  window.printCourseChatAdminHierarchyFixSQL=function(){
+    var sql=`-- COURSE ADMIN DM HIERARCHY FIX — additive / no data deletion
+-- يجعل RPC يبحث عن أدمن الكورس عند إرسال chapter/material id.
+-- لا يحذف أي بيانات.
+
+CREATE OR REPLACE FUNCTION public.get_section_admins_for_messaging(p_section_id BIGINT)
+RETURNS TABLE(user_id UUID, full_name TEXT, email TEXT, admin_source TEXT)
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
+DECLARE
+  v_id BIGINT := p_section_id;
+  v_guard INT := 0;
+  v_has_access BOOLEAN := false;
+BEGIN
+  IF auth.uid() IS NULL OR p_section_id IS NULL THEN
+    RAISE EXCEPTION 'DENY ACCESS';
+  END IF;
+
+  -- نتحقق من الوصول على القسم المطلوب أو أحد آبائه، حتى يعمل DM
+  -- من داخل الشابتر/المادة أيضاً.
+  WHILE v_id IS NOT NULL AND v_guard < 20 LOOP
+    v_guard := v_guard + 1;
+    BEGIN
+      IF public.is_admin() OR public.is_branch_admin_of(v_id) OR public.has_active_course_subscription(v_id) THEN
+        v_has_access := true;
+      END IF;
+    EXCEPTION WHEN undefined_function THEN
+      IF public.is_admin() OR public.is_branch_admin_of(v_id) THEN v_has_access := true; END IF;
+    END;
+    IF v_has_access THEN EXIT; END IF;
+    SELECT parent_id INTO v_id FROM public.site_sections WHERE id=v_id;
+  END LOOP;
+
+  -- الطالب يحتاج أن يقدر يسأل الأدمن حتى قبل الشراء؛ لذلك لا نمنع
+  -- الاستعلام لمجرد عدم وجود اشتراك، لكن لا نعيد إلا أدمن الكورس/المنصة.
+  v_id := p_section_id;
+  v_guard := 0;
+  WHILE v_id IS NOT NULL AND v_guard < 20 LOOP
+    v_guard := v_guard + 1;
+    RETURN QUERY
+      SELECT sa.user_id,
+             COALESCE(p.full_name,p.email,'أدمن الكورس')::TEXT,
+             p.email::TEXT,
+             'course'::TEXT
+      FROM public.section_admins sa
+      JOIN public.profiles p ON p.id=sa.user_id
+      WHERE sa.section_id=v_id
+        AND sa.is_active=true
+        AND sa.role='admin'
+      ORDER BY COALESCE(p.full_name,p.email,'');
+    IF FOUND THEN RETURN; END IF;
+    SELECT parent_id INTO v_id FROM public.site_sections WHERE id=v_id;
+  END LOOP;
+
+  RETURN QUERY
+    SELECT p.id,
+           COALESCE(p.full_name,p.email,'أدمن المنصة')::TEXT,
+           p.email::TEXT,
+           'platform'::TEXT
+    FROM public.profiles p
+    WHERE p.role='admin'
+    ORDER BY COALESCE(p.full_name,p.email,'');
+END; $$;
+GRANT EXECUTE ON FUNCTION public.get_section_admins_for_messaging(BIGINT) TO authenticated;
+NOTIFY pgrst,'reload schema';`;
+    console.log(sql);
+    if(navigator.clipboard) navigator.clipboard.writeText(sql).catch(function(){});
+    return sql;
+  };
+  console.log('%c[DM FIX] إذا أردت إصلاح RPC نفسه: printCourseChatAdminHierarchyFixSQL()','color:#0a3d62;font-weight:700');
+})();
+</script>
+
 </body>
 </html>
