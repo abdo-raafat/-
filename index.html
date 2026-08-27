@@ -27849,5 +27849,141 @@ SELECT conname, pg_get_constraintdef(oid) FROM pg_constraint WHERE conname='audi
   if(document.body)_rvBodyObs.observe(document.body,{childList:true,subtree:true});
 })();
 </script>
+
+<!-- ============================================================
+     BSM CONTENT HIERARCHY FIX — 2026-08-27
+     يضيف مستوى اختياري "شرح المادة" بين المادة والشابتر في تبويب
+     "إضافة محتوى"، بنفس الأسلوب المستخدم فعلاً في لوحة جدولة
+     الاشتراك (sc*). لا يحذف ولا يغيّر أي من الدوال السابقة على
+     adminOnCourseChange/adminLoadSections — فقط يستبدل
+     adminOnMaterialChange (آخر تعريف = الفعلي) بنسخة تتحقق ديناميكيًا:
+     لو عند المادة أبناء لهم أبناء (أي فيه "شرح مادة" فعلاً في الشجرة)
+     يعرض قائمة "شرح المادة" ثم الشابترز تحتها؛ ولو لأ، يعرض أبناء
+     المادة كشابترز مباشرة زي قبل الفيكس (توافق كامل مع الكورسات اللي
+     مالهاش المستوى ده). -->
+<script>
+(function(){
+  'use strict';
+  if (window.__BSM_HIERARCHY_FIX_20260827) return;
+  window.__BSM_HIERARCHY_FIX_20260827 = true;
+
+  function DB(){ return window.supabase; }
+  function esc(v){
+    if (typeof window._apEsc === 'function') return window._apEsc(v == null ? '' : String(v));
+    return String(v == null ? '' : v).replace(/[&<>"']/g,function(c){
+      return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+    });
+  }
+
+  function ensurePartUI(){
+    if (document.getElementById('admin-part-wrap')) return;
+    var chapWrap = document.getElementById('admin-chapter-wrap');
+    if (!chapWrap || !chapWrap.parentNode) return;
+    var div = document.createElement('div');
+    div.id = 'admin-part-wrap';
+    div.style.display = 'none';
+    div.style.marginTop = '8px';
+    div.innerHTML =
+      '<label class="ap-label">📂 شرح المادة</label>' +
+      '<select id="admin-part-select" class="ap-select" onchange="adminOnPartChange()">' +
+        '<option value="">— اختر —</option>' +
+      '</select>';
+    chapWrap.parentNode.insertBefore(div, chapWrap);
+  }
+
+  async function childrenOf(parentId){
+    var d = DB(); if(!d) return [];
+    var r = await d.from('site_sections')
+      .select('id,title,subtitle,parent_id,type,display_order,requires_subscription')
+      .eq('parent_id', Number(parentId)).order('display_order').order('id');
+    if (r.error) throw r.error;
+    return r.data || [];
+  }
+
+  // فحص خفيف: هل أي من أبناء المادة له أبناء بدوره (يعني فيه مستوى "شرح مادة" فعلي)؟
+  async function anyHaveChildren(nodes){
+    if (!nodes.length) return false;
+    var d = DB(); if(!d) return false;
+    var ids = nodes.map(function(n){ return Number(n.id); });
+    var r = await d.from('site_sections').select('parent_id').in('parent_id', ids).limit(1);
+    if (r.error) return false;
+    return !!(r.data && r.data.length);
+  }
+
+  function setChapterOptions(rows, ownerId, ownerLabel){
+    var chap = document.getElementById('admin-chapter-select');
+    var wrap = document.getElementById('admin-chapter-wrap');
+    var final = document.getElementById('admin-section-select');
+    var opts = rows.map(function(c){ return '<option value="'+c.id+'">'+esc(c.title)+'</option>'; }).join('');
+    if (chap) chap.innerHTML = '<option value="">— اختر الشابتر —</option>' + opts;
+    if (wrap) wrap.style.display = rows.length ? 'block' : 'none';
+    if (final) {
+      final.innerHTML = ownerId
+        ? '<option value="">— اختر —</option><option value="'+ownerId+'">'+esc(ownerLabel||'')+'</option>'+opts
+        : '<option value="">— اختر —</option>';
+      final.value = (ownerId && !rows.length) ? String(ownerId) : '';
+    }
+    if (typeof adminLoadSectionPath === 'function') adminLoadSectionPath();
+  }
+
+  window.adminOnMaterialChange = async function(){
+    ensurePartUI();
+    var mat = document.getElementById('admin-material-select');
+    var partWrap = document.getElementById('admin-part-wrap'), partSel = document.getElementById('admin-part-select');
+    var chapWrap = document.getElementById('admin-chapter-wrap'), final = document.getElementById('admin-section-select');
+    var mid = Number(mat && mat.value || 0);
+    if (partWrap) partWrap.style.display = 'none';
+    if (chapWrap) chapWrap.style.display = 'none';
+    if (final) final.value = '';
+    if (!mid) return;
+    try {
+      var children = await childrenOf(mid);
+      var matLabel = mat.options[mat.selectedIndex] ? mat.options[mat.selectedIndex].textContent : '';
+      if (!children.length) { setChapterOptions([], mid, matLabel); return; }
+      var hasDeeperLevel = await anyHaveChildren(children);
+      if (hasDeeperLevel) {
+        // فيه مستوى "شرح مادة" فعلي في الشجرة — اعرضه، والشابترز تتحدد بعد اختياره.
+        window._adminParts = children;
+        if (partSel) partSel.innerHTML = '<option value="">— اختر —</option>' + children.map(function(x){
+          return '<option value="'+x.id+'">'+esc(x.title)+'</option>';
+        }).join('');
+        if (partWrap) partWrap.style.display = 'block';
+        setChapterOptions([], 0, '');
+      } else {
+        // مفيش مستوى وسيط — أبناء المادة هم الشابترز مباشرة (نفس السلوك القديم).
+        setChapterOptions(children, mid, matLabel);
+      }
+    } catch(e) {
+      console.error('[HIERARCHY FIX] adminOnMaterialChange:', e);
+      var m = document.getElementById('admin-msg'); if (m) m.textContent = '❌ تعذر تحميل المحتوى: ' + (e.message || e);
+    }
+  };
+
+  window.adminOnPartChange = async function(){
+    var partSel = document.getElementById('admin-part-select');
+    var pid = Number(partSel && partSel.value || 0);
+    if (!pid) { setChapterOptions([], 0, ''); return; }
+    try {
+      var rows = await childrenOf(pid);
+      var label = partSel.options[partSel.selectedIndex] ? partSel.options[partSel.selectedIndex].textContent : '';
+      setChapterOptions(rows, pid, label);
+    } catch(e) {
+      console.error('[HIERARCHY FIX] adminOnPartChange:', e);
+      var m = document.getElementById('admin-msg'); if (m) m.textContent = '❌ تعذر تحميل الشابترز: ' + (e.message || e);
+    }
+  };
+
+  // إخفاء قائمة "شرح المادة" تلقائيًا عند تغيير الكورس (بدون حذف/تغيير الدالة الأصلية).
+  var _oldAdminOnCourseChange = window.adminOnCourseChange;
+  if (typeof _oldAdminOnCourseChange === 'function') {
+    window.adminOnCourseChange = async function(){
+      var r = await _oldAdminOnCourseChange.apply(this, arguments);
+      var partWrap = document.getElementById('admin-part-wrap');
+      if (partWrap) partWrap.style.display = 'none';
+      return r;
+    };
+  }
+})();
+</script>
 </body>
 </html>
