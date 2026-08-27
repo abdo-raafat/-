@@ -8,7 +8,8 @@
 -->
 <script>
 (function () {
-  window.__BSM_DEBUG_MODE = false;
+  const DEBUG_MODE = true;
+  window.__BSM_DEBUG_MODE = DEBUG_MODE;
   window.isIOSDevice = function () {
     var ua = navigator.userAgent || '';
     return /iPhone|iPad|iPod/i.test(ua) ||
@@ -37,7 +38,7 @@
       return _isAndroidAppEarly() || (window.isIOSDevice() && window.isIOSStandalone());
     } catch (e) { return false; }
   };
-  window.__bsmGateBlocked = !window.isOfficialApp();
+  window.__bsmGateBlocked = !DEBUG_MODE && !window.isOfficialApp();
   try { document.documentElement.style.visibility = 'visible'; } catch (e) {}
 })();
 </script>
@@ -2554,6 +2555,24 @@ img, video {
   #course-contact-actions-modal a, #course-contact-actions-modal button{touch-action:manipulation;}
   .course-contact-card{touch-action:manipulation;-webkit-tap-highlight-color:rgba(10,61,98,.12);}
 </style>
+
+<script>
+// DEBUG_MODE=true: تعطيل سلوك حماية Frontend فقط، مع إبقاء كود الحماية نفسه داخل الملف.
+(function(){
+  if (typeof DEBUG_MODE === 'undefined' || !DEBUG_MODE) return;
+  function relaxProtection(){
+    try {
+      document.querySelectorAll('[oncontextmenu="return false"],[onselectstart="return false"],[ondragstart="return false"]').forEach(function(el){
+        el.removeAttribute('oncontextmenu'); el.removeAttribute('onselectstart'); el.removeAttribute('ondragstart');
+        el.style.removeProperty('user-select'); el.style.removeProperty('-webkit-user-select'); el.style.removeProperty('-webkit-touch-callout'); el.style.removeProperty('-webkit-user-drag');
+      });
+    } catch(e) {}
+    try { document.body && document.body.classList.remove('content-protected'); } catch(e) {}
+  }
+  relaxProtection();
+  if (window.MutationObserver) new MutationObserver(relaxProtection).observe(document.documentElement,{childList:true,subtree:true});
+})();
+</script>
 </head>
 <body>
 <script>
@@ -16328,14 +16347,14 @@ function _applyBranchAdminPanelRestrictions() {
 (function() {
   // منع Right Click للمحتوى المحمي (لغير الأدمن)
   document.addEventListener('contextmenu', function(e) {
-    if (!window._isAdminUser && document.body.classList.contains('content-protected')) {
+    if (!DEBUG_MODE && !window._isAdminUser && document.body.classList.contains('content-protected')) {
       e.preventDefault();
     }
   });
 
   // منع keyboard shortcuts للنسخ في المحتوى المحمي
   document.addEventListener('keydown', function(e) {
-    if (window._isAdminUser) return;
+    if (DEBUG_MODE || window._isAdminUser) return;
     if (!document.body.classList.contains('content-protected')) return;
 
     var isCtrl = e.ctrlKey || e.metaKey;
@@ -16357,7 +16376,7 @@ function _applyBranchAdminPanelRestrictions() {
 
   // منع Print Screen (لا يمنع تماماً لكن يُصعّب)
   document.addEventListener('keyup', function(e) {
-    if (window._isAdminUser) return;
+    if (DEBUG_MODE || window._isAdminUser) return;
     if (e.key === 'PrintScreen') {
       try { navigator.clipboard && navigator.clipboard.writeText(''); } catch(x) {}
     }
@@ -16365,38 +16384,38 @@ function _applyBranchAdminPanelRestrictions() {
 
   // منع Copy و Cut
   document.addEventListener('copy', function(e) {
-    if (!window._isAdminUser && document.body.classList.contains('content-protected')) {
+    if (!DEBUG_MODE && !window._isAdminUser && document.body.classList.contains('content-protected')) {
       e.preventDefault();
     }
   });
   document.addEventListener('cut', function(e) {
-    if (!window._isAdminUser && document.body.classList.contains('content-protected')) {
+    if (!DEBUG_MODE && !window._isAdminUser && document.body.classList.contains('content-protected')) {
       e.preventDefault();
     }
   });
 
   // منع Select All
   document.addEventListener('selectstart', function(e) {
-    if (!window._isAdminUser && document.body.classList.contains('content-protected')) {
+    if (!DEBUG_MODE && !window._isAdminUser && document.body.classList.contains('content-protected')) {
       e.preventDefault();
     }
   });
 
   // منع Drag & Drop للمحتوى المحمي
   document.addEventListener('dragstart', function(e) {
-    if (!window._isAdminUser && document.body.classList.contains('content-protected')) {
+    if (!DEBUG_MODE && !window._isAdminUser && document.body.classList.contains('content-protected')) {
       e.preventDefault();
     }
   });
   document.addEventListener('drop', function(e) {
-    if (!window._isAdminUser && document.body.classList.contains('content-protected')) {
+    if (!DEBUG_MODE && !window._isAdminUser && document.body.classList.contains('content-protected')) {
       e.preventDefault();
     }
   });
 
   // منع الضغط المطول على الهاتف لحفظ الصور
   document.addEventListener('touchstart', function(e) {
-    if (!window._isAdminUser && document.body.classList.contains('content-protected')) {
+    if (!DEBUG_MODE && !window._isAdminUser && document.body.classList.contains('content-protected')) {
       var el = e.target;
       if (el && el.tagName === 'IMG') {
         e.preventDefault();
@@ -23617,7 +23636,7 @@ window.qzShowPastReview = qzShowPastReview;
 
   // منع كليك يمين (عدا جوه مربعات الكتابة/البحث الطبيعية)
   document.addEventListener('contextmenu', function(e){
-    if (_isEditableTarget(e.target)) return;
+    if (DEBUG_MODE || _isEditableTarget(e.target)) return;
     e.preventDefault();
   }, true);
 
@@ -23632,13 +23651,14 @@ window.qzShowPastReview = qzShowPastReview;
   // منع سحب الصور/الفيديو (بيصعّب "حفظ الصورة باسم" بالسحب)
   document.addEventListener('dragstart', function(e){
     var tag = e.target && e.target.tagName;
-    if (tag === 'IMG' || tag === 'VIDEO') e.preventDefault();
+    if (!DEBUG_MODE && (tag === 'IMG' || tag === 'VIDEO')) e.preventDefault();
   }, true);
 
   // منع أهم اختصارات لوحة المفاتيح المشبوهة
   document.addEventListener('keydown', function(e){
     var k = (e.key || '').toLowerCase();
     var ctrlOrCmd = e.ctrlKey || e.metaKey;
+    if (DEBUG_MODE) return;
     if (e.key === 'F12') { e.preventDefault(); return; }
     if (ctrlOrCmd && e.shiftKey && (k === 'i' || k === 'j' || k === 'c')) { e.preventDefault(); return; }
     if (ctrlOrCmd && (k === 'p' || k === 's' || k === 'u')) { e.preventDefault(); return; }
@@ -23666,25 +23686,28 @@ window.qzShowPastReview = qzShowPastReview;
 
   // ---- 5) منع قائمة الزر الأيمن / الضغط المطول (Context Menu) في كل الموقع، عدا حقول الإدخال ----
   document.addEventListener('contextmenu', function (e) {
-    if (!nearestFormField(e.target)) e.preventDefault();
+    if (DEBUG_MODE || nearestFormField(e.target)) return;
+    e.preventDefault();
   }, true);
 
   // ---- 3) منع تحديد النص (Select) خارج حقول الإدخال ----
   document.addEventListener('selectstart', function (e) {
-    if (!nearestFormField(e.target)) e.preventDefault();
+    if (DEBUG_MODE || nearestFormField(e.target)) return;
+    e.preventDefault();
   }, true);
 
   // ---- 4) منع Copy / Cut / Paste خارج حقول الإدخال ----
   ['copy', 'cut', 'paste'].forEach(function (evtName) {
     document.addEventListener(evtName, function (e) {
-      if (!nearestFormField(e.target)) e.preventDefault();
+      if (DEBUG_MODE || nearestFormField(e.target)) return;
+    e.preventDefault();
     }, true);
   });
 
   // ---- 2) منع سحب الصور (Drag & Drop) ----
   document.addEventListener('dragstart', function (e) {
     var tag = e.target && e.target.tagName ? e.target.tagName.toUpperCase() : '';
-    if (tag === 'IMG' || tag === 'VIDEO' || tag === 'CANVAS') e.preventDefault();
+    if (!DEBUG_MODE && (tag === 'IMG' || tag === 'VIDEO' || tag === 'CANVAS')) e.preventDefault();
   }, true);
 
   // ---- 1 و 7) تقوية الصور/الفيديو تحديداً: منع السحب + منع قائمة اللمس المطول على iOS/Android ----
@@ -23728,6 +23751,7 @@ window.qzShowPastReview = qzShowPastReview;
   document.addEventListener('keydown', function (e) {
     var key = (e.key || '').toLowerCase();
 
+    if (DEBUG_MODE) return;
     if (key === 'f12') { e.preventDefault(); return; }
 
     var ctrlOrCmd = e.ctrlKey || e.metaKey;
