@@ -1213,6 +1213,21 @@ footer strong { color: var(--accent2); }
   width: 100%; max-height: 75vh; display: block;
   background: #000; outline: none;
 }
+
+/* ضمان زر ملء الشاشة داخل تطبيقات WebView التي تخفي زر المتصفح الأصلي. */
+.rv-video-shell { overflow: hidden; }
+.rv-video-fs-btn {
+  position: absolute; right: 10px; bottom: 10px; z-index: 20;
+  width: 42px; height: 42px; border: 0; border-radius: 10px;
+  background: rgba(0,0,0,.62); color: #fff; font-size: 1.25rem;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+  box-shadow: 0 3px 12px rgba(0,0,0,.35);
+}
+.rv-video-fs-btn:active { transform: scale(.96); }
+.rv-overlay.rv-manual-fs .rv-video-fs-btn {
+  right: 12px; bottom: 12px; width: 46px; height: 46px;
+}
 /* YouTube / embed iframe */
 .rv-embed-frame {
   width: 100%; height: 75vh; border: none; display: block;
@@ -6404,25 +6419,27 @@ const ResourceViewer = (function() {
 
       case 'video_direct':
         return `
-          <video
-            class="rv-video"
-            controls
-            playsinline
-            webkit-playsinline
-            x5-playsinline
-            x5-video-player-type="h5"
-            x5-video-player-fullscreen="true"
-            preload="metadata"
-            id="rv-video-el"
-            controlsList="nodownload"
-            disablePictureInPicture
-            disableRemotePlayback
-            oncontextmenu="return false"
-            onerror="ResourceViewer._showMediaError('video')"
-          >
-            <source src="${escUrl(url)}">
-            <p style="color:#fff;padding:20px">متصفحك لا يدعم تشغيل الفيديو.</p>
-          </video>
+          <div class="rv-video-shell" style="position:relative;width:100%;background:#000;line-height:0;">
+            <video
+              class="rv-video"
+              controls
+              playsinline
+              webkit-playsinline
+              x5-playsinline
+              x5-video-player-type="h5"
+              x5-video-player-fullscreen="true"
+              preload="metadata"
+              id="rv-video-el"
+              controlsList="nodownload noremoteplayback"
+              disablePictureInPicture
+              oncontextmenu="return false"
+              onerror="ResourceViewer._showMediaError('video')"
+            >
+              <source src="${escUrl(url)}">
+              <p style="color:#fff;padding:20px">متصفحك لا يدعم تشغيل الفيديو.</p>
+            </video>
+            <button type="button" class="rv-video-fs-btn" aria-label="ملء الشاشة" title="ملء الشاشة" onclick="event.preventDefault();event.stopPropagation();ResourceViewer._toggleFullscreen();">⛶</button>
+          </div>
           <div class="rv-media-tools" data-media-tools="video">
             <button type="button" data-media-seek="-10">↶ 10ث</button>
             <button type="button" data-media-seek="10">10ث ↷</button>
@@ -27423,41 +27440,258 @@ SELECT conname, pg_get_constraintdef(oid) FROM pg_constraint WHERE conname='audi
 
 <script>
 (function(){
-  'use strict';  if(window.__BSM_CONTENT_ACCESS_WRAPPED)return;
-  window.__BSM_CONTENT_ACCESS_WRAPPED=true;  var originalDetailed=window.getDetailedSectionAccess;
-  var originalCheck=window.checkSectionAccess;
+  'use strict';
+  if(window.__BSM_CONTENT_ACCESS_WRAPPED_V2)return;
+  window.__BSM_CONTENT_ACCESS_WRAPPED_V2=true;
 
-  async function explicitSubscriptionRequired(sectionId){
-    var db=window.supabase, id=Number(sectionId);
-    if(!db || !Number.isFinite(id)) return null;
+  function esc(v){
+    if(typeof _apEsc==='function') return _apEsc(v==null?'':String(v));
+    return String(v==null?'':v).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});
+  }
+  async function db(){
+    try{ if(typeof _waitForSupabase==='function') await _waitForSupabase(); }catch(e){}
+    return window.supabase || (typeof window.db==='function'?window.db():null);
+  }
+  async function chainFor(id){
+    var d=await db(), out=[], cur=Number(id), guard=0;
+    if(!d || !Number.isFinite(cur)) return out;
+    while(Number.isFinite(cur) && guard++<20){
+      var r=await d.from('site_sections').select('id,title,icon,parent_id,type,requires_subscription,price,payment_method,payment_number').eq('id',cur).maybeSingle();
+      if(r.error || !r.data) break;
+      out.push(r.data);
+      if(r.data.parent_id==null) break;
+      cur=Number(r.data.parent_id);
+    }
+    return out;
+  }
+  async function explicitLockInfo(sectionId){
+    var d=await db(), chain=await chainFor(sectionId);
+    if(!d || !chain.length) return {locked:false,chain:chain};
+    var ids=chain.map(function(x){return Number(x.id);});
+    var access;
     try{
-      var chain=[], cur=id, guard=0;
-      while(Number.isFinite(cur) && guard++<15){
-        chain.push(cur);
-        var rr=await db.from('site_sections').select('id,parent_id').eq('id',cur).maybeSingle();
-        if(rr.error || !rr.data || rr.data.parent_id==null) break;
-        cur=Number(rr.data.parent_id);
+      access=await d.from('subscription_content_access')
+        .select('section_id,requires_subscription,access_mode,available_at,weekly_start_date,weekly_interval_days')
+        .in('section_id',ids);
+      if(access.error){
+        access=await d.from('subscription_content_access').select('section_id,requires_subscription').in('section_id',ids);
       }
-      var ar=await db.from('subscription_content_access').select('section_id,requires_subscription').in('section_id',chain);
-      if(ar.error) return null;
-      return (ar.data||[]).some(function(x){return x.requires_subscription===true;});
-    }catch(e){ return null; }
+    }catch(e){ return {locked:false,unknown:true,chain:chain}; }
+    if(access.error) return {locked:false,unknown:true,chain:chain};
+    var map={};
+    (access.data||[]).forEach(function(x){ if(x.requires_subscription===true) map[Number(x.section_id)]=x; });
+    var lockRow=null;
+    for(var i=0;i<chain.length;i++){
+      if(map[Number(chain[i].id)]){ lockRow=Object.assign({},map[Number(chain[i].id)]); break; }
+    }
+    if(!lockRow) return {locked:false,chain:chain};
+
+    // اشتراك الفصل المقفول يُربط بأقرب Course في شجرته.
+    var course=chain.find(function(x){return String(x.type||'').toLowerCase()==='course';}) || chain[chain.length-1];
+    var available=true;
+    var mode=lockRow.access_mode||'instant';
+    if(mode==='scheduled' && lockRow.available_at){
+      available=Date.now() >= new Date(lockRow.available_at).getTime();
+    }else if(mode==='weekly' && lockRow.available_at){
+      available=Date.now() >= new Date(lockRow.available_at).getTime();
+    }
+    return {locked:true,row:lockRow,chain:chain,anchor:course,available:available};
+  }
+  async function subState(userId, courseId){
+    var d=await db();
+    if(!d || !userId || !courseId) return 'none';
+    try{
+      var r=await d.from('subscriptions').select('payment_status,end_date').eq('user_id',userId).eq('section_id',Number(courseId)).maybeSingle();
+      if(r.error || !r.data) return 'none';
+      if(r.data.payment_status==='active' && (!r.data.end_date || new Date(r.data.end_date).getTime()>=Date.now())) return 'active';
+      if(r.data.payment_status==='pending') return 'pending';
+      return 'expired';
+    }catch(e){ return 'none'; }
+  }
+  async function resolveExplicitAccess(sectionId){
+    var info=await explicitLockInfo(sectionId);
+    if(!info.locked) return null;
+    if(window._isSuperAdmin || (window._isBranchAdmin && Array.isArray(window._branchAdminAllSectionIds) && window._branchAdminAllSectionIds.indexOf(Number(sectionId))!==-1)) return null;
+    if(!info.available){
+      return {state:'scheduled',anchor:info.anchor,row:info.row,section_id:Number(sectionId)};
+    }
+    var sess=typeof _getSessionSafe==='function' ? await _getSessionSafe(6000) : null;
+    var user=sess && sess.data && sess.data.session && sess.data.session.user;
+    if(!user) return {state:'guest',anchor:info.anchor,row:info.row,section_id:Number(sectionId)};
+    var st=await subState(user.id,info.anchor && info.anchor.id);
+    if(st==='active') return null;
+    return {state:st,anchor:info.anchor,row:info.row,user:user,section_id:Number(sectionId)};
   }
 
   window.getDetailedSectionAccess=async function(sectionId){
-    var explicit=await explicitSubscriptionRequired(sectionId);
-    if(explicit===false){
-      var base=originalDetailed?await originalDetailed(sectionId):null;
-      return {state:'free',anchor:base&&base.anchor||null};
+    try{
+      var gate=await resolveExplicitAccess(sectionId);
+      if(gate) return gate;
+      return {state:'free',anchor:null};
+    }catch(e){
+      console.warn('[BSM CONTENT ACCESS V2]',e);
+      return {state:'free',anchor:null};
     }
-    return originalDetailed?await originalDetailed(sectionId):{state:'free',anchor:null};
+  };
+  window.checkSectionAccess=async function(sectionId){
+    try{
+      return await resolveExplicitAccess(sectionId);
+    }catch(e){
+      console.warn('[BSM CONTENT ACCESS V2]',e);
+      return null;
+    }
+  };
+  window._isFreePreviewSection=async function(){ return false; };
+
+  // If the schedule columns are not installed, keep the lock UI working and avoid
+  // the old scary warning; scheduling simply remains unavailable until migration.
+  window._bsmScheduleMigrationSQL = function(){
+    var sql=`ALTER TABLE public.subscription_content_access\n  ADD COLUMN IF NOT EXISTS access_mode TEXT NOT NULL DEFAULT 'instant',\n  ADD COLUMN IF NOT EXISTS available_at TIMESTAMPTZ NULL,\n  ADD COLUMN IF NOT EXISTS weekly_start_date DATE NULL,\n  ADD COLUMN IF NOT EXISTS weekly_interval_days INTEGER NULL;\n\nUPDATE public.subscription_content_access\nSET access_mode='instant'\nWHERE access_mode IS NULL;\n\nNOTIFY pgrst, 'reload schema';`;
+    try{ if(navigator.clipboard) navigator.clipboard.writeText(sql); }catch(e){}
+    return sql;
   };
 
-  window.checkSectionAccess=async function(sectionId){
-    var explicit=await explicitSubscriptionRequired(sectionId);
-    if(explicit===false){ return null; }
-    return originalCheck?await originalCheck(sectionId):null;
+  // Content admin hierarchy: Platform admin sees all courses; branch admin sees only
+  // assigned courses. Then strictly Course -> Material -> Chapter.
+  async function contentCourses(){
+    var d=await db(); if(!d) return [];
+    var q=d.from('site_sections').select('id,title,icon,parent_id,type,display_order').order('display_order').order('id');
+    if(window._isBranchAdmin && !window._isSuperAdmin){
+      var ids=Array.isArray(window._branchAdminOwnSectionIds)?window._branchAdminOwnSectionIds.map(Number).filter(Number.isFinite):[];
+      if(!ids.length){var fb=Number(window._branchAdminCourseId||window._activeSectionId||0);if(fb)ids=[fb];}
+      if(!ids.length)return [];
+      q=q.in('id',ids);
+    }else{
+      q=q.eq('type','course');
+    }
+    var r=await q; if(r.error)throw r.error; return r.data||[];
+  }
+  async function contentChildren(parentId){
+    var d=await db(); if(!d) return [];
+    var r=await d.from('site_sections').select('id,title,icon,parent_id,type,display_order,requires_subscription,price,payment_method,payment_number').eq('parent_id',Number(parentId)).order('display_order').order('id');
+    if(r.error)throw r.error; return r.data||[];
+  }
+  window.adminLoadSections=async function(){
+    var course=document.getElementById('admin-course-select');
+    var material=document.getElementById('admin-material-select');
+    var chapter=document.getElementById('admin-chapter-select');
+    var final=document.getElementById('admin-section-select');
+    var mw=document.getElementById('admin-material-wrap'), cw=document.getElementById('admin-chapter-wrap');
+    if(!course||!material||!final)return;
+    try{
+      var courses=await contentCourses();
+      window._adminContentCourses=courses;
+      course.innerHTML='<option value="">— اختر الكورس —</option>'+courses.map(function(x){return '<option value="'+x.id+'">'+(x.icon||'🎓')+' '+esc(x.title)+'</option>';}).join('');
+      material.innerHTML='<option value="">— اختر المادة —</option>';
+      if(chapter)chapter.innerHTML='<option value="">— اختر الشابتر —</option>';
+      final.innerHTML='<option value="">— اختر —</option>';
+      if(mw)mw.style.display='none'; if(cw)cw.style.display='none';
+      window._adminSections=courses.slice();
+      var list=document.getElementById('admin-list-section'); if(list)list.innerHTML='<option value="">اختر الكورس ثم المادة</option>';
+    }catch(e){
+      console.error('[BSM CONTENT ADMIN]',e);
+      course.innerHTML='<option value="">— تعذر تحميل الكورسات —</option>';
+      var m=document.getElementById('admin-msg');if(m){m.style.color='#e74c3c';m.textContent='❌ تعذر تحميل الكورسات';}
+    }
   };
+  window.adminOnCourseChange=async function(){
+    var course=document.getElementById('admin-course-select'), material=document.getElementById('admin-material-select'), chapter=document.getElementById('admin-chapter-select'), final=document.getElementById('admin-section-select');
+    var mw=document.getElementById('admin-material-wrap'),cw=document.getElementById('admin-chapter-wrap');
+    var id=Number(course&&course.value||0);
+    if(material)material.innerHTML='<option value="">— جاري تحميل المواد —</option>';
+    if(chapter)chapter.innerHTML='<option value="">— اختر الشابتر —</option>';
+    if(final)final.innerHTML='<option value="">— اختر —</option>';
+    if(mw)mw.style.display='none';if(cw)cw.style.display='none';
+    if(!id)return;
+    try{
+      var rows=await contentChildren(id); window._adminContentMaterials=rows;
+      if(material)material.innerHTML='<option value="">— اختر المادة —</option>'+rows.map(function(x){return '<option value="'+x.id+'">'+esc(x.title)+'</option>';}).join('');
+      if(mw)mw.style.display='block';
+      window._adminSections=(window._adminContentCourses||[]).concat(rows);
+    }catch(e){console.error('[BSM CONTENT ADMIN MATERIALS]',e);if(material)material.innerHTML='<option value="">— تعذر تحميل المواد —</option>';}
+  };
+  window.adminOnMaterialChange=async function(){
+    var material=document.getElementById('admin-material-select'),chapter=document.getElementById('admin-chapter-select'),final=document.getElementById('admin-section-select'),cw=document.getElementById('admin-chapter-wrap');
+    var id=Number(material&&material.value||0);
+    if(chapter)chapter.innerHTML='<option value="">— جاري تحميل الشابتر —</option>';
+    if(final)final.innerHTML='<option value="">— اختر —</option>';
+    if(cw)cw.style.display='none'; if(!id)return;
+    try{
+      var rows=await contentChildren(id); window._adminContentChapters=rows;
+      if(chapter)chapter.innerHTML='<option value="">— اختر الشابتر —</option>'+rows.map(function(x){return '<option value="'+x.id+'">'+esc(x.title)+'</option>';}).join('');
+      var mt=material.options[material.selectedIndex]?material.options[material.selectedIndex].textContent:'';
+      if(final)final.innerHTML='<option value="">— اختر —</option><option value="'+id+'">'+esc(mt)+'</option>'+rows.map(function(x){return '<option value="'+x.id+'">'+esc(x.title)+'</option>';}).join('');
+      if(rows.length){if(cw)cw.style.display='block';}else if(final)final.value=String(id);
+      window._adminSections=(window._adminContentCourses||[]).concat(window._adminContentMaterials||[],rows);
+      if(typeof adminLoadSectionPath==='function')adminLoadSectionPath();
+    }catch(e){console.error('[BSM CONTENT ADMIN CHAPTERS]',e);if(chapter)chapter.innerHTML='<option value="">— تعذر تحميل الشابتر —</option>';}
+  };
+  window.adminOnChapterChange=function(){
+    var c=document.getElementById('admin-chapter-select'),f=document.getElementById('admin-section-select');
+    if(f)f.value=c&&c.value?c.value:'';
+    if(typeof adminLoadSectionPath==='function')adminLoadSectionPath();
+  };
+
+  // Rebuild the platform subscription-content tab as Course -> Material -> Chapter,
+  // while retaining the existing scheduling/lock save functions.
+  var oldScInit=window.scInit;
+  window.scInit=async function(){
+    var picker=document.getElementById('sc-course-picker'),body=document.getElementById('sc-content-body');
+    if(!picker||!body)return;
+    try{
+      var courses=await contentCourses();
+      picker.innerHTML='<option value="">— اختر الكورس —</option>'+courses.map(function(x){return '<option value="'+x.id+'">'+(x.icon||'🎓')+' '+esc(x.title)+'</option>';}).join('');
+      body.innerHTML='<div class="ap-empty">اختر الكورس ثم المادة ثم الشابتر لتحديد محتوى الاشتراك.</div>';
+      window._scPlatformCourses=courses;
+    }catch(e){console.error('[BSM SC INIT]',e);body.innerHTML='<div class="ap-empty" style="color:#e74c3c;">❌ تعذر تحميل الكورسات.</div>';}
+  };
+  window.scLoadCourse=async function(){
+    var picker=document.getElementById('sc-course-picker'),body=document.getElementById('sc-content-body');
+    var cid=Number(picker&&picker.value||0); if(!cid){body.innerHTML='<div class="ap-empty">اختر الكورس أولاً.</div>';return;}
+    body.innerHTML='<div class="ap-field"><label class="ap-label">📁 اختر المادة</label><select id="sc-material-select" class="ap-select" onchange="scOnMaterialChange()"><option value="">— جاري التحميل —</option></select></div>'+
+      '<div id="sc-chapter-wrap" style="display:none;margin-top:10px;"><label class="ap-label">📚 اختر الشابتر</label><div id="sc-chapters-list"></div></div>'+
+      '<div id="sc-schedule-cols-warning" style="display:none;background:#fff8e1;border:1px solid #f0d878;color:#8a6d1a;border-radius:8px;padding:8px 10px;font-size:.74rem;margin-top:10px;">⚠️ جدولة المحتوى تحتاج أعمدة الجدولة في قاعدة البيانات. القفل/الفتح يعمل بدونها. لتفعيل الجدولة شغّل SQL الإصلاح الموجود أسفل الملف.</div>'+
+      '<div id="sc-save-msg" style="margin-top:8px;font-size:.75rem;min-height:16px;text-align:center;"></div>';
+    try{
+      var mats=await contentChildren(cid),sel=document.getElementById('sc-material-select');
+      sel.innerHTML='<option value="">— اختر المادة —</option>'+mats.map(function(x){return '<option value="'+x.id+'">'+(x.icon||'📁')+' '+esc(x.title)+'</option>';}).join('');
+      window._scMaterials=mats; window._scCurrentCourseId=cid;
+    }catch(e){console.error('[BSM SC MATERIALS]',e);body.innerHTML='<div class="ap-empty" style="color:#e74c3c;">❌ تعذر تحميل المواد.</div>';}
+  };
+  window.scOnMaterialChange=async function(){
+    var mid=Number((document.getElementById('sc-material-select')||{}).value||0),wrap=document.getElementById('sc-chapter-wrap');
+    if(wrap)wrap.style.display='none'; if(!mid)return;
+    try{
+      var rows=await contentChildren(mid),list=document.getElementById('sc-chapters-list');
+      window._scChapters=rows; await (typeof window._scLoadAccess==='function'?window._scLoadAccess(rows.map(function(x){return Number(x.id);})):Promise.resolve());
+      if(list){list.innerHTML='<div class="ap-card" style="padding:7px;">'+rows.map(function(c){var info=window._scAccessMap&&window._scAccessMap[Number(c.id)],checked=info&&info.requires_subscription?' checked':'';return '<label style="display:flex;align-items:center;gap:9px;padding:9px 7px;border-bottom:1px solid #eee;cursor:pointer;"><input type="checkbox" class="sc-chapter-check" value="'+c.id+'"'+checked+' style="width:18px;height:18px;"><span style="flex:1;">'+(c.icon||'📄')+' '+esc(c.title)+'</span><span style="font-size:.68rem;color:'+(checked?'#0a3d62':'#17a589')+';">'+(checked?'🔒 يتطلب اشتراك':'🔓 مجاني')+'</span></label>';}).join('')+'</div>';
+        wrap.style.display='block';
+      }
+    }catch(e){console.error('[BSM SC CHAPTERS]',e);if(list)list.innerHTML='<div class="ap-empty" style="color:#e74c3c;">❌ تعذر تحميل الشباتر.</div>';}
+  };
+  // Keep the original save implementation when available; the rebuilt UI exposes
+  // the same .sc-chapter-check selectors it expects.
+  if(typeof window.scSaveChapters==='function' && !window.__BSM_SC_SAVE_SAFE){
+    window.__BSM_SC_SAVE_SAFE=true;
+    var origSave=window.scSaveChapters;
+    window.scSaveChapters=async function(){
+      try{return await origSave.apply(this,arguments);}catch(e){console.error('[BSM SC SAVE]',e);var m=document.getElementById('sc-save-msg');if(m){m.style.color='#e74c3c';m.textContent='❌ فشل الحفظ، تحقق من صلاحيات قاعدة البيانات.';}}
+    };
+  }
+
+  // Keep a single visible fullscreen control in the video itself and sync its label.
+  var oldFsChange=window.__bsmFsChange;
+  function syncVideoFs(){
+    var b=document.querySelector('.rv-video-fs-btn'); if(!b)return;
+    var ov=document.getElementById('rv-overlay');
+    var active=!!(document.fullscreenElement||document.webkitFullscreenElement)||(ov&&ov.classList.contains('rv-manual-fs'));
+    b.textContent=active?'✕':'⛶'; b.title=active?'خروج من ملء الشاشة':'ملء الشاشة';
+  }
+  document.addEventListener('fullscreenchange',syncVideoFs);document.addEventListener('webkitfullscreenchange',syncVideoFs);
+  document.addEventListener('click',function(e){if(e.target&&e.target.closest&&e.target.closest('.rv-video-fs-btn'))setTimeout(syncVideoFs,60);},true);
+
+  // Re-run hierarchy initialization after role/auth has settled.
+  [300,1200,2500].forEach(function(ms){setTimeout(function(){if(document.getElementById('admin-course-select'))window.adminLoadSections().catch(function(){});},ms);});
 })();
 </script>
 <script>
@@ -27736,5 +27970,66 @@ SELECT conname, pg_get_constraintdef(oid) FROM pg_constraint WHERE conname='audi
   if(document.body)_rvBodyObs.observe(document.body,{childList:true,subtree:true});
 })();
 </script>
+
+<script>
+(function(){
+  'use strict';
+  // FINAL OVERRIDE: this block is intentionally last so earlier legacy hierarchy
+  // patches cannot replace the requested Course -> Material -> Chapter flow.
+  function esc(v){return typeof _apEsc==='function'?_apEsc(v==null?'':String(v)):String(v==null?'':v).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+  async function db(){try{if(typeof _waitForSupabase==='function')await _waitForSupabase();}catch(e){}return window.supabase;}
+  async function courses(){
+    var d=await db();if(!d)return [];
+    var q=d.from('site_sections').select('id,title,icon,parent_id,type,display_order').order('display_order').order('id');
+    if(window._isBranchAdmin&&!window._isSuperAdmin){
+      var ids=Array.isArray(window._branchAdminOwnSectionIds)?window._branchAdminOwnSectionIds.map(Number).filter(function(x){return Number.isFinite(x);}):[];
+      if(!ids.length){var fb=Number(window._branchAdminCourseId||window._activeSectionId||0);if(fb)ids=[fb];}
+      if(!ids.length)return [];
+      q=q.in('id',ids);
+    }else q=q.eq('type','course');
+    var r=await q;if(r.error)throw r.error;return r.data||[];
+  }
+  async function children(pid){var d=await db();if(!d)return [];var r=await d.from('site_sections').select('id,title,icon,parent_id,type,display_order,requires_subscription,price,payment_method,payment_number').eq('parent_id',Number(pid)).order('display_order').order('id');if(r.error)throw r.error;return r.data||[];}
+  window.adminLoadSections=async function(){
+    var c=document.getElementById('admin-course-select'),m=document.getElementById('admin-material-select'),ch=document.getElementById('admin-chapter-select'),f=document.getElementById('admin-section-select'),mw=document.getElementById('admin-material-wrap'),cw=document.getElementById('admin-chapter-wrap');
+    if(!c||!m||!f)return;
+    try{
+      var roots=await courses();window._adminContentCourses=roots;
+      c.innerHTML='<option value="">— اختر الكورس —</option>'+roots.map(function(x){return '<option value="'+x.id+'">'+(x.icon||'🎓')+' '+esc(x.title)+'</option>';}).join('');
+      m.innerHTML='<option value="">— اختر المادة —</option>';if(ch)ch.innerHTML='<option value="">— اختر الشابتر —</option>';f.innerHTML='<option value="">— اختر —</option>';
+      if(mw)mw.style.display='none';if(cw)cw.style.display='none';window._adminSections=roots.slice();
+      var list=document.getElementById('admin-list-section');if(list)list.innerHTML='<option value="">اختر الكورس ثم المادة</option>';
+    }catch(e){console.error('[FINAL ADMIN CONTENT]',e);c.innerHTML='<option value="">— تعذر تحميل الكورسات —</option>';var msg=document.getElementById('admin-msg');if(msg){msg.style.color='#e74c3c';msg.textContent='❌ تعذر تحميل الكورسات';}}
+  };
+  window.adminOnCourseChange=async function(){
+    var c=document.getElementById('admin-course-select'),m=document.getElementById('admin-material-select'),ch=document.getElementById('admin-chapter-select'),f=document.getElementById('admin-section-select'),mw=document.getElementById('admin-material-wrap'),cw=document.getElementById('admin-chapter-wrap');
+    var cid=Number(c&&c.value||0);if(m)m.innerHTML='<option value="">— جاري تحميل المواد —</option>';if(ch)ch.innerHTML='<option value="">— اختر الشابتر —</option>';if(f)f.innerHTML='<option value="">— اختر —</option>';if(mw)mw.style.display='none';if(cw)cw.style.display='none';if(!cid)return;
+    try{var rows=await children(cid);window._adminContentMaterials=rows;if(m)m.innerHTML='<option value="">— اختر المادة —</option>'+rows.map(function(x){return '<option value="'+x.id+'">'+esc(x.title)+'</option>';}).join('');if(mw)mw.style.display='block';window._adminSections=(window._adminContentCourses||[]).concat(rows);window._adminSelectedCourseId=cid;}catch(e){console.error('[FINAL ADMIN MATERIALS]',e);if(m)m.innerHTML='<option value="">— تعذر تحميل المواد —</option>';}
+  };
+  window.adminOnMaterialChange=async function(){
+    var m=document.getElementById('admin-material-select'),ch=document.getElementById('admin-chapter-select'),f=document.getElementById('admin-section-select'),cw=document.getElementById('admin-chapter-wrap');
+    var mid=Number(m&&m.value||0);if(ch)ch.innerHTML='<option value="">— جاري تحميل الشابتر —</option>';if(f)f.innerHTML='<option value="">— اختر —</option>';if(cw)cw.style.display='none';if(!mid)return;
+    try{var rows=await children(mid);window._adminContentChapters=rows;var opts=rows.map(function(x){return '<option value="'+x.id+'">'+esc(x.title)+'</option>';}).join('');if(ch)ch.innerHTML='<option value="">— اختر الشابتر —</option>'+opts;var mt=m.options[m.selectedIndex]?m.options[m.selectedIndex].textContent:'';if(f)f.innerHTML='<option value="">— اختر —</option><option value="'+mid+'">'+esc(mt)+'</option>'+opts;if(rows.length){if(cw)cw.style.display='block';}else if(f)f.value=String(mid);window._adminSections=(window._adminContentCourses||[]).concat(window._adminContentMaterials||[],rows);if(typeof adminLoadSectionPath==='function')adminLoadSectionPath();}catch(e){console.error('[FINAL ADMIN CHAPTERS]',e);if(ch)ch.innerHTML='<option value="">— تعذر تحميل الشابتر —</option>';}
+  };
+  window.adminOnChapterChange=function(){var ch=document.getElementById('admin-chapter-select'),f=document.getElementById('admin-section-select');if(f)f.value=ch&&ch.value?ch.value:'';if(typeof adminLoadSectionPath==='function')adminLoadSectionPath();};
+  [350,1200,2600].forEach(function(ms){setTimeout(function(){if(document.getElementById('admin-course-select'))window.adminLoadSections().catch(function(){});},ms);});
+})();
+</script>
+<script>
+(function(){
+  'use strict';
+  // Make the schedule-column message actionable without blocking the rest of the system.
+  document.addEventListener('click',function(e){
+    var b=e.target&&e.target.closest&&e.target.closest('#ap-panel-subcontent');
+    if(!b)return;
+  });
+  window.printContentAccessSQL=function(){
+    var sql=`-- CONTENT ACCESS + SCHEDULING MIGRATION (RUN ONCE)\nALTER TABLE public.subscription_content_access\n  ADD COLUMN IF NOT EXISTS access_mode TEXT NOT NULL DEFAULT 'instant',\n  ADD COLUMN IF NOT EXISTS available_at TIMESTAMPTZ NULL,\n  ADD COLUMN IF NOT EXISTS weekly_start_date DATE NULL,\n  ADD COLUMN IF NOT EXISTS weekly_interval_days INTEGER NULL;\n\nUPDATE public.subscription_content_access SET access_mode='instant' WHERE access_mode IS NULL;\n\nALTER TABLE public.subscription_content_access ENABLE ROW LEVEL SECURITY;\nDROP POLICY IF EXISTS subscription_content_access_public_read ON public.subscription_content_access;\nCREATE POLICY subscription_content_access_public_read ON public.subscription_content_access FOR SELECT TO public USING (true);\nDROP POLICY IF EXISTS subscription_content_access_admin_write ON public.subscription_content_access;\nCREATE POLICY subscription_content_access_admin_write ON public.subscription_content_access FOR ALL TO authenticated USING (public.is_admin()) WITH CHECK (public.is_admin());\n\n-- الحماية الحقيقية: أي section أو ابن له مقفول من subscription_content_access\n-- يصبح محميًا، والمحتوى غير المحدد يظل مجانيًا للجميع.\nCREATE OR REPLACE FUNCTION public.can_access_learning_section(p_section BIGINT)\nRETURNS BOOLEAN LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$\nDECLARE\n  u UUID := auth.uid();\n  v_locked BOOLEAN := false;\n  v_course BIGINT;\n  v_available TIMESTAMPTZ;\nBEGIN\n  IF p_section IS NULL THEN RETURN false; END IF;\n  IF public.is_admin() OR public.is_branch_admin_of(p_section) THEN RETURN true; END IF;\n\n  WITH RECURSIVE tree AS (\n    SELECT id,parent_id,type FROM public.site_sections WHERE id=p_section\n    UNION ALL\n    SELECT s.id,s.parent_id,s.type FROM public.site_sections s JOIN tree t ON s.id=t.parent_id\n  )\n  SELECT EXISTS(\n    SELECT 1 FROM public.subscription_content_access a\n    WHERE a.section_id IN (SELECT id FROM tree) AND a.requires_subscription=true\n  ),\n  (SELECT id FROM tree WHERE lower(coalesce(type,''))='course' ORDER BY id LIMIT 1)\n  INTO v_locked,v_course;\n\n  IF NOT v_locked THEN RETURN true; END IF;\n  IF u IS NULL THEN RETURN false; END IF;\n  IF v_course IS NULL THEN RETURN false; END IF;\n\n  -- scheduled/weekly: available_at is the effective release time for that row.\n  WITH RECURSIVE tree2 AS (\n    SELECT id,parent_id FROM public.site_sections WHERE id=p_section\n    UNION ALL SELECT s.id,s.parent_id FROM public.site_sections s JOIN tree2 t ON s.id=t.parent_id\n  )\n  SELECT MIN(a.available_at) INTO v_available\n  FROM public.subscription_content_access a\n  WHERE a.section_id IN (SELECT id FROM tree2) AND a.requires_subscription=true AND a.available_at IS NOT NULL;\n  IF v_available IS NOT NULL AND NOW() < v_available THEN RETURN false; END IF;\n\n  RETURN public.has_active_course_subscription(v_course);\nEND; $$;\n\nDROP POLICY IF EXISTS content_student_read ON public.section_content;\nCREATE POLICY content_student_read ON public.section_content FOR SELECT TO public USING (public.can_access_learning_section(section_id));\nDROP POLICY IF EXISTS resources_student_read ON public.section_resources;\nCREATE POLICY resources_student_read ON public.section_resources FOR SELECT TO public USING (public.can_access_learning_section(section_id));\nGRANT EXECUTE ON FUNCTION public.can_access_learning_section(BIGINT) TO anon, authenticated;\nNOTIFY pgrst, 'reload schema';`; 
+    try{if(navigator.clipboard)navigator.clipboard.writeText(sql);}catch(e){}
+    return sql;
+  };
+})();
+</script>
+
 </body>
 </html>
