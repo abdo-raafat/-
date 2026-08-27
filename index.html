@@ -3706,7 +3706,7 @@ function _apRescueStuckSpinners() {
     var host = spinnerEl.closest('[id]') || spinnerEl.parentElement;
     if (!host) return;
     host.innerHTML = '<div style="text-align:center;padding:30px 12px;color:#e74c3c">'
-      + '⚠️ حدث خطأ غير متوقع أثناء التحميل.<br>'
+      + '⚠️ تعذّر إكمال التحميل حالياً.<br>'
       + '<button class="ap-btn ap-btn-primary" style="margin-top:12px;padding:8px 18px;border-radius:8px;border:none;background:#0a3d62;color:#fff;cursor:pointer;" onclick="location.reload()">🔄 إعادة تحميل الصفحة</button>'
       + '</div>';
   });
@@ -3723,15 +3723,10 @@ window.addEventListener('unhandledrejection', function() { _apRescueStuckSpinner
 // (فشل صامت). هذا المراقب العام يضيف تغذية راجعة موحّدة لأي خطأ/Promise غير
 // معالَج في أي مكان بالصفحة، بدل أن يفشل كل زر بصمت كامل — بدون كسر الصفحة.
 window.addEventListener('error', function(e) {
-  if (typeof _showToast === 'function') {
-    _showToast('❌ حدث خطأ غير متوقع، برجاء إعادة المحاولة', 'error');
-  }
+  console.error('[Global Action Error]', e && (e.message || e.error || e));
 });
 window.addEventListener('unhandledrejection', function(e) {
-  console.error('[Global Action Error]', e.reason && (e.reason.message || e.reason));
-  if (typeof _showToast === 'function') {
-    _showToast('❌ تعذر إتمام العملية، برجاء إعادة المحاولة', 'error');
-  }
+  console.error('[Global Action Error]', e && (e.reason && (e.reason.message || e.reason) || e));
 });
 
 async function _fetchWithTimeout(promiseFn, timeoutMs) {
@@ -4952,18 +4947,30 @@ async function _openContentPage(sec, _preloadedContent, _preloadedResources) {
   // للاشتراك)، ولا يؤثر إطلاقاً على admin/branch_admin (يتم تجاهله لهما داخلياً).
   var pathLock = null;
   if (!gate && sec && sec.id && typeof window._pgCheckPathLock === 'function') {
-    // ✅ FIX (طلب المستخدم): الفصل المجاني الأول (Free Preview) لازم يتجاوز
-    // Path Gate كمان، مش بس بوابة الاشتراك. بدون هذا الفحص، لو ترتيب الفصل داخل
-    // "المسار التعليمي" (learning_path_items) مختلف عن ترتيبه الفعلي كأول فصل في
-    // أول مادة (site_sections/parent_id/display_order)، كان ممكن يُقفل تسلسليًا
-    // رغم إنه المفروض مفتوح دايمًا للجميع. لا يغيّر أي شيء في Path Gate نفسه أو
-    // ترتيب المحاضرات للطالب المشترك العادي — فقط يتجاوزه لهذا الفصل تحديدًا.
-    var _isFreePreviewForPathGate = false;
-    if (typeof window._isFreePreviewSection === 'function') {
-      try { _isFreePreviewForPathGate = await window._isFreePreviewSection(sec.id); } catch(e) { _isFreePreviewForPathGate = false; }
-    }
-    if (!_isFreePreviewForPathGate) {
-      try { pathLock = await window._pgCheckPathLock(sec.id); } catch (pgErr) { pathLock = null; }
+    // أي قسم لا يحمل requires_subscription صراحةً في subscription_content_access
+    // لا يُحجب بقفل المسار؛ لأنه محتوى مجاني بحسب إعدادات المحتوى الحالية.
+    var _explicitPathSub = null;
+    try {
+      if (window.supabase) {
+        var _pa = [], _pc = Number(sec.id), _pg = 0;
+        while (Number.isFinite(_pc) && _pg++ < 15) {
+          _pa.push(_pc);
+          var _pr = await window.supabase.from('site_sections').select('id,parent_id').eq('id',_pc).maybeSingle();
+          if (_pr.error || !_pr.data || _pr.data.parent_id == null) break;
+          _pc = Number(_pr.data.parent_id);
+        }
+        var _px = await window.supabase.from('subscription_content_access').select('section_id,requires_subscription').in('section_id',_pa);
+        if (!_px.error) _explicitPathSub = (_px.data||[]).some(function(x){ return x.requires_subscription === true; });
+      }
+    } catch(_eFree) {}
+    if (_explicitPathSub !== false) {
+      var _isFreePreviewForPathGate = false;
+      if (typeof window._isFreePreviewSection === 'function') {
+        try { _isFreePreviewForPathGate = await window._isFreePreviewSection(sec.id); } catch(e) { _isFreePreviewForPathGate = false; }
+      }
+      if (!_isFreePreviewForPathGate) {
+        try { pathLock = await window._pgCheckPathLock(sec.id); } catch (pgErr) { pathLock = null; }
+      }
     }
   }
   if (pathLock && pathLock.locked) {
@@ -7557,14 +7564,20 @@ async function _loadBranchAdminScope(userId) {
     if (!saRes.error && Array.isArray(saRes.data)) {
       saRes.data.forEach(function(row) {
         if (!row.section_id) return;
-        if (roots.some(function(r) { return r.id === row.section_id; })) return; // إزالة تكرار لو موجود بالفعل من المصدر القديم
+        var existingRoot = roots.find(function(r) { return Number(r.id) === Number(row.section_id); });
+        if (existingRoot) {
+          // لو نفس الكورس موجود من managed_section_id القديم، لا تجعل المصدر القديم
+          // يطغى على section_admins: الدور والصلاحيات الحقيقيان من section_admins
+          // هما المرجع، وخصوصاً role='owner'.
+          existingRoot.title = (row.site_sections && row.site_sections.title) || existingRoot.title || ('#' + row.section_id);
+          existingRoot.permissions = row.permissions || existingRoot.permissions || null;
+          existingRoot.role = row.role || existingRoot.role || 'admin';
+          return;
+        }
         roots.push({
           id: row.section_id,
           title: (row.site_sections && row.site_sections.title) || ('#' + row.section_id),
-          // ✅ الصلاحيات الحقيقية القادمة من قاعدة البيانات فعلاً
           permissions: row.permissions || null,
-          // ✅ الدور الفعلي (admin/owner) — يُستخدم لإخفاء تبويب "أدمن الكورسات"
-          // الكامل عن الـOwner دائمًا (بند Owner المنفصل)، بغض النظر عن أي صلاحية أخرى.
           role: row.role || 'admin'
         });
       });
@@ -10701,7 +10714,7 @@ function _applyBranchAdminPanelGating() {
   var ownerNav = document.getElementById('ap-tab-ownerAssistant');
   if (ownerNav) {
     // Owner الكورس فقط يرى زر إضافة الأدمن المساعد؛ الأدمن المساعد العادي لا يراه.
-    ownerNav.style.display = (isOwnerActive && !window._isSuperAdmin) ? '' : 'none';
+    ownerNav.style.display = (isSuper || (isBranch && (isOwnerActive || perms.can_manage_admins))) ? '' : 'none';
   }
 
   var notifTab = document.getElementById('ap-tab-notifications');
@@ -11172,7 +11185,7 @@ window._canCurrentUserAddCourseAssistant = function(sectionId){
 };
 
 window.openOwnerAssistantFromNav = function(){
-  if(window._isSuperAdmin || window._branchAdminActiveRole!=='owner') return;
+  if(!window._isSuperAdmin && window._branchAdminActiveRole!=='owner' && !(window._branchAdminPerms && window._branchAdminPerms.can_manage_admins)) return;
   var id=Number(window._branchAdminCourseId || window._activeSectionId || ((window._branchAdminOwnSectionIds||[])[0]) || 0);
   if(!id){if(typeof _showToast==='function')_showToast('❌ تعذر تحديد الكورس الحالي','error');return;}
   var title=(window._branchAdminRoots||[]).find(function(x){return Number(x.id)===id;});
@@ -12088,9 +12101,13 @@ function baOpenAssignModal(sectionId, sectionTitle, mode, targetRowId, targetRol
   // ✅ (Aug 2026 — Phase 3): حاجز واجهة إضافي — أدمن الكورس (مش أدمن المنصة) يقدر
   // فقط يفتح المودال لشعبته النشطة هو. الحماية الحقيقية في RLS
   // (branch_admin_can_manage_admins) — هذا فقط لمنع محاولة عبث من الواجهة نفسها.
-  if (window._isBranchAdmin && !window._isSuperAdmin && String(sectionId) !== String(window._activeSectionId)) {
-    _showToast ? _showToast('⛔ لا تملك صلاحية إدارة أدمن الكورس أخرى', 'error') : alert('⛔ غير مصرح');
-    return;
+  if (window._isBranchAdmin && !window._isSuperAdmin) {
+    var _targetCourseId = Number(window._branchAdminCourseId || window._branchAdminActiveRoot || window._activeSectionId || 0);
+    var _canManageTarget = typeof window._canCurrentUserAddCourseAssistant === 'function' && window._canCurrentUserAddCourseAssistant(sectionId);
+    if (!_canManageTarget || !_targetCourseId || Number(sectionId) !== _targetCourseId) {
+      _showToast ? _showToast('⛔ لا تملك صلاحية إدارة أدمن هذا الكورس', 'error') : alert('⛔ غير مصرح');
+      return;
+    }
   }
   window._baModalCtx = { sectionId: sectionId, sectionTitle: sectionTitle, mode: mode, targetRowId: targetRowId || null, targetRole: targetRole || null };
   window._baSelectedUser = null;
@@ -22244,6 +22261,8 @@ window.__FIXED2_AUDIT = { version: 'FIXED-2', date: '2026-08-12' };
 .learning-path-badge.completed{background:#e8f8ee;color:#1d8348;}
 .learning-path-empty{grid-column:1/-1;text-align:center;padding:50px 20px;color:#8a9bab;}
 @media(max-width:600px){.learning-paths-grid{grid-template-columns:1fr;gap:12px}.learning-path-card{border-radius:16px;padding:14px}.learning-path-item{padding:9px}.learning-path-badge{font-size:.58rem;padding:3px 6px}}
+/* إخفاء روابط المصادر من واجهة المستخدم مع إبقاء الروابط التشغيلية داخل الكود. */
+.link-card .lc-url, #rv-url-display { display:none !important; }
 .rv-media-tools{display:flex;align-items:center;justify-content:center;gap:7px;flex-wrap:wrap;margin:10px auto 0;padding:9px 10px;background:rgba(0,0,0,.35);border-radius:12px;max-width:min(720px,94%);color:#fff;font-size:.72rem;}
 .rv-media-tools button,.rv-media-tools select{border:1px solid rgba(255,255,255,.25);background:rgba(255,255,255,.10);color:#fff;border-radius:8px;padding:6px 9px;font-family:inherit;font-size:.72rem;cursor:pointer;}
 .rv-media-tools select option{color:#111;background:#fff;}
@@ -27287,5 +27306,44 @@ SELECT conname, pg_get_constraintdef(oid) FROM pg_constraint WHERE conname='audi
 })();
 </script>
 
+<script>
+(function(){
+  'use strict';  if(window.__BSM_CONTENT_ACCESS_WRAPPED)return;
+  window.__BSM_CONTENT_ACCESS_WRAPPED=true;  var originalDetailed=window.getDetailedSectionAccess;
+  var originalCheck=window.checkSectionAccess;
+
+  async function explicitSubscriptionRequired(sectionId){
+    var db=window.supabase, id=Number(sectionId);
+    if(!db || !Number.isFinite(id)) return null;
+    try{
+      var chain=[], cur=id, guard=0;
+      while(Number.isFinite(cur) && guard++<15){
+        chain.push(cur);
+        var rr=await db.from('site_sections').select('id,parent_id').eq('id',cur).maybeSingle();
+        if(rr.error || !rr.data || rr.data.parent_id==null) break;
+        cur=Number(rr.data.parent_id);
+      }
+      var ar=await db.from('subscription_content_access').select('section_id,requires_subscription').in('section_id',chain);
+      if(ar.error) return null;
+      return (ar.data||[]).some(function(x){return x.requires_subscription===true;});
+    }catch(e){ return null; }
+  }
+
+  window.getDetailedSectionAccess=async function(sectionId){
+    var explicit=await explicitSubscriptionRequired(sectionId);
+    if(explicit===false){
+      var base=originalDetailed?await originalDetailed(sectionId):null;
+      return {state:'free',anchor:base&&base.anchor||null};
+    }
+    return originalDetailed?await originalDetailed(sectionId):{state:'free',anchor:null};
+  };
+
+  window.checkSectionAccess=async function(sectionId){
+    var explicit=await explicitSubscriptionRequired(sectionId);
+    if(explicit===false){ return null; }
+    return originalCheck?await originalCheck(sectionId):null;
+  };
+})();
+</script>
 </body>
 </html>
