@@ -1284,6 +1284,40 @@ footer strong { color: var(--accent2); }
   max-height: calc(100vh - 140px) !important;
 }
 
+/* ✅ FIX (Mobile App / WebView): "ملء شاشة يدوي" — بعض WebViews اللي بتُستخدم
+   جوه تطبيقات الموبايل (Android WebView المخصص غالبًا) إما مالهاش دعم حقيقي
+   لـ Fullscreen API (document.fullscreenElement فاضل null حتى بعد استدعاء
+   requestFullscreen بنجاح ظاهري)، أو أصلًا مش عارضة الـ:fullscreen pseudo-class
+   ده. نفس المظهر بالظبط زي وضع الـ:fullscreen الحقيقي فوق، لكن بمحض class
+   بيتضاف/بيتشال بـ JS، فمش محتاج أي دعم فعلي من الـ Fullscreen API —
+   يشتغل مضمون في Desktop / Mobile Browser / Mobile App WebView. */
+.rv-overlay.rv-manual-fs {
+  padding: 0 !important;
+  background: #000 !important;
+  backdrop-filter: none !important;
+}
+.rv-overlay.rv-manual-fs .rv-modal {
+  max-width: 100vw !important;
+  max-height: 100vh !important;
+  max-height: 100dvh !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  height: 100dvh !important;
+  border-radius: 0 !important;
+}
+.rv-overlay.rv-manual-fs .rv-modal .rv-embed-frame {
+  height: calc(100vh - 120px) !important;
+  height: calc(100dvh - 120px) !important;
+}
+.rv-overlay.rv-manual-fs .rv-modal .rv-video {
+  max-height: calc(100vh - 120px) !important;
+  max-height: calc(100dvh - 120px) !important;
+}
+.rv-overlay.rv-manual-fs .rv-modal .rv-image-wrap img {
+  max-height: calc(100vh - 140px) !important;
+  max-height: calc(100dvh - 140px) !important;
+}
+
 /* Zoom للصور: pinch على الهاتف */
 .rv-image-wrap {
   touch-action: pinch-zoom;
@@ -2512,7 +2546,13 @@ img, video {
   .ap-nav-btn.special-action-nav { font-weight:800; }
   @media (max-width: 760px){
     #ap-panel-courseAdminPhone .ap-card > div[style*="grid-template-columns"]{grid-template-columns:1fr !important;}
+    #cap-contacts-list [data-cap-row]{grid-template-columns:1fr !important;}
   }
+  /* 📱 جهات اتصال الكورس داخل صفحة الكورس نفسها — تبقى مقروءة وقابلة للضغط
+     بدون كسر أي Layout على الشاشات الصغيرة أو داخل تطبيق Android. */
+  #dynamic-section-admin-phone{max-width:100%;}
+  #course-contact-actions-modal a, #course-contact-actions-modal button{touch-action:manipulation;}
+  .course-contact-card{touch-action:manipulation;-webkit-tap-highlight-color:rgba(10,61,98,.12);}
 </style>
 </head>
 <body>
@@ -2604,7 +2644,7 @@ img, video {
 <div id="bsm-course-ad-modal" class="bsm-video-modal" style="display:none; position:fixed; inset:0; z-index:2147483647; background:rgba(0,0,0,.85); align-items:center; justify-content:center; padding:16px; direction:rtl; font-family:inherit; box-sizing:border-box;">
   <div style="position:relative; width:100%; max-width:560px; margin:0 auto; background:#000; border-radius:14px; overflow:hidden;">
     <button type="button" data-close-video-modal aria-label="إغلاق" style="position:absolute; top:8px; left:8px; z-index:2; background:rgba(0,0,0,.6); color:#fff; border:none; border-radius:50%; width:32px; height:32px; font-size:1.1rem; line-height:1; cursor:pointer; display:flex; align-items:center; justify-content:center;">✕</button>
-    <video id="bsm-course-ad-video" controls playsinline preload="none" style="width:100%; max-height:80vh; display:block; background:#000;">
+    <video id="bsm-course-ad-video" controls playsinline webkit-playsinline x5-playsinline preload="none" style="width:100%; max-height:80vh; display:block; background:#000;">
       <source src="https://19bey0t9zc.ucarecd.net/665cd2e0-7eb4-4de6-b4fd-860ed9c23f5c/Record_20260824072212.mp4" type="video/mp4">
     </video>
   </div>
@@ -2614,7 +2654,7 @@ img, video {
 <div id="bsm-install-app-modal" class="bsm-video-modal" style="display:none; position:fixed; inset:0; z-index:2147483647; background:rgba(0,0,0,.85); align-items:center; justify-content:center; padding:16px; direction:rtl; font-family:inherit; box-sizing:border-box;">
   <div style="position:relative; width:100%; max-width:560px; margin:0 auto; background:#000; border-radius:14px; overflow:hidden;">
     <button type="button" data-close-video-modal aria-label="إغلاق" style="position:absolute; top:8px; left:8px; z-index:2; background:rgba(0,0,0,.6); color:#fff; border:none; border-radius:50%; width:32px; height:32px; font-size:1.1rem; line-height:1; cursor:pointer; display:flex; align-items:center; justify-content:center;">✕</button>
-    <video id="bsm-install-app-video" controls playsinline preload="metadata" style="width:100%; max-height:80vh; display:block; background:#000;">
+    <video id="bsm-install-app-video" controls playsinline webkit-playsinline x5-playsinline preload="metadata" style="width:100%; max-height:80vh; display:block; background:#000;">
       <source src="https://19bey0t9zc.ucarecd.net/f7fd79ec-417c-42ae-84cc-7c3607f80ce3/WhatsAppVideo20260824at84018AM.mp4" type="video/mp4">
     </video>
   </div>
@@ -4265,8 +4305,10 @@ async function _renderDynamicSectionPage(sec) {
   // يظهر أصلاً إذا كان الحقل فارغاً/غير موجود.
   /*
    * 📱 تواصل مع أدمن/دكتور الكورس
-   * الرقم مأخوذ من course_admin_phone الخاص بالكورس نفسه.
-   * الضغط على الرقم يفتح اختيارًا واضحًا: WhatsApp / Telegram / اتصال.
+   * الجهات مأخوذة من course_admin_phone الخاص بالكورس نفسه (يقبل أكثر من رقم،
+   * كل جهة: اسم اختياري + رقم + Telegram Username اختياري — مخزّنة كـJSON في
+   * نفس العمود القديم، ومتوافقة تلقائيًا مع رقم قديم كنص عادي).
+   * الضغط على أي جهة يفتح اختيارًا واضحًا: WhatsApp / Telegram / اتصال.
    * لا يوجد رقم تجريبي ولا أي تعديل على Supabase/RLS.
    */
   window._coursePhoneToInternational = window._coursePhoneToInternational || function(raw) {
@@ -4291,10 +4333,17 @@ async function _renderDynamicSectionPage(sec) {
     if (old) old.remove();
   };
 
-  window._openCourseContactActions = window._openCourseContactActions || function(raw) {
-    var international = window._coursePhoneToInternational(raw);
-    var digits = window._coursePhoneDigits(raw);
+  // idx: فهرس الجهة داخل window._courseContactsCurrent (مصفوفة {name,phone,telegram}
+  // مُحمّلة عند رسم صفحة القسم). Telegram يستخدم Username لو موجود، وإلا الرقم.
+  window._openCourseContactActions = function(idx) {
+    var contact = (window._courseContactsCurrent || [])[idx];
+    if (!contact) return;
+    var international = window._coursePhoneToInternational(contact.phone);
+    var digits = window._coursePhoneDigits(contact.phone);
     if (!international || !digits) return;
+    var telegramHref = contact.telegram
+      ? 'https://t.me/' + contact.telegram.replace(/^@/, '')
+      : 'https://t.me/+' + digits;
 
     window._closeCourseContactActions();
 
@@ -4307,11 +4356,11 @@ async function _renderDynamicSectionPage(sec) {
     var card = document.createElement('div');
     card.style.cssText = 'width:min(420px,100%);background:#fff;border-radius:20px;padding:20px;box-shadow:0 22px 70px rgba(0,0,0,.28);text-align:center;font-family:inherit;';
     card.innerHTML =
-      '<div style="font-size:1.05rem;font-weight:900;color:#0a3d62;margin-bottom:6px;">📱 اختر طريقة التواصل</div>' +
+      '<div style="font-size:1.05rem;font-weight:900;color:#0a3d62;margin-bottom:6px;">📱 اختر طريقة التواصل' + (contact.name ? ' — ' + _apEsc(contact.name) : '') + '</div>' +
       '<div style="font-size:.82rem;color:#667;margin-bottom:16px;direction:ltr;">' + _apEsc(international) + '</div>' +
       '<div style="display:grid;gap:10px;">' +
         '<a href="https://wa.me/' + digits + '" target="_blank" rel="noopener noreferrer" style="display:block;padding:12px 14px;border-radius:12px;background:#16a34a;color:#fff;text-decoration:none;font-weight:900;">🟢 WhatsApp</a>' +
-        '<a href="https://t.me/+' + digits + '" target="_blank" rel="noopener noreferrer" style="display:block;padding:12px 14px;border-radius:12px;background:#229ed9;color:#fff;text-decoration:none;font-weight:900;">🔵 Telegram</a>' +
+        '<a href="' + telegramHref + '" target="_blank" rel="noopener noreferrer" style="display:block;padding:12px 14px;border-radius:12px;background:#229ed9;color:#fff;text-decoration:none;font-weight:900;">🔵 Telegram</a>' +
         '<a href="tel:' + international + '" style="display:block;padding:12px 14px;border-radius:12px;background:#0a3d62;color:#fff;text-decoration:none;font-weight:900;">📞 اتصال هاتفي</a>' +
       '</div>' +
       '<button type="button" onclick="window._closeCourseContactActions()" style="margin-top:12px;width:100%;padding:10px 14px;border:0;border-radius:12px;background:#eef3f7;color:#345;font-weight:800;cursor:pointer;">إغلاق</button>';
@@ -4328,25 +4377,36 @@ async function _renderDynamicSectionPage(sec) {
     // نضمن قراءة الرقم من صف الكورس نفسه حتى لو كانت الصفحة الحالية وصلت
     // للقسم من مسار/قائمة استخدمت select محدودًا ولم تحمل course_admin_phone.
     (async function(){
-      var coursePhone = (sec && sec.course_admin_phone) ? String(sec.course_admin_phone).trim() : '';
-      if (!coursePhone && sec && sec.id && window.supabase) {
+      var coursePhoneRaw = (sec && sec.course_admin_phone) ? String(sec.course_admin_phone).trim() : '';
+      if (!coursePhoneRaw && sec && sec.id && window.supabase) {
         try {
           var phoneRes = await window.supabase.from('site_sections')
             .select('course_admin_phone,type')
             .eq('id', Number(sec.id)).maybeSingle();
           if (!phoneRes.error && phoneRes.data && phoneRes.data.course_admin_phone) {
-            coursePhone = String(phoneRes.data.course_admin_phone).trim();
+            coursePhoneRaw = String(phoneRes.data.course_admin_phone).trim();
           }
         } catch(_phoneErr) {
           console.warn('[COURSE PHONE] تعذر تحميل رقم دكتور الكورس:', _phoneErr && _phoneErr.message);
         }
       }
-      var normalizedCoursePhone = window._coursePhoneToInternational(coursePhone);
-      adminPhoneEl.innerHTML = normalizedCoursePhone
+      var contacts = (typeof window._capParseContacts === 'function') ? window._capParseContacts(coursePhoneRaw) : [];
+      window._courseContactsCurrent = contacts;
+      if (!contacts.length) { adminPhoneEl.innerHTML = ''; return; }
+      var cardsHTML = contacts.map(function(c, idx){
+        var normalized = window._coursePhoneToInternational(c.phone);
+        if (!normalized) return '';
+        return '<button type="button" class="course-contact-card" onclick="window._openCourseContactActions(' + idx + ')" '
+          + 'style="display:inline-flex;flex-direction:column;align-items:center;gap:2px;border:0;cursor:pointer;background:linear-gradient(135deg,#0a3d62,#17a589);color:#fff;padding:9px 18px;border-radius:16px;font-weight:800;font-size:.86rem;min-width:150px;max-width:100%;">'
+          + (c.name ? '<span style="font-size:.72rem;opacity:.9;">' + _apEsc(c.name) + '</span>' : '')
+          + '<span style="direction:ltr;">📞 ' + _apEsc(normalized) + '</span>'
+          + '</button>';
+      }).join('');
+      adminPhoneEl.innerHTML = cardsHTML
         ? '<div style="background:linear-gradient(135deg,#eefaf6,#f5fbff);border:1px solid #b8e6d8;border-radius:14px;padding:13px 16px;margin:10px 0;text-align:center;box-shadow:0 4px 14px rgba(10,61,98,.06);">'
           + '<div style="font-size:.85rem;color:#0a3d62;font-weight:800;margin-bottom:4px;">📱 للتواصل والاستفسار عن الكورس</div>'
-          + '<div style="font-size:.8rem;color:#555;margin-bottom:9px;">اضغط على الرقم لاختيار WhatsApp أو Telegram أو الاتصال</div>'
-          + '<button type="button" onclick="window._openCourseContactActions(\'' + normalizedCoursePhone + '\')" style="display:inline-block;border:0;cursor:pointer;background:linear-gradient(135deg,#0a3d62,#17a589);color:#fff;padding:9px 22px;border-radius:22px;font-weight:800;font-size:.92rem;direction:ltr;">📞 ' + _apEsc(normalizedCoursePhone) + '</button>'
+          + '<div style="font-size:.8rem;color:#555;margin-bottom:9px;">اضغط على أي رقم لاختيار WhatsApp أو Telegram أو الاتصال</div>'
+          + '<div style="display:flex;flex-wrap:wrap;gap:8px;justify-content:center;">' + cardsHTML + '</div>'
           + '</div>'
         : '';
     })();
@@ -6294,6 +6354,10 @@ const ResourceViewer = (function() {
             class="rv-video"
             controls
             playsinline
+            webkit-playsinline
+            x5-playsinline
+            x5-video-player-type="h5"
+            x5-video-player-fullscreen="true"
             preload="metadata"
             id="rv-video-el"
             controlsList="nodownload"
@@ -6539,7 +6603,22 @@ const ResourceViewer = (function() {
     });
 
     // إغلاق بـ ESC
-    document._rvKeyHandler = function(e) { if (e.key === 'Escape') close(); };
+    // ✅ FIX (Fullscreen): لو المستخدم داخل وضع Fullscreen وضغط ESC، المتصفح
+    // نفسه بيخرج من Fullscreen تلقائياً (سلوك افتراضي في كل المتصفحات). المشكلة
+    // كانت إن هذا الهاندلر كان بيقفل المشغل بالكامل في نفس اللحظة كمان، فبعد أول
+    // خروج من Fullscreen بـESC كان المشغل بيتقفل خالص، ومفيش إمكانية إن المستخدم
+    // يدخل/يخرج Fullscreen أكتر من مرة إلا لو فتح الفيديو من الأول تاني. الحل:
+    // لو لسه في Fullscreen وقت الضغطة (يعني ESC هو اللي هيخرج منه)، سيبها
+    // للمتصفح تتصرف وبلاش نقفل المشغل؛ ESC هتقفل المشغل فعلياً بس لو مش في
+    // Fullscreen أصلاً. ✅ نفس المنطق بالظبط اتطبق على وضع "ملء الشاشة اليدوي"
+    // (rv-manual-fs) اللي بيشتغل جوه Mobile App/WebView.
+    document._rvKeyHandler = function(e) {
+      if (e.key !== 'Escape') return;
+      if (document.fullscreenElement || document.webkitFullscreenElement) return;
+      var ov = document.getElementById('rv-overlay');
+      if (ov && ov.classList.contains('rv-manual-fs')) { _disableManualFullscreen(); return; }
+      close();
+    };
     document.addEventListener('keydown', document._rvKeyHandler);
 
     document.body.appendChild(overlay);
@@ -6586,7 +6665,19 @@ const ResourceViewer = (function() {
     if (!root) return;
     var media = root.querySelector('#rv-video-el, #rv-audio-el');
     var tools = root.querySelector('[data-media-tools]');
-    if (!media || !tools) return;
+    if (!media) return;
+    // ✅ FIX (Android WebView): بعض نسخ WebView تتجاهل خاصية playsinline لو
+    // اتحطت بس كـ HTML attribute جوه innerHTML string، فبنفرضها كمان عبر
+    // الخصائص مباشرة على العنصر نفسه بعد إدراجه في الـ DOM فعليًا — بدون أي
+    // تغيير في المشغل الحالي (نفس <video> ونفس عناصر التحكم).
+    if (media.tagName === 'VIDEO') {
+      try {
+        media.setAttribute('playsinline', '');
+        media.setAttribute('webkit-playsinline', '');
+        media.playsInline = true;
+      } catch (e) {}
+    }
+    if (!tools) return;
     tools.querySelectorAll('[data-media-seek]').forEach(function(btn) {
       btn.addEventListener('click', function() {
         var delta = Number(btn.getAttribute('data-media-seek')) || 0;
@@ -6664,23 +6755,123 @@ const ResourceViewer = (function() {
   }
 
   function _toggleFullscreen() {
+    const overlay = document.getElementById('rv-overlay');
     const modal = document.getElementById('rv-modal');
-    const btn   = document.getElementById('rv-fs-btn');
-    if (!modal) return;
-    if (!document.fullscreenElement) {
-      try {
-        var req = modal.requestFullscreen || modal.webkitRequestFullscreen;
-        if (req) Promise.resolve(req.call(modal)).catch(function(err){ console.warn('[Fullscreen]', err && err.message); });
-      } catch(e) { console.warn('[Fullscreen]', e && e.message); }
-      if (btn) btn.textContent = '✕ خروج ملء الشاشة';
-    } else {
+    if (!modal || !overlay) return;
+
+    var nativeActive = !!(document.fullscreenElement || document.webkitFullscreenElement);
+    var manualActive = overlay.classList.contains('rv-manual-fs');
+
+    // ── خروج (بأي وضع كنا فيه) ──────────────────────────────────
+    if (manualActive) { _disableManualFullscreen(); return; }
+    if (nativeActive) {
       try {
         var exit = document.exitFullscreen || document.webkitExitFullscreen;
         if (exit) Promise.resolve(exit.call(document)).catch(function(err){ console.warn('[Fullscreen]', err && err.message); });
       } catch(e) { console.warn('[Fullscreen]', e && e.message); }
-      if (btn) btn.textContent = '⛶';
+      return;
     }
+
+    // ── دخول ─────────────────────────────────────────────────────
+    // بنجرب Fullscreen API الحقيقية أولاً (هي دي اللي شغالة فعلاً على
+    // Desktop Browser وMobile Browser ومحدش بيتلمس فيها هنا).
+    var attemptedNative = false;
+    var req = modal.requestFullscreen || modal.webkitRequestFullscreen;
+    if (req) {
+      attemptedNative = true;
+      try { Promise.resolve(req.call(modal)).catch(function(){ _rvFallbackVideoFullscreen(); }); }
+      catch(e) { _rvFallbackVideoFullscreen(); }
+    } else {
+      // Fullscreen API مش موجودة أصلاً على الـ modal — نجرب fallback الفيديو
+      // (بيفيد تحديدًا iOS Safari عبر webkitEnterFullscreen).
+      _rvFallbackVideoFullscreen();
+    }
+
+    // ✅ FIX (Mobile App / WebView): المشكلة الأساسية إن بعض WebViews
+    // المُستخدمة جوه تطبيق الموبايل (packaged app) إما مالهاش تنفيذ حقيقي
+    // لـ Fullscreen API (requestFullscreen() بترجع نجاح شكلي، أو مفيش
+    // onShowCustomView جوه الـWebView الأصلي، فمفيش أي تغيير على الشاشة
+    // فعليًا)، أو الـAPI مش موجودة خالص. الحل: بعد فترة قصيرة نتأكد هل
+    // Fullscreen اتفعّل فعليًا في أي لحظة (مش بس وقت الفحص نفسه — عشان لو
+    // المستخدم دخل Fullscreen حقيقي فعلاً وخرج منه بسرعة "عادي" قبل ما
+    // التايمر ده يشتغل، معناها الـAPI شغالة تمام ومفيش داعي للوضع اليدوي؛
+    // بنستخدم حدث fullscreenchange نفسه كـ"شاهد" على إن الدخول حصل فعلاً،
+    // مش بس حالة اللحظة). لو الحدث ده ما حصلش خالص خلال الفترة دي — نفعّل
+    // "ملء شاشة يدوي" بمحض CSS class (rv-manual-fs) بيغطي الشاشة بالكامل
+    // بنفس شكل الـ:fullscreen الحقيقي بالظبط، من غير ما يعتمد على أي دعم من
+    // المتصفح/WebView للـFullscreen API. بكده الزرار بيشتغل مضمون في الحالات
+    // التلاتة: Desktop Browser / Mobile Browser / Mobile App WebView.
+    var nativeConfirmed = false;
+    var confirmNative = function() { nativeConfirmed = true; cleanupConfirm(); };
+    var cleanupConfirm = function() {
+      document.removeEventListener('fullscreenchange', confirmNative);
+      document.removeEventListener('webkitfullscreenchange', confirmNative);
+    };
+    document.addEventListener('fullscreenchange', confirmNative);
+    document.addEventListener('webkitfullscreenchange', confirmNative);
+
+    setTimeout(function() {
+      cleanupConfirm();
+      var stillNoNative = !document.fullscreenElement && !document.webkitFullscreenElement;
+      if (!nativeConfirmed && stillNoNative && !overlay.classList.contains('rv-manual-fs')) {
+        _enableManualFullscreen();
+      }
+    }, attemptedNative ? 350 : 150);
   }
+
+  function _rvFallbackVideoFullscreen() {
+    var video = document.getElementById('rv-video-el');
+    if (!video) return;
+    try {
+      if (video.requestFullscreen) video.requestFullscreen().catch(function(){});
+      else if (video.webkitRequestFullscreen) video.webkitRequestFullscreen();
+      else if (video.webkitEnterFullscreen) video.webkitEnterFullscreen(); // iOS Safari native player
+    } catch(e) { console.warn('[Fullscreen fallback]', e && e.message); }
+  }
+
+  // ── ملء الشاشة اليدوي (CSS فقط) — الضمانة اللي بتشتغل جوه Mobile App/WebView
+  // حتى لو الـFullscreen API نفسها مش شغالة أو مش موجودة أصلاً ─────────────
+  function _enableManualFullscreen() {
+    var overlay = document.getElementById('rv-overlay');
+    if (!overlay || overlay.classList.contains('rv-manual-fs')) return;
+    overlay.classList.add('rv-manual-fs');
+    _onRvFsChange();
+  }
+  function _disableManualFullscreen() {
+    var overlay = document.getElementById('rv-overlay');
+    if (!overlay) return;
+    overlay.classList.remove('rv-manual-fs');
+    _onRvFsChange();
+  }
+
+  // ✅ FIX (Fullscreen state sync): بيتنفّذ مع أي تغيير فعلي في وضع Fullscreen،
+  // سواء حصل عن طريق زرار ⛶ بتاعنا، أو ESC، أو زرار Fullscreen اللي جوه
+  // الفيديو نفسه (native controls)، أو جوه الـ iframe (يوتيوب/فيميو...)، أو
+  // الوضع اليدوي بتاع Mobile App/WebView. كده نص الزرار دايمًا مطابق للواقع
+  // أيًا كانت البيئة.
+  function _onRvFsChange() {
+    var btn = document.getElementById('rv-fs-btn');
+    if (!btn) return;
+    var overlay = document.getElementById('rv-overlay');
+    var inFs = !!(document.fullscreenElement || document.webkitFullscreenElement) ||
+               !!(overlay && overlay.classList.contains('rv-manual-fs'));
+    btn.textContent = inFs ? '✕ خروج ملء الشاشة' : '⛶';
+  }
+  document.addEventListener('fullscreenchange', _onRvFsChange);
+  document.addEventListener('webkitfullscreenchange', _onRvFsChange);
+
+  // ✅ FIX (Mobile App): بعض تطبيقات الموبايل المبنية بـCordova/Capacitor
+  // بتبعت حدث 'backbutton' لما المستخدم يدوس زر الرجوع الفعلي في الجهاز.
+  // لو حصل واحنا في وضع ملء الشاشة اليدوي، بنخرج منه بس (زي ESC بالظبط)
+  // بدل ما التطبيق يقفل الصفحة كلها أو يرجع خطوة في التنقل. الحدث ده مبيتفعّلش
+  // أصلاً في المتصفح العادي أو الـWebViews التانية، فمفيش أي تأثير جانبي.
+  document.addEventListener('backbutton', function(e) {
+    var overlay = document.getElementById('rv-overlay');
+    if (overlay && overlay.classList.contains('rv-manual-fs')) {
+      if (e && e.preventDefault) e.preventDefault();
+      _disableManualFullscreen();
+    }
+  }, false);
 
   // ✅ حماية موحّدة لفشل تشغيل الفيديو/الصوت (رابط منتهي/معطوب/ملف مفقود)
   function _showMediaError(kind) {
@@ -8490,21 +8681,20 @@ window.checkBanStatus = async function(email) {
           <div style="font-size:.82rem;color:#667;line-height:1.8;margin-bottom:14px;">
             اختر الكورس ثم سجّل رقم أدمن/دكتور هذا الكورس. الرقم يُحفظ على الكورس نفسه ويظهر للطلاب داخل الكورس المحدد فقط.
           </div>
-          <div style="display:grid;grid-template-columns:minmax(220px,1fr) minmax(220px,1fr);gap:14px;align-items:end;">
-            <div>
-              <label class="ap-label">📚 الكورس</label>
-              <select id="cap-course-select" class="ap-select" onchange="capLoadCourse()">
-                <option value="">— جاري تحميل الكورسات —</option>
-              </select>
-            </div>
-            <div>
-              <label class="ap-label">📱 رقم أدمن / دكتور الكورس</label>
-              <input id="cap-phone-input" class="ap-input" type="text" inputmode="tel" dir="ltr" style="text-align:right;" placeholder="01xxxxxxxxx">
-            </div>
+          <div>
+            <label class="ap-label">📚 الكورس</label>
+            <select id="cap-course-select" class="ap-select" onchange="capLoadCourse()">
+              <option value="">— جاري تحميل الكورسات —</option>
+            </select>
+          </div>
+          <div style="margin-top:14px;">
+            <label class="ap-label">📱 جهات اتصال الكورس (يقبل أكثر من رقم)</label>
+            <div id="cap-contacts-list"></div>
+            <button type="button" class="ap-btn ap-btn-ghost" style="margin-top:6px;" onclick="capAddContactRow()">➕ إضافة رقم آخر</button>
           </div>
           <div id="cap-save-msg" style="font-size:.8rem;margin-top:12px;"></div>
           <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap;">
-            <button class="ap-btn ap-btn-primary" onclick="capSave()">💾 حفظ رقم الكورس</button>
+            <button class="ap-btn ap-btn-primary" onclick="capSave()">💾 حفظ أرقام الكورس</button>
             <button class="ap-btn ap-btn-ghost" onclick="capInit()">🔄 تحديث الكورسات</button>
           </div>
         </div>
@@ -8650,9 +8840,9 @@ window.checkBanStatus = async function(email) {
               <div class="ap-field"><label class="ap-label">التصنيف (Category) — اختياري</label><input class="ap-input" id="sm-f-category" type="text"></div>
               <div class="ap-field"><label class="ap-label">Tags — اختياري (مفصولة بفاصلة)</label><input class="ap-input" id="sm-f-tags" type="text"></div>
               <div class="ap-field" id="sm-course-admin-phone-wrap" style="display:block;">
-  <label class="ap-label">📱 رقم أدمن/دكتور الكورس</label>
-  <input class="ap-input" id="sm-f-course-admin-phone" type="tel" inputmode="tel" autocomplete="tel" style="direction:ltr;text-align:right;" placeholder="01xxxxxxxxx">
-  <div style="font-size:.68rem;color:#7b8794;margin-top:4px;">يظهر للطلاب داخل هذا الكورس فقط. هذا الحقل متاح لأدمن المنصة (Owner) فقط.</div>
+  <label class="ap-label">📱 جهات اتصال أدمن/دكتور الكورس</label>
+  <input class="ap-input" id="sm-f-course-admin-phone" type="text" readonly style="direction:rtl;background:#f3f5f7;color:#556;cursor:not-allowed;" placeholder="لا توجد أرقام مسجلة">
+  <div style="font-size:.68rem;color:#7b8794;margin-top:4px;">للحفاظ على الأرقام الحالية من أي مسح غير مقصود، أدر الأرقام فقط من تبويب "📱 رقم أدمن/دكتور الكورس" في القائمة الرئيسية — هذا الحقل للعرض فقط ولا يُحفظ من هنا.</div>
 </div>
               <div class="ap-field" style="display:flex;align-items:center;gap:8px;background:#eefaf6;border:1px solid #b8e6d8;border-radius:10px;padding:10px 12px;">
                 <input type="checkbox" id="sm-f-is-course" style="width:auto;">
@@ -10781,9 +10971,49 @@ window._refreshNotifBadge = async function() {
 // 📱 COURSE ADMIN PHONE — لوحة مستقلة للـOwner/Platform Admin
 // ════════════════════════════════════════════════════════════════
 window._capCourses = [];
+window._capContacts = [];
+
+// ────────────────────────────────────────────────────────────────
+// 📱 تخزين عدة جهات اتصال (اسم اختياري + رقم + Telegram Username اختياري)
+// داخل نفس عمود course_admin_phone الموجود بالفعل (كنص JSON)، بدون إنشاء
+// أي جدول جديد. متوافق تمامًا مع القيمة القديمة (رقم هاتف كنص عادي فقط) —
+// أي رقم قديم يُقرأ تلقائيًا كجهة اتصال واحدة بلا اسم/Telegram.
+// ────────────────────────────────────────────────────────────────
+window._capParseContacts = window._capParseContacts || function(raw){
+  var value = (raw === null || raw === undefined) ? '' : String(raw).trim();
+  if (!value) return [];
+  if (value.charAt(0) === '[') {
+    try {
+      var arr = JSON.parse(value);
+      if (Array.isArray(arr)) {
+        return arr.map(function(c){
+          return {
+            name: (c && c.name) ? String(c.name).trim() : '',
+            phone: (c && c.phone) ? String(c.phone).trim() : '',
+            telegram: (c && c.telegram) ? String(c.telegram).trim().replace(/^@/, '') : ''
+          };
+        }).filter(function(c){ return c.phone; });
+      }
+    } catch (e) { /* ليست JSON صحيحة — نتعامل معها كرقم قديم بالأسفل */ }
+  }
+  // قيمة قديمة: رقم هاتف نصي عادي واحد فقط.
+  return [{ name: '', phone: value, telegram: '' }];
+};
+
+window._capSerializeContacts = window._capSerializeContacts || function(contacts){
+  var clean = (contacts || []).map(function(c){
+    return {
+      name: (c.name || '').trim(),
+      phone: (c.phone || '').trim(),
+      telegram: (c.telegram || '').trim().replace(/^@/, '')
+    };
+  }).filter(function(c){ return c.phone; });
+  if (!clean.length) return null;
+  return JSON.stringify(clean);
+};
+
 window.capInit = async function(){
   var sel=document.getElementById('cap-course-select');
-  var phone=document.getElementById('cap-phone-input');
   var msg=document.getElementById('cap-save-msg');
   if(!sel) return;
   // 📱 هذه الصفحة خاصة بـOwner المنصة فقط. Owner المنصة الحقيقي هو profiles.role='admin'،
@@ -10809,7 +11039,7 @@ window.capInit = async function(){
       .order('title');
     if(rowsErr) throw rowsErr;
     window._capCourses=rows||[];
-    if(!rows.length){sel.innerHTML='<option value="">لا توجد كورسات</option>';if(phone)phone.value='';return;}
+    if(!rows.length){sel.innerHTML='<option value="">لا توجد كورسات</option>';capRenderContacts([]);return;}
     sel.innerHTML='<option value="">— اختر الكورس —</option>'+rows.map(function(c){return '<option value="'+c.id+'">'+(c.icon||'📚')+' '+_apEsc(c.title)+'</option>';}).join('');
     sel.value=String(rows[0].id);
     await capLoadCourse();
@@ -10819,30 +11049,83 @@ window.capInit = async function(){
     if(msg) {msg.style.color='#e74c3c';msg.textContent='❌ تعذر تحميل الكورسات: '+_apEsc(e.message||'');}
   }
 };
+
 window.capLoadCourse = async function(){
-  var sel=document.getElementById('cap-course-select'),phone=document.getElementById('cap-phone-input'),msg=document.getElementById('cap-save-msg');
+  var sel=document.getElementById('cap-course-select'),msg=document.getElementById('cap-save-msg');
   var id=Number(sel&&sel.value||0);
-  if(!id){if(phone)phone.value='';return;}
+  if(!id){capRenderContacts([]);return;}
   var row=(window._capCourses||[]).find(function(x){return Number(x.id)===id;});
-  if(phone)phone.value=(row&&row.course_admin_phone)||'';
+  window._capContacts = window._capParseContacts(row && row.course_admin_phone);
+  if(!window._capContacts.length) window._capContacts=[{name:'',phone:'',telegram:''}];
+  capRenderContacts(window._capContacts);
   if(msg)msg.textContent='';
 };
+
+// يرسم صفوف جهات الاتصال (اسم اختياري + هاتف + Telegram اختياري + حذف).
+function capRenderContacts(contacts){
+  var wrap=document.getElementById('cap-contacts-list');
+  if(!wrap) return;
+  if(!contacts || !contacts.length) contacts=[{name:'',phone:'',telegram:''}];
+  wrap.innerHTML = contacts.map(function(c, idx){
+    return '<div class="ap-card" data-cap-row="'+idx+'" style="padding:10px;margin-bottom:8px;display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:8px;align-items:end;">'+
+      '<div><label class="ap-label" style="font-size:.7rem;">👤 الاسم (اختياري)</label>'+
+        '<input class="ap-input cap-c-name" type="text" value="'+_apEsc(c.name||'')+'" placeholder="اسم الأدمن/الدكتور"></div>'+
+      '<div><label class="ap-label" style="font-size:.7rem;">📱 رقم الهاتف</label>'+
+        '<input class="ap-input cap-c-phone" type="text" inputmode="tel" dir="ltr" style="text-align:right;" value="'+_apEsc(c.phone||'')+'" placeholder="01xxxxxxxxx"></div>'+
+      '<div><label class="ap-label" style="font-size:.7rem;">🔵 Telegram Username (اختياري)</label>'+
+        '<input class="ap-input cap-c-telegram" type="text" dir="ltr" value="'+_apEsc(c.telegram||'')+'" placeholder="username بدون @"></div>'+
+      '<button type="button" class="ap-btn ap-btn-ghost" style="padding:9px 10px;" title="حذف هذا الرقم" onclick="capRemoveContactRow('+idx+')">🗑️</button>'+
+    '</div>';
+  }).join('');
+}
+
+// يقرأ الصفوف الحالية من الـDOM (وليس من window._capContacts القديمة)، حتى
+// يعكس أي تعديل كتبه المستخدم قبل الضغط على حذف/إضافة/حفظ.
+function capReadContactsFromDOM(){
+  var rows=document.querySelectorAll('#cap-contacts-list [data-cap-row]');
+  var out=[];
+  rows.forEach(function(row){
+    var name=(row.querySelector('.cap-c-name')||{}).value||'';
+    var phone=(row.querySelector('.cap-c-phone')||{}).value||'';
+    var telegram=(row.querySelector('.cap-c-telegram')||{}).value||'';
+    out.push({name:name, phone:phone, telegram:telegram});
+  });
+  return out;
+}
+
+window.capAddContactRow = function(){
+  var contacts = capReadContactsFromDOM();
+  contacts.push({name:'',phone:'',telegram:''});
+  window._capContacts = contacts;
+  capRenderContacts(contacts);
+};
+
+window.capRemoveContactRow = function(idx){
+  var contacts = capReadContactsFromDOM();
+  contacts.splice(idx, 1);
+  if(!contacts.length) contacts=[{name:'',phone:'',telegram:''}];
+  window._capContacts = contacts;
+  capRenderContacts(contacts);
+};
+
 window.capSave = async function(){
-  var sel=document.getElementById('cap-course-select'),phone=document.getElementById('cap-phone-input'),msg=document.getElementById('cap-save-msg');
+  var sel=document.getElementById('cap-course-select'),msg=document.getElementById('cap-save-msg');
   var _canManageCoursePhones = window._isSuperAdmin === true ||
     (window._currentUserProfile && window._currentUserProfile.role === 'admin') ||
     window._currentUserRole === 'admin';
   if(!_canManageCoursePhones){return;}
-  var id=Number(sel&&sel.value||0), value=(phone&&phone.value||'').trim();
+  var id=Number(sel&&sel.value||0);
   if(!id){if(msg){msg.style.color='#e74c3c';msg.textContent='❌ اختر الكورس أولاً';}return;}
+  var contacts = capReadContactsFromDOM();
+  var value = window._capSerializeContacts(contacts);
   if(msg){msg.style.color='#667';msg.textContent='⏳ جاري الحفظ...';}
   try{
-    var res=await window.supabase.from('site_sections').update({course_admin_phone:value||null}).eq('id',id);
+    var res=await window.supabase.from('site_sections').update({course_admin_phone:value}).eq('id',id);
     if(res.error) throw res.error;
     var row=(window._capCourses||[]).find(function(x){return Number(x.id)===id;});
-    if(row)row.course_admin_phone=value||null;
-    if(msg){msg.style.color='#17a589';msg.textContent='✅ تم حفظ رقم أدمن/دكتور الكورس بنجاح';}
-    if(typeof _showToast==='function')_showToast('✅ تم حفظ رقم الكورس','success');
+    if(row)row.course_admin_phone=value;
+    if(msg){msg.style.color='#17a589';msg.textContent='✅ تم حفظ أرقام أدمن/دكتور الكورس بنجاح';}
+    if(typeof _showToast==='function')_showToast('✅ تم حفظ أرقام الكورس','success');
     // إعادة تحميل البيانات من Supabase بعد الحفظ للتأكد أن القيمة المعروضة هي القيمة الفعلية.
     var _savedCourseId = id;
     await capInit();
@@ -13604,7 +13887,10 @@ function smOpenEdit(id) {
   document.getElementById('sm-f-order').value    = s.display_order || 0;
   document.getElementById('sm-f-category').value = s.category || '';
   document.getElementById('sm-f-tags').value     = s.tags || '';
-  document.getElementById('sm-f-course-admin-phone').value = s.course_admin_phone || '';
+  var _smContacts = (typeof window._capParseContacts === 'function') ? window._capParseContacts(s.course_admin_phone) : [];
+  document.getElementById('sm-f-course-admin-phone').value = _smContacts.length
+    ? _smContacts.map(function(c){ return (c.name ? c.name + ': ' : '') + c.phone; }).join(' | ')
+    : '';
   document.getElementById('sm-f-requires-sub').checked = !!s.requires_subscription;
   document.getElementById('sm-f-is-course').checked = (s.type === 'course');
   document.getElementById('sm-payment-fields').style.display = s.requires_subscription ? 'block' : 'none';
@@ -26462,26 +26748,99 @@ SELECT conname, pg_get_constraintdef(oid) FROM pg_constraint WHERE conname='audi
         '<div style="font-size:.7rem;color:#888;margin-top:4px;">مثال: شرح المادة، مراجعة، محاضرات… حسب الشجرة الموجودة في الكورس.</div>'+
       '</div>'+
       '<div class="ap-field" id="sc-chapter-wrap" style="display:none;">'+
-        '<label class="ap-label">📚 الشباتر المطلوبة للاشتراك</label>'+
+        '<label class="ap-label">📚 الشباتر (مرتّبة تلقائيًا حسب ترتيبها في المادة)</label>'+
         '<div id="sc-chapter-actions" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:7px;">'+
           '<button type="button" class="ap-btn ap-btn-ghost" style="padding:5px 9px;font-size:.72rem;" onclick="scSelectAllChapters(true)">☑ تحديد الكل</button>'+
           '<button type="button" class="ap-btn ap-btn-ghost" style="padding:5px 9px;font-size:.72rem;" onclick="scSelectAllChapters(false)">☐ إلغاء الكل</button>'+
         '</div>'+
         '<div id="sc-chapters-list"></div>'+
-        '<button type="button" class="ap-btn ap-btn-primary" style="width:100%;justify-content:center;margin-top:10px;" onclick="scSaveChapters()">💾 حفظ محتوى الاشتراك</button>'+
+        '<div id="sc-schedule-cols-warning" style="display:none;background:#fff8e1;border:1px solid #f0d878;color:#8a6d1a;border-radius:8px;padding:8px 10px;font-size:.74rem;margin-top:10px;">'+
+          '⚠️ أعمدة الجدولة (access_mode / available_at / weekly_start_date / weekly_interval_days) غير موجودة بعد في Supabase. سيتم حفظ القفل/الفتح فقط بدون جدولة تاريخ. شغّل SQL الظاهر في الأسفل ثم أعد المحاولة.'+
+        '</div>'+
+        '<div class="ap-field" style="margin-top:12px;border-top:1px dashed #ddd;padding-top:10px;">'+
+          '<label class="ap-label">🔐 طريقة إتاحة الشباتر المحددة</label>'+
+          '<div style="display:flex;gap:14px;flex-wrap:wrap;font-size:.8rem;margin:6px 0 8px;">'+
+            '<label style="display:flex;align-items:center;gap:5px;cursor:pointer;"><input type="radio" name="sc-mode" value="instant" checked onchange="scOnModeChange()"> 🔓 متاح فورًا</label>'+
+            '<label style="display:flex;align-items:center;gap:5px;cursor:pointer;"><input type="radio" name="sc-mode" value="scheduled" onchange="scOnModeChange()"> 📅 متاح من تاريخ ووقت محدد</label>'+
+            '<label style="display:flex;align-items:center;gap:5px;cursor:pointer;"><input type="radio" name="sc-mode" value="weekly" onchange="scOnModeChange()"> 📆 جدول أسبوعي</label>'+
+          '</div>'+
+          '<div id="sc-mode-scheduled-wrap" style="display:none;margin-bottom:8px;">'+
+            '<label class="ap-label" style="font-size:.74rem;">تاريخ ووقت الإتاحة</label>'+
+            '<input id="sc-mode-date" type="datetime-local" class="ap-input" style="width:100%;">'+
+          '</div>'+
+          '<div id="sc-mode-weekly-wrap" style="display:none;margin-bottom:8px;">'+
+            '<label class="ap-label" style="font-size:.74rem;">بداية الجدول</label>'+
+            '<input id="sc-mode-weekly-start" type="date" class="ap-input" style="width:100%;margin-bottom:6px;">'+
+            '<label class="ap-label" style="font-size:.74rem;">الفاصل بين كل شابتر والتالي</label>'+
+            '<select id="sc-mode-weekly-interval" class="ap-select" style="width:100%;">'+
+              '<option value="7">كل 7 أيام</option>'+
+              '<option value="14">كل 14 يوم</option>'+
+              '<option value="21">كل 21 يوم</option>'+
+            '</select>'+
+            '<div style="font-size:.68rem;color:#888;margin-top:4px;">كل شابتر محدد يُتاح بعد الشابتر السابق له بالفاصل المختار، بدءًا من تاريخ البداية، وبنفس ترتيبها في المادة.</div>'+
+          '</div>'+
+        '</div>'+
+        '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">'+
+          '<button type="button" class="ap-btn ap-btn-primary" style="flex:1;min-width:170px;justify-content:center;" onclick="scSaveChapters()">💾 حفظ محتوى الاشتراك</button>'+
+          '<button type="button" class="ap-btn ap-btn-ghost" style="flex:1;min-width:170px;justify-content:center;" onclick="scUnlockSelected()">🔓 إزالة القفل عن المحدد</button>'+
+        '</div>'+
         '<div id="sc-save-msg" style="margin-top:7px;font-size:.75rem;min-height:16px;text-align:center;"></div>'+
       '</div>'+
       '<div id="sc-empty-msg" class="ap-empty" style="display:none;"></div>';
   }
 
+  window.scOnModeChange=function(){
+    var mode=(document.querySelector('input[name="sc-mode"]:checked')||{}).value||'instant';
+    var dWrap=document.getElementById('sc-mode-scheduled-wrap'), wWrap=document.getElementById('sc-mode-weekly-wrap');
+    if(dWrap) dWrap.style.display = (mode==='scheduled') ? 'block' : 'none';
+    if(wWrap) wWrap.style.display = (mode==='weekly') ? 'block' : 'none';
+  };
+
+  // يحاول القراءة بأعمدة الجدولة، وإن لم تكن موجودة في القاعدة يرجع للأعمدة
+  // الأساسية فقط بدون كسر الصفحة، مع تفعيل تنبيه واضح للمستخدم بدل الفشل الصامت.
   async function _scLoadAccess(chapterIds){
     var d=await _fcDB(), map={};
     if(!chapterIds.length){ window._scAccessMap=map; return map; }
-    var r=await d.from('subscription_content_access').select('section_id,requires_subscription').in('section_id',chapterIds);
-    if(r.error) throw r.error;
-    (r.data||[]).forEach(function(x){ if(x.requires_subscription) map[Number(x.section_id)]=true; });
+    var warnEl=document.getElementById('sc-schedule-cols-warning');
+    var r=await d.from('subscription_content_access')
+      .select('section_id,requires_subscription,access_mode,available_at,weekly_start_date,weekly_interval_days')
+      .in('section_id',chapterIds);
+    if(r.error){
+      // أعمدة الجدولة غير موجودة بعد — رجوع للأعمدة القديمة فقط بدون كسر النظام.
+      window._scScheduleColumnsMissing = true;
+      if(warnEl) warnEl.style.display='block';
+      var r2=await d.from('subscription_content_access').select('section_id,requires_subscription').in('section_id',chapterIds);
+      if(r2.error) throw r2.error;
+      (r2.data||[]).forEach(function(x){ if(x.requires_subscription) map[Number(x.section_id)]={requires_subscription:true,access_mode:'instant'}; });
+      window._scAccessMap=map;
+      return map;
+    }
+    window._scScheduleColumnsMissing = false;
+    if(warnEl) warnEl.style.display='none';
+    (r.data||[]).forEach(function(x){
+      if(x.requires_subscription){
+        map[Number(x.section_id)]={
+          requires_subscription:true,
+          access_mode:x.access_mode||'instant',
+          available_at:x.available_at||null,
+          weekly_start_date:x.weekly_start_date||null,
+          weekly_interval_days:x.weekly_interval_days||null
+        };
+      }
+    });
     window._scAccessMap=map;
     return map;
+  }
+
+  function _scModeLabel(info){
+    if(!info || !info.requires_subscription) return '';
+    if(info.access_mode==='scheduled' && info.available_at){
+      try{ return ' — 📅 من ' + new Date(info.available_at).toLocaleString('ar-EG'); }catch(e){ return ' — 📅 مجدول'; }
+    }
+    if(info.access_mode==='weekly'){
+      return ' — 📆 أسبوعي (كل ' + (info.weekly_interval_days||7) + ' يوم، من ' + (info.weekly_start_date||'—') + ')';
+    }
+    return ' — 🔓 فوري';
   }
 
   function _scRenderChapters(rows){
@@ -26493,10 +26852,15 @@ SELECT conname, pg_get_constraintdef(oid) FROM pg_constraint WHERE conname='audi
       return;
     }
     list.innerHTML='<div class="ap-card" style="padding:7px;">'+rows.map(function(c){
-      var checked=window._scAccessMap && window._scAccessMap[Number(c.id)] ? ' checked' : '';
-      return '<label style="display:flex;align-items:center;gap:9px;padding:9px 7px;border-bottom:1px solid #eee;cursor:pointer;">'+
+      var info=window._scAccessMap && window._scAccessMap[Number(c.id)];
+      var checked=info && info.requires_subscription ? ' checked' : '';
+      var badge=info && info.requires_subscription
+        ? '<span style="font-size:.68rem;color:#0a3d62;">'+_fcEsc(_scModeLabel(info))+'</span>'
+        : '<span style="font-size:.68rem;color:#17a589;">— مجاني حاليًا</span>';
+      return '<label style="display:flex;align-items:center;gap:9px;padding:9px 7px;border-bottom:1px solid #eee;cursor:pointer;flex-wrap:wrap;">'+
         '<input type="checkbox" class="sc-chapter-check" value="'+c.id+'"'+checked+' style="width:18px;height:18px;">'+
-        '<span>'+ (c.icon||'📄') +' '+_fcEsc(c.title)+'</span>'+
+        '<span style="flex:1;min-width:120px;">'+ (c.icon||'📄') +' '+_fcEsc(c.title)+'</span>'+
+        badge+
       '</label>';
     }).join('')+'</div>';
     wrap.style.display='block';
@@ -26587,6 +26951,44 @@ SELECT conname, pg_get_constraintdef(oid) FROM pg_constraint WHERE conname='audi
     document.querySelectorAll('#sc-chapters-list .sc-chapter-check').forEach(function(x){x.checked=!!flag;});
   };
 
+  // يبني صف subscription_content_access الواحد حسب الوضع المختار حاليًا
+  // (فوري/تاريخ محدد/أسبوعي)، ويحسب available_at لكل شابتر أسبوعيًا حسب
+  // ترتيبه (index) داخل قائمة الشباتر المحددة بنفس ترتيبها في المادة/الكورس.
+  function _scBuildRowsForSelection(selectedIds, orderedChapters){
+    var mode=(document.querySelector('input[name="sc-mode"]:checked')||{}).value||'instant';
+    var hasCols = !window._scScheduleColumnsMissing;
+    var dateVal=(document.getElementById('sc-mode-date')||{}).value||'';
+    var weeklyStart=(document.getElementById('sc-mode-weekly-start')||{}).value||'';
+    var weeklyInterval=Number((document.getElementById('sc-mode-weekly-interval')||{}).value||7);
+    // نرتب المحدد بنفس ترتيب orderedChapters (مرتبة أصلاً حسب display_order/id).
+    var orderedSelected = orderedChapters
+      .map(function(c){return Number(c.id);})
+      .filter(function(id){return selectedIds.indexOf(id)!==-1;});
+    return orderedSelected.map(function(id, idx){
+      var row={ section_id:id, requires_subscription:true };
+      if(!hasCols) return row; // القاعدة لا تدعم أعمدة الجدولة بعد — قفل/فتح فقط
+      row.access_mode = mode;
+      if(mode==='scheduled'){
+        row.available_at = dateVal ? new Date(dateVal).toISOString() : null;
+        row.weekly_start_date = null; row.weekly_interval_days = null;
+      } else if(mode==='weekly'){
+        row.weekly_start_date = weeklyStart || null;
+        row.weekly_interval_days = weeklyInterval;
+        if(weeklyStart){
+          var d=new Date(weeklyStart+'T00:00:00');
+          d.setDate(d.getDate() + idx*weeklyInterval);
+          row.available_at = d.toISOString();
+        } else {
+          row.available_at = null;
+        }
+      } else {
+        row.access_mode = 'instant';
+        row.available_at = null; row.weekly_start_date = null; row.weekly_interval_days = null;
+      }
+      return row;
+    });
+  }
+
   window.scSaveChapters=async function(){
     var d=await _fcDB(), msg=document.getElementById('sc-save-msg');
     var rows=window._scChapters||[];
@@ -26598,19 +27000,49 @@ SELECT conname, pg_get_constraintdef(oid) FROM pg_constraint WHERE conname='audi
       var del=await d.from('subscription_content_access').delete().in('section_id',ids);
       if(del.error)throw del.error;
       if(selected.length){
-        var up=await d.from('subscription_content_access').upsert(
-          selected.map(function(id){return {section_id:id,requires_subscription:true};}),
-          {onConflict:'section_id'}
-        );
-        if(up.error)throw up.error;
+        var upRows=_scBuildRowsForSelection(selected, rows);
+        var up=await d.from('subscription_content_access').upsert(upRows, {onConflict:'section_id'});
+        if(up.error){
+          // فشل بسبب أعمدة جدولة غير موجودة؟ نعيد المحاولة بالأعمدة الأساسية فقط
+          // بدل كسر الحفظ بالكامل، مع تنبيه واضح بدل الفشل الصامت.
+          window._scScheduleColumnsMissing = true;
+          var warnEl=document.getElementById('sc-schedule-cols-warning');
+          if(warnEl) warnEl.style.display='block';
+          var basicRows=selected.map(function(id){return {section_id:id,requires_subscription:true};});
+          var up2=await d.from('subscription_content_access').upsert(basicRows,{onConflict:'section_id'});
+          if(up2.error) throw up2.error;
+        }
       }
-      window._scAccessMap={};
-      selected.forEach(function(id){window._scAccessMap[id]=true;});
-      if(msg){msg.style.color='#17a589';msg.textContent='✅ تم حفظ الشباتر المطلوبة للاشتراك.';}
+      await _scLoadAccess(ids);
+      _scRenderChapters(rows);
+      if(msg){msg.style.color='#17a589';msg.textContent='✅ تم حفظ محتوى الاشتراك المحدد بطريقة الإتاحة المختارة.';}
       if(typeof _showToast==='function')_showToast('✅ تم حفظ محتوى الاشتراك','success');
     }catch(e){
       console.error('[SC SAVE]',e);
       if(msg){msg.style.color='#e74c3c';msg.textContent='❌ فشل الحفظ: '+(e.message||'');}
+    }
+  };
+
+  // 🔓 يزيل القفل (requires_subscription) عن الشباتر المحددة حاليًا فقط،
+  // بدون التأثير على باقي شباتر المادة/الكورس — بديل سريع لإلغاء تحديد كل
+  // شابتر يدويًا ثم الحفظ.
+  window.scUnlockSelected=async function(){
+    var d=await _fcDB(), msg=document.getElementById('sc-save-msg');
+    var selected=Array.from(document.querySelectorAll('#sc-chapters-list .sc-chapter-check:checked')).map(function(x){return Number(x.value);});
+    if(!d||!selected.length){ if(msg){msg.style.color='#e74c3c';msg.textContent='⚠️ حدد شباتر أولاً لإزالة القفل عنها.';} return; }
+    try{
+      if(msg){msg.style.color='#888';msg.textContent='⏳ جاري إزالة القفل...';}
+      var del=await d.from('subscription_content_access').delete().in('section_id',selected);
+      if(del.error) throw del.error;
+      selected.forEach(function(id){ document.querySelector('#sc-chapters-list .sc-chapter-check[value="'+id+'"]').checked=false; });
+      var ids=(window._scChapters||[]).map(function(x){return Number(x.id);});
+      await _scLoadAccess(ids);
+      _scRenderChapters(window._scChapters||[]);
+      if(msg){msg.style.color='#17a589';msg.textContent='✅ تم فتح الشباتر المحددة بدون اشتراك.';}
+      if(typeof _showToast==='function')_showToast('🔓 تم إزالة القفل عن الشباتر المحددة','success');
+    }catch(e){
+      console.error('[SC UNLOCK]',e);
+      if(msg){msg.style.color='#e74c3c';msg.textContent='❌ فشل إزالة القفل: '+(e.message||'');}
     }
   };
 
