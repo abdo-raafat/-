@@ -8,7 +8,7 @@
 -->
 <script>
 (function () {
-  const DEBUG_MODE = true;
+  const DEBUG_MODE = false;
   window.__BSM_DEBUG_MODE = DEBUG_MODE;
   window.isIOSDevice = function () {
     var ua = navigator.userAgent || '';
@@ -1293,9 +1293,19 @@ footer strong { color: var(--accent2); }
    بيتضاف/بيتشال بـ JS، فمش محتاج أي دعم فعلي من الـ Fullscreen API —
    يشتغل مضمون في Desktop / Mobile Browser / Mobile App WebView. */
 .rv-overlay.rv-manual-fs {
+  position: fixed !important;
+  inset: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  height: 100dvh !important;
   padding: 0 !important;
+  margin: 0 !important;
   background: #000 !important;
   backdrop-filter: none !important;
+  align-items: stretch !important;
+  justify-content: stretch !important;
+  z-index: 2147483647 !important;
+  overflow: hidden !important;
 }
 .rv-overlay.rv-manual-fs .rv-modal {
   max-width: 100vw !important;
@@ -1317,6 +1327,17 @@ footer strong { color: var(--accent2); }
 .rv-overlay.rv-manual-fs .rv-modal .rv-image-wrap img {
   max-height: calc(100vh - 140px) !important;
   max-height: calc(100dvh - 140px) !important;
+}
+.rv-overlay.rv-manual-fs .rv-body {
+  min-height: 0 !important;
+  height: auto !important;
+  flex: 1 1 auto !important;
+  overflow: hidden !important;
+  -webkit-overflow-scrolling: auto !important;
+}
+.rv-overlay.rv-manual-fs .rv-modal .rv-embed-frame,
+.rv-overlay.rv-manual-fs .rv-modal .rv-video {
+  width: 100% !important;
 }
 
 /* Zoom للصور: pinch على الهاتف */
@@ -4394,11 +4415,16 @@ async function _renderDynamicSectionPage(sec) {
       var coursePhoneRaw = (sec && sec.course_admin_phone) ? String(sec.course_admin_phone).trim() : '';
       if (!coursePhoneRaw && sec && sec.id && window.supabase) {
         try {
-          var phoneRes = await window.supabase.from('site_sections')
-            .select('course_admin_phone,type')
-            .eq('id', Number(sec.id)).maybeSingle();
-          if (!phoneRes.error && phoneRes.data && phoneRes.data.course_admin_phone) {
-            coursePhoneRaw = String(phoneRes.data.course_admin_phone).trim();
+          // الرقم تابع للكورس نفسه؛ عند فتح مادة/شابتر نصعد في parent_id حتى نصل للكورس.
+          var curPhoneId = Number(sec.id), phoneGuard = 0;
+          while (!coursePhoneRaw && Number.isFinite(curPhoneId) && phoneGuard++ < 15) {
+            var phoneRes = await window.supabase.from('site_sections')
+              .select('id,parent_id,type,course_admin_phone')
+              .eq('id', curPhoneId).maybeSingle();
+            if (phoneRes.error || !phoneRes.data) break;
+            if (phoneRes.data.course_admin_phone) coursePhoneRaw = String(phoneRes.data.course_admin_phone).trim();
+            if (phoneRes.data.type === 'course' || phoneRes.data.parent_id == null) break;
+            curPhoneId = Number(phoneRes.data.parent_id);
           }
         } catch(_phoneErr) {
           console.warn('[COURSE PHONE] تعذر تحميل رقم دكتور الكورس:', _phoneErr && _phoneErr.message);
@@ -6418,6 +6444,7 @@ const ResourceViewer = (function() {
             id="rv-embed-iframe"
             allow="accelerometer;autoplay;clipboard-write;encrypted-media;gyroscope;picture-in-picture;fullscreen"
             allowfullscreen
+            webkitallowfullscreen
             onload="
               document.getElementById('rv-loading-indicator').style.display='none';
               this.style.display='block';
@@ -6612,14 +6639,8 @@ const ResourceViewer = (function() {
           <span style="font-size:.75rem;color:#999;direction:ltr;word-break:break-all;flex:1;max-width:55%" id="rv-url-display" class="admin-only-el" style="display:none">${escHtml(url.length > 60 ? url.substring(0,57)+'...' : url)}</span>
           <div class="rv-footer-btns">
             ${(type !== 'fallback' && type !== 'invalid') ? `<button class="rv-btn rv-btn-outline" onclick="ResourceViewer._reload()">🔄 إعادة التحميل</button>` : ''}
-            ${(type === 'html' || type === 'external_link' || type === 'fallback') ? `<button class="rv-btn rv-btn-outline" onclick="(window._origWindowOpen||window.open)('${escUrl(url)}','_blank','noopener')">↗️ افتح في تبويب جديد</button>` : ''}
             ${(type === 'pdf' || type === 'gdrive_pdf' || type === 'image' || type === 'audio' || type === 'video_direct') ? `<button class="rv-btn rv-btn-primary admin-only-el" onclick="if(window._isAdminUser){var a=document.createElement('a');a.href='${escUrl(url)}';a.setAttribute('download','');document.body.appendChild(a);a.click();document.body.removeChild(a);}" style="display:none">&#11015;&#65039; تحميل (أدمن)</button>` : ''}
           </div>
-          <!-- ✅ FIX (Aug 2026 — كويز "مفيش حاجة بتظهر"): بعض منصات الكويز/الاستبيانات
-               ترفض الظهور جوه iframe (X-Frame-Options) بصمت تام — الـ iframe يبعت
-               onload عادي فمفيش أي رسالة خطأ تظهر، وكل اللي الطالب شايفه شاشة فاضية.
-               الزرار فوق "↗️ افتح في تبويب جديد" دايمًا ظاهر لأي نوع محتوى بيتفتح
-               بطريقة iframe، فيبقى للطالب مخرج مضمون دايمًا حتى لو الـ iframe فشل بصمت. -->
         </div>
       </div>`;
 
@@ -6783,12 +6804,13 @@ const ResourceViewer = (function() {
   function _toggleFullscreen() {
     const overlay = document.getElementById('rv-overlay');
     const modal = document.getElementById('rv-modal');
+    const video = document.getElementById('rv-video-el');
+    const iframe = document.getElementById('rv-embed-iframe');
     if (!modal || !overlay) return;
 
     var nativeActive = !!(document.fullscreenElement || document.webkitFullscreenElement);
     var manualActive = overlay.classList.contains('rv-manual-fs');
 
-    // ── خروج (بأي وضع كنا فيه) ──────────────────────────────────
     if (manualActive) { _disableManualFullscreen(); return; }
     if (nativeActive) {
       try {
@@ -6798,37 +6820,17 @@ const ResourceViewer = (function() {
       return;
     }
 
-    // ── دخول ─────────────────────────────────────────────────────
-    // بنجرب Fullscreen API الحقيقية أولاً (هي دي اللي شغالة فعلاً على
-    // Desktop Browser وMobile Browser ومحدش بيتلمس فيها هنا).
+    // الأولوية للميديا نفسها: ده يسمح لـAndroid WebView/iOS أن يتعامل مع
+    // Fullscreen الفيديو الأصلي عندما يكون الدعم متاحًا، بدل محاولة Fullscreen
+    // الـmodal فقط. للـEmbed نطلب Fullscreen من الـiframe نفسه.
+    var target = video || iframe || modal;
     var attemptedNative = false;
-    var req = modal.requestFullscreen || modal.webkitRequestFullscreen;
-    if (req) {
-      attemptedNative = true;
-      try { Promise.resolve(req.call(modal)).catch(function(){ _rvFallbackVideoFullscreen(); }); }
-      catch(e) { _rvFallbackVideoFullscreen(); }
-    } else {
-      // Fullscreen API مش موجودة أصلاً على الـ modal — نجرب fallback الفيديو
-      // (بيفيد تحديدًا iOS Safari عبر webkitEnterFullscreen).
-      _rvFallbackVideoFullscreen();
-    }
-
-    // ✅ FIX (Mobile App / WebView): المشكلة الأساسية إن بعض WebViews
-    // المُستخدمة جوه تطبيق الموبايل (packaged app) إما مالهاش تنفيذ حقيقي
-    // لـ Fullscreen API (requestFullscreen() بترجع نجاح شكلي، أو مفيش
-    // onShowCustomView جوه الـWebView الأصلي، فمفيش أي تغيير على الشاشة
-    // فعليًا)، أو الـAPI مش موجودة خالص. الحل: بعد فترة قصيرة نتأكد هل
-    // Fullscreen اتفعّل فعليًا في أي لحظة (مش بس وقت الفحص نفسه — عشان لو
-    // المستخدم دخل Fullscreen حقيقي فعلاً وخرج منه بسرعة "عادي" قبل ما
-    // التايمر ده يشتغل، معناها الـAPI شغالة تمام ومفيش داعي للوضع اليدوي؛
-    // بنستخدم حدث fullscreenchange نفسه كـ"شاهد" على إن الدخول حصل فعلاً،
-    // مش بس حالة اللحظة). لو الحدث ده ما حصلش خالص خلال الفترة دي — نفعّل
-    // "ملء شاشة يدوي" بمحض CSS class (rv-manual-fs) بيغطي الشاشة بالكامل
-    // بنفس شكل الـ:fullscreen الحقيقي بالظبط، من غير ما يعتمد على أي دعم من
-    // المتصفح/WebView للـFullscreen API. بكده الزرار بيشتغل مضمون في الحالات
-    // التلاتة: Desktop Browser / Mobile Browser / Mobile App WebView.
     var nativeConfirmed = false;
-    var confirmNative = function() { nativeConfirmed = true; cleanupConfirm(); };
+    var confirmNative = function() {
+      nativeConfirmed = true;
+      cleanupConfirm();
+      _onRvFsChange();
+    };
     var cleanupConfirm = function() {
       document.removeEventListener('fullscreenchange', confirmNative);
       document.removeEventListener('webkitfullscreenchange', confirmNative);
@@ -6836,13 +6838,33 @@ const ResourceViewer = (function() {
     document.addEventListener('fullscreenchange', confirmNative);
     document.addEventListener('webkitfullscreenchange', confirmNative);
 
-    setTimeout(function() {
+    try {
+      if (video && video.webkitEnterFullscreen && !video.requestFullscreen && !video.webkitRequestFullscreen) {
+        attemptedNative = true;
+        video.webkitEnterFullscreen();
+      } else {
+        var req = target && (target.requestFullscreen || target.webkitRequestFullscreen);
+        if (req) {
+          attemptedNative = true;
+          var result = req.call(target);
+          if (result && typeof result.catch === 'function') result.catch(function(){
+            // لا نغلق المشغل؛ ننتقل للـfallback اليدوي أدناه.
+          });
+        }
+      }
+    } catch(e) {
+      console.warn('[Fullscreen] native request failed:', e && e.message);
+    }
+
+    // Android WebView / App: لو الـAPI غير مدعوم أو عمل no-op، نستخدم وضعًا
+    // يدويًا داخل نفس الـviewer. ولو الـnative اشتغل فعلًا، لا نفعّل الـfallback.
+    setTimeout(function(){
       cleanupConfirm();
       var stillNoNative = !document.fullscreenElement && !document.webkitFullscreenElement;
       if (!nativeConfirmed && stillNoNative && !overlay.classList.contains('rv-manual-fs')) {
         _enableManualFullscreen();
       }
-    }, attemptedNative ? 350 : 150);
+    }, attemptedNative ? 450 : 120);
   }
 
   function _rvFallbackVideoFullscreen() {
@@ -8637,7 +8659,6 @@ window.checkBanStatus = async function(email) {
           <div class="ap-nav-group-title">الرئيسية</div>
           <button class="ap-nav-btn active" onclick="apSwitchTab('dashboard')" id="ap-tab-dashboard" role="tab">📊 <span>لوحة المعلومات</span></button>
           <button class="ap-nav-btn platform-only-nav" onclick="apSwitchTab('courseAdminPhone')" id="ap-tab-courseAdminPhone" role="tab">📱 <span>رقم أدمن / دكتور الكورس</span></button>
-          <button class="ap-nav-btn owner-only-nav" onclick="openOwnerAssistantFromNav()" id="ap-tab-ownerAssistant" role="button">➕ <span>إضافة أدمن مساعد</span></button>
           <button class="ap-nav-btn" onclick="apSwitchTab('notifications')" id="ap-tab-notifications" role="tab">🔔 <span>الإشعارات</span></button>
         </div>
 
@@ -8704,6 +8725,7 @@ window.checkBanStatus = async function(email) {
         <div id="ap-recent-activity">
           <div class="ap-loading"><div class="spinner"></div> جاري التحميل...</div>
         </div>
+        <div id="ap-owner-assistant-slot" style="display:none;margin-top:16px;"></div>
       </div>
 
       <!-- ═══════════════════ TAB: COURSE ADMIN PHONE ═══════════════════ -->
@@ -9313,22 +9335,17 @@ window.checkBanStatus = async function(email) {
         <!-- ADD TAB -->
         <div id="admin-tab-add">
           <div class="ap-field">
+            <label class="ap-label">🎓 اختر الكورس</label>
+            <select id="admin-course-select" class="ap-select" onchange="adminOnCourseChange()">
+              <option value="">— جاري تحميل الكورسات —</option>
+            </select>
+          </div>
+          <div class="ap-field" id="admin-material-wrap" style="display:none;">
             <label class="ap-label">📁 اختر المادة</label>
-            <!-- ✅ FIX 3: تم تقسيم اختيار "القسم" إلى خطوتين (مادة ثم شابتر) بدون
-                 أي تعديل Schema — لسه نفس شجرة site_sections.parent_id. القيمة
-                 النهائية المُرسَلة فعلياً لـ adminSaveContent() (بدون تعديلها) تبقى
-                 داخل admin-section-select العنصر القديم نفسه، لكنه أصبح مخفياً
-                 ويُضبط برمجياً من adminOnMaterialChange()/adminOnChapterChange(). -->
+            <!-- التسلسل: الكورس → المادة → الشابتر، والقيمة النهائية تظل في الحقل المخفي القديم للحفظ. -->
             <select id="admin-material-select" class="ap-select" onchange="adminOnMaterialChange()">
               <option value="">— جاري تحميل المواد —</option>
             </select>
-            <!-- ✅ (Aug 2026): مستوى إضافي بين "المادة" و"الشابتر" — مادة ثم مادة فرعية ثم شابتر -->
-            <div id="admin-submaterial-wrap" style="display:none;margin-top:8px;">
-              <label class="ap-label">📁 اختر المادة الفرعية</label>
-              <select id="admin-submaterial-select" class="ap-select" onchange="adminOnSubmaterialChange()">
-                <option value="">— اختر المادة الفرعية —</option>
-              </select>
-            </div>
             <div id="admin-chapter-wrap" style="display:none;margin-top:8px;">
               <label class="ap-label">📂 اختر الشابتر</label>
               <select id="admin-chapter-select" class="ap-select" onchange="adminOnChapterChange()">
@@ -9343,7 +9360,8 @@ window.checkBanStatus = async function(email) {
               <span id="admin-section-sub-status">—</span>
               <button type="button" class="ap-btn ap-btn-ghost" onclick="adminToggleSectionSubscription()">🔒 تبديل حالة الاشتراك</button>
             </div>
-            <div id="admin-section-payment-box" style="display:none;margin-top:8px;padding:12px 14px;background:#fbf7ee;border:1px solid #f0e3c5;border-radius:10px;">
+          </div>
+                      <div id="admin-section-payment-box" style="display:none;margin-top:8px;padding:12px 14px;background:#fbf7ee;border:1px solid #f0e3c5;border-radius:10px;">
               <div style="font-size:.76rem;font-weight:800;color:#8a6d1f;margin-bottom:8px;">💳 بيانات الدفع الخاصة بهذه الشعبة</div>
               <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
                 <div>
@@ -9911,86 +9929,141 @@ document.getElementById('pw-login-password') && document.getElementById('pw-logi
 async function adminLoadSections() {
   if (!window.supabase) return;
   try {
-    var { data } = await window.supabase.from('site_sections').select('id, title, parent_id, subtitle, requires_subscription, payment_method, payment_number, price').order('display_order');
+    var { data } = await window.supabase
+      .from('site_sections')
+      .select('id, title, parent_id, subtitle, requires_subscription, payment_method, payment_number, price, type, display_order')
+      .order('display_order');
     if (!data) return;
-    // ── أدمن الكورس: يرى فقط أقسام شعبته (المحتوى نفسه قراءته عامة، لكن لوحة التحكم مقيَّدة) ──
-    // ✅ FIX 2: أضيف !window._isSuperAdmin دفاعياً حتى لو تعارضت الأعلام مؤقتاً.
+
+    // نطاق أدمن الكورس يظل مقيّدًا بالشجرة الخاصة به، بينما أدمن المنصة يرى كل شيء.
     if (window._isBranchAdmin && !window._isSuperAdmin && Array.isArray(window._branchAdminSectionIds) && window._branchAdminSectionIds.length) {
       var allowed = window._branchAdminSectionIds;
       data = data.filter(function(s) { return allowed.indexOf(s.id) > -1; });
     } else if (window._isBranchAdmin && !window._isSuperAdmin) {
-      data = []; // لا يوجد نطاق مُعيَّن له بعد
+      data = [];
     }
+
     window._adminSections = data;
-    const selAdd  = document.getElementById('admin-section-select'); // مخفي — يحمل القيمة النهائية الفعلية المُرسَلة لـ adminSaveContent()
-    const selMat  = document.getElementById('admin-material-select'); // ✅ FIX 3: نفس البيانات، معروضة كخطوة أولى "اختر المادة"
-    const selList = document.getElementById('admin-list-section');
-    const opts = data.map(s => `<option value="${s.id}">${s.title}${s.subtitle ? ' — ' + s.subtitle : ''}</option>`).join('');
-    if (selAdd)  selAdd.innerHTML  = '<option value="">— اختر القسم —</option>' + opts;
-    if (selMat)  selMat.innerHTML  = '<option value="">— اختر المادة —</option>' + opts;
-    if (selList) selList.innerHTML = '<option value="">اختر القسم لعرض محتواه</option>' + opts;
-    // ✅ FIX 3: إعادة ضبط خطوة الشابتر عند إعادة تحميل الأقسام (مثلاً بعد تبديل شعبة أدمن الفرع)
+    window._adminAllSections = data.slice();
+
+    var selCourse = document.getElementById('admin-course-select');
+    var selAdd = document.getElementById('admin-section-select');
+    var selList = document.getElementById('admin-list-section');
+    var matWrap = document.getElementById('admin-material-wrap');
+    var matSel = document.getElementById('admin-material-select');
     var chapterWrap = document.getElementById('admin-chapter-wrap');
+    var chapterSel = document.getElementById('admin-chapter-select');
+
+    // الكورسات الفعلية فقط: type='course'. لأدمن الكورس نعرض كورسه الحالي فقط.
+    var courses;
+    if (window._isBranchAdmin && !window._isSuperAdmin) {
+      var currentIds = Array.isArray(window._branchAdminOwnSectionIds) ? window._branchAdminOwnSectionIds : [];
+      courses = data.filter(function(s){ return s.type === 'course' && currentIds.indexOf(Number(s.id)) !== -1; });
+      if (!courses.length && window._branchAdminCourseId) {
+        courses = data.filter(function(s){ return Number(s.id) === Number(window._branchAdminCourseId); });
+      }
+    } else {
+      courses = data.filter(function(s){ return s.type === 'course'; });
+    }
+
+    var courseOpts = courses.map(function(s){
+      return '<option value="' + s.id + '">' + _apEsc(s.title) + '</option>';
+    }).join('');
+    if (selCourse) selCourse.innerHTML = '<option value="">— اختر الكورس —</option>' + courseOpts;
+    if (selAdd) selAdd.innerHTML = '<option value="">— اختر الشابتر —</option>';
+    if (selList) selList.innerHTML = '<option value="">اختر القسم لعرض محتواه</option>' + data.map(function(s){return '<option value="'+s.id+'">'+_apEsc(s.title)+(s.subtitle?' — '+_apEsc(s.subtitle):'')+'</option>';}).join('');
+    if (matSel) matSel.innerHTML = '<option value="">— اختر المادة —</option>';
+    if (chapterSel) chapterSel.innerHTML = '<option value="">— اختر الشابتر —</option>';
+    if (matWrap) matWrap.style.display = 'none';
     if (chapterWrap) chapterWrap.style.display = 'none';
+
+    // لو أدمن الكورس الحالي له كورس واحد، اختاره تلقائيًا ثم حمّل المواد.
+    if (selCourse && courses.length === 1) {
+      selCourse.value = String(courses[0].id);
+      await adminOnCourseChange();
+    }
   } catch(e) { console.error('adminLoadSections error:', e); }
 }
 
-// ── FIX 3: بعد اختيار "المادة"، حمّل الشباتر التابعة لها (site_sections حيث
-// parent_id = معرّف المادة) — بدون أي Migration أو تعديل Schema، بالاعتماد
-// على شجرة parent_id الموجودة أصلاً. لو المادة ليس لها شباتر، تُحفظ المادة
-// نفسها كوجهة نهائية. القيمة النهائية دايماً تُكتب داخل admin-section-select
-// (العنصر المخفي) عشان adminSaveContent() تفضل بدون أي تعديل.
-async function adminOnMaterialChange() {
-  var matSel      = document.getElementById('admin-material-select');
+// التسلسل الإجباري لإضافة المحتوى: الكورس → المادة → الشابتر.
+async function adminOnCourseChange() {
+  var courseSel = document.getElementById('admin-course-select');
+  var matWrap = document.getElementById('admin-material-wrap');
+  var matSel = document.getElementById('admin-material-select');
   var chapterWrap = document.getElementById('admin-chapter-wrap');
-  var chapterSel  = document.getElementById('admin-chapter-select');
-  var finalSel    = document.getElementById('admin-section-select');
-  var materialId  = matSel ? matSel.value : '';
+  var chapterSel = document.getElementById('admin-chapter-select');
+  var finalSel = document.getElementById('admin-section-select');
+  var courseId = Number(courseSel && courseSel.value || 0);
 
-  if (!materialId) {
-    if (chapterWrap) chapterWrap.style.display = 'none';
-    if (finalSel) finalSel.value = '';
-    adminLoadSectionPath();
-    return;
-  }
-  if (!window.supabase) return;
+  if (matWrap) matWrap.style.display = 'none';
+  if (chapterWrap) chapterWrap.style.display = 'none';
+  if (matSel) matSel.innerHTML = '<option value="">— اختر المادة —</option>';
+  if (chapterSel) chapterSel.innerHTML = '<option value="">— اختر الشابتر —</option>';
+  if (finalSel) finalSel.value = '';
+  adminLoadSectionPath();
+  if (!courseId || !window.supabase) return;
+
   try {
-    var { data, error } = await window.supabase
-      .from('site_sections')
-      .select('id, title')
-      .eq('parent_id', materialId)
-      .order('display_order');
-    if (error) throw error;
-    var chapters = data || [];
-    // ── دفاعياً: لو أدمن الكورس (وليس أدمن المنصة)، اقصر الشباتر على نطاقه ──
+    var r = await window.supabase.from('site_sections')
+      .select('id,title,parent_id,subtitle,type,display_order')
+      .eq('parent_id', courseId)
+      .order('display_order').order('id');
+    if (r.error) throw r.error;
+    var materials = r.data || [];
     if (window._isBranchAdmin && !window._isSuperAdmin && Array.isArray(window._branchAdminSectionIds)) {
-      var scope = window._branchAdminSectionIds;
-      chapters = chapters.filter(function(c) { return scope.indexOf(c.id) > -1; });
+      materials = materials.filter(function(m){ return window._branchAdminSectionIds.indexOf(Number(m.id)) !== -1; });
     }
-    if (chapters.length) {
-      // المادة لها شباتر — لازم يختار شابتر قبل الحفظ
-      if (chapterSel) {
-        chapterSel.innerHTML = '<option value="">— اختر الشابتر —</option>' +
-          chapters.map(function(c) { return '<option value="' + c.id + '">' + c.title + '</option>'; }).join('');
-      }
-      if (chapterWrap) chapterWrap.style.display = 'block';
-      if (finalSel) finalSel.value = ''; // القيمة النهائية تنتظر اختيار الشابتر
-    } else {
-      // لا يوجد شباتر تحت هذه المادة — احفظ المادة نفسها (كما هو مطلوب بالضبط)
-      if (chapterWrap) chapterWrap.style.display = 'none';
-      if (finalSel) finalSel.value = materialId;
-    }
-    adminLoadSectionPath();
+    if (matSel) matSel.innerHTML = '<option value="">— اختر المادة —</option>' + materials.map(function(m){
+      return '<option value="'+m.id+'">'+_apEsc(m.title)+'</option>';
+    }).join('');
+    if (matWrap) matWrap.style.display = materials.length ? 'block' : 'none';
   } catch(e) {
-    console.error('adminOnMaterialChange error:', e);
-    if (chapterWrap) chapterWrap.style.display = 'none';
+    console.error('adminOnCourseChange error:', e);
+    if (matSel) matSel.innerHTML = '<option value="">— تعذر تحميل المواد —</option>';
   }
 }
 
-// ── FIX 3: اختيار الشابتر يحدد القيمة النهائية (chapterId) المُرسَلة فعلياً لـ adminSaveContent() ──
+async function adminOnMaterialChange() {
+  var matSel = document.getElementById('admin-material-select');
+  var chapterWrap = document.getElementById('admin-chapter-wrap');
+  var chapterSel = document.getElementById('admin-chapter-select');
+  var finalSel = document.getElementById('admin-section-select');
+  var materialId = Number(matSel && matSel.value || 0);
+
+  if (chapterWrap) chapterWrap.style.display = 'none';
+  if (chapterSel) chapterSel.innerHTML = '<option value="">— اختر الشابتر —</option>';
+  if (finalSel) finalSel.value = '';
+  adminLoadSectionPath();
+  if (!materialId || !window.supabase) return;
+
+  try {
+    var r = await window.supabase.from('site_sections')
+      .select('id,title,parent_id,subtitle,type,display_order')
+      .eq('parent_id', materialId)
+      .order('display_order').order('id');
+    if (r.error) throw r.error;
+    var chapters = r.data || [];
+    if (window._isBranchAdmin && !window._isSuperAdmin && Array.isArray(window._branchAdminSectionIds)) {
+      chapters = chapters.filter(function(c){ return window._branchAdminSectionIds.indexOf(Number(c.id)) !== -1; });
+    }
+    if (chapters.length) {
+      if (chapterSel) chapterSel.innerHTML = '<option value="">— اختر الشابتر —</option>' + chapters.map(function(c){
+        return '<option value="'+c.id+'">'+_apEsc(c.title)+'</option>';
+      }).join('');
+      if (chapterWrap) chapterWrap.style.display = 'block';
+    } else {
+      // لا يوجد شابتر: المادة نفسها هي آخر مستوى متاح.
+      if (finalSel) finalSel.value = String(materialId);
+      adminLoadSectionPath();
+    }
+  } catch(e) {
+    console.error('adminOnMaterialChange error:', e);
+  }
+}
+
 function adminOnChapterChange() {
   var chapterSel = document.getElementById('admin-chapter-select');
-  var finalSel   = document.getElementById('admin-section-select');
+  var finalSel = document.getElementById('admin-section-select');
   if (finalSel) finalSel.value = chapterSel ? chapterSel.value : '';
   adminLoadSectionPath();
 }
@@ -10630,8 +10703,8 @@ document.addEventListener('DOMContentLoaded', function() {
 // الحماية الحقيقية تتم عبر RLS في قاعدة البيانات — انظر ملف SQL المرفق)
 // ════════════════════════════════════════════════════════════════
 function _applyBranchAdminPanelGating() {
-  var isSuper  = window._isSuperAdmin === true;
-  var isBranch = window._isBranchAdmin === true;
+  var isSuper  = window._isSuperAdmin === true || window._currentUserRole === 'admin';
+  var isBranch = window._isBranchAdmin === true && !isSuper;
 
   // ⏸️ TEMP (Aug 2026, بطلب المستخدم): تابا "إدارة المسارات" و"سجل العمليات" مخفيان
   // مؤقتًا لأن جدولي learning_paths و audit_log غير موجودين بعد في قاعدة البيانات
@@ -10663,7 +10736,7 @@ function _applyBranchAdminPanelGating() {
     if (cpWrap0) { cpWrap0.style.display = 'block'; cpWrap0.classList.add('platform-only-phone'); }
     var capNav0 = document.getElementById('ap-tab-courseAdminPhone');
     if (capNav0) capNav0.style.display = '';
-    var ownerNav0 = document.getElementById('ap-tab-ownerAssistant');
+      var ownerNav0 = document.getElementById('ap-tab-ownerAssistant');
     if (ownerNav0) ownerNav0.style.display = 'none';
     return;
   }
@@ -10712,10 +10785,8 @@ function _applyBranchAdminPanelGating() {
   var capNav = document.getElementById('ap-tab-courseAdminPhone');
   if (capNav) capNav.style.display = 'none';
   var ownerNav = document.getElementById('ap-tab-ownerAssistant');
-  if (ownerNav) {
-    // Owner الكورس فقط يرى زر إضافة الأدمن المساعد؛ الأدمن المساعد العادي لا يراه.
-    ownerNav.style.display = (isSuper || (isBranch && (isOwnerActive || perms.can_manage_admins))) ? '' : 'none';
-  }
+  if (ownerNav) ownerNav.style.display = 'none';
+
 
   var notifTab = document.getElementById('ap-tab-notifications');
   if (notifTab) notifTab.style.display = 'none';
@@ -11182,6 +11253,58 @@ window._canCurrentUserAddCourseAssistant = function(sectionId){
   return !!roots.find(function(r){
     return Number(r && r.id) === id && (r.role === 'owner' || (r.permissions && r.permissions.can_manage_admins === true));
   });
+};
+
+window._renderCourseAssistantDashboardControl = async function(){
+  var slot=document.getElementById('ap-owner-assistant-slot');
+  if(!slot) return;
+  slot.style.display='none'; slot.innerHTML='';
+
+  var isPlatform = window._isSuperAdmin === true || window._currentUserRole === 'admin';
+  var isCourseOwner = window._branchAdminActiveRole === 'owner';
+  var canManage = !!(window._branchAdminPerms && window._branchAdminPerms.can_manage_admins);
+  if(!isPlatform && !isCourseOwner && !canManage) return;
+
+  // Owner/Platform Admin فقط: اختيار الكورس ثم إضافة أدمن مساعد لهذا الكورس.
+  var rows=[];
+  if(isPlatform){
+    try{
+      var r=await window.supabase.from('site_sections').select('id,title').eq('type','course').order('title');
+      if(r.error) throw r.error;
+      rows=r.data||[];
+    }catch(e){ console.warn('[Owner Assistant] تعذر تحميل الكورسات:',e&&e.message); return; }
+  }else{
+    rows=(window._branchAdminRoots||[]).filter(function(x){
+      return Number(x.id)===Number(window._branchAdminCourseId||window._activeSectionId||0);
+    });
+    if(!rows.length && window._branchAdminCourseId){
+      rows=[{id:Number(window._branchAdminCourseId),title:'الكورس الحالي'}];
+    }
+  }
+  if(!rows.length) return;
+
+  var selectHtml = isPlatform && rows.length>1
+    ? '<select id="ap-owner-assistant-course" class="ap-select" style="max-width:420px;display:inline-block;margin-left:8px;vertical-align:middle;">'+rows.map(function(r){return '<option value="'+Number(r.id)+'">'+_apEsc(r.title||('#'+r.id))+'</option>';}).join('')+'</select>'
+    : '<span style="font-weight:800;margin:0 8px;">'+_apEsc(rows[0].title||('#'+rows[0].id))+'</span>';
+
+  slot.innerHTML='<div class="ap-card" style="padding:14px 16px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">'+
+    '<div style="font-weight:900;color:var(--primary);">➕ إضافة أدمن مساعد للكورس '+selectHtml+'</div>'+
+    '<button type="button" class="ap-btn ap-btn-success" onclick="window._openCourseAssistantFromDashboard()">➕ إضافة أدمن مساعد</button>'+
+    '</div>';
+  slot.style.display='block';
+};
+
+window._openCourseAssistantFromDashboard = function(){
+  var sel=document.getElementById('ap-owner-assistant-course');
+  var id=Number(sel&&sel.value||window._branchAdminCourseId||window._activeSectionId||0);
+  if(!id){if(typeof _showToast==='function')_showToast('❌ اختر الكورس أولاً','error');return;}
+  if(!window._canCurrentUserAddCourseAssistant(id)){
+    if(typeof _showToast==='function')_showToast('⛔ لا تملك صلاحية إضافة أدمن لهذا الكورس','error');
+    return;
+  }
+  var title=(window._branchAdminRoots||[]).find(function(x){return Number(x.id)===id;});
+  var titleText=title&&title.title?title.title:(sel&&sel.options[sel.selectedIndex]?sel.options[sel.selectedIndex].text:('#'+id));
+  baOpenAssignModal(id,titleText,'add');
 };
 
 window.openOwnerAssistantFromNav = function(){
@@ -12432,6 +12555,9 @@ async function _apGetProfilesMap(userIds) {
 // ────────────────────────────────────────────────────────────────
 async function apLoadDashboard() {
   if (!window.supabase) return;
+  if (typeof window._renderCourseAssistantDashboardControl === 'function') {
+    window._renderCourseAssistantDashboardControl();
+  }
   // ── أدمن الكورس: إحصائيات شعبته فقط، وليس إحصائيات الموقع كله ──
   if (window._isBranchAdmin && !window._isSuperAdmin) { return _apLoadBranchDashboard(); }
   try {
@@ -25616,22 +25742,9 @@ var labels=document.querySelectorAll('#admin-panel .ap-label');labels.forEach(fu
           ' — 🟢 النشطون: '+active+' — ⏳ الطلبات المعلقة: '+pending+
           ' — 💳 إيصالات معلقة: '+pendingPay+' — 📚 المحتوى: '+(contentR.error?'—':(contentR.count||0))+'</div>';
 
-        // ✅ بند Owner (منفصل): الـOwner لا يرى تبويب "أدمن الكورسات" الكامل، لكن
-        // يحصل هنا فقط على زر مستقل لإضافة أدمن مساعد لشعبته/كورسه هو تحديداً —
-        // نفس المودال الموجود بالفعل (baOpenAssignModal mode='add')، بدون أي واجهة
-        // إضافية جديدة ولا مساس بصف الـOwner نفسه (لا تعيين/تغيير/حذف Owner من هنا).
-        var ownerSectionId = window._branchAdminCourseId || ownIds[0];
-        if (window._canCurrentUserAddCourseAssistant(ownerSectionId)) {
-          var _ownerSectionIdForButton = ownerSectionId;
-          var ownerSectionTitle = (function(){
-            var r = (window._branchAdminRoots||[]).find(function(x){ return Number(x.id) === Number(ownerSectionId); });
-            return (r && r.title) || ('#' + ownerSectionId);
-          })();
-          var ownerTitleEsc = String(ownerSectionTitle).replace(/'/g, "\'");
-          act.innerHTML += '<div style="margin-top:14px;"><button class="ap-btn ap-btn-success" '
-            + 'onclick="baOpenAssignModal(' + Number(_ownerSectionIdForButton) + ', \'' + ownerTitleEsc + '\', \'add\')">'
-            + '➕ إضافة أدمن مساعد</button></div>';
-        }
+      }
+      if (typeof window._renderCourseAssistantDashboardControl === 'function') {
+        window._renderCourseAssistantDashboardControl();
       }
     }catch(e){
       console.error('[DEBUG FIX BRANCH DASHBOARD]',e);
