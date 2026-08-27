@@ -4987,8 +4987,10 @@ async function _openContentPage(sec, _preloadedContent, _preloadedResources) {
           if (_pr.error || !_pr.data || _pr.data.parent_id == null) break;
           _pc = Number(_pr.data.parent_id);
         }
-        var _px = await window.supabase.from('subscription_content_access').select('section_id,requires_subscription').in('section_id',_pa);
-        if (!_px.error) _explicitPathSub = (_px.data||[]).some(function(x){ return x.requires_subscription === true; });
+        if (_pa.length) {
+          var _px = await window.supabase.from('subscription_content_access').select('section_id,requires_subscription').in('section_id',_pa);
+          if (!_px.error) _explicitPathSub = (_px.data||[]).some(function(x){ return x.requires_subscription === true; });
+        }
       }
     } catch(_eFree) {}
     if (_explicitPathSub !== false) {
@@ -27026,7 +27028,7 @@ SELECT conname, pg_get_constraintdef(oid) FROM pg_constraint WHERE conname='audi
         '</div>'+
         '<div id="sc-chapters-list"></div>'+
         '<div id="sc-schedule-cols-warning" style="display:none;background:#fff8e1;border:1px solid #f0d878;color:#8a6d1a;border-radius:8px;padding:8px 10px;font-size:.74rem;margin-top:10px;">'+
-          '⚠️ أعمدة الجدولة (access_mode / available_at / weekly_start_date / weekly_interval_days) غير موجودة بعد في Supabase. سيتم حفظ القفل/الفتح فقط بدون جدولة تاريخ. شغّل SQL الظاهر في الأسفل ثم أعد المحاولة.'+
+          '⚠️ أعمدة الجدولة (access_mode / available_from / weekly_start_date / release_interval_days) غير موجودة بعد في Supabase. سيتم حفظ القفل/الفتح فقط بدون جدولة تاريخ. شغّل SQL الظاهر في الأسفل ثم أعد المحاولة.'+
         '</div>'+
         '<div class="ap-field" style="margin-top:12px;border-top:1px dashed #ddd;padding-top:10px;">'+
           '<label class="ap-label">🔐 طريقة إتاحة الشباتر المحددة</label>'+
@@ -27074,7 +27076,7 @@ SELECT conname, pg_get_constraintdef(oid) FROM pg_constraint WHERE conname='audi
     if(!chapterIds.length){ window._scAccessMap=map; return map; }
     var warnEl=document.getElementById('sc-schedule-cols-warning');
     var r=await d.from('subscription_content_access')
-      .select('section_id,requires_subscription,access_mode,available_at,weekly_start_date,weekly_interval_days')
+      .select('section_id,requires_subscription,access_mode,available_from,weekly_start_date,release_interval_days')
       .in('section_id',chapterIds);
     if(r.error){
       // أعمدة الجدولة غير موجودة بعد — رجوع للأعمدة القديمة فقط بدون كسر النظام.
@@ -27093,9 +27095,9 @@ SELECT conname, pg_get_constraintdef(oid) FROM pg_constraint WHERE conname='audi
         map[Number(x.section_id)]={
           requires_subscription:true,
           access_mode:x.access_mode||'instant',
-          available_at:x.available_at||null,
+          available_from:x.available_from||null,
           weekly_start_date:x.weekly_start_date||null,
-          weekly_interval_days:x.weekly_interval_days||null
+          release_interval_days:x.release_interval_days||null
         };
       }
     });
@@ -27105,11 +27107,11 @@ SELECT conname, pg_get_constraintdef(oid) FROM pg_constraint WHERE conname='audi
 
   function _scModeLabel(info){
     if(!info || !info.requires_subscription) return '';
-    if(info.access_mode==='scheduled' && info.available_at){
-      try{ return ' — 📅 من ' + new Date(info.available_at).toLocaleString('ar-EG'); }catch(e){ return ' — 📅 مجدول'; }
+    if(info.access_mode==='scheduled' && info.available_from){
+      try{ return ' — 📅 من ' + new Date(info.available_from).toLocaleString('ar-EG'); }catch(e){ return ' — 📅 مجدول'; }
     }
     if(info.access_mode==='weekly'){
-      return ' — 📆 أسبوعي (كل ' + (info.weekly_interval_days||7) + ' يوم، من ' + (info.weekly_start_date||'—') + ')';
+      return ' — 📆 أسبوعي (كل ' + (info.release_interval_days||7) + ' يوم، من ' + (info.weekly_start_date||'—') + ')';
     }
     return ' — 🔓 فوري';
   }
@@ -27223,7 +27225,7 @@ SELECT conname, pg_get_constraintdef(oid) FROM pg_constraint WHERE conname='audi
   };
 
   // يبني صف subscription_content_access الواحد حسب الوضع المختار حاليًا
-  // (فوري/تاريخ محدد/أسبوعي)، ويحسب available_at لكل شابتر أسبوعيًا حسب
+  // (فوري/تاريخ محدد/أسبوعي)، ويحسب available_from لكل شابتر أسبوعيًا حسب
   // ترتيبه (index) داخل قائمة الشباتر المحددة بنفس ترتيبها في المادة/الكورس.
   function _scBuildRowsForSelection(selectedIds, orderedChapters){
     var mode=(document.querySelector('input[name="sc-mode"]:checked')||{}).value||'instant';
@@ -27240,21 +27242,21 @@ SELECT conname, pg_get_constraintdef(oid) FROM pg_constraint WHERE conname='audi
       if(!hasCols) return row; // القاعدة لا تدعم أعمدة الجدولة بعد — قفل/فتح فقط
       row.access_mode = mode;
       if(mode==='scheduled'){
-        row.available_at = dateVal ? new Date(dateVal).toISOString() : null;
-        row.weekly_start_date = null; row.weekly_interval_days = null;
+        row.available_from = dateVal ? new Date(dateVal).toISOString() : null;
+        row.weekly_start_date = null; row.release_interval_days = null;
       } else if(mode==='weekly'){
         row.weekly_start_date = weeklyStart || null;
-        row.weekly_interval_days = weeklyInterval;
+        row.release_interval_days = weeklyInterval;
         if(weeklyStart){
           var d=new Date(weeklyStart+'T00:00:00');
           d.setDate(d.getDate() + idx*weeklyInterval);
-          row.available_at = d.toISOString();
+          row.available_from = d.toISOString();
         } else {
-          row.available_at = null;
+          row.available_from = null;
         }
       } else {
         row.access_mode = 'instant';
-        row.available_at = null; row.weekly_start_date = null; row.weekly_interval_days = null;
+        row.available_from = null; row.weekly_start_date = null; row.release_interval_days = null;
       }
       return row;
     });
@@ -27553,7 +27555,15 @@ SELECT conname, pg_get_constraintdef(oid) FROM pg_constraint WHERE conname='audi
       }
       var ar=await db.from('subscription_content_access').select('section_id,requires_subscription').in('section_id',chain);
       if(ar.error) return null;
-      return (ar.data||[]).some(function(x){return x.requires_subscription===true;});
+      var rows=ar.data||[];
+      // ✅ FIX: عدم وجود أي صف صريح لهذه الشعبة/آبائها في subscription_content_access
+      // يجب ألا يُفسَّر كـ"مجاني صراحةً" (false) — فهذا كان يُسقط فحص الاشتراك الأصلي
+      // (site_sections.requires_subscription) بالكامل لأي كورس، بما فيها الكورسات
+      // المدفوعة فعليًا، طالما الجدول لسه فاضي أو ماعندوش صف لهذه الشعبة تحديدًا.
+      // null = لا يوجد إعداد صريح هنا → لا تتجاوز الفحص الأصلي؛ استمر فيه كالمعتاد.
+      // true/false تُرجَعان فقط لو فيه صف صريح فعلاً يحدد الحالة.
+      if (!rows.length) return null;
+      return rows.some(function(x){return x.requires_subscription===true;});
     }catch(e){ return null; }
   }
 
@@ -27608,8 +27618,21 @@ SELECT conname, pg_get_constraintdef(oid) FROM pg_constraint WHERE conname='audi
   [250,1000,2500].forEach(function(ms){ setTimeout(_bsmRefreshPlatformPhoneTab,ms); });
 
   /* -------- Admin content hierarchy: Course -> Material -> Chapter -------- */
+  // ✅ FIX (نطاق أدمن الكورس): كانت هذه الدالة بتجيب كل الكورسات دايمًا بدون
+  // أي تقييد، فيشوف أدمن الكورس باقي الكورسات في تبويب "إضافة محتوى" رغم إنه
+  // معيّن على كورسه فقط (نفس منطق courseRoots() الأقدم في الملف). أدمن المنصة
+  // (_isSuperAdmin) يظل يشوف كل الكورسات زي ما هو.
   async function _bsmLoadCoursesForContent(){
     if(!window.supabase) return [];
+    if (!!(window._isBranchAdmin && !window._isSuperAdmin)) {
+      var cid = Number(window._branchAdminCourseId || window._activeSectionId || 0) || null;
+      if (!cid) return [];
+      var rB = await window.supabase.from('site_sections')
+        .select('id,title,parent_id,subtitle,type,display_order,requires_subscription')
+        .eq('id', cid);
+      if (rB.error) throw rB.error;
+      return rB.data || [];
+    }
     var r=await window.supabase.from('site_sections')
       .select('id,title,parent_id,subtitle,type,display_order,requires_subscription')
       .eq('type','course').order('display_order').order('id');
