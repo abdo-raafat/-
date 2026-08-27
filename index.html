@@ -8,8 +8,8 @@
 -->
 <script>
 (function () {
-  const DEBUG_MODE = false;
-  window.__BSM_DEBUG_MODE = DEBUG_MODE;
+  const DEBUG_MODE = true;
+  window.__BSM_DEBUG_MODE = false;
   window.isIOSDevice = function () {
     var ua = navigator.userAgent || '';
     return /iPhone|iPad|iPod/i.test(ua) ||
@@ -52,7 +52,7 @@
 </script>
 <meta name="google-site-verification" content="my6dMoAsuc_97Jks_OQF75GK_f1PGWqz2Kng2obkIgE" />
 <meta charset="UTF-8">
-<meta name="app-build" content="2026-08-21-course-admin-stats-v2-sw-fix-DEBUG">
+<meta name="app-build" content="2026-08-27-content-phone-fullscreen-fix">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <!-- ==================== PWA: manifest + platform metadata ==================== -->
 <link rel="manifest" href="./manifest.json">
@@ -3833,8 +3833,8 @@ async function loadSections(parentId) {
       if (error) {
         console.error('[loadSections] ❌ error:', error.message, '| code:', error.code);
         // ✅ FIX: لا نُخزِّن الخطأ في الـ cache حتى تتم إعادة المحاولة عند الفتح التالي
-        window._dataCache.sections[key] = [];
-        return [];
+        delete window._dataCache.sections[key];
+        throw error;
       }
       const result = data || [];
       // ✅ FIX: لا نُخزِّن [] في الـ cache إذا كان الخطأ محتملاً (RLS أو شبكة)
@@ -3844,8 +3844,8 @@ async function loadSections(parentId) {
       return result;
     } catch (err) {
       console.error('[loadSections] error after retries:', err?.message || String(err));
-      window._dataCache.sections[key] = [];
-      return [];
+      delete window._dataCache.sections[key];
+      throw err;
     } finally {
       delete window._dataCache._pending[key];
     }
@@ -3890,7 +3890,8 @@ async function loadSectionContent(sectionId) {
             'DROP POLICY IF EXISTS "content_read_all" ON section_content;\n' +
             'CREATE POLICY "content_read_all" ON section_content FOR SELECT USING (true);');
         }
-        window._dataCache.content[key] = []; return [];
+        delete window._dataCache.content[key];
+        throw error;
       }
       const result = data || [];
       if (result.length === 0) {
@@ -3899,8 +3900,8 @@ async function loadSectionContent(sectionId) {
       return result;
     } catch (err) {
       console.error('[DEBUG loadSectionContent] ❌ استثناء:', err?.message || String(err));
-      window._dataCache.content[key] = [];
-      return [];
+      delete window._dataCache.content[key];
+      throw err;
     } finally {
       delete window._dataCache._pending[key];
     }
@@ -3977,11 +3978,10 @@ async function loadSectionResources(sectionId) {
             'DROP POLICY IF EXISTS "resources_read_all" ON section_resources;\n' +
             'CREATE POLICY "resources_read_all" ON section_resources FOR SELECT USING (true);');
         }
-        // ✅ لا نخزّن خطأ مؤقت كـ "طازة" — نمسح الكاش القديم لهذا المفتاح
-        // عشان أول طلب جاي (حتى لو خلال أقل من 30 ثانية) يعيد المحاولة
-        // بدل ما يفضل يرجّع [] لمدة 30 ثانية كاملة بسبب خطأ شبكة عابر.
+        // لا نُحوّل فشل الاستعلام إلى نتيجة فارغة؛ النتيجة الفارغة الحقيقية فقط
+        // هي التي تسمح بعرض "لا يوجد محتوى". الخطأ يذهب لمسار الخطأ الظاهر للمستخدم.
         delete window._dataCache.resources[key];
-        return [];
+        throw error;
       }
       const result = _sortResourcesForDisplay(data || []);
       window._dataCache.resources[key] = { rows: result, _fetchedAt: Date.now() };
@@ -3989,7 +3989,7 @@ async function loadSectionResources(sectionId) {
     } catch (err) {
       console.error('[DEBUG loadSectionResources] ❌ استثناء:', err?.message || String(err));
       delete window._dataCache.resources[key];
-      return [];
+      throw err;
     } finally {
       delete window._dataCache._pending[key];
     }
@@ -6335,6 +6335,7 @@ const ResourceViewer = (function() {
 
   function detectVideoType(url) {
     if (/youtube\.com|youtu\.be/.test(url)) return 'youtube';
+    if (/fembed\.co|fembed-hd\.com|fembed\.net/.test(url)) return 'fembed';
     if (/vimeo\.com/.test(url))             return 'vimeo';
     if (/\.(mp4|webm|ogg|mov)/.test(url))  return 'video_direct';
     return 'video_direct';
@@ -6353,6 +6354,7 @@ const ResourceViewer = (function() {
       else if (m3) vid = m3[1];
       return vid ? `https://www.youtube.com/embed/${vid}?autoplay=0&rel=0` : url;
     }
+    if (type === 'fembed') return url;
     if (type === 'vimeo') {
       const m = url.match(/vimeo\.com\/(\d+)/);
       return m ? `https://player.vimeo.com/video/${m[1]}` : url;
@@ -6430,7 +6432,8 @@ const ResourceViewer = (function() {
 
       case 'youtube':
       case 'vimeo':
-      case 'dailymotion': {
+      case 'dailymotion':
+      case 'fembed': {
         const embedUrl = toEmbedUrl(url, type);
         return `
           <div class="rv-loading" id="rv-loading-indicator">
@@ -6931,7 +6934,6 @@ const ResourceViewer = (function() {
     const safeUrl = (url || '').replace(/'/g, '%27');
     const actionsHtml = (isAdmin && url) ? `
       <div style="display:flex;gap:10px;justify-content:center;margin-top:14px;flex-wrap:wrap">
-        <button class="rv-btn rv-btn-outline" onclick="window.open('${safeUrl}','_blank')">↗️ فتح الملف</button>
         <button class="rv-btn rv-btn-outline" onclick="(function(){var a=document.createElement('a');a.href='${safeUrl}';a.setAttribute('download','');document.body.appendChild(a);a.click();document.body.removeChild(a);})()">⬇️ تحميل الملف</button>
       </div>` : '';
     body.innerHTML = `
@@ -27456,6 +27458,282 @@ SELECT conname, pg_get_constraintdef(oid) FROM pg_constraint WHERE conname='audi
     if(explicit===false){ return null; }
     return originalCheck?await originalCheck(sectionId):null;
   };
+})();
+</script>
+<script>
+/* BSM 2026-08-27 TARGETED FIXES — content loading / hierarchy / course phone / fullscreen.
+   No DB schema, Auth, RLS, Service Worker or existing protection logic is changed. */
+(function(){
+  'use strict';
+
+  function _bsmIsPlatformAdmin(){
+    return window._isSuperAdmin === true || window._currentUserRole === 'admin';
+  }
+
+  function _bsmRefreshPlatformPhoneTab(){
+    var tab=document.getElementById('ap-tab-courseAdminPhone');
+    if(tab) tab.style.display=_bsmIsPlatformAdmin() ? 'flex' : 'none';
+    var panel=document.getElementById('ap-panel-courseAdminPhone');
+    if(panel && !_bsmIsPlatformAdmin()) panel.classList.remove('active');
+  }
+
+  /* The original gate hides special nav items by default. Re-apply its result,
+     then explicitly expose this platform-only tab only for profiles.role=admin. */
+  if(typeof window._applyBranchAdminPanelGating==='function'){
+    var _oldGate=window._applyBranchAdminPanelGating;
+    if(!window.__BSM_PHONE_GATE_PATCH){
+      window.__BSM_PHONE_GATE_PATCH=true;
+      window._applyBranchAdminPanelGating=function(){
+        var r=_oldGate.apply(this,arguments);
+        _bsmRefreshPlatformPhoneTab();
+        return r;
+      };
+    }
+  }
+
+  /* Re-run once auth has settled; harmless for guests/branch admins. */
+  [250,1000,2500].forEach(function(ms){ setTimeout(_bsmRefreshPlatformPhoneTab,ms); });
+
+  /* -------- Admin content hierarchy: Course -> Material -> Chapter -------- */
+  async function _bsmLoadCoursesForContent(){
+    if(!window.supabase) return [];
+    var r=await window.supabase.from('site_sections')
+      .select('id,title,parent_id,subtitle,type,display_order,requires_subscription')
+      .eq('type','course').order('display_order').order('id');
+    if(r.error) throw r.error;
+    return r.data||[];
+  }
+  async function _bsmLoadMaterials(courseId){
+    var r=await window.supabase.from('site_sections')
+      .select('id,title,parent_id,subtitle,type,display_order,requires_subscription')
+      .eq('parent_id',Number(courseId)).order('display_order').order('id');
+    if(r.error) throw r.error;
+    return r.data||[];
+  }
+  async function _bsmLoadChapters(materialId){
+    var r=await window.supabase.from('site_sections')
+      .select('id,title,parent_id,subtitle,type,display_order,requires_subscription')
+      .eq('parent_id',Number(materialId)).order('display_order').order('id');
+    if(r.error) throw r.error;
+    return r.data||[];
+  }
+  window.adminLoadSections=async function(){
+    var db=window.supabase;
+    var course=document.getElementById('admin-course-select');
+    var material=document.getElementById('admin-material-select');
+    var chapter=document.getElementById('admin-chapter-select');
+    var final=document.getElementById('admin-section-select');
+    var mw=document.getElementById('admin-material-wrap');
+    var cw=document.getElementById('admin-chapter-wrap');
+    if(!db||!course||!material) return;
+    course.innerHTML='<option value="">— جاري تحميل الكورسات —</option>';
+    material.innerHTML='<option value="">— اختر المادة —</option>';
+    if(chapter) chapter.innerHTML='<option value="">— اختر الشابتر —</option>';
+    if(final) final.innerHTML='<option value="">— اختر —</option>';
+    if(mw) mw.style.display='none'; if(cw) cw.style.display='none';
+    try{
+      var courses=await _bsmLoadCoursesForContent();
+      if(!courses.length){
+        course.innerHTML='<option value="">— لا توجد كورسات —</option>';
+        return;
+      }
+      course.innerHTML='<option value="">— اختر الكورس —</option>'+courses.map(function(c){
+        return '<option value="'+c.id+'">'+(typeof _apEsc==='function'?_apEsc(c.title):String(c.title||''))+'</option>';
+      }).join('');
+      window._adminAllCourses=courses;
+    }catch(e){
+      console.error('[CONTENT HIERARCHY] تحميل الكورسات:',e);
+      course.innerHTML='<option value="">— تعذر تحميل الكورسات —</option>';
+      var msg=document.getElementById('admin-msg'); if(msg) msg.textContent='❌ تعذر تحميل الكورسات: '+(e.message||e);
+    }
+  };
+  window.adminOnCourseChange=async function(){
+    var course=document.getElementById('admin-course-select');
+    var material=document.getElementById('admin-material-select');
+    var chapter=document.getElementById('admin-chapter-select');
+    var final=document.getElementById('admin-section-select');
+    var mw=document.getElementById('admin-material-wrap'), cw=document.getElementById('admin-chapter-wrap');
+    var id=Number(course&&course.value||0);
+    if(material) material.innerHTML='<option value="">— جاري تحميل المواد —</option>';
+    if(chapter) chapter.innerHTML='<option value="">— اختر الشابتر —</option>';
+    if(final) final.innerHTML='<option value="">— اختر —</option>';
+    if(cw) cw.style.display='none'; if(mw) mw.style.display='none';
+    if(!id) return;
+    try{
+      var rows=await _bsmLoadMaterials(id);
+      if(material) material.innerHTML='<option value="">— اختر المادة —</option>'+rows.map(function(m){
+        return '<option value="'+m.id+'">'+(typeof _apEsc==='function'?_apEsc(m.title):String(m.title||''))+'</option>';
+      }).join('');
+      if(mw) mw.style.display='block';
+      window._adminSelectedCourseId=id;
+      window._adminCourseMaterials=rows;
+    }catch(e){
+      console.error('[CONTENT HIERARCHY] تحميل المواد:',e);
+      if(material) material.innerHTML='<option value="">— تعذر تحميل المواد —</option>';
+      var msg=document.getElementById('admin-msg'); if(msg) msg.textContent='❌ تعذر تحميل المواد: '+(e.message||e);
+    }
+  };
+  window.adminOnMaterialChange=async function(){
+    var material=document.getElementById('admin-material-select');
+    var chapter=document.getElementById('admin-chapter-select');
+    var final=document.getElementById('admin-section-select');
+    var cw=document.getElementById('admin-chapter-wrap');
+    var id=Number(material&&material.value||0);
+    if(chapter) chapter.innerHTML='<option value="">— جاري تحميل الشابتر —</option>';
+    if(final) final.innerHTML='<option value="">— اختر —</option>';
+    if(cw) cw.style.display='none';
+    if(!id) return;
+    try{
+      var rows=await _bsmLoadChapters(id);
+      var opts=rows.map(function(c){return '<option value="'+c.id+'">'+(typeof _apEsc==='function'?_apEsc(c.title):String(c.title||''))+'</option>';}).join('');
+      if(chapter) chapter.innerHTML='<option value="">— اختر الشابتر —</option>'+opts;
+      if(final){
+        var mt=material.options[material.selectedIndex] ? material.options[material.selectedIndex].textContent : '';
+        final.innerHTML='<option value="">— اختر —</option><option value="'+id+'">'+(typeof _apEsc==='function'?_apEsc(mt):mt)+'</option>'+opts;
+        final.value=rows.length?'':String(id);
+      }
+      if(cw) cw.style.display=rows.length?'block':'none';
+      if(typeof adminLoadSectionPath==='function') adminLoadSectionPath();
+    }catch(e){
+      console.error('[CONTENT HIERARCHY] تحميل الشابتر:',e);
+      if(chapter) chapter.innerHTML='<option value="">— تعذر تحميل الشابتر —</option>';
+    }
+  };
+  window.adminOnChapterChange=function(){
+    var c=document.getElementById('admin-chapter-select'), f=document.getElementById('admin-section-select');
+    if(f) f.value=c&&c.value?c.value:'';
+    if(typeof adminLoadSectionPath==='function') adminLoadSectionPath();
+  };
+
+  /* Course phone: always load from site_sections.course_admin_phone and re-read after save. */
+  async function _bsmCapQuery(){
+    var db=window.supabase; if(!db) throw new Error('Supabase client غير جاهز');
+    var r=await db.from('site_sections').select('id,title,icon,course_admin_phone,type,parent_id')
+      .eq('type','course').order('display_order').order('id');
+    if(r.error) throw r.error; return r.data||[];
+  }
+  window.capInit=async function(){
+    _bsmRefreshPlatformPhoneTab();
+    var sel=document.getElementById('cap-course-select'), msg=document.getElementById('cap-save-msg');
+    if(!sel) return;
+    if(!_bsmIsPlatformAdmin()) { sel.innerHTML='<option value="">غير متاح</option>'; return; }
+    sel.innerHTML='<option value="">— جاري تحميل الكورسات —</option>';
+    try{
+      var rows=await _bsmCapQuery(); window._capCourses=rows;
+      if(!rows.length){sel.innerHTML='<option value="">— لا توجد كورسات —</option>';capRenderContacts([]);return;}
+      sel.innerHTML='<option value="">— اختر الكورس —</option>'+rows.map(function(c){return '<option value="'+c.id+'">'+(c.icon||'📚')+' '+(typeof _apEsc==='function'?_apEsc(c.title):String(c.title||''))+'</option>';}).join('');
+      /* Do not invent a phone; show the first real course's stored value only for convenience. */
+      sel.value=String(rows[0].id); await capLoadCourse();
+      if(msg) msg.textContent='';
+    }catch(e){
+      console.error('[CourseAdminPhone] init:',e);
+      sel.innerHTML='<option value="">— تعذر تحميل الكورسات —</option>';
+      if(msg){msg.style.color='#e74c3c';msg.textContent='❌ تعذر تحميل الكورسات: '+(e.message||e);}
+    }
+  };
+  window.capLoadCourse=async function(){
+    var sel=document.getElementById('cap-course-select'), msg=document.getElementById('cap-save-msg');
+    var id=Number(sel&&sel.value||0); if(!id){capRenderContacts([]);return;}
+    try{
+      /* Re-read the selected course directly from Supabase, not only the local course array. */
+      var r=await window.supabase.from('site_sections').select('id,title,icon,course_admin_phone,type,parent_id').eq('id',id).maybeSingle();
+      if(r.error) throw r.error;
+      if(!r.data) throw new Error('الكورس غير موجود في site_sections');
+      var row=r.data;
+      window._capCourses=(window._capCourses||[]).map(function(x){return Number(x.id)===id?Object.assign({},x,row):x;});
+      window._capContacts=window._capParseContacts(row.course_admin_phone);
+      if(!window._capContacts.length) window._capContacts=[{name:'',phone:'',telegram:''}];
+      capRenderContacts(window._capContacts); if(msg) msg.textContent='';
+    }catch(e){
+      console.error('[CourseAdminPhone] load:',e);
+      capRenderContacts([]); if(msg){msg.style.color='#e74c3c';msg.textContent='❌ تعذر قراءة رقم الكورس: '+(e.message||e);}
+    }
+  };
+  window.capSave=async function(){
+    var sel=document.getElementById('cap-course-select'),msg=document.getElementById('cap-save-msg');
+    if(!_bsmIsPlatformAdmin()||!window.supabase)return;
+    var id=Number(sel&&sel.value||0); if(!id){if(msg)msg.textContent='❌ اختر الكورس أولاً';return;}
+    var value=window._capSerializeContacts(capReadContactsFromDOM());
+    if(msg){msg.style.color='#667';msg.textContent='⏳ جاري الحفظ...';}
+    try{
+      var r=await window.supabase.from('site_sections').update({course_admin_phone:value}).eq('id',id);
+      if(r.error) throw r.error;
+      /* Mandatory verification: read the same row again from Supabase. */
+      var verify=await window.supabase.from('site_sections').select('id,course_admin_phone').eq('id',id).maybeSingle();
+      if(verify.error) throw verify.error;
+      if(!verify.data || String(verify.data.course_admin_phone||'')!==String(value||'')) throw new Error('لم تتطابق قيمة الحفظ مع القيمة المقروءة من قاعدة البيانات');
+      window._capCourses=(window._capCourses||[]).map(function(x){return Number(x.id)===id?Object.assign({},x,{course_admin_phone:verify.data.course_admin_phone}):x;});
+      if(msg){msg.style.color='#17a589';msg.textContent='✅ تم الحفظ والتحقق من Supabase';}
+      if(typeof _showToast==='function')_showToast('✅ تم حفظ رقم الكورس','success');
+      await capLoadCourse();
+    }catch(e){
+      console.error('[CourseAdminPhone] save:',e);
+      if(msg){msg.style.color='#e74c3c';msg.textContent='❌ فشل الحفظ: '+(e.message||e);}
+    }
+  };
+
+  /* -------- Fullscreen touch/WebView hardening -------- */
+  function _bsmBindFullscreenButton(){
+    var btn=document.getElementById('rv-fs-btn');
+    if(!btn||btn.__bsmFsBound)return;
+    btn.__bsmFsBound=true;
+    /* Replace only the existing inline handler with one guarded handler.
+       This avoids Android's touchend/pointerup/click sequence toggling twice. */
+    btn.onclick=function(e){
+      if(e){e.preventDefault();e.stopPropagation();}
+      try{ ResourceViewer._toggleFullscreen(); }catch(err){console.warn('[Fullscreen]',err); }
+      return false;
+    };
+  }
+  function _bsmInstallFsObserver(){
+    var root=document.getElementById('rv-overlay');
+    if(!root||root.__bsmFsObserved)return;
+    root.__bsmFsObserved=true;
+    _bsmBindFullscreenButton();
+    var mo=new MutationObserver(function(){_bsmBindFullscreenButton();});
+    mo.observe(root,{childList:true,subtree:true});
+  }
+  document.addEventListener('click',function(e){
+    if(e.target&&e.target.id==='rv-fs-btn') setTimeout(_bsmBindFullscreenButton,0);
+  },true);
+  var _rvOpen=window.ResourceViewer&&window.ResourceViewer.open;
+  if(_rvOpen&&!window.__BSM_RV_OPEN_PATCH){
+    window.__BSM_RV_OPEN_PATCH=true;
+    var _origOpen=_rvOpen;
+    /* Keep the existing viewer; only bind the existing fullscreen button after it is created. */
+    window.ResourceViewer.open=function(){
+      var r=_origOpen.apply(this,arguments);
+      setTimeout(_bsmInstallFsObserver,0);
+      return r;
+    };
+  }
+  /* Make embed iframes fullscreen-capable, including future dynamic viewers. */
+  var _mediaObs=new MutationObserver(function(muts){
+    muts.forEach(function(m){m.addedNodes&&Array.prototype.forEach.call(m.addedNodes,function(n){
+      if(n.nodeType!==1)return;
+      if(n.matches&&n.matches('iframe.rv-embed-frame')){
+        n.setAttribute('allowfullscreen','true');
+        n.setAttribute('webkitallowfullscreen','true');
+        n.setAttribute('allow','accelerometer;autoplay;clipboard-write;encrypted-media;gyroscope;picture-in-picture;fullscreen');
+      }
+      n.querySelectorAll&&n.querySelectorAll('iframe.rv-embed-frame').forEach(function(f){
+        f.setAttribute('allowfullscreen','true');f.setAttribute('webkitallowfullscreen','true');
+        f.setAttribute('allow','accelerometer;autoplay;clipboard-write;encrypted-media;gyroscope;picture-in-picture;fullscreen');
+      });
+    });});
+  });
+  if(document.documentElement)_mediaObs.observe(document.documentElement,{childList:true,subtree:true});
+
+  /* Remove only our own media error action that opens a new tab; never touch ordinary link resources. */
+  window._bsmStripMediaExternalAction=function(){
+    var body=document.getElementById('rv-body'); if(!body)return;
+    body.querySelectorAll('button').forEach(function(b){
+      var t=(b.textContent||'').trim();
+      if(t.indexOf('فتح الملف')!==-1 || t.indexOf('تبويب جديد')!==-1) b.remove();
+    });
+  };
+  var _rvBodyObs=new MutationObserver(function(){_bsmStripMediaExternalAction();});
+  if(document.body)_rvBodyObs.observe(document.body,{childList:true,subtree:true});
 })();
 </script>
 </body>
