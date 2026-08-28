@@ -1382,6 +1382,14 @@ html.rv-manual-fs-active #rv-overlay * {
    شوية عشان يفضل الخروج ممكن دايمًا، والفوتر بيتخفي. ده Class منفصل تمامًا
    (rv-fembed-fill) عن rv-manual-fs، فمفيش أي تأثير على أي نوع مصدر تاني
    (فيديو HTML5 / يوتيوب / فيميو / PDF / صور). */
+.rv-overlay.rv-fembed-fill {
+  padding: 0 !important;
+  align-items: stretch !important;
+  justify-content: stretch !important;
+  background: #000 !important;
+  backdrop-filter: none !important;
+  overflow: hidden !important;
+}
 .rv-overlay.rv-fembed-fill .rv-modal {
   max-width: 100vw !important;
   max-height: 100vh !important;
@@ -7212,13 +7220,56 @@ const ResourceViewer = (function() {
     overlay.classList.remove('rv-fembed-fill');
   }
 
-  // ✅ FIX (طلب: إعادة بناء معماري لمسار Fembed Landscape) — بيتحقق هل وضع
-  // الـLandscape الخاص بالـFembed شغّال دلوقتي، سواء عن طريق Native
-  // Fullscreen حقيقي على الـoverlay (اللي إحنا مالكينه) أو عن طريق fallback
-  // الـCSS (rv-fembed-fill) لوحده لما الـFullscreen الحقيقي مش متاح/اتمنع.
+  // ✅ FIX (طلب: State واضح، بدون تداخل غير منطقي) — Object واحد بيمثّل
+  // حالة الـLandscape الخاصة بـFembed حصريًا (منفصل عن أي state تاني بتاع
+  // باقي الأنواع). القيم:
+  // - active: هل وضع الـLandscape شغّال دلوقتي (أي مسار)
+  // - nativeFullscreen: هل الـoverlay فعلاً هو document.fullscreenElement
+  // - orientationLocked: هل احنا اللي عملنا screen.orientation.lock بنجاح
+  // - manualFill: هل الـCSS fallback (rv-fembed-fill) شغّال (بيتفعّل مع
+  //   نجاح الـNative Fullscreen كمان عشان التصميم Edge-to-Edge، مش بديل عنه)
+  // - rotateFallback: هل CSS rotate (rv-force-rotate) شغّال كـ"آخر حل" فوق
+  //   أي من الحالتين فوق — التراكب ده مقصود ومذكور في الطلب الأصلي، مش bug.
+  var _rvFembedState = {
+    active: false,
+    nativeFullscreen: false,
+    orientationLocked: false,
+    manualFill: false,
+    rotateFallback: false
+  };
+
   function _isFembedLandscapeActive(overlay) {
     return !!(document.fullscreenElement || document.webkitFullscreenElement) ||
            overlay.classList.contains('rv-fembed-fill');
+  }
+
+  // ✅ تشخيص (طلب: فحص getBoundingClientRect/clientWidth/clientHeight/
+  // display/visibility/opacity/z-index/transform/position بعد الدخول في
+  // Landscape) — تسجيل معلوماتي فقط (مش console.clear ولا إخفاء أي خطأ)،
+  // بيوضح فعليًا هل iframe الـFembed ظاهر وبأبعاد صحيحة بعد التفعيل، عشان
+  // نفرّق بصريًا بين "مشكلة Permissions Policy جوه JWPlayer الداخلي" (مش
+  // تحت تحكمنا) و"مشكلة تخطيط/CSS عندنا فعليًا" (لو حصلت، هتبان هنا فورًا).
+  function _rvDebugFembedIframeRect(iframe) {
+    try {
+      if (!iframe) { console.warn('[Landscape][Fembed][Debug] iframe غير موجود في الـDOM.'); return; }
+      var rect = iframe.getBoundingClientRect();
+      var cs = window.getComputedStyle(iframe);
+      console.info('[Landscape][Fembed][Debug] iframe rect:', {
+        width: rect.width, height: rect.height,
+        top: rect.top, left: rect.left,
+        clientWidth: iframe.clientWidth, clientHeight: iframe.clientHeight,
+        display: cs.display, visibility: cs.visibility, opacity: cs.opacity,
+        position: cs.position, zIndex: cs.zIndex, transform: cs.transform
+      });
+      if (rect.width === 0 || rect.height === 0) {
+        console.warn('[Landscape][Fembed][Debug] ⚠️ iframe أبعاده صفر — المشكلة في CSS/Layout عندنا وليست Permissions Policy.');
+      }
+      if (cs.display === 'none' || cs.visibility === 'hidden' || parseFloat(cs.opacity) === 0) {
+        console.warn('[Landscape][Fembed][Debug] ⚠️ iframe مخفي فعليًا (display/visibility/opacity) — المشكلة عندنا وليست Permissions Policy.');
+      }
+    } catch (e) {
+      console.warn('[Landscape][Fembed][Debug] تعذّر فحص iframe rect:', e && e.message);
+    }
   }
 
   // ✅ الحالة 1 (Native Fullscreen متاح): بنطلب Fullscreen على الـoverlay
@@ -7235,30 +7286,42 @@ const ResourceViewer = (function() {
   // _rvLockLandscapeOrientation() → _rvActivateRotateFallback() (CSS rotate
   // كآخر حل فقط)، والـiframe يفضل ظاهر وشغّال في كل الحالات التلاتة.
   function _rvEnterFembedLandscape(overlay) {
-    var afterParentFullscreen = function() {
+    _rvFembedState.active = true;
+    var iframe = document.getElementById('rv-embed-iframe');
+    var afterParentFullscreen = function(nativeSucceeded) {
+      _rvFembedState.nativeFullscreen = !!nativeSucceeded;
       _enableFembedFillFallback();
+      _rvFembedState.manualFill = true;
       _rvLockLandscapeOrientation();
+      // ✅ فحص فعلي (مش افتراض) لأبعاد/ظهور iframe بعد التفعيل — بعد إطار
+      // واحد عشان الـCSS يكون اتطبّق فعلًا (getBoundingClientRect بيرجع
+      // قيم قديمة لو اتقاس في نفس الـtick قبل الـreflow).
+      requestAnimationFrame(function() {
+        _rvDebugFembedIframeRect(iframe);
+        _rvFembedState.orientationLocked = !!_rvLandscapeLockActive;
+        _rvFembedState.rotateFallback = !!(overlay && overlay.classList.contains('rv-force-rotate'));
+      });
     };
     try {
       var reqP = overlay.requestFullscreen || overlay.webkitRequestFullscreen;
       if (reqP) {
-        var resultP = reqP.call(overlay); // Sync، جوه الـclick handler مباشرة
+        var resultP = reqP.call(overlay); // Sync، جوه الـclick handler مباشرة — يحافظ على User Activation
         if (resultP && typeof resultP.then === 'function') {
-          resultP.then(afterParentFullscreen).catch(function(err) {
+          resultP.then(function(){ afterParentFullscreen(true); }).catch(function(err) {
             console.warn('[Landscape][Fembed] overlay.requestFullscreen رفضته:', err && err.message);
-            afterParentFullscreen();
+            afterParentFullscreen(false);
           });
         } else {
           // متصفح/WebView قديم من غير Promise — نفترض النجاح ونكمّل.
-          afterParentFullscreen();
+          afterParentFullscreen(true);
         }
       } else {
         // لا يوجد Fullscreen API أصلًا في هذا الـWebView.
-        afterParentFullscreen();
+        afterParentFullscreen(false);
       }
     } catch (e) {
       console.warn('[Landscape][Fembed] overlay.requestFullscreen رمى استثناء:', e && e.message);
-      afterParentFullscreen();
+      afterParentFullscreen(false);
     }
   }
 
@@ -7273,7 +7336,14 @@ const ResourceViewer = (function() {
         if (exit) Promise.resolve(exit.call(document)).catch(function(err){ console.warn('[Landscape][Fembed]', err && err.message); });
       }
     } catch (e) { console.warn('[Landscape][Fembed]', e && e.message); }
+    // ✅ orientation.unlock() + إزالة rv-fembed-fill + إزالة rv-force-rotate
+    // + تنظيف resize/orientationchange listeners — كلها جوه الدالة دي.
     _disableFembedFillFallback();
+    _rvFembedState.active = false;
+    _rvFembedState.nativeFullscreen = false;
+    _rvFembedState.orientationLocked = false;
+    _rvFembedState.manualFill = false;
+    _rvFembedState.rotateFallback = false;
   }
 
   // ✅ Fembed تحديدًا: مسار منفصل تمامًا عن باقي الأنواع تحت (الترتيب:
