@@ -37,13 +37,17 @@ var DEBUG_MODE = true; window.DEBUG_MODE = DEBUG_MODE;
   // تطبيق رسمي = تطبيق أندرويد أو iOS مثبّت كـ Standalone PWA.
   window.isOfficialApp = function () {
     try {
-      // Official app/WebView: use the existing BSMApp/1.0 or bridge detection.
+      // Official Android app/WebView.
       if (_isAndroidAppEarly()) return true;
 
-      // iOS: only the installed standalone PWA is allowed.
+      // Official iOS installed PWA.
       if (window.isIOSDevice() && window.isIOSStandalone()) return true;
 
-      // All normal web browsers, including desktop-installed PWAs, are blocked.
+      // Official desktop app/WebView only.
+      var ua = navigator.userAgent || '';
+      if (ua.indexOf('BSMDesktopApp/1.0') !== -1 || window.BSMDesktopBridge) return true;
+
+      // Direct web browsers remain blocked.
       return false;
     } catch (e) { return false; }
   };
