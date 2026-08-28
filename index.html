@@ -1407,34 +1407,56 @@ html.rv-manual-fs-active #rv-overlay * {
 }
 .rv-overlay.rv-landscape-visual .rv-modal {
   position: fixed !important;
-  top: 50% !important;
-  left: 50% !important;
+  inset: 0 !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
   margin: 0 !important;
   border-radius: 0 !important;
   max-width: none !important;
   max-height: none !important;
   background: #000 !important;
-  /* width / height / transform بتتحدد inline بواسطة JS
-     (_rvApplyLandscapeMetrics) حسب viewport الحالي بالظبط. */
+  display: flex !important;
+  flex-direction: column !important;
+  transform: none !important;
+  /* ✅ REWRITE (إصلاح جذري): المودال نفسه (وبالتالي الهيدر/زر X جوّاه) ما
+     بيتلفّش خالص بأي transform. اللي بيتلف بصريًا هو عنصر الفيديو/الـiframe
+     لوحده جوه .rv-body (شوف القاعدة تحت). سبب المشكلة القديمة: كان فيه
+     position:fixed على .rv-header جوه .rv-modal وهو متلفّت بـtransform —
+     ده بيخلي .rv-modal نفسه "containing block" للعناصر التابتة جواه، فكان
+     الهيدر (وزر X اللي جواه) بيتلف بصريًا مع الفيديو ويظهر مقلوب/خارج مكانه،
+     ولما نرجع Portrait كانت الـinline styles القديمة بتسيب الزرار في وضع
+     غلط. دلوقتي الهيدر عنصر عادي (flex-shrink:0) في تخطيط flex-column
+     عادي، فمفيش أي transform يلمسه أبدًا — يفضل ظاهر وثابت ومكانه صح في كل
+     الأحوال. */
 }
 .rv-overlay.rv-landscape-visual .rv-modal .rv-header {
-  position: fixed !important;
-  left: 0 !important;
-  right: 0 !important;
-  z-index: 2147483647 !important;
+  flex-shrink: 0 !important;
+  position: relative !important;
+  z-index: 5 !important;
   background: rgba(0,0,0,.55) !important;
-  /* padding-top بيتحدد inline بواسطة JS عشان يراعي safe-area (الحافة اللي
-     كانت "فوق" الهاتف فعليًا قبل الدوران البصري بتبقى جنب الشاشة). */
+  transform: none !important;
+  /* padding-top بيتحدد inline بواسطة JS عشان يراعي safe-area العلوي
+     الحقيقي للجهاز (مفيش دوران هنا، فالحافة العلوية هي فعلًا فوق). */
+}
+.rv-overlay.rv-landscape-visual .rv-modal .rv-header .rv-close,
+.rv-overlay.rv-landscape-visual .rv-modal .rv-header * {
+  transform: none !important;
 }
 .rv-overlay.rv-landscape-visual .rv-modal .rv-footer {
   display: none !important;
 }
 .rv-overlay.rv-landscape-visual .rv-modal .rv-body {
-  height: 100% !important;
+  flex: 1 1 auto !important;
   min-height: 0 !important;
+  width: 100% !important;
   display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
   padding: 0 !important;
   overflow: hidden !important;
+  position: relative !important;
 }
 .rv-overlay.rv-landscape-visual .rv-modal .rv-video,
 .rv-overlay.rv-landscape-visual .rv-modal #rv-video-el,
@@ -1443,15 +1465,16 @@ html.rv-manual-fs-active #rv-overlay * {
 .rv-overlay.rv-landscape-visual .rv-modal iframe {
   position: static !important;
   inset: auto !important;
-  width: 100% !important;
-  height: 100% !important;
   max-width: none !important;
   max-height: none !important;
-  flex: 1 1 auto !important;
-  transform: none !important;
+  flex: none !important;
   margin: 0 !important;
   border: 0 !important;
   object-fit: contain !important;
+  transform-origin: center center !important;
+  /* width / height / transform (rotate 90deg لو الviewport طولي) بتتحدد
+     inline بواسطة JS (_rvApplyLandscapeMetrics) حسب المساحة المتاحة فعليًا
+     تحت الهيدر — العنصر ده لوحده هو اللي بيتلف بصريًا، مش الهيدر ولا زر X. */
 }
 
 /* Zoom للصور: pinch على الهاتف */
@@ -7104,39 +7127,52 @@ const ResourceViewer = (function() {
     return window.innerWidth < window.innerHeight;
   }
 
-  // ✅ حساب أبعاد .rv-modal بصريًا: لو الـviewport طولي (Portrait)، الصندوق
-  // قبل الدوران بيتعمله أبعاد "أفقية" (العرض = ارتفاع الشاشة، الارتفاع =
-  // عرض الشاشة) وبعدين بيتلف 90 درجة، فبعد الدوران بيملأ بالظبط مساحة
-  // الشاشة الحقيقية (Portrait) لكن المحتوى جواه (الفيديو) بيبان أفقي حقيقي.
-  // لو الـviewport أصلاً عريض (Landscape فعلي أو تابلت)، مفيش داعي لأي دوران
-  // خالص — الصندوق بيملأ الشاشة عادي من غير transform.
-  function _rvComputeLandscapeMetrics() {
-    var w = window.innerWidth;
-    var h = window.innerHeight;
-    if (_rvIsPortraitViewport()) {
-      return { rotate: true, boxW: h, boxH: w };
-    }
-    return { rotate: false, boxW: w, boxH: h };
+  // ✅ عنصر الفيديو/الـiframe الفعلي جوه .rv-body — هو الوحيد اللي بيتلف
+  // بصريًا. الهيدر (وزر X جواه) مش داخل في الحسبة دي خالص.
+  function _rvGetLandscapeMediaEl() {
+    var modal = document.getElementById('rv-modal');
+    if (!modal) return null;
+    return modal.querySelector(
+      '.rv-video, #rv-video-el, iframe[data-fembed-embed="1"], .rv-embed-frame, iframe'
+    );
   }
 
+  // ✅ REWRITE (إصلاح جذري): بدل ما نلف .rv-modal كله (وجواه الهيدر/X)،
+  // بنلف عنصر الفيديو/الـiframe بس. الهيدر بيفضل flex item عادي فوق
+  // .rv-body (زي أي مودال عادي)، فمساحة .rv-body المتاحة فعليًا (بعد
+  // خصم ارتفاع الهيدر تلقائيًا بفضل flex) هي اللي بنحسب عليها. لو
+  // الـviewport طولي (Portrait)، عنصر الفيديو قبل الدوران بيتعمله أبعاد
+  // معكوسة (عرض = ارتفاع المساحة المتاحة، ارتفاع = عرض المساحة المتاحة)
+  // وبعدين بيتلف 90 درجة حول مركزه، فبعد الدوران بيملأ بالظبط مساحة
+  // .rv-body المتاحة ويتوسط فيها (بفضل align/justify:center على .rv-body).
+  // لو الـviewport أصلاً عريض (Landscape فعلي/تابلت)، مفيش داعي لأي دوران.
   function _rvApplyLandscapeMetrics() {
     var modal = document.getElementById('rv-modal');
     var header = modal ? modal.querySelector('.rv-header') : null;
-    if (!modal) return;
-    var m = _rvComputeLandscapeMetrics();
-    modal.style.width = m.boxW + 'px';
-    modal.style.height = m.boxH + 'px';
-    modal.style.transformOrigin = 'center center';
-    modal.style.transform = m.rotate
-      ? 'translate(-50%, -50%) rotate(90deg)'
-      : 'translate(-50%, -50%)';
-    // ✅ Safe-area (iPhone notch/home indicator وأي حواف مقصوصة تانية) —
-    // بنراعي أكبر قيمة safe-area موجودة (فوق/تحت/يمين/شمال) كـpadding
-    // موحّد على الهيدر، عشان زرار "✕ خروج" يفضل قابل للضغط دايمًا ومايبانش
-    // مقصوص تحت حافة الشاشة في أي اتجاه فعلي للجهاز.
+    var body = document.getElementById('rv-body');
+    if (!modal || !body) return;
+
+    // ✅ Safe-area (notch/حواف مقصوصة) — الهيدر هنا فعليًا في أعلى الشاشة
+    // الحقيقية (مفيش دوران بصري بيلمسه)، فبنراعي بس الحافة العلوية الحقيقية.
     if (header) {
-      header.style.paddingTop =
-        'max(env(safe-area-inset-top,0px), env(safe-area-inset-left,0px), env(safe-area-inset-right,0px), 8px)';
+      header.style.paddingTop = 'max(env(safe-area-inset-top,0px), 8px)';
+    }
+
+    var media = _rvGetLandscapeMediaEl();
+    if (!media) return;
+
+    var availW = body.clientWidth;
+    var availH = body.clientHeight;
+    if (availW <= 0 || availH <= 0) return;
+
+    if (_rvIsPortraitViewport()) {
+      media.style.width = availH + 'px';
+      media.style.height = availW + 'px';
+      media.style.transform = 'rotate(90deg)';
+    } else {
+      media.style.width = availW + 'px';
+      media.style.height = availH + 'px';
+      media.style.transform = 'none';
     }
   }
 
@@ -7184,6 +7220,7 @@ const ResourceViewer = (function() {
     var overlay = document.getElementById('rv-overlay');
     var modal = document.getElementById('rv-modal');
     var header = modal ? modal.querySelector('.rv-header') : null;
+    var media = _rvGetLandscapeMediaEl();
     document.documentElement.classList.remove('rv-manual-fs-active');
     if (_rvLandscapeState.resizeBound) {
       window.removeEventListener('resize', _rvOnLandscapeResize);
@@ -7195,6 +7232,10 @@ const ResourceViewer = (function() {
     }
     _rvLandscapeState.active = false;
     if (overlay) overlay.classList.remove('rv-landscape-visual');
+    // ✅ Cleanup كامل لكل الـinline styles اللي اتضافت — على .rv-modal (من
+    // نسخة قديمة محتملة) وعلى عنصر الفيديو نفسه (اللي بيتلف فعليًا دلوقتي)،
+    // عشان الرجوع لـPortrait يكون نضيف 100% ومفيش أي أثر تدوير/أبعاد قديمة
+    // يفضل شايل الزرار أو الفيديو ناقصين.
     if (modal) {
       modal.style.width = '';
       modal.style.height = '';
@@ -7202,6 +7243,12 @@ const ResourceViewer = (function() {
       modal.style.transformOrigin = '';
     }
     if (header) header.style.paddingTop = '';
+    if (media) {
+      media.style.width = '';
+      media.style.height = '';
+      media.style.transform = '';
+      media.style.transformOrigin = '';
+    }
     _rvUpdateLandscapeBtnLabel();
   }
 
