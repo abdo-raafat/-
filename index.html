@@ -11,7 +11,6 @@
 var DEBUG_MODE = true; window.DEBUG_MODE = DEBUG_MODE;
 (function () {
   const DEBUG_MODE = true;
-  // Keep Service Worker/PWA untouched while DEBUG_MODE bypasses Frontend protection.
   window.__BSM_DEBUG_MODE = false;
   window.isIOSDevice = function () {
     var ua = navigator.userAgent || '';
@@ -2823,17 +2822,11 @@ img, video {
       });
     } catch(e) {}
     try { document.body && document.body.classList.remove('content-protected'); } catch(e) {}
-    try { var cps = document.getElementById('__content-protection-style'); if (cps) cps.disabled = true; } catch(e) {}
   }
   relaxProtection();
   if (window.MutationObserver) new MutationObserver(relaxProtection).observe(document.documentElement,{childList:true,subtree:true});
 })();
 </script>
-<style>
-.bsm-assistant-perms{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px}
-.bsm-assistant-perm{display:flex;align-items:center;gap:8px;padding:9px 10px;border:1px solid #dbe7f0;border-radius:10px}
-@media(max-width:600px){.bsm-assistant-perms{grid-template-columns:1fr}}
-</style>
 </head>
 <body>
 <script>
@@ -2925,7 +2918,7 @@ img, video {
   <div style="position:relative; width:100%; max-width:560px; margin:0 auto; background:#000; border-radius:14px; overflow:hidden;">
     <button type="button" data-close-video-modal aria-label="إغلاق" style="position:absolute; top:8px; left:8px; z-index:2; background:rgba(0,0,0,.6); color:#fff; border:none; border-radius:50%; width:32px; height:32px; font-size:1.1rem; line-height:1; cursor:pointer; display:flex; align-items:center; justify-content:center;">✕</button>
     <video id="bsm-course-ad-video" controls playsinline webkit-playsinline x5-playsinline preload="none" style="width:100%; max-height:80vh; display:block; background:#000;">
-      <source src="https://5hh9k0g78x.ucarecd.net/12879b2f-3f64-4bfb-9885-6520c30cb0da/Record_20260824072212.mp4" type="video/mp4">
+      <source src="https://19bey0t9zc.ucarecd.net/665cd2e0-7eb4-4de6-b4fd-860ed9c23f5c/Record_20260824072212.mp4" type="video/mp4">
     </video>
   </div>
 </div>
@@ -2935,40 +2928,13 @@ img, video {
   <div style="position:relative; width:100%; max-width:560px; margin:0 auto; background:#000; border-radius:14px; overflow:hidden;">
     <button type="button" data-close-video-modal aria-label="إغلاق" style="position:absolute; top:8px; left:8px; z-index:2; background:rgba(0,0,0,.6); color:#fff; border:none; border-radius:50%; width:32px; height:32px; font-size:1.1rem; line-height:1; cursor:pointer; display:flex; align-items:center; justify-content:center;">✕</button>
     <video id="bsm-install-app-video" controls playsinline webkit-playsinline x5-playsinline preload="metadata" style="width:100%; max-height:80vh; display:block; background:#000;">
-      <source src="https://res.cloudinary.com/dcuxv356y/video/upload/v1787937963/WhatsApp_Video_2026-08-24_at_8.40.18_AM_k73eqf.mp4" type="video/mp4">
+      <source src="https://19bey0t9zc.ucarecd.net/f7fd79ec-417c-42ae-84cc-7c3607f80ce3/WhatsAppVideo20260824at84018AM.mp4" type="video/mp4">
     </video>
   </div>
 </div>
 
 <script>
 (function () {
-  var SPECIAL_VIDEO_URLS = {
-    course: 'https://5hh9k0g78x.ucarecd.net/12879b2f-3f64-4bfb-9885-6520c30cb0da/Record_20260824072212.mp4',
-    install: 'https://res.cloudinary.com/dcuxv356y/video/upload/v1787937963/WhatsApp_Video_2026-08-24_at_8.40.18_AM_k73eqf.mp4'
-  };
-  window._bsmOpenSpecialVideo = function(kind) {
-    var url = SPECIAL_VIDEO_URLS[kind];
-    if (!url) return;
-    var title = kind === 'course' ? 'شرح لوحة تحكم أدمن الكورس' : 'طريقة تثبيت تطبيق المنصة';
-    if (window.ResourceViewer && typeof window.ResourceViewer.open === 'function') {
-      window.ResourceViewer.open(url, title, 'video');
-    } else {
-      setTimeout(function(){
-        if (window.ResourceViewer && typeof window.ResourceViewer.open === 'function') {
-          window.ResourceViewer.open(url, title, 'video');
-        } else if (window._showToast) {
-          window._showToast('جاري تجهيز مشغل الفيديو، حاول مرة أخرى', 'warning');
-        }
-      }, 250);
-    }
-  };
-  document.addEventListener('click', function(e) {
-    var t = e.target && e.target.closest ? e.target.closest('#bsm-course-ad-btn,#bsm-install-app-btn') : null;
-    if (!t) return;
-    e.preventDefault(); e.stopPropagation();
-    window._bsmOpenSpecialVideo(t.id === 'bsm-course-ad-btn' ? 'course' : 'install');
-  }, true);
-
   function pauseAllVideosIn(modal) {
     var vids = modal.querySelectorAll('video');
     for (var i = 0; i < vids.length; i++) {
@@ -4343,15 +4309,22 @@ function buildSectionCard(sec) {
     </div>`;
 }
 
-function buildSubSectionCard(sec, locked) {
+function buildSubSectionCard(sec, locked, cardGate) {
   const display = SECTION_DISPLAY_MAP[sec.title] || {};
   const icon  = display.icon  || sec.icon           || '📁';
   const color = display.color || sec.gradient_color || 'linear-gradient(135deg,#1a3a5c,#17a589)';
   const tags  = (sec.tags || '').split(',').map(t => t.trim()).filter(Boolean)
                   .map(t => `<span class="tag">${t}</span>`).join('');
   if (locked) {
+    // ✅ FIX (زرار "يتطلب اشتراكاً" ما كانش بيفتح النافذة): كل كارت مقفول كان بيعتمد
+    // على متغير عام واحد (window.__currentChapterGate) بيمثّل حالة *الشعبة الأب* فقط،
+    // مش حالة هذا الفصل/المادة تحديدًا. لو الشعبة الأب نفسها مش محتاجة اشتراك، المتغير
+    // العام ده كان فاضي (null) فالضغط على الزرار مايعملش أي حاجة. الحل: نخزّن حالة
+    // القفل الصحيحة الخاصة بهذا الكارت بالذات تحت مفتاح مستقل بنفس منطق __sectionData_،
+    // ونخلي الزرار يقرأ من مفتاحه هو، مش من المتغير العام المشترك.
+    window[`__sectionGate_${sec.id}`] = cardGate || window.__currentChapterGate || null;
     return `
-    <div class="dept-card dept-card-locked" onclick="window._openLockNoticeModal(window.__currentChapterGate)" data-section-id="${sec.id}" style="cursor:pointer">
+    <div class="dept-card dept-card-locked" onclick="window._openLockNoticeModal(window.__sectionGate_${sec.id})" data-section-id="${sec.id}" style="cursor:pointer">
       <div class="card-top" style="background:${color};filter:grayscale(.6);opacity:.72">
         <span class="card-icon">🔒</span>
         <div class="card-title">${sec.title}</div>
@@ -4899,7 +4872,11 @@ async function _renderDynamicSectionPage(sec) {
       // جوه لما يوصل لحاجة خارج الفصل المجاني.
       var isAnchorItself = childAccess.anchor && Number(childAccess.anchor.id) === Number(child.id);
       var lockCard = childAccess.state === 'locked' && !isAnchorItself;
-      return buildSubSectionCard(child, lockCard);
+      // ✅ FIX: نحوّل شكل childAccess (state:'locked', access: 'guest'/'pending'/'expired'/'none'/'error')
+      // إلى نفس شكل الـ gate اللي بتفهمه window._openLockNoticeModal (state: 'guest'/'pending'/...)،
+      // عشان كل كارت مقفول يفتح نافذة التنبيه بحالته الحقيقية هو، مش بحالة الشعبة الأب.
+      var childGate = lockCard ? { anchor: childAccess.anchor, state: childAccess.access || 'none', row: childAccess.row } : null;
+      return buildSubSectionCard(child, lockCard, childGate);
     }));
     var gridHtml = childCards.join('');
     document.getElementById('dynamic-section-grid').innerHTML = gridHtml;
@@ -6627,11 +6604,10 @@ const ResourceViewer = (function() {
 
     if (isFembedUrl) return 'fembed';
 
-    // extension — ignore query/hash so CDN/signed URLs are detected correctly.
-    var cleanLower = lower.split(/[?#]/)[0];
-    if (cleanLower.endsWith('.pdf'))                         return 'pdf';
-    if (/\.(mp4|webm|ogg|mov|avi|mkv)$/.test(cleanLower))  return 'video_direct';
-    if (/\.(mp3|wav|ogg|aac|flac|m4a)$/.test(cleanLower))  return 'audio';
+    // extension
+    if (lower.endsWith('.pdf'))                         return 'pdf';
+    if (/\.(mp4|webm|ogg|mov|avi|mkv)$/.test(lower))  return 'video_direct';
+    if (/\.(mp3|wav|ogg|aac|flac|m4a)$/.test(lower))  return 'audio';
     if (/\.(jpe?g|png|webp|gif|svg|bmp)$/.test(lower)) return 'image';
     if (/\.html?$/.test(lower))                         return 'html';
 
@@ -6749,12 +6725,6 @@ const ResourceViewer = (function() {
             <source src="${escUrl(url)}">
             <p style="color:#fff;padding:20px">متصفحك لا يدعم تشغيل الفيديو.</p>
           </video>
-          <div data-rv-video-error style="display:none;position:absolute;inset:0;z-index:6;align-items:center;justify-content:center;flex-direction:column;gap:10px;background:rgba(0,0,0,.84);color:#fff;text-align:center;padding:20px;box-sizing:border-box;">
-            <div style="font-size:2rem;">⚠️</div>
-            <div style="font-weight:800;">تعذر تحميل الفيديو</div>
-            <div style="font-size:.76rem;opacity:.82;max-width:340px;">تحقق من اتصال الإنترنت ثم اضغط إعادة المحاولة.</div>
-            <button type="button" class="rv-btn rv-btn-primary" onclick="ResourceViewer._reload()">🔄 إعادة المحاولة</button>
-          </div>
           <div class="rv-media-tools rv-video-controls" data-media-tools="video">
             <div class="rv-progress-row">
               <span class="rv-time-cur" data-media-time-current>00:00</span>
@@ -7032,25 +7002,6 @@ const ResourceViewer = (function() {
     });
 
     _setupMediaControls(overlay);
-
-    // Android/WebView/CDN hardening: بعد إدخال الفيديو في DOM، عيّن src
-    // مباشرة ثم load() حتى لا يظل المشغل على 00:00 بسبب <source> lazy parsing.
-    try {
-      var _v = overlay.querySelector('#rv-video-el');
-      if (_v) {
-        _v.preload = 'auto';
-        var _source = _v.querySelector('source');
-        if (_source && _source.getAttribute('src')) {
-          var _u = _source.getAttribute('src');
-          _v.addEventListener('error', function(){
-            var box = overlay.querySelector('[data-rv-video-error]');
-            if (box) box.style.display = 'flex';
-          }, {once:true});
-          _v.src = _u;
-          _v.load();
-        }
-      }
-    } catch(_e) { console.warn('[VideoInit]', _e); }
 
     // Swipe لأسفل للإغلاق على الموبايل
     var touchStartY = 0;
@@ -8278,21 +8229,13 @@ async function _resolveAdminStatus(userId) {
       var saCheck = await window.supabase
         .from('section_admins')
         .select('id', { count: 'exact', head: true })
-        .eq('user_id', userId).eq('is_active', true).in('role', ['admin', 'owner', 'assistant']);
+        .eq('user_id', userId).eq('is_active', true).in('role', ['admin', 'owner']);
       hasSectionAdminRows = !saCheck.error && (saCheck.count || 0) > 0;
     } catch(e) { console.warn('[section_admins] check failed:', e && e.message); }
   }
-  // section_admins يحدد التعيين للكورس. الأدمن المساعد يظل role='user/student'
-  // في profiles لكنه يحصل فقط على واجهة الكورس المعيّن وبحسب permissions.
-  var isAssistant = false;
-  if (!isSuperAdmin && window.supabase && userId) {
-    try {
-      var asCheck = await window.supabase.from('section_admins').select('id',{count:'exact',head:true})
-        .eq('user_id',userId).eq('is_active',true).eq('role','assistant');
-      isAssistant = !asCheck.error && (asCheck.count||0)>0;
-    } catch(e) {}
-  }
-  var isBranchAdmin = isLegacyBranchAdmin || hasSectionAdminRows;
+  // المصدر الرسمي للدور: profiles.role فقط.
+  // section_admins يُستخدم لتحديد الكورس المعيّن، وليس لمنح دور جديد لمستخدم student.
+  var isBranchAdmin = isLegacyBranchAdmin;
   // isSectionAdmin: اسم بديل مطابق تمامًا لـ isBranchAdmin — نفس القيمة، فقط للتوافق
   // مع أي كود جديد يتوقع هذا الاسم تحديدًا (المصطلح الرسمي الآن هو "Section Admin")
   return {
@@ -8300,7 +8243,6 @@ async function _resolveAdminStatus(userId) {
     isSuperAdmin: isSuperAdmin,
     isBranchAdmin: isBranchAdmin,
     isSectionAdmin: isBranchAdmin,
-    isAssistant: isAssistant,
     isAdmin: isSuperAdmin || isBranchAdmin
   };
 }
@@ -8371,7 +8313,7 @@ async function _loadBranchAdminScope(userId) {
     var saRes = await window.supabase
       .from('section_admins')
       .select('section_id, role, is_active, permissions, site_sections:section_id(id, title)')
-      .eq('user_id', userId).eq('is_active', true).in('role', ['admin', 'owner', 'assistant']);
+      .eq('user_id', userId).eq('is_active', true).in('role', ['admin', 'owner']);
     if (!saRes.error && Array.isArray(saRes.data)) {
       saRes.data.forEach(function(row) {
         if (!row.section_id) return;
@@ -8446,21 +8388,6 @@ window._selectBranchAdminRoot = async function(rootId) {
   // بالظبط السلوك القديم، عشان محدش ينكسر فجأة. can_manage_chats موجودة هنا
   // للتوافق مع كود قديم بيقرأها بنفس الاسم القديم.
   var _dbPerms = (rootMeta && rootMeta.permissions) || {};
-  if (rootMeta && rootMeta.role === 'assistant') {
-    _dbPerms = {
-      can_manage_materials: _dbPerms.manage_content === true,
-      can_manage_chapters: _dbPerms.manage_lessons === true,
-      can_manage_subscriptions: false,
-      can_manage_payments: false,
-      can_view_stats: _dbPerms.view_students === true,
-      can_manage_section_chat: _dbPerms.manage_chats === true,
-      can_delete_section_messages: _dbPerms.manage_chats === true,
-      can_manage_admins: false,
-      can_manage_resources: _dbPerms.manage_resources === true,
-      can_manage_quizzes: _dbPerms.manage_quizzes === true,
-      can_view_students: _dbPerms.view_students === true
-    };
-  }
   // ✅ دور المستخدم الفعلي (admin/owner) على الشعبة المختارة حاليًا — يُستخدم لإخفاء
   // تبويب "أدمن الكورسات" الكامل عن الـOwner (بند Owner) وقفل صلاحية can_manage_admins
   // في مودال الإضافة عند فتحه من طرف الـOwner.
@@ -8592,8 +8519,7 @@ function _renderBranchAdminSwitcher() {
 
 window._authListenerRegistered = false; // يمنع تسجيل onAuthStateChange أكثر من مرة لنفس الـ client
 window._authInitializing       = true;  // true فقط أثناء انتظار أول حدث auth من gotrue-js (يُستخدم لحماية _getSessionSafe من التزاحم على القفل)
-window._authBootstrapped       = false;
-window._authUiReady             = false; // true بمجرد وصول أول حدث auth (INITIAL_SESSION) — الإقلاع انتهى
+window._authBootstrapped       = false; // true بمجرد وصول أول حدث auth (INITIAL_SESSION) — الإقلاع انتهى
 window._lastProcessedAuthKey   = null;  // يمنع تكرار معالجة/رندر نفس (event + user) مرتين متتاليتين
 
 // ============================================================
@@ -8639,9 +8565,7 @@ async function _handleAuthStateChange(event, session) {
 
   // [BAN CHECK] عند أي حدث يحمل session
   if (session && session.user && session.user.email) {
-    var isBanned = null;
-    try { isBanned = await _fetchWithTimeout(function(){ return _isBanned(session.user.email); }, 5000); }
-    catch(_banTimeout) { console.warn('[AUTH] ban check timeout — continuing'); }
+    var isBanned = await _isBanned(session.user.email);
     if (isBanned) {
       // ✅ نبقي signOut() مؤجَّلة عبر setTimeout كشبكة أمان دفاعية إضافية (وليست
       // الحل الأساسي — الحل الأساسي هو أن _handleAuthStateChange بالكامل أصلاً
@@ -8661,18 +8585,14 @@ async function _handleAuthStateChange(event, session) {
 
   if (session && session.user) {
     // ── Admin Middleware: جلب الـ role من قاعدة البيانات ──
-    var role = 'user';
-    try { role = (await _fetchWithTimeout(function(){ return _fetchUserRole(session.user.id); }, 6000)) || 'user'; }
-    catch(_roleTimeout) { console.warn('[AUTH] role lookup timeout — continuing as user'); }
+    var role = await _fetchUserRole(session.user.id);
     _renderUserBoxGuarded(session.user, role, _authSeq);
-    window._authUiReady = true;
     // ✅ مزامنة بريد الحساب في profiles (مرة واحدة فقط لو كان ناقصاً — راجع _ensureProfileEmailSynced)
     if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') {
       _ensureProfileEmailSynced(session.user);
     }
   } else {
     _renderUserBoxGuarded(null, null, _authSeq);
-    window._authUiReady = true;
   }
 
   // استعادة آخر صفحة بعد Google OAuth redirect
@@ -8783,10 +8703,9 @@ window.checkUser = async function() {
   var _isOAuthCallback = /[#&]access_token=|[?&#]code=/.test(window.location.href);
   var _bootstrapFailSafeMs = _isOAuthCallback ? 25000 : 12000;
   setTimeout(function() {
-    if (!window._authUiReady) {
-      console.warn('[AUTH] bootstrap watchdog: إظهار Guest مؤقتاً لمنع Spinner لا نهائي');
-      try { _renderUserBox(null, null); } catch(e) {}
-      window._authUiReady = true;
+    if (window._authRenderSeq === 0) {
+      console.warn('[AUTH] checkUser: لم يصل أي حدث auth خلال', _bootstrapFailSafeMs, 'ms — معاملة كـ Guest مؤقتاً (fail-safe دفاعي فقط)');
+      _renderUserBox(null, null);
     }
   }, _bootstrapFailSafeMs);
 };
@@ -8797,22 +8716,6 @@ window.checkUser = async function() {
 // لا يمسّ أي مستمع موجود.
 window.addEventListener('load', function() {
 });
-
-// BSM REFRESH/RESUME HARDENING
-(function(){
-  var t=null;
-  function resume(){
-    if(t) clearTimeout(t);
-    t=setTimeout(function(){
-      try{
-        if(typeof window._registerAuthListenerOnce==='function') window._registerAuthListenerOnce();
-        if(typeof window.checkUser==='function' && window.supabase) window.checkUser();
-      }catch(e){ console.warn('[RESUME]',e&&e.message); }
-    },120);
-  }
-  window.addEventListener('pageshow',function(e){if(e.persisted)resume();});
-  document.addEventListener('visibilitychange',function(){if(document.visibilityState==='visible')resume();});
-})();
 
 // ══════════════════════════════════════════════════════
 // تشغيل checkUser بعد جهوزية Supabase — كل المتصفحات
@@ -9486,7 +9389,6 @@ window.checkBanStatus = async function(email) {
         <div class="ap-nav-group">
           <div class="ap-nav-group-title">الرئيسية</div>
           <button class="ap-nav-btn active" onclick="apSwitchTab('dashboard')" id="ap-tab-dashboard" role="tab">📊 <span>لوحة المعلومات</span></button>
-          <button class="ap-nav-btn" onclick="apSwitchTab('courseAssistants')" id="ap-tab-courseAssistants" role="tab" style="display:none;">🧑‍💼 <span>تعيين أدمن مساعد</span></button>
           <button class="ap-nav-btn platform-only-nav" onclick="apSwitchTab('courseAdminPhone')" id="ap-tab-courseAdminPhone" role="tab">📱 <span>رقم أدمن / دكتور الكورس</span></button>
           <button class="ap-nav-btn" onclick="apSwitchTab('notifications')" id="ap-tab-notifications" role="tab">🔔 <span>الإشعارات</span></button>
         </div>
@@ -9584,36 +9486,6 @@ window.checkBanStatus = async function(email) {
       </div>
 
       <!-- ═══════════════════ TAB: NOTIFICATIONS ═══════════════════ -->
-      <div class="ap-tab-panel" id="ap-panel-courseAssistants" role="tabpanel">
-        <div class="ap-section-heading">🧑‍💼 تعيين أدمن مساعد</div>
-        <div class="ap-card" style="padding:16px;">
-          <div style="font-size:.8rem;color:#667;line-height:1.8;margin-bottom:12px;">اختار الكورس ثم حساب المستخدم وحدد الصلاحيات. الأدمن المساعد لا يحصل على صلاحيات المنصة العامة.</div>
-          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;">
-            <div><label class="ap-label">📚 الكورس</label><select id="bsm-as-course" class="ap-input"></select></div>
-            <div><label class="ap-label">📧 بريد الحساب</label><input id="bsm-as-email" class="ap-input" type="email" dir="ltr" placeholder="user@example.com"></div>
-          </div>
-          <div style="margin-top:12px;"><label class="ap-label">🔐 الصلاحيات</label>
-            <div class="bsm-assistant-perms">
-              <label class="bsm-assistant-perm"><input type="checkbox" class="bsm-as-perm" data-perm="manage_content"> إدارة محتوى الكورس</label>
-              <label class="bsm-assistant-perm"><input type="checkbox" class="bsm-as-perm" data-perm="manage_lessons"> إضافة/تعديل/حذف الدروس</label>
-              <label class="bsm-assistant-perm"><input type="checkbox" class="bsm-as-perm" data-perm="manage_resources"> إدارة ملفات وموارد الكورس</label>
-              <label class="bsm-assistant-perm"><input type="checkbox" class="bsm-as-perm" data-perm="manage_quizzes"> إدارة أسئلة/اختبارات الكورس</label>
-              <label class="bsm-assistant-perm"><input type="checkbox" class="bsm-as-perm" data-perm="view_students"> مشاهدة الطلاب والتقدم</label>
-              <label class="bsm-assistant-perm"><input type="checkbox" class="bsm-as-perm" data-perm="manage_chats"> إدارة محادثات الكورس</label>
-              <label class="bsm-assistant-perm"><input type="checkbox" class="bsm-as-perm" data-perm="manage_contacts"> إدارة بيانات التواصل والجروبات</label>
-            </div>
-          </div>
-          <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;">
-            <button id="bsm-as-save" class="ap-btn ap-btn-success" onclick="bsmAddAssistant()">➕ إضافة</button>
-            <button class="ap-btn ap-btn-ghost" onclick="bsmLoadAssistants()">🔄 تحديث</button>
-          </div>
-          <div id="bsm-as-msg" style="margin-top:10px;font-size:.8rem;"></div>
-        </div>
-        <div class="ap-card" style="padding:16px;margin-top:12px;">
-          <div class="ap-section-heading" style="font-size:.9rem;">👥 الأدمن المساعدون الحاليون</div>
-          <div id="bsm-as-list"><div class="ap-loading">اختر كورسًا لتحميل الأدمن المساعدين...</div></div>
-        </div>
-      </div>
       <div class="ap-tab-panel" id="ap-panel-notifications" role="tabpanel">
         <div class="ap-section-heading">🔔 إرسال إشعارات للمستخدمين</div>
         <div class="ap-card" style="padding:16px;">
@@ -13022,66 +12894,8 @@ END; $$;
 GRANT EXECUTE ON FUNCTION public.get_section_admins_for_messaging(BIGINT) TO authenticated;
 
 -- 4) get_or_create_direct_room — فتح محادثة خاصة مع أدمن الكورس
-CREATE OR REPLACE FUNCTION public.get_or_create_direct_room(p_other_user_id UUID,p_section_id BIGINT)
-RETURNS chat_rooms LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
-DECLARE
-  v_me UUID := auth.uid();
-  v_room chat_rooms;
-  v_course_id BIGINT := p_section_id;
-  v_is_course_admin BOOLEAN := false;
-  v_is_platform_admin BOOLEAN := false;
-BEGIN
-  IF v_me IS NULL OR p_other_user_id IS NULL OR p_other_user_id=v_me OR p_section_id IS NULL THEN RAISE EXCEPTION 'DENY ACCESS'; END IF;
+-- Legacy DM RPC definition removed from migration text; final definition below is the only active one.
 
-  -- Resolve chapter/material to the owning course before checking the recipient.
-  WITH RECURSIVE ancestors AS (
-    SELECT s.id, s.parent_id, s.type, 0 AS depth
-    FROM site_sections s WHERE s.id=p_section_id
-    UNION ALL
-    SELECT p.id, p.parent_id, p.type, a.depth+1
-    FROM site_sections p JOIN ancestors a ON p.id=a.parent_id
-    WHERE a.depth < 20
-  )
-  SELECT id INTO v_course_id
-  FROM ancestors
-  WHERE LOWER(COALESCE(type,''))='course'
-  ORDER BY depth
-  LIMIT 1;
-
-  SELECT EXISTS(
-    SELECT 1 FROM section_admins sa
-    WHERE sa.user_id=p_other_user_id
-      AND sa.section_id=v_course_id
-      AND sa.is_active=true
-      AND sa.role IN ('admin','owner')
-  ) INTO v_is_course_admin;
-
-  SELECT EXISTS(
-    SELECT 1 FROM profiles p
-    WHERE p.id=p_other_user_id AND p.role='admin'
-  ) INTO v_is_platform_admin;
-
-  IF NOT v_is_course_admin AND NOT v_is_platform_admin THEN
-    RAISE EXCEPTION 'DENY ACCESS: الطرف المطلوب ليس أدمن الكورس أو أدمن المنصة';
-  END IF;
-
-  PERFORM pg_advisory_xact_lock(hashtextextended(LEAST(v_me::TEXT,p_other_user_id::TEXT)||':'||GREATEST(v_me::TEXT,p_other_user_id::TEXT)||':'||v_course_id::TEXT,0));
-
-  SELECT cr.* INTO v_room FROM chat_rooms cr
-  WHERE cr.section_id=v_course_id
-    AND cr.room_type='direct'
-    AND EXISTS(SELECT 1 FROM chat_room_participants x WHERE x.room_id=cr.id AND x.user_id=v_me)
-    AND EXISTS(SELECT 1 FROM chat_room_participants y WHERE y.room_id=cr.id AND y.user_id=p_other_user_id)
-  ORDER BY cr.id LIMIT 1;
-  IF FOUND THEN RETURN v_room; END IF;
-
-  INSERT INTO chat_rooms(room_name,section_id,room_type)
-  VALUES('محادثة خاصة - '||COALESCE((SELECT title FROM site_sections WHERE id=v_course_id),'الكورس'),'direct')
-  RETURNING * INTO v_room;
-  INSERT INTO chat_room_participants(room_id,user_id) VALUES(v_room.id,v_me),(v_room.id,p_other_user_id);
-  RETURN v_room;
-END; $$;
-GRANT EXECUTE ON FUNCTION public.get_or_create_direct_room(UUID,BIGINT) TO authenticated;
 
 -- 5) سياسات section_admins للـ branch_admin المُفوَّض بصلاحية manage_admins:
 -- كانت تسمح فقط بإدراج/تعديل صفوف role='admin' بمطابقة تامة — أي أن هذا
@@ -19077,23 +18891,8 @@ BEGIN
 END; $$;
 GRANT EXECUTE ON FUNCTION get_section_admins_for_messaging(BIGINT) TO authenticated;
 
-DROP FUNCTION IF EXISTS get_or_create_direct_room(UUID,BIGINT);
-CREATE OR REPLACE FUNCTION get_or_create_direct_room(p_other_user_id UUID,p_section_id BIGINT)
-RETURNS chat_rooms LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
-DECLARE v_me UUID:=auth.uid(); v_room chat_rooms; v_ok BOOLEAN:=false;
-BEGIN
-  IF v_me IS NULL OR p_other_user_id IS NULL OR p_other_user_id=v_me OR p_section_id IS NULL THEN RAISE EXCEPTION 'DENY ACCESS'; END IF;
-  IF NOT (is_admin() OR is_branch_admin_of(p_section_id) OR has_active_subscription(p_section_id)) THEN RAISE EXCEPTION 'DENY ACCESS'; END IF;
-  SELECT EXISTS(SELECT 1 FROM section_admins sa WHERE sa.user_id=p_other_user_id AND sa.section_id=p_section_id AND sa.is_active=true AND sa.role='admin') INTO v_ok;
-  IF NOT v_ok THEN SELECT EXISTS(SELECT 1 FROM profiles p WHERE p.id=p_other_user_id AND p.role='admin') INTO v_ok; END IF;
-  IF NOT v_ok THEN RAISE EXCEPTION 'DENY ACCESS: الطرف المطلوب ليس أدمن الكورس أو أدمن المنصة'; END IF;
-  SELECT * INTO v_room FROM chat_rooms cr WHERE cr.section_id=p_section_id AND cr.room_type='direct' AND EXISTS(SELECT 1 FROM chat_room_participants a WHERE a.room_id=cr.id AND a.user_id=v_me) AND EXISTS(SELECT 1 FROM chat_room_participants b WHERE b.room_id=cr.id AND b.user_id=p_other_user_id) LIMIT 1;
-  IF FOUND THEN RETURN v_room; END IF;
-  INSERT INTO chat_rooms(room_name,section_id,room_type) VALUES('محادثة خاصة',p_section_id,'direct') RETURNING * INTO v_room;
-  INSERT INTO chat_room_participants(room_id,user_id) VALUES(v_room.id,v_me),(v_room.id,p_other_user_id) ON CONFLICT DO NOTHING;
-  RETURN v_room;
-END; $$;
-GRANT EXECUTE ON FUNCTION get_or_create_direct_room(UUID,BIGINT) TO authenticated;
+-- Legacy DM RPC definition removed from migration text; final definition below is the only active one.
+
 
 -- حقول قرار الاشتراك إن لم تكن موجودة.
 ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS approved_at TIMESTAMPTZ;
@@ -19278,89 +19077,8 @@ GRANT EXECUTE ON FUNCTION get_section_admins_for_messaging(BIGINT) TO authentica
 
 -- 5) DIRECT ROOM: محادثة خاصة لكل طالب مع أدمن الكورس/المنصة داخل نفس الكورس.
 -- section_id جزء أساسي من الغرفة حتى لا تختلط محادثات نفس الطالب بين كورسات مختلفة.
-DROP FUNCTION IF EXISTS get_or_create_direct_room(UUID, BIGINT);
-CREATE OR REPLACE FUNCTION get_or_create_direct_room(p_other_user_id UUID, p_section_id BIGINT)
-RETURNS chat_rooms LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
-DECLARE
-  v_me UUID := auth.uid();
-  v_room chat_rooms;
-  v_is_course_admin BOOLEAN;
-  v_is_platform_admin BOOLEAN;
-BEGIN
-  IF v_me IS NULL OR p_other_user_id IS NULL OR p_other_user_id = v_me OR p_section_id IS NULL THEN
-    RAISE EXCEPTION 'DENY ACCESS';
-  END IF;
+-- Legacy DM RPC definition removed from migration text; final definition below is the only active one.
 
-  IF NOT (is_admin() OR is_branch_admin_of(p_section_id) OR has_active_subscription(p_section_id)) THEN
-    RAISE EXCEPTION 'DENY ACCESS';
-  END IF;
-
-  SELECT EXISTS (
-    SELECT 1 FROM section_admins sa
-    WHERE sa.user_id = p_other_user_id
-      AND sa.section_id = p_section_id
-      AND sa.is_active = true
-      AND sa.role = 'admin'
-  ) INTO v_is_course_admin;
-
-  SELECT EXISTS (
-    SELECT 1 FROM profiles p
-    WHERE p.id = p_other_user_id AND p.role = 'admin'
-  ) INTO v_is_platform_admin;
-
-  -- الطالب لا يستطيع فتح DM مع أي شخص عشوائي؛ الطرف الآخر يجب أن يكون
-  -- أدمن الكورس، أو أدمن المنصة إذا لم يوجد أدمن للكورس.
-  IF NOT v_is_course_admin THEN
-    IF EXISTS (
-      SELECT 1 FROM section_admins sa
-      WHERE sa.section_id = p_section_id
-        AND sa.is_active = true
-        AND sa.role = 'admin'
-    ) THEN
-      RAISE EXCEPTION 'DENY ACCESS: الطرف المطلوب ليس أدمن هذا الكورس';
-    END IF;
-    IF NOT v_is_platform_admin THEN
-      RAISE EXCEPTION 'DENY ACCESS: لا يوجد تطابق لصلاحية أدمن المنصة';
-    END IF;
-  END IF;
-
-  PERFORM pg_advisory_xact_lock(
-    hashtextextended(
-      LEAST(v_me::TEXT,p_other_user_id::TEXT)||':'||
-      GREATEST(v_me::TEXT,p_other_user_id::TEXT)||':'||p_section_id::TEXT,
-      0
-    )
-  );
-
-  SELECT cr.* INTO v_room
-  FROM chat_rooms cr
-  WHERE cr.section_id = p_section_id
-    AND EXISTS (
-      SELECT 1 FROM chat_room_participants x
-      WHERE x.room_id=cr.id AND x.user_id=v_me
-    )
-    AND EXISTS (
-      SELECT 1 FROM chat_room_participants y
-      WHERE y.room_id=cr.id AND y.user_id=p_other_user_id
-    )
-  ORDER BY cr.id LIMIT 1;
-
-  IF FOUND THEN RETURN v_room; END IF;
-
-  INSERT INTO chat_rooms(room_name,section_id)
-  VALUES('محادثة خاصة - ' || COALESCE(
-      (SELECT title FROM site_sections WHERE id=p_section_id),
-      'الكورس'
-    ), p_section_id)
-  RETURNING * INTO v_room;
-
-  INSERT INTO chat_room_participants(room_id,user_id) VALUES(v_room.id,v_me);
-  INSERT INTO chat_room_participants(room_id,user_id) VALUES(v_room.id,p_other_user_id);
-
-  RETURN v_room;
-END;
-$$;
-GRANT EXECUTE ON FUNCTION get_or_create_direct_room(UUID,BIGINT) TO authenticated;
 
 -- 6) RLS للـDM — العضو يرى غرفته فقط، والغرفة مرتبطة بالكورس.
 CREATE OR REPLACE FUNCTION can_access_direct_room_member(p_room_id BIGINT)
@@ -21048,7 +20766,6 @@ window.diagnose = async function() {
 (function() {
   var _chatAnchor   = null;   // { id, title } — الشعبة الحالية
   var _chatRoom     = null;   // صف chat_rooms
-  var _chatLoadingMessages = false;
   var _chatMe       = null;   // المستخدم الحالي (auth)
   var _chatIsAdmin  = false;  // أدمن عام أو أدمن هذه الشعبة تحديداً
   var _chatChannel  = null;   // realtime channel
@@ -21282,21 +20999,19 @@ window.diagnose = async function() {
   // ── تحميل آخر صفحة من الرسائل فقط (✅ PERF: كان يجلب كل تاريخ المحادثة بلا حد أقصى) ──
   // + جلب أسماء المرسلين من profiles (لا نثق بـ user_name المخزّن وحده)
   async function _chatLoadMessages() {
-    if(_chatLoadingMessages || !_chatRoom) return;
-    _chatLoadingMessages=true;
     var db = window.supabase;
     var bodyEl = document.getElementById('chat-body');
     try {
       // آخر 50 رسالة فقط (الأحدث أولاً في الاستعلام، ثم نعكسها للترتيب الزمني الطبيعي)
       var msgRes = await db.from('chat_messages')
-        .select('id, room_id, user_id, user_name, message, reply_to_message_id, created_at')
+        .select('id, room_id, user_id, user_name, message, created_at')
         .eq('room_id', _chatRoom.id)
         .order('created_at', { ascending: false })
         .limit(_CHAT_PAGE_SIZE);
       if (msgRes.error) { bodyEl.innerHTML = '<div class="chat-empty">' + _chatFriendlyError() + '</div>'; return; }
       var rows = (msgRes.data || []).slice().reverse();
       _chatHasMoreOlder = rows.length === _CHAT_PAGE_SIZE; // لو رجع صفحة كاملة، غالبًا فيه أقدم
-      _chatLoadedMessages = rows; window._chatLoadedMessages = _chatLoadedMessages; window._chatLoadedMessages = _chatLoadedMessages;
+      _chatLoadedMessages = rows;
 
       await _chatFetchMissingProfiles(rows);
       _chatAttMap = await _chatFetchAttachmentsFor(rows); // تحميل كامل — نبدأ الخريطة من جديد
@@ -21317,7 +21032,7 @@ window.diagnose = async function() {
     try {
       var oldestCreatedAt = _chatLoadedMessages[0].created_at;
       var res = await db.from('chat_messages')
-        .select('id, room_id, user_id, user_name, message, reply_to_message_id, created_at')
+        .select('id, room_id, user_id, user_name, message, created_at')
         .eq('room_id', _chatRoom.id)
         .lt('created_at', oldestCreatedAt)
         .order('created_at', { ascending: false })
@@ -21482,19 +21197,13 @@ window.diagnose = async function() {
     var attHtml = atts.length ? atts.map(_chatAttachmentHTML).join('') : '';
     var bubbleHtml = m.message ? '<div class="chat-msg-bubble">' + _chatEsc(m.message) + '</div>' : '';
 
-    var quoted = '';
-    if (m.reply_to_message_id) {
-      var original = _chatLoadedMessages.find(function(x){return String(x.id)===String(m.reply_to_message_id);});
-      if(original) quoted = '<div class="bsm-quoted" onclick="_bsmJumpToMessage(&quot;section&quot;,'+Number(original.id)+')"><div class="bsm-quoted-title">↩️ رد على رسالة</div><div class="bsm-quoted-text">'+_chatEsc(original.message||'📎 مرفق')+'</div></div>';
-    }
-    var replyBtn = _chatIsAdmin ? '<button type="button" class="bsm-reply-btn" onclick="_bsmSetReply(&quot;section&quot;,'+Number(m.id)+')">↩️ رد</button>' : '';
     return '' +
-      '<div id="bsm-section-msg-' + Number(m.id) + '" class="chat-msg-row bsm-msg-anchor ' + (mine ? 'mine' : 'theirs') + '">' +
-        quoted + bubbleHtml + attHtml +
+      '<div class="chat-msg-row ' + (mine ? 'mine' : 'theirs') + '">' +
+        bubbleHtml + attHtml +
         '<div class="chat-msg-meta">' +
           (mine ? '' : '<span>' + _chatEsc(displayName) + '</span>') +
           (isSenderAdmin ? '<span class="chat-msg-admin-badge">🛡️ أدمن</span>' : '') +
-          '<span>' + timeStr + '</span>' + replyBtn + delBtn +
+          '<span>' + timeStr + '</span>' + delBtn +
         '</div>' +
       '</div>';
   }
@@ -21592,7 +21301,6 @@ window.diagnose = async function() {
       var insRes = await db.from('chat_messages').insert([{
         room_id: _chatRoom.id,
         message: text,
-        reply_to_message_id: window._bsmChatReplyTo ? window._bsmChatReplyTo.id : null,
         user_id: _chatMe ? _chatMe.id : null,   // ✅ يُعاد ضبطه دائماً من السيرفر عبر Trigger
         user_name: '' // ✅ يُعاد ضبطه دائماً من profiles عبر Trigger — لا نثق بأي قيمة هنا
       }]).select('id').single();
@@ -22378,26 +22086,24 @@ window.diagnose = async function() {
   };
 
   async function _dmLoadMessages() {
-    if(_dmLoadingMessages || !_dmRoom) return;
-    _dmLoadingMessages=true;
     var db = window.supabase;
     var bodyEl = document.getElementById('dm-chat-body');
     try {
       var msgRes = await db.from('chat_messages')
-        .select('id, room_id, user_id, user_name, message, reply_to_message_id, created_at')
+        .select('id, room_id, user_id, user_name, message, created_at')
         .eq('room_id', _dmRoom.id)
         .order('created_at', { ascending: false })
         .limit(_DM_PAGE_SIZE);
-      if (msgRes.error) { console.error('[DM] loadMessages RLS/error:', msgRes.error); bodyEl.innerHTML = '<div class="chat-empty">تعذر تحميل الرسائل حاليًا. حاول فتح المحادثة مرة أخرى.</div>'; return; }
+      if (msgRes.error) { bodyEl.innerHTML = '<div class="chat-empty">' + _dmFriendlyError() + '</div>'; return; }
       var rows = (msgRes.data || []).slice().reverse();
       _dmHasMoreOlder = rows.length === _DM_PAGE_SIZE;
-      _dmLoadedMessages = rows; window._dmLoadedMessages = _dmLoadedMessages; window._dmLoadedMessages = _dmLoadedMessages;
+      _dmLoadedMessages = rows;
       _dmAttMap = await _dmFetchAttachmentsFor(rows); // تحميل كامل — نبدأ الخريطة من جديد
       _dmRenderMessages(rows, { scrollToBottom: true });
     } catch(e) {
       console.error('[DM] loadMessages error:', e && e.message);
-      bodyEl.innerHTML = '<div class="chat-empty">تعذر تحميل الرسائل حاليًا. حاول فتح المحادثة مرة أخرى.</div>';
-    } finally { _dmLoadingMessages=false; }
+      bodyEl.innerHTML = '<div class="chat-empty">' + _dmFriendlyError() + '</div>';
+    }
   }
 
   async function _dmLoadOlderMessages() {
@@ -22409,7 +22115,7 @@ window.diagnose = async function() {
     try {
       var oldestCreatedAt = _dmLoadedMessages[0].created_at;
       var res = await db.from('chat_messages')
-        .select('id, room_id, user_id, user_name, message, reply_to_message_id, created_at')
+        .select('id, room_id, user_id, user_name, message, created_at')
         .eq('room_id', _dmRoom.id)
         .lt('created_at', oldestCreatedAt)
         .order('created_at', { ascending: false })
@@ -22587,18 +22293,12 @@ window.diagnose = async function() {
     var atts = _dmAttMap[m.id] || [];
     var attHtml = atts.length ? atts.map(_dmAttachmentHTML).join('') : '';
     var bubbleHtml = m.message ? '<div class="chat-msg-bubble">' + _dmEsc(m.message) + '</div>' : '';
-    var quoted = '';
-    if (m.reply_to_message_id) {
-      var original = _dmLoadedMessages.find(function(x){return String(x.id)===String(m.reply_to_message_id);});
-      if(original) quoted = '<div class="bsm-quoted" onclick="_bsmJumpToMessage(&quot;dm&quot;,'+Number(original.id)+')"><div class="bsm-quoted-title">↩️ رد على رسالة خاصة</div><div class="bsm-quoted-text">'+_dmEsc(original.message||'📎 مرفق')+'</div></div>';
-    }
-    var replyBtn = '<button type="button" class="bsm-reply-btn" onclick="_bsmSetReply(&quot;dm&quot;,'+Number(m.id)+')">↩️ رد خاص</button>';
     return '' +
-      '<div id="bsm-dm-msg-' + Number(m.id) + '" class="chat-msg-row bsm-msg-anchor ' + (mine ? 'mine' : 'theirs') + '">' +
-        quoted + bubbleHtml + attHtml +
+      '<div class="chat-msg-row ' + (mine ? 'mine' : 'theirs') + '">' +
+        bubbleHtml + attHtml +
         '<div class="chat-msg-meta">' +
           (mine ? '' : '<span>' + _dmEsc(displayName) + '</span>') +
-          '<span>' + timeStr + '</span>' + ticks + replyBtn +
+          '<span>' + timeStr + '</span>' + ticks +
         '</div>' +
       '</div>';
   }
@@ -22698,7 +22398,6 @@ window.diagnose = async function() {
       var insRes = await db.from('chat_messages').insert([{
         room_id: _dmRoom.id,
         message: text,
-        reply_to_message_id: window._bsmDmReplyTo ? window._bsmDmReplyTo.id : null,
         user_id: _dmMe ? _dmMe.id : null,
         user_name: ''
       }]).select('id').single();
@@ -24809,7 +24508,6 @@ window.qzShowPastReview = qzShowPastReview;
 
   // ---- 1 و 7) تقوية الصور/الفيديو تحديداً: منع السحب + منع قائمة اللمس المطول على iOS/Android ----
   function hardenMediaElement(el) {
-    if (DEBUG_MODE) return;
     if (!el || el.__bsmProtected) return;
     el.__bsmProtected = true;
     el.setAttribute('draggable', 'false');
@@ -27661,7 +27359,7 @@ BEGIN
   JOIN profiles p ON p.id=sa.user_id
   WHERE sa.section_id=v_course_id
     AND sa.is_active=true
-    AND sa.role IN ('admin','owner','assistant')
+    AND sa.role IN ('admin','owner')
   ORDER BY COALESCE(p.full_name,p.email,'');
 
   IF FOUND THEN RETURN; END IF;
@@ -27680,51 +27378,95 @@ GRANT EXECUTE ON FUNCTION public.get_section_admins_for_messaging(BIGINT) TO aut
 
 DROP FUNCTION IF EXISTS public.get_or_create_direct_room(UUID,BIGINT);
 CREATE OR REPLACE FUNCTION public.get_or_create_direct_room(p_other_user_id UUID,p_section_id BIGINT)
-RETURNS chat_rooms LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
+RETURNS public.chat_rooms
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
 DECLARE
   v_me UUID := auth.uid();
-  v_room chat_rooms;
-  v_course_id BIGINT := p_section_id;
-  v_is_course_admin BOOLEAN := false;
-  v_is_platform_admin BOOLEAN := false;
+  v_room public.chat_rooms;
+  v_course_title TEXT;
+  v_room_key TEXT;
+  v_me_allowed BOOLEAN := false;
+  v_other_allowed BOOLEAN := false;
 BEGIN
-  IF v_me IS NULL OR p_other_user_id IS NULL OR p_other_user_id=v_me OR p_section_id IS NULL THEN RAISE EXCEPTION 'DENY ACCESS'; END IF;
-
-  WITH RECURSIVE ancestors AS (
-    SELECT s.id, s.parent_id, s.type, 0 AS depth
-    FROM site_sections s WHERE s.id=p_section_id
-    UNION ALL
-    SELECT p.id, p.parent_id, p.type, a.depth+1
-    FROM site_sections p JOIN ancestors a ON p.id=a.parent_id
-    WHERE a.depth < 20
-  )
-  SELECT id INTO v_course_id
-  FROM ancestors
-  WHERE LOWER(COALESCE(type,''))='course'
-  ORDER BY depth
-  LIMIT 1;
-
-  SELECT EXISTS(SELECT 1 FROM section_admins sa
-    WHERE sa.user_id=p_other_user_id AND sa.section_id=v_course_id
-      AND sa.is_active=true AND sa.role IN ('admin','owner','assistant')) INTO v_is_course_admin;
-  SELECT EXISTS(SELECT 1 FROM profiles p WHERE p.id=p_other_user_id AND p.role='admin') INTO v_is_platform_admin;
-  IF NOT v_is_course_admin AND NOT v_is_platform_admin THEN
-    RAISE EXCEPTION 'DENY ACCESS: الطرف المطلوب ليس أدمن الكورس أو أدمن المنصة';
+  IF v_me IS NULL OR p_other_user_id IS NULL OR p_other_user_id=v_me OR p_section_id IS NULL THEN
+    RAISE EXCEPTION 'DENY ACCESS';
   END IF;
 
-  PERFORM pg_advisory_xact_lock(hashtextextended(LEAST(v_me::TEXT,p_other_user_id::TEXT)||':'||GREATEST(v_me::TEXT,p_other_user_id::TEXT)||':'||v_course_id::TEXT,0));
-  SELECT cr.* INTO v_room FROM chat_rooms cr
-  WHERE cr.section_id=v_course_id
-    AND cr.room_type='direct'
-    AND EXISTS(SELECT 1 FROM chat_room_participants x WHERE x.room_id=cr.id AND x.user_id=v_me)
-    AND EXISTS(SELECT 1 FROM chat_room_participants y WHERE y.room_id=cr.id AND y.user_id=p_other_user_id)
+  SELECT title INTO v_course_title FROM public.site_sections WHERE id=p_section_id;
+  v_room_key := 'DM:' || p_section_id::TEXT || ':' || COALESCE(v_course_title,'الكورس');
+
+  -- صلاحية المستخدم الحالي داخل نفس الكورس
+  SELECT (
+    public.is_admin()
+    OR public.is_branch_admin_of(p_section_id)
+    OR public.has_active_subscription(p_section_id)
+    OR EXISTS (
+      SELECT 1 FROM public.section_admins sa
+      WHERE sa.user_id=v_me AND sa.section_id=p_section_id
+        AND sa.is_active=true
+        AND sa.role IN ('owner','admin')
+    )
+    OR EXISTS (
+      SELECT 1 FROM public.section_admins sa
+      WHERE sa.user_id=v_me AND sa.section_id=p_section_id
+        AND sa.is_active=true AND sa.role='assistant'
+        AND COALESCE((sa.permissions->>'manage_chats')::boolean,false)=true
+    )
+  ) INTO v_me_allowed;
+
+  IF NOT v_me_allowed THEN RAISE EXCEPTION 'DENY ACCESS'; END IF;
+
+  -- الطرف الآخر: أدمن المنصة/مالك أو أدمن الكورس/مساعد بصلاحية المحادثات/طالب مشترك
+  SELECT (
+    EXISTS (SELECT 1 FROM public.profiles p WHERE p.id=p_other_user_id AND p.role='admin')
+    OR EXISTS (
+      SELECT 1 FROM public.section_admins sa
+      WHERE sa.user_id=p_other_user_id AND sa.section_id=p_section_id
+        AND sa.is_active=true AND sa.role IN ('owner','admin')
+    )
+    OR EXISTS (
+      SELECT 1 FROM public.section_admins sa
+      WHERE sa.user_id=p_other_user_id AND sa.section_id=p_section_id
+        AND sa.is_active=true AND sa.role='assistant'
+        AND COALESCE((sa.permissions->>'manage_chats')::boolean,false)=true
+    )
+    OR EXISTS (
+      SELECT 1 FROM public.subscriptions sub
+      WHERE sub.user_id=p_other_user_id AND sub.section_id=p_section_id
+        AND sub.payment_status='active'
+        AND (sub.end_date IS NULL OR sub.end_date>=NOW())
+    )
+  ) INTO v_other_allowed;
+
+  IF NOT v_other_allowed THEN RAISE EXCEPTION 'DENY ACCESS'; END IF;
+
+  PERFORM pg_advisory_xact_lock(
+    hashtextextended(
+      LEAST(v_me::TEXT,p_other_user_id::TEXT)||':'||
+      GREATEST(v_me::TEXT,p_other_user_id::TEXT)||':'||p_section_id::TEXT,0
+    )
+  );
+
+  -- الـDM في الـschema الحالي يجب أن يكون direct بدون section_id.
+  -- نربطه بالكورس منطقيًا داخل room_name حتى لا نغيّر schema أو constraint.
+  SELECT cr.* INTO v_room
+  FROM public.chat_rooms cr
+  WHERE cr.room_type='direct'
+    AND cr.room_name=v_room_key
+    AND EXISTS (SELECT 1 FROM public.chat_room_participants x WHERE x.room_id=cr.id AND x.user_id=v_me)
+    AND EXISTS (SELECT 1 FROM public.chat_room_participants y WHERE y.room_id=cr.id AND y.user_id=p_other_user_id)
   ORDER BY cr.id LIMIT 1;
+
   IF FOUND THEN RETURN v_room; END IF;
 
-  INSERT INTO chat_rooms(room_name,section_id,room_type)
-  VALUES('محادثة خاصة - '||COALESCE((SELECT title FROM site_sections WHERE id=v_course_id),'الكورس'),'direct')
+  INSERT INTO public.chat_rooms(room_name,room_type)
+  VALUES(v_room_key,'direct')
   RETURNING * INTO v_room;
-  INSERT INTO chat_room_participants(room_id,user_id) VALUES(v_room.id,v_me),(v_room.id,p_other_user_id);
+
+  INSERT INTO public.chat_room_participants(room_id,user_id)
+  VALUES(v_room.id,v_me),(v_room.id,p_other_user_id)
+  ON CONFLICT DO NOTHING;
+
   RETURN v_room;
 END; $$;
 GRANT EXECUTE ON FUNCTION public.get_or_create_direct_room(UUID,BIGINT) TO authenticated;
@@ -27736,7 +27478,7 @@ RETURNS chat_rooms LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_t
 DECLARE v_room chat_rooms; v_title TEXT;
 BEGIN
   IF auth.uid() IS NULL OR p_section_id IS NULL THEN RAISE EXCEPTION 'DENY ACCESS'; END IF;
-  IF NOT (public.is_admin() OR public.is_branch_admin_of(p_section_id) OR public.has_active_course_subscription(p_section_id) OR public.assistant_can_access_section(p_section_id,'manage_chats')) THEN
+  IF NOT (public.is_admin() OR public.is_branch_admin_of(p_section_id) OR public.has_active_course_subscription(p_section_id)) THEN
     RAISE EXCEPTION 'DENY ACCESS';
   END IF;
   PERFORM pg_advisory_xact_lock(p_section_id);
@@ -28917,489 +28659,31 @@ SELECT conname, pg_get_constraintdef(oid) FROM pg_constraint WHERE conname='audi
   }
 })();
 </script>
-<script id="bsm-assistant-fix">
-(function(){
-'use strict';
-var perms=[
- ['manage_content','إدارة محتوى الكورس'],['manage_lessons','إضافة/تعديل/حذف الدروس'],
- ['manage_resources','إدارة ملفات وموارد الكورس'],['manage_quizzes','إدارة أسئلة/اختبارات الكورس'],
- ['view_students','مشاهدة الطلاب والتقدم'],['manage_chats','إدارة محادثات الكورس'],
- ['manage_contacts','إدارة بيانات التواصل والجروبات']
-];
-function db(){return window.supabase}
-function esc(v){return typeof _apEsc==='function'?_apEsc(v==null?'':String(v)):String(v==null?'':v).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
-function canManage(){return window._isSuperAdmin===true || window._branchAdminActiveRole==='owner' || (window._isBranchAdmin===true && window._branchAdminPerms && window._branchAdminPerms.can_manage_admins===true)}
-function allowedIds(){if(window._isSuperAdmin===true)return null;var a=Array.isArray(window._branchAdminOwnSectionIds)?window._branchAdminOwnSectionIds.map(Number):[];if(window._branchAdminActiveRoot)a.push(Number(window._branchAdminActiveRoot));return a.filter(function(x,i){return Number.isFinite(x)&&a.indexOf(x)===i})}
-function getPerms(){var o={};document.querySelectorAll('.bsm-as-perm').forEach(function(x){o[x.dataset.perm]=x.checked});return o}
-function setPerms(p){document.querySelectorAll('.bsm-as-perm').forEach(function(x){x.checked=!!(p||{})[x.dataset.perm]})}
-async function loadCourses(){
- var sel=document.getElementById('bsm-as-course');if(!sel||!db())return;
- if(!canManage()){sel.innerHTML='<option value="">غير متاح</option>';return}
- try{var r=await db().from('site_sections').select('id,title').eq('type','course').order('title');if(r.error)throw r.error;
-  var rows=r.data||[],ids=allowedIds();if(ids)rows=rows.filter(function(x){return ids.indexOf(Number(x.id))!==-1});
-  sel.innerHTML='<option value="">— اختر الكورس —</option>'+rows.map(function(x){return '<option value="'+x.id+'">'+esc(x.title)+'</option>'}).join('');
- }catch(e){sel.innerHTML='<option value="">تعذر تحميل الكورسات</option>'}
-}
-async function loadAssistants(){
- var list=document.getElementById('bsm-as-list'),sel=document.getElementById('bsm-as-course');if(!list||!sel)return;
- var course=Number(sel.value||0);if(!course){list.innerHTML='<div class="ap-empty">اختر كورسًا.</div>';return}
- var ids=allowedIds();if(ids&&ids.indexOf(course)===-1){list.innerHTML='<div class="ap-empty">⛔ هذا الكورس خارج نطاق صلاحيتك.</div>';return}
- try{
-  var r=await db().from('section_admins').select('id,user_id,section_id,role,is_active,permissions,created_at').eq('section_id',course).eq('role','assistant').order('created_at');
-  if(r.error)throw r.error;
-  var users={},uids=(r.data||[]).map(function(x){return x.user_id});
-  if(uids.length){var pr=await db().from('profiles').select('id,full_name,email').in('id',uids);if(pr.error)throw pr.error;(pr.data||[]).forEach(function(x){users[x.id]=x})}
-  if(!r.data.length){list.innerHTML='<div class="ap-empty">لا يوجد أدمن مساعد لهذا الكورس.</div>';return}
-  list.innerHTML=r.data.map(function(x){
-   var u=users[x.user_id]||{},p=x.permissions||{};
-   var badges=perms.filter(function(a){return p[a[0]]===true}).map(function(a){return '<span class="ap-badge active" style="margin:2px;">'+esc(a[1])+'</span>'}).join('');
-   return '<div class="ap-card" style="padding:12px;margin-top:8px;"><b>'+esc(u.full_name||'—')+'</b><div class="ap-email-cell">'+esc(u.email||'—')+'</div><div style="margin-top:7px;">'+(badges||'<span style="color:#999">لا توجد صلاحيات</span>')+'</div><div style="margin-top:9px;display:flex;gap:6px;flex-wrap:wrap;"><button class="ap-btn ap-btn-primary" data-as-edit="'+x.id+'">✏️ تعديل</button><button class="ap-btn ap-btn-danger" data-as-del="'+x.id+'">🗑️ حذف</button></div></div>';
-  }).join('');
-  list.querySelectorAll('[data-as-edit]').forEach(function(b){b.onclick=function(){var x=(r.data||[]).find(function(z){return String(z.id)===String(b.dataset.asEdit)}),u=users[x.user_id]||{};document.getElementById('bsm-as-email').value=u.email||'';sel.value=String(x.section_id);setPerms(x.permissions||{});var save=document.getElementById('bsm-as-save');save.textContent='💾 حفظ التعديل';save.onclick=function(){updateAssistant(x.id)};document.getElementById('bsm-as-msg').textContent='✏️ عدّل الصلاحيات أو الكورس ثم احفظ.'}});
-  list.querySelectorAll('[data-as-del]').forEach(function(b){b.onclick=function(){deleteAssistant(Number(b.dataset.asDel))}});
- }catch(e){list.innerHTML='<div style="color:#e74c3c">❌ '+esc(e.message||e)+'</div>'}
-}
-async function addAssistant(){
- if(!canManage())return;
- var msg=document.getElementById('bsm-as-msg'),course=Number(document.getElementById('bsm-as-course').value||0),email=(document.getElementById('bsm-as-email').value||'').trim().toLowerCase();
- if(!course||!email){msg.textContent='❌ اختر الكورس واكتب البريد.';return}
- try{
-  var pr=await db().from('profiles').select('id,role').eq('email',email).maybeSingle();if(pr.error)throw pr.error;if(!pr.data)throw new Error('لا يوجد حساب بهذا البريد.');if(pr.data.role==='admin')throw new Error('لا يمكن تعيين أدمن المنصة كأدمن مساعد.');
-  var r=await db().from('section_admins').insert([{user_id:pr.data.id,section_id:course,role:'assistant',is_active:true,permissions:getPerms()}]);if(r.error)throw r.error;
-  msg.textContent='✅ تم تعيين الأدمن المساعد.';document.getElementById('bsm-as-email').value='';setPerms({});resetSave();await loadAssistants();
- }catch(e){msg.textContent='❌ '+(e.message||'فشل التعيين')}
-}
-async function updateAssistant(id){
- if(!canManage())return;
- var msg=document.getElementById('bsm-as-msg'),course=Number(document.getElementById('bsm-as-course').value||0),email=(document.getElementById('bsm-as-email').value||'').trim().toLowerCase();
- try{
-  var pr=await db().from('profiles').select('id,role').eq('email',email).maybeSingle();if(pr.error)throw pr.error;if(!pr.data)throw new Error('الحساب غير موجود.');if(pr.data.role==='admin')throw new Error('لا يمكن تعيين أدمن المنصة كأدمن مساعد.');
-  var r=await db().from('section_admins').update({user_id:pr.data.id,section_id:course,permissions:getPerms(),is_active:true}).eq('id',id).eq('role','assistant');if(r.error)throw r.error;
-  msg.textContent='✅ تم حفظ التعديل.';resetSave();await loadAssistants();
- }catch(e){msg.textContent='❌ '+(e.message||'فشل الحفظ')}
-}
-async function deleteAssistant(id){
- if(!canManage()||!confirm('هل تريد حذف الأدمن المساعد من الكورس؟'))return;
- try{var r=await db().from('section_admins').delete().eq('id',id).eq('role','assistant');if(r.error)throw r.error;await loadAssistants()}catch(e){if(window._showToast)_showToast('❌ '+(e.message||e),'error')}
-}
-function resetSave(){var b=document.getElementById('bsm-as-save');if(b){b.textContent='➕ إضافة';b.onclick=addAssistant}}
-window.bsmAddAssistant=addAssistant;window.bsmLoadAssistants=loadAssistants;
-function showTab(){
- var b=document.getElementById('ap-tab-courseAssistants');if(!b)return;
- b.style.display=canManage()?'flex':'none';
-}
-var old=window.apSwitchTab;
-if(typeof old==='function'&&!old.__bsmAssistantFix){
- window.apSwitchTab=function(tab){if(tab==='courseAssistants'){showTab();document.querySelectorAll('.ap-nav-btn').forEach(function(x){x.classList.remove('active')});document.querySelectorAll('.ap-tab-panel').forEach(function(x){x.classList.remove('active')});b.classList.add('active');var p=document.getElementById('ap-panel-courseAssistants');if(p){p.classList.add('active');loadCourses().then(loadAssistants)}return}return old.apply(this,arguments)};
- window.apSwitchTab.__bsmAssistantFix=true;
-}
-function refresh(){showTab();if(document.getElementById('ap-panel-courseAssistants')&&document.getElementById('ap-panel-courseAssistants').classList.contains('active'))loadCourses().then(loadAssistants)}
-if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',refresh);else refresh();
-setTimeout(refresh,700);setInterval(refresh,2500);
-window._bsmAssistantPerms=perms;
-})();
-</script><script id="bsm-final-migration">
-window.printBSMDirectChatFixSQL=function(){
-var sql=`-- BSM DIRECT CHAT FIX: يسمح بالمراسلة الخاصة بين الطالب وأدمن الكورس/الأدمن المساعد/مالك الكورس/أدمن المنصة.
--- لا يغيّر Authentication أو أي بيانات موجودة.
-
-CREATE OR REPLACE FUNCTION public.bsm_direct_chat_access(p_room_id BIGINT)
-RETURNS BOOLEAN
-LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
-WITH room AS (
-  SELECT cr.id, cr.section_id, cr.room_type
-  FROM public.chat_rooms cr
-  WHERE cr.id=p_room_id
-), ancestors AS (
-  SELECT r.section_id AS id, 0 AS depth FROM room r
-  UNION ALL
-  SELECT s.parent_id, a.depth+1
-  FROM public.site_sections s
-  JOIN ancestors a ON s.id=a.id
-  WHERE s.parent_id IS NOT NULL AND a.depth < 20
-), participant AS (
-  SELECT EXISTS(
-    SELECT 1 FROM public.chat_room_participants p
-    WHERE p.room_id=p_room_id AND p.user_id=auth.uid()
-  ) AS ok
-), perms AS (
-  SELECT
-    EXISTS(SELECT 1 FROM public.profiles p WHERE p.id=auth.uid() AND p.role='admin') AS platform_admin,
-    EXISTS(SELECT 1 FROM public.profiles p WHERE p.id=auth.uid() AND p.role='branch_admin' AND p.managed_section_id IN (SELECT id FROM ancestors)) AS branch_admin,
-    EXISTS(SELECT 1 FROM public.section_admins sa
-      WHERE sa.user_id=auth.uid() AND sa.is_active=true
-        AND sa.role IN ('admin','owner') AND sa.section_id IN (SELECT id FROM ancestors)) AS course_admin,
-    EXISTS(SELECT 1 FROM public.section_admins sa
-      WHERE sa.user_id=auth.uid() AND sa.is_active=true AND sa.role='assistant'
-        AND sa.section_id IN (SELECT id FROM ancestors)
-        AND COALESCE((sa.permissions->>'manage_chats')::boolean,false)=true) AS assistant_chat,
-    EXISTS(SELECT 1 FROM public.subscriptions sub
-      JOIN room r ON r.section_id=sub.section_id
-      WHERE sub.user_id=auth.uid() AND sub.payment_status='active'
-        AND (sub.end_date IS NULL OR sub.end_date>=NOW())) AS subscriber
-)
-SELECT (SELECT ok FROM participant) AND EXISTS(
-  SELECT 1 FROM perms WHERE platform_admin OR branch_admin OR course_admin OR assistant_chat OR subscriber
-);
-$$;
-GRANT EXECUTE ON FUNCTION public.bsm_direct_chat_access(BIGINT) TO authenticated;
-
-ALTER TABLE public.chat_rooms ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS bsm_direct_room_participant_read ON public.chat_rooms;
-CREATE POLICY bsm_direct_room_participant_read ON public.chat_rooms FOR SELECT
-USING (
-  room_type='direct' AND public.bsm_direct_chat_access(id)
-);
-
-ALTER TABLE public.chat_messages ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS bsm_direct_message_participant_read ON public.chat_messages;
-DROP POLICY IF EXISTS bsm_direct_message_participant_insert ON public.chat_messages;
-CREATE POLICY bsm_direct_message_participant_read ON public.chat_messages FOR SELECT
-USING (
-  EXISTS(SELECT 1 FROM public.chat_rooms cr WHERE cr.id=chat_messages.room_id AND cr.room_type='direct')
-  AND public.bsm_direct_chat_access(chat_messages.room_id)
-);
-CREATE POLICY bsm_direct_message_participant_insert ON public.chat_messages FOR INSERT
-WITH CHECK (
-  EXISTS(SELECT 1 FROM public.chat_rooms cr WHERE cr.id=chat_messages.room_id AND cr.room_type='direct')
-  AND public.bsm_direct_chat_access(chat_messages.room_id)
-  AND auth.uid() IS NOT NULL
-);
-
--- تحديث RPC إنشاء/استرجاع المحادثة الخاصة: الأدمن الرئيسي، أدمن الكورس، مالك الكورس،
--- الأدمن المساعد المصرح له بالمحادثات يستطيع بدء DM مع الطالب، والطالب يستطيع فتح DM مع هؤلاء.
-DROP FUNCTION IF EXISTS public.get_or_create_direct_room(UUID,BIGINT);
-CREATE OR REPLACE FUNCTION public.get_or_create_direct_room(p_other_user_id UUID,p_section_id BIGINT)
-RETURNS public.chat_rooms
-LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
-DECLARE
-  v_me UUID := auth.uid();
-  v_course_id BIGINT := p_section_id;
-  v_room public.chat_rooms;
-  v_me_admin BOOLEAN := false;
-  v_other_admin BOOLEAN := false;
-  v_other_student BOOLEAN := false;
-BEGIN
-  IF v_me IS NULL OR p_other_user_id IS NULL OR p_other_user_id=v_me OR p_section_id IS NULL THEN
-    RAISE EXCEPTION 'DENY ACCESS';
-  END IF;
-
-  WITH RECURSIVE ancestors AS (
-    SELECT s.id,s.parent_id,s.type,0 AS depth FROM public.site_sections s WHERE s.id=p_section_id
-    UNION ALL
-    SELECT s.id,s.parent_id,s.type,a.depth+1 FROM public.site_sections s JOIN ancestors a ON s.id=a.parent_id WHERE a.depth<20
-  )
-  SELECT id INTO v_course_id FROM ancestors WHERE LOWER(COALESCE(type,''))='course' ORDER BY depth LIMIT 1;
-
-  -- Current user: platform admin / branch admin / course owner-admin / assistant with chat permission / active student.
-  SELECT EXISTS(SELECT 1 FROM public.profiles p WHERE p.id=v_me AND p.role='admin')
-      OR EXISTS(SELECT 1 FROM public.profiles p WHERE p.id=v_me AND p.role='branch_admin' AND p.managed_section_id=v_course_id)
-      OR EXISTS(SELECT 1 FROM public.section_admins sa WHERE sa.user_id=v_me AND sa.section_id=v_course_id AND sa.is_active=true AND sa.role IN ('admin','owner'))
-      OR EXISTS(SELECT 1 FROM public.section_admins sa WHERE sa.user_id=v_me AND sa.section_id=v_course_id AND sa.is_active=true AND sa.role='assistant' AND COALESCE((sa.permissions->>'manage_chats')::boolean,false)=true)
-      OR EXISTS(SELECT 1 FROM public.subscriptions sub WHERE sub.user_id=v_me AND sub.section_id=v_course_id AND sub.payment_status='active' AND (sub.end_date IS NULL OR sub.end_date>=NOW()))
-  INTO v_me_admin;
-  IF NOT v_me_admin THEN RAISE EXCEPTION 'DENY ACCESS'; END IF;
-
-  SELECT EXISTS(SELECT 1 FROM public.profiles p WHERE p.id=p_other_user_id AND p.role='admin')
-      OR EXISTS(SELECT 1 FROM public.profiles p WHERE p.id=p_other_user_id AND p.role='branch_admin' AND p.managed_section_id=v_course_id)
-      OR EXISTS(SELECT 1 FROM public.section_admins sa WHERE sa.user_id=p_other_user_id AND sa.section_id=v_course_id AND sa.is_active=true AND sa.role IN ('admin','owner'))
-      OR EXISTS(SELECT 1 FROM public.section_admins sa WHERE sa.user_id=p_other_user_id AND sa.section_id=v_course_id AND sa.is_active=true AND sa.role='assistant' AND COALESCE((sa.permissions->>'manage_chats')::boolean,false)=true)
-  INTO v_other_admin;
-  SELECT EXISTS(SELECT 1 FROM public.subscriptions sub WHERE sub.user_id=p_other_user_id AND sub.section_id=v_course_id AND sub.payment_status='active' AND (sub.end_date IS NULL OR sub.end_date>=NOW())) INTO v_other_student;
-
-  -- DM is strictly admin<->student/admin, never arbitrary student<->student.
-  IF NOT ((v_other_admin) OR (v_other_student AND (v_me_admin))) THEN
-    RAISE EXCEPTION 'DENY ACCESS';
-  END IF;
-
-  PERFORM pg_advisory_xact_lock(hashtextextended(LEAST(v_me::TEXT,p_other_user_id::TEXT)||':'||GREATEST(v_me::TEXT,p_other_user_id::TEXT)||':'||v_course_id::TEXT,0));
-  SELECT cr.* INTO v_room FROM public.chat_rooms cr
-  WHERE cr.section_id=v_course_id AND cr.room_type='direct'
-    AND EXISTS(SELECT 1 FROM public.chat_room_participants x WHERE x.room_id=cr.id AND x.user_id=v_me)
-    AND EXISTS(SELECT 1 FROM public.chat_room_participants y WHERE y.room_id=cr.id AND y.user_id=p_other_user_id)
-  ORDER BY cr.id LIMIT 1;
-  IF FOUND THEN RETURN v_room; END IF;
-
-  INSERT INTO public.chat_rooms(room_name,section_id,room_type)
-  VALUES('محادثة خاصة - '||COALESCE((SELECT title FROM public.site_sections WHERE id=v_course_id),'الكورس'),'direct')
-  RETURNING * INTO v_room;
-  INSERT INTO public.chat_room_participants(room_id,user_id) VALUES(v_room.id,v_me),(v_room.id,p_other_user_id);
-  RETURN v_room;
-END; $$;
-GRANT EXECUTE ON FUNCTION public.get_or_create_direct_room(UUID,BIGINT) TO authenticated;
-
-NOTIFY pgrst,'reload schema';`;
-console.log(sql);if(navigator.clipboard)navigator.clipboard.writeText(sql).catch(function(){});return sql;
-};
-
-window.printBSMFinalMigrationSQL=function(){
-var sql=`-- BSM FINAL FIX: reply + assistant admin + scoped RLS
-ALTER TABLE public.chat_messages ADD COLUMN IF NOT EXISTS reply_to_message_id BIGINT REFERENCES public.chat_messages(id) ON DELETE SET NULL;
-CREATE INDEX IF NOT EXISTS idx_chat_messages_reply_to_message_id ON public.chat_messages(reply_to_message_id);
-
-ALTER TABLE public.section_admins ADD COLUMN IF NOT EXISTS permissions JSONB NOT NULL DEFAULT '{}'::jsonb;
-ALTER TABLE public.section_admins DROP CONSTRAINT IF EXISTS section_admins_role_check;
-ALTER TABLE public.section_admins ADD CONSTRAINT section_admins_role_check CHECK (role IN ('admin','owner','assistant'));
-
-CREATE OR REPLACE FUNCTION public.course_admin_can_manage_assistants(target_section_id BIGINT)
-RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
-SELECT EXISTS(
- SELECT 1 FROM public.section_admins sa
- WHERE sa.user_id=auth.uid() AND sa.section_id=target_section_id AND sa.is_active=true
- AND sa.role IN ('admin','owner')
- AND (sa.role='owner' OR COALESCE((sa.permissions->>'can_manage_admins')::boolean,false)=true)
-) OR EXISTS(
- SELECT 1 FROM public.profiles p
- WHERE p.id=auth.uid() AND p.role='branch_admin' AND p.managed_section_id=target_section_id
-);
-$$;
-
-GRANT EXECUTE ON FUNCTION public.course_admin_can_manage_assistants(BIGINT) TO authenticated;
-
-CREATE OR REPLACE FUNCTION public.assistant_can_access_section(target_section_id BIGINT,p_permission TEXT)
-RETURNS BOOLEAN LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
-WITH RECURSIVE ancestors AS (
-  SELECT id,parent_id FROM public.site_sections WHERE id=target_section_id
-  UNION ALL
-  SELECT s.id,s.parent_id FROM public.site_sections s JOIN ancestors a ON s.id=a.parent_id
-)
-SELECT EXISTS(
- SELECT 1 FROM public.section_admins sa
- WHERE sa.user_id=auth.uid() AND sa.role='assistant' AND sa.is_active=true
-   AND COALESCE((sa.permissions->>p_permission)::boolean,false)=true
-   AND sa.section_id IN (SELECT id FROM ancestors)
-);
-$$;
-GRANT EXECUTE ON FUNCTION public.assistant_can_access_section(BIGINT,TEXT) TO authenticated;
-
-ALTER TABLE public.section_admins ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS section_admins_assistant_manager_read ON public.section_admins;
-DROP POLICY IF EXISTS section_admins_assistant_manager_insert ON public.section_admins;
-DROP POLICY IF EXISTS section_admins_assistant_manager_update ON public.section_admins;
-DROP POLICY IF EXISTS section_admins_assistant_manager_delete ON public.section_admins;
-
-CREATE POLICY section_admins_assistant_manager_read ON public.section_admins FOR SELECT
-USING (is_admin() OR user_id=auth.uid() OR course_admin_can_manage_assistants(section_id));
-
-CREATE POLICY section_admins_assistant_manager_insert ON public.section_admins FOR INSERT
-WITH CHECK (is_admin() OR (role='assistant' AND course_admin_can_manage_assistants(section_id)));
-
-CREATE POLICY section_admins_assistant_manager_update ON public.section_admins FOR UPDATE
-USING (is_admin() OR (role='assistant' AND course_admin_can_manage_assistants(section_id)))
-WITH CHECK (is_admin() OR (role='assistant' AND course_admin_can_manage_assistants(section_id)));
-
-CREATE POLICY section_admins_assistant_manager_delete ON public.section_admins FOR DELETE
-USING (is_admin() OR (role='assistant' AND course_admin_can_manage_assistants(section_id)));
-
--- Assistant: course chat + student/direct messaging stay inside the assigned course.
-DROP POLICY IF EXISTS chatrooms_assistant_read ON public.chat_rooms;
-CREATE POLICY chatrooms_assistant_read ON public.chat_rooms FOR SELECT
-USING (assistant_can_access_section(section_id,'manage_chats'));
-
-DROP POLICY IF EXISTS chatmsg_assistant_read ON public.chat_messages;
-DROP POLICY IF EXISTS chatmsg_assistant_insert ON public.chat_messages;
-CREATE POLICY chatmsg_assistant_read ON public.chat_messages FOR SELECT
-USING (assistant_can_access_section((SELECT cr.section_id FROM public.chat_rooms cr WHERE cr.id=chat_messages.room_id),'manage_chats'));
-CREATE POLICY chatmsg_assistant_insert ON public.chat_messages FOR INSERT
-WITH CHECK (assistant_can_access_section((SELECT cr.section_id FROM public.chat_rooms cr WHERE cr.id=chat_messages.room_id),'manage_chats'));
-
-CREATE OR REPLACE FUNCTION public.validate_chat_reply_room()
-RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
-DECLARE original_room BIGINT;
-BEGIN
- IF NEW.reply_to_message_id IS NULL THEN RETURN NEW; END IF;
- SELECT room_id INTO original_room FROM public.chat_messages WHERE id=NEW.reply_to_message_id;
- IF original_room IS NULL OR original_room<>NEW.room_id THEN
-   RAISE EXCEPTION 'Invalid reply target';
- END IF;
- RETURN NEW;
-END $$;
-DROP TRIGGER IF EXISTS trg_validate_chat_reply_room ON public.chat_messages;
-CREATE TRIGGER trg_validate_chat_reply_room BEFORE INSERT OR UPDATE OF reply_to_message_id ON public.chat_messages FOR EACH ROW EXECUTE FUNCTION public.validate_chat_reply_room();
-
-NOTIFY pgrst,'reload schema';`;
-console.log(sql);if(navigator.clipboard)navigator.clipboard.writeText(sql).catch(function(){});return sql;
-};
-</script><style>
-.bsm-reply-bar{display:none;align-items:center;justify-content:space-between;gap:8px;margin:0 8px 8px;padding:8px 10px;border-right:4px solid #0a3d62;background:#f3f7fb;border-radius:10px}
-.bsm-reply-bar.show{display:flex}.bsm-reply-title{font-weight:900;font-size:.72rem;color:#0a3d62}.bsm-reply-preview{font-size:.78rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#667;max-width:70vw}.bsm-reply-cancel{border:0;background:transparent;cursor:pointer;font-size:1rem}.bsm-reply-btn{border:0;background:transparent;cursor:pointer;font-size:.68rem;color:#0a3d62;font-weight:800}.bsm-quoted{border-right:3px solid #17a589;background:#eef7f5;padding:6px 8px;border-radius:7px;margin-bottom:5px;cursor:pointer}.bsm-quoted-title{font-size:.68rem;font-weight:900;color:#0a3d62}.bsm-quoted-text{font-size:.72rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-</style><script id="bsm-unified-reply">
-(function(){
-'use strict';
-window._bsmChatReplyTo=null; window._bsmDmReplyTo=null;
-function esc(v){return typeof _apEsc==='function'?_apEsc(v==null?'':String(v)):String(v==null?'':v).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
-function addBar(type){
-  var input=document.getElementById(type==='dm'?'dm-chat-input':'chat-input'); if(!input)return;
-  var id='bsm-reply-bar-'+type,bar=document.getElementById(id);
-  if(!bar){
-    bar=document.createElement('div');bar.id=id;bar.className='bsm-reply-bar';
-    bar.innerHTML='<div><div class="bsm-reply-title"></div><div class="bsm-reply-preview"></div></div><button type="button" class="bsm-reply-cancel">✕</button>';
-    input.parentElement.insertBefore(bar,input);
-    bar.querySelector('.bsm-reply-cancel').addEventListener('click',function(){window._bsmCancelReply(type)});
-  }
-  return bar;
-}
-window._bsmSetReply=function(type,id){
-  var rows=type==='dm'?(window._dmLoadedMessages||[]):(window._chatLoadedMessages||[]);
-  var m=rows.find(function(x){return String(x.id)===String(id)});if(!m)return;
-  if(type==='dm')window._bsmDmReplyTo=m;else window._bsmChatReplyTo=m;
-  var bar=addBar(type);if(!bar)return;
-  bar.querySelector('.bsm-reply-title').textContent=type==='dm'?'↩️ رد خاص على رسالة':'↩️ رد على رسالة';
-  bar.querySelector('.bsm-reply-preview').textContent=m.message||'📎 مرفق';bar.classList.add('show');
-  var input=document.getElementById(type==='dm'?'dm-chat-input':'chat-input');if(input)input.focus();
-};
-window._bsmCancelReply=function(type){
-  if(type==='dm')window._bsmDmReplyTo=null;else window._bsmChatReplyTo=null;
-  var bar=document.getElementById('bsm-reply-bar-'+type);if(bar)bar.classList.remove('show');
-};
-window._bsmJumpToMessage=function(type,id){
-  var el=document.getElementById((type==='dm'?'bsm-dm-msg-':'bsm-section-msg-')+Number(id));
-  if(el){el.scrollIntoView({behavior:'smooth',block:'center'});el.style.outline='2px solid #0a3d62';setTimeout(function(){el.style.outline=''},900);}
-};
-function install(){
-  var chatInput=document.getElementById('chat-input'),dmInput=document.getElementById('dm-chat-input');
-  if(chatInput)addBar('section'); if(dmInput)addBar('dm');
-}
-if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',install);else install();setInterval(install,1500);
-})();
-</script>
-<!-- BSM CHAT MOBILE COMPOSER VISIBILITY FIX -->
-<style id="bsm-chat-composer-visibility-fix">
-/* Keep the message composer visible and tappable on Android/WebView when the keyboard opens. */
-.chat-footer,
-.dm2-composer {
-  position: relative;
-  z-index: 50;
-  flex: 0 0 auto;
-  min-height: 66px;
-  box-sizing: border-box;
-  padding-bottom: max(12px, env(safe-area-inset-bottom));
-  background: #fff;
-  visibility: visible !important;
-  opacity: 1 !important;
-}
-.chat-send-btn {
-  position: relative;
-  z-index: 51;
-  display: inline-flex !important;
-  visibility: visible !important;
-  opacity: 1 !important;
-  width: 44px;
-  min-width: 44px;
-  height: 44px;
-  min-height: 44px;
-  flex: 0 0 44px;
-  align-items: center;
-  justify-content: center;
-  pointer-events: auto !important;
-  touch-action: manipulation;
-}
-.chat-input {
-  min-width: 0;
-  min-height: 42px;
-  max-height: 90px;
-  box-sizing: border-box;
-}
-/* The message area must shrink instead of pushing the composer below the viewport. */
-.chat-modal > .chat-body,
-.dm2-chat-active-wrap > .chat-body {
-  min-height: 0 !important;
-  flex: 1 1 auto !important;
-  overflow-y: auto !important;
-  -webkit-overflow-scrolling: touch;
-}
-@media (max-width: 768px) {
-  .chat-overlay,
-  .dm2-overlay {
-    overflow: hidden !important;
-    overscroll-behavior: none;
-  }
-  .chat-modal,
-  .dm2-app {
-    min-height: 0 !important;
-    max-height: none !important;
-  }
-  .chat-footer,
-  .dm2-composer {
-    padding-left: max(10px, env(safe-area-inset-left));
-    padding-right: max(10px, env(safe-area-inset-right));
-  }
-}
-</style>
-
-<script id="bsm-chat-composer-viewport-fix">
-(function(){
-  'use strict';
-  function applyViewportFix(){
-    try{
-      var vv=window.visualViewport;
-      var h=vv && vv.height ? vv.height : window.innerHeight;
-      if(!h || h < 180) return;
-      document.documentElement.style.setProperty('--bsm-visible-vh', h + 'px');
-      var ids=['chat-modal-overlay','dm2-overlay'];
-      ids.forEach(function(id){
-        var el=document.getElementById(id);
-        if(!el) return;
-        if(el.classList.contains('chat-open') || el.classList.contains('dm2-open') || el.style.display!=='none'){
-          el.style.height=h+'px';
-          el.style.maxHeight=h+'px';
-        }
-      });
-      var cm=document.querySelector('#chat-modal-overlay .chat-modal');
-      if(cm && document.getElementById('chat-modal-overlay').classList.contains('chat-open')){
-        cm.style.height=h+'px'; cm.style.maxHeight=h+'px';
-      }
-      var app=document.querySelector('#dm2-overlay .dm2-app');
-      if(app && document.getElementById('dm2-overlay').classList.contains('dm2-open')){
-        app.style.height=h+'px'; app.style.maxHeight=h+'px';
-      }
-    }catch(e){}
-  }
-  function restoreViewport(){
-    try{
-      ['chat-modal-overlay','dm2-overlay'].forEach(function(id){
-        var el=document.getElementById(id); if(el){el.style.height='';el.style.maxHeight='';}
-      });
-      var cm=document.querySelector('#chat-modal-overlay .chat-modal');
-      if(cm){cm.style.height='';cm.style.maxHeight='';}
-      var app=document.querySelector('#dm2-overlay .dm2-app');
-      if(app){app.style.height='';app.style.maxHeight='';}
-    }catch(e){}
-  }
-  function bindInputFocus(){
-    ['chat-input','dm-chat-input'].forEach(function(id){
-      var el=document.getElementById(id); if(!el || el.__bsmViewportBound) return;
-      el.__bsmViewportBound=true;
-      ['focus','input','click','touchstart'].forEach(function(ev){
-        el.addEventListener(ev,function(){
-          setTimeout(applyViewportFix,0);
-          setTimeout(applyViewportFix,120);
-          setTimeout(applyViewportFix,350);
-        },{passive:true});
-      });
-    });
-  }
-  if(window.visualViewport){
-    window.visualViewport.addEventListener('resize',applyViewportFix,{passive:true});
-    window.visualViewport.addEventListener('scroll',applyViewportFix,{passive:true});
-  }
-  window.addEventListener('resize',applyViewportFix,{passive:true});
-  window.addEventListener('orientationchange',function(){setTimeout(applyViewportFix,250);},{passive:true});
-  document.addEventListener('focusin',function(e){
-    if(e.target && (e.target.id==='chat-input'||e.target.id==='dm-chat-input')){
-      bindInputFocus(); setTimeout(applyViewportFix,80); setTimeout(applyViewportFix,300);
-    }
-  });
-  document.addEventListener('click',function(e){
-    var b=e.target && e.target.closest ? e.target.closest('#chat-send-btn,#dm-chat-send-btn') : null;
-    if(b){ b.style.visibility='visible'; b.style.display='inline-flex'; }
-  },true);
-  setInterval(bindInputFocus,1000);
-  window._bsmApplyChatViewportFix=applyViewportFix;
-  window._bsmRestoreChatViewport=restoreViewport;
-  setTimeout(bindInputFocus,300);
-  setTimeout(applyViewportFix,500);
-})();
-</script>
 </body>
 </html>
+
+<script>
+/* FINAL NAV SAFETY — لا يعتمد على متغيرات مختصرة مثل b خارج نطاقها. */
+(function(){
+  var _baseApSwitch = window.apSwitchTab;
+  window.apSwitchTab = async function(tab){
+    try {
+      if (tab === 'assistantAdmins' || tab === 'courseAssistants' || tab === 'branchadmins') {
+        document.querySelectorAll('.ap-tab-panel').forEach(function(x){x.classList.remove('active');});
+        var panel = document.getElementById('ap-panel-' + tab) || document.getElementById('ap-panel-branchadmins');
+        if (panel) panel.classList.add('active');
+        document.querySelectorAll('.ap-nav-btn').forEach(function(x){x.classList.remove('active');});
+        var nav = document.getElementById('ap-tab-' + tab) || document.getElementById('ap-tab-branchadmins');
+        if (nav) nav.classList.add('active');
+        if (typeof baLoadGrades === 'function') await baLoadGrades();
+        return;
+      }
+      if (typeof _baseApSwitch === 'function') return await _baseApSwitch.apply(this, arguments);
+    } catch (e) {
+      console.error('[NAV] apSwitchTab failed:', e);
+      var p = document.getElementById('ap-panel-' + tab);
+      if (p) p.classList.add('active');
+    }
+  };
+})();
+</script>
