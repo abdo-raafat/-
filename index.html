@@ -1349,6 +1349,29 @@ html.rv-manual-fs-active #rv-overlay,
 html.rv-manual-fs-active #rv-overlay * {
   visibility: visible !important;
 }
+/* ✅ FIX (Video-only fullscreen fallback): لو الفيديو نفسه هو اللي بندخّله
+   Fullscreen (مش الـResourceViewer كله) ولم يدعم WebView الـNative Fullscreen،
+   عنصر <video> نفسه (id=rv-video-el) هو اللي بيتحول لـposition:fixed ويملأ
+   الشاشة كاملة — الهيدر/الفوتر بيفضلوا في الـDOM زي ما هما (مفيش حذف/تغيير
+   تصميم)، لكن الفيديو بيتغطى فوقهم بصريًا بفضل z-index قصوى. ده مختلف تمامًا
+   عن rv-manual-fs اللي بيوسّع الـResourceViewer كله (لسه مستخدم مع PDF/الصور/
+   iframe يوتيوب-فيميو، ولم يتغيّر). */
+.rv-overlay.rv-video-manual-fs #rv-video-el {
+  position: fixed !important;
+  inset: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  height: 100dvh !important;
+  max-width: 100vw !important;
+  max-height: 100vh !important;
+  max-height: 100dvh !important;
+  object-fit: contain !important;
+  background: #000 !important;
+  border-radius: 0 !important;
+  margin: 0 !important;
+  z-index: 2147483647 !important;
+}
+
 .rv-overlay.rv-manual-fs .rv-modal .rv-embed-frame,
 .rv-overlay.rv-manual-fs .rv-modal .rv-video {
   width: 100% !important;
@@ -3528,6 +3551,29 @@ function toValidId(value) {
   return (Number.isFinite(num) && num > 0) ? num : null;
 }
 
+// ✅ FIX (طلب: منع "جاري التحميل من قاعدة البيانات..." من الظهور عند كل تنقل
+// لو المحتوى موجود بالفعل في الكاش المحلي) — فحص سريع (بدون أي استعلام شبكة)
+// هل بيانات القسم ده (الأبناء + الموارد الطازجة + المحتوى لو قسم نهائي)
+// موجودة فعلاً في window._dataCache حالياً. لا يغيّر أي منطق تحميل/كاش موجود،
+// فقط بيقرأ نفس المفاتيح اللي loadSections/loadSectionResources/loadSectionContent
+// بتستخدمها أصلاً.
+function _secDataIsCached(id) {
+  var secKey = _cacheKey('sec', id);
+  var resKey = _cacheKey('res', id);
+  var hasSections = window._dataCache.sections[secKey] !== undefined;
+  if (!hasSections) return false;
+  var resCached = window._dataCache.resources[resKey];
+  var hasFreshResources = resCached !== undefined && resCached._fetchedAt !== undefined &&
+                           (Date.now() - resCached._fetchedAt) < _RESOURCES_CACHE_TTL_MS;
+  if (!hasFreshResources) return false;
+  var sections = window._dataCache.sections[secKey];
+  if (Array.isArray(sections) && sections.length === 0) {
+    // قسم نهائي (بدون أبناء) — لازم المحتوى يكون محفوظ بالكاش هو كمان
+    return window._dataCache.content[_cacheKey('content', id)] !== undefined;
+  }
+  return true;
+}
+
 function showLoading(containerId) {
   const el = document.getElementById(containerId);
   if (el) el.innerHTML = `<div class="loading"><div class="spinner"></div> جاري التحميل من قاعدة البيانات...</div>`;
@@ -4466,7 +4512,12 @@ async function _renderDynamicSectionPage(sec) {
     })();
   }
 
-  showLoading('dynamic-section-grid');
+  // ✅ FIX: نعرض "جاري التحميل..." فقط لو بيانات القسم مش موجودة بالفعل محليًا.
+  // لو موجودة، نسيب المحتوى الظاهر حاليًا زي ما هو لحد ما يتغيّر فعليًا —
+  // النتيجة هتيجي فورًا من الكاش على أي حال فمفيش داعي لمسح الشاشة مؤقتًا.
+  if (!_secDataIsCached(sec.id)) {
+    showLoading('dynamic-section-grid');
+  }
   // ✅ FIX (Aug 2026) — "أم المشكلة": الصفحة كانت ممكن تفضل معلّقة للأبد على
   // "جاري التحميل من قاعدة البيانات..." من غير أي رسالة خطأ ولا زر إعادة محاولة،
   // لإن سلسلة الفحوصات قبل عرض القسم (checkSectionAccess → _findSubscriptionAnchor
@@ -4476,9 +4527,10 @@ async function _renderDynamicSectionPage(sec) {
   // "معلّق". الحارس ده (نفس نمط _apWatchLoading في لوحة التحكم) بيضمن إنه مهما
   // حصل، بعد 20 ثانية تظهر رسالة واضحة + زر "إعادة المحاولة" بدل ما تفضل شاشة فاضية.
   _apWatchLoading('dynamic-section-grid', '_renderDynamicSectionPage(window.__sectionData_' + sec.id + ')', 12000);
-  // ✅ امسح الـ resources container دايما عند التحميل
+  // ✅ FIX: نفس مبدأ الكاش فوق — لا نمسح الموارد الظاهرة حاليًا لو بيانات
+  // القسم أصلاً موجودة بالكاش (هتتستبدل فورًا بنفس المحتوى أو نسخة محدّثة).
   var resourcesEl = document.getElementById('dynamic-section-resources-container');
-  if (resourcesEl) resourcesEl.innerHTML = '';
+  if (resourcesEl && !_secDataIsCached(sec.id)) resourcesEl.innerHTML = '';
 
   // عرض الصفحة فوراً ثم نحمّل البيانات
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
@@ -4489,6 +4541,12 @@ async function _renderDynamicSectionPage(sec) {
   // ── فحص اشتراك الشعبة: لو محجوبة، الفصل الأول يظل مفتوحاً وباقي الفصول تُعرض مقفولة ──
   // ✅ DEBUG FIX: هذا الاستدعاء كان خارج أي try/catch محلي — أي تعليق (hang) هنا كان
   // يجمّد الصفحة للأبد على "جاري التحميل من قاعدة البيانات..." بدون أي خطأ ظاهر.
+  // ✅ FIX (طلب: بطء استعلام الاشتراك مايأخرش ظهور المحتوى العام) — نبدأ تحميل
+  // أبناء/موارد القسم (loadSections/loadSectionResources) فورًا هنا، بالتوازي
+  // مع فحص الاشتراك، بدل ما ننتظر فحص الاشتراك يخلص الأول قبل ما نبدأ حتى في
+  // جلب المحتوى. القيمتين بيتم استخدامهم جوه try الأصلي تحت زي ما هما.
+  var _sectionsPreloadPromise = loadSections(sec.id).catch(function(e){ throw e; });
+  var _resourcesPreloadPromise = loadSectionResources(sec.id).catch(function(e){ throw e; });
   var gate = null;
   if (window.checkSectionAccess && sec && sec.id) {
     try {
@@ -4537,9 +4595,10 @@ async function _renderDynamicSectionPage(sec) {
 
   try {
     // تحميل الأبناء والموارد بالتوازي — مرة واحدة فقط (الـ cache يمنع التكرار)
+    // ✅ الطلبين دول اتبدأوا فعلاً فوق (بالتوازي مع فحص الاشتراك)، هنا بس بنستنى نتيجتهم
     const [children, sectionResources] = await Promise.all([
-      loadSections(sec.id),
-      loadSectionResources(sec.id)
+      _sectionsPreloadPromise,
+      _resourcesPreloadPromise
     ]);
 
     // عرض الموارد (مقفولة إذا كانت الشعبة محجوبة)
@@ -6462,7 +6521,6 @@ const ResourceViewer = (function() {
             style="display:none"
             id="rv-embed-iframe"
             allow="accelerometer;autoplay;clipboard-write;encrypted-media;gyroscope;picture-in-picture;fullscreen"
-            allowfullscreen
             webkitallowfullscreen
             onload="
               document.getElementById('rv-loading-indicator').style.display='none';
@@ -6683,6 +6741,7 @@ const ResourceViewer = (function() {
       if (document.fullscreenElement || document.webkitFullscreenElement) return;
       var ov = document.getElementById('rv-overlay');
       if (ov && ov.classList.contains('rv-manual-fs')) { _disableManualFullscreen(); return; }
+      if (ov && ov.classList.contains('rv-video-manual-fs')) { _disableVideoManualFullscreen(); return; }
       close();
     };
     document.addEventListener('keydown', document._rvKeyHandler);
@@ -6839,8 +6898,10 @@ const ResourceViewer = (function() {
 
     var nativeActive = !!(document.fullscreenElement || document.webkitFullscreenElement);
     var manualActive = overlay.classList.contains('rv-manual-fs');
+    var videoManualActive = overlay.classList.contains('rv-video-manual-fs');
 
     if (manualActive) { _disableManualFullscreen(); return; }
+    if (videoManualActive) { _disableVideoManualFullscreen(); return; }
     if (nativeActive) {
       try {
         var exit = document.exitFullscreen || document.webkitExitFullscreen;
@@ -6867,6 +6928,15 @@ const ResourceViewer = (function() {
     document.addEventListener('fullscreenchange', confirmNative);
     document.addEventListener('webkitfullscreenchange', confirmNative);
 
+    // ✅ الفallback الصحيح يعتمد على نوع الـtarget: لو الفيديو نفسه (target===video)،
+    // fallback الفيديو فقط هو اللي بيملأ الشاشة (rv-video-manual-fs) — مش الـ
+    // ResourceViewer كله. لأي target تاني (iframe يوتيوب/فيميو أو الـmodal) يفضل
+    // نفس السلوك القديم (rv-manual-fs) زي ما هو بالظبط.
+    var _fallbackFs = function() {
+      if (target === video) _enableVideoManualFullscreen();
+      else _enableManualFullscreen();
+    };
+
     try {
       if (video && video.webkitEnterFullscreen && !video.requestFullscreen && !video.webkitRequestFullscreen) {
         attemptedNative = true;
@@ -6877,15 +6947,15 @@ const ResourceViewer = (function() {
           attemptedNative = true;
           var result = req.call(target); // MUST stay synchronous inside the click handler
           if (result && typeof result.catch === 'function') result.catch(function(){
-            _enableManualFullscreen();
+            _fallbackFs();
           });
         } else {
-          _enableManualFullscreen();
+          _fallbackFs();
         }
       }
     } catch(e) {
       console.warn('[Fullscreen] native request failed:', e && e.message);
-      _enableManualFullscreen();
+      _fallbackFs();
     }
 
     // If native fullscreen is unavailable/no-op, switch to CSS fullscreen quickly.
@@ -6893,8 +6963,9 @@ const ResourceViewer = (function() {
     setTimeout(function(){
       cleanupConfirm();
       var stillNoNative = !document.fullscreenElement && !document.webkitFullscreenElement;
-      if (!nativeConfirmed && stillNoNative && !overlay.classList.contains('rv-manual-fs')) {
-        _enableManualFullscreen();
+      var alreadyManual = overlay.classList.contains('rv-manual-fs') || overlay.classList.contains('rv-video-manual-fs');
+      if (!nativeConfirmed && stillNoNative && !alreadyManual) {
+        _fallbackFs();
       }
     }, attemptedNative ? 250 : 0);
   }
@@ -6928,6 +6999,28 @@ const ResourceViewer = (function() {
     _onRvFsChange();
   }
 
+  // ── ملء الشاشة اليدوي الخاص بالفيديو فقط (CSS) — لما WebView ما يدعمش
+  // video.requestFullscreen()/webkitEnterFullscreen()، عنصر <video> نفسه
+  // (rv-video-el) هو اللي بيتحول لـfixed ويملأ الشاشة، مش الـResourceViewer
+  // كله. راجع كلاس CSS ".rv-overlay.rv-video-manual-fs #rv-video-el" فوق. ─
+  function _enableVideoManualFullscreen() {
+    var overlay = document.getElementById('rv-overlay');
+    var video = document.getElementById('rv-video-el');
+    if (!overlay || !video || overlay.classList.contains('rv-video-manual-fs')) return;
+    overlay.classList.add('rv-video-manual-fs');
+    // نفس ضمان الإخفاء الفعلي لباقي عناصر الصفحة خلف الفيديو (وليس مجرد
+    // تغطية بصرية) المستخدم أصلاً مع rv-manual-fs.
+    document.documentElement.classList.add('rv-manual-fs-active');
+    _onRvFsChange();
+  }
+  function _disableVideoManualFullscreen() {
+    var overlay = document.getElementById('rv-overlay');
+    document.documentElement.classList.remove('rv-manual-fs-active');
+    if (!overlay) return;
+    overlay.classList.remove('rv-video-manual-fs');
+    _onRvFsChange();
+  }
+
   // ✅ FIX (Fullscreen state sync): بيتنفّذ مع أي تغيير فعلي في وضع Fullscreen،
   // سواء حصل عن طريق زرار ⛶ بتاعنا، أو ESC، أو زرار Fullscreen اللي جوه
   // الفيديو نفسه (native controls)، أو جوه الـ iframe (يوتيوب/فيميو...)، أو
@@ -6938,7 +7031,7 @@ const ResourceViewer = (function() {
     if (!btn) return;
     var overlay = document.getElementById('rv-overlay');
     var inFs = !!(document.fullscreenElement || document.webkitFullscreenElement) ||
-               !!(overlay && overlay.classList.contains('rv-manual-fs'));
+               !!(overlay && (overlay.classList.contains('rv-manual-fs') || overlay.classList.contains('rv-video-manual-fs')));
     btn.textContent = inFs ? '✕ خروج ملء الشاشة' : '⛶';
   }
   document.addEventListener('fullscreenchange', _onRvFsChange);
@@ -6954,6 +7047,9 @@ const ResourceViewer = (function() {
     if (overlay && overlay.classList.contains('rv-manual-fs')) {
       if (e && e.preventDefault) e.preventDefault();
       _disableManualFullscreen();
+    } else if (overlay && overlay.classList.contains('rv-video-manual-fs')) {
+      if (e && e.preventDefault) e.preventDefault();
+      _disableVideoManualFullscreen();
     }
   }, false);
 
@@ -22166,6 +22262,17 @@ window.diagnose = async function() {
   window.msCloseSidebar = function() {
     var e = els();
     if (!e.sidebarEl || !e.overlayEl) return;
+    // ✅ FIX: تحذير "Blocked aria-hidden on an element because its descendant
+    // retained focus" — المتصفح بيرفض يطبّق aria-hidden="true" على القائمة
+    // لو فيه عنصر جواها (زي زر الإغلاق نفسه اللي المستخدم لسه ضاغط عليه)
+    // لسه محتفظ بالـfocus. الحل: ننقل الـfocus برّه القائمة الأول (لزر
+    // فتحها في الـquick-nav لو موجود، وإلا الـbody) قبل ما نحط aria-hidden.
+    if (e.sidebarEl.contains(document.activeElement)) {
+      if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+      var opener = document.querySelector('.qn-item[onclick="msOpenSidebar()"]');
+      if (opener && opener.focus) opener.focus();
+      else if (document.body && document.body.focus) document.body.focus();
+    }
     e.sidebarEl.classList.remove('open');
     e.overlayEl.classList.remove('open');
     e.sidebarEl.setAttribute('aria-hidden', 'true');
@@ -27882,12 +27989,15 @@ SELECT conname, pg_get_constraintdef(oid) FROM pg_constraint WHERE conname='audi
     muts.forEach(function(m){m.addedNodes&&Array.prototype.forEach.call(m.addedNodes,function(n){
       if(n.nodeType!==1)return;
       if(n.matches&&n.matches('iframe.rv-embed-frame')){
-        n.setAttribute('allowfullscreen','true');
+        /* ✅ FIX: أزلنا allowfullscreen لأن allow="...fullscreen" (الصيغة
+           الحديثة) بيغطي نفس الصلاحية، ووجودهما مع بعض كان بيطلع تحذير
+           "Allow attribute will take precedence over 'allowfullscreen'"
+           في الكونسول بدون أي تغيير فعلي في سلوك الفيديو. */
         n.setAttribute('webkitallowfullscreen','true');
         n.setAttribute('allow','accelerometer;autoplay;clipboard-write;encrypted-media;gyroscope;picture-in-picture;fullscreen');
       }
       n.querySelectorAll&&n.querySelectorAll('iframe.rv-embed-frame').forEach(function(f){
-        f.setAttribute('allowfullscreen','true');f.setAttribute('webkitallowfullscreen','true');
+        f.setAttribute('webkitallowfullscreen','true');
         f.setAttribute('allow','accelerometer;autoplay;clipboard-write;encrypted-media;gyroscope;picture-in-picture;fullscreen');
       });
     });});
