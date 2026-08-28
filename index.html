@@ -1337,6 +1337,18 @@ footer strong { color: var(--accent2); }
   overflow: hidden !important;
   -webkit-overflow-scrolling: auto !important;
 }
+/* ✅ FIX (طلب: fallback فعلي لا يكتفي بتغطية بصرية) — بعض WebViews المخصصة
+   لا تحترم position:fixed/z-index بالشكل الصحيح (خصوصًا لو فيه عناصر أخرى
+   عندها stacking context خاص بها)، فمجرد تغطية الـoverlay فوقهم بصريًا مش
+   ضمان كافٍ. هنا نُخفي باقي عناصر الصفحة فعليًا (visibility:hidden، مش مجرد
+   إخفاء بصري) طول ما وضع ملء الشاشة اليدوي شغّال، ونعيدهم فور الخروج منه. */
+html.rv-manual-fs-active body > *:not(#rv-overlay) {
+  visibility: hidden !important;
+}
+html.rv-manual-fs-active #rv-overlay,
+html.rv-manual-fs-active #rv-overlay * {
+  visibility: visible !important;
+}
 .rv-overlay.rv-manual-fs .rv-modal .rv-embed-frame,
 .rv-overlay.rv-manual-fs .rv-modal .rv-video {
   width: 100% !important;
@@ -6789,6 +6801,10 @@ const ResourceViewer = (function() {
     if (el) el.remove();
     document.body.style.overflow = '';
     document.body.classList.remove('rv-open');
+    // ✅ لو المستخدم قفل المشغل وهو لسه في وضع ملء الشاشة اليدوي (rv-manual-fs)،
+    // لازم نشيل class الإخفاء الفعلي لباقي عناصر الصفحة، وإلا الصفحة كلها تفضل
+    // مخفية (visibility:hidden) حتى بعد إغلاق المشغل.
+    document.documentElement.classList.remove('rv-manual-fs-active');
     if (document._rvKeyHandler) {
       document.removeEventListener('keydown', document._rvKeyHandler);
     }
@@ -6899,10 +6915,14 @@ const ResourceViewer = (function() {
     var overlay = document.getElementById('rv-overlay');
     if (!overlay || overlay.classList.contains('rv-manual-fs')) return;
     overlay.classList.add('rv-manual-fs');
+    // ✅ إخفاء فعلي (مش بصري فقط) لباقي عناصر الصفحة — راجع تعليق CSS
+    // "html.rv-manual-fs-active" فوق لتفاصيل السبب.
+    document.documentElement.classList.add('rv-manual-fs-active');
     _onRvFsChange();
   }
   function _disableManualFullscreen() {
     var overlay = document.getElementById('rv-overlay');
+    document.documentElement.classList.remove('rv-manual-fs-active');
     if (!overlay) return;
     overlay.classList.remove('rv-manual-fs');
     _onRvFsChange();
@@ -13040,7 +13060,7 @@ async function apLoadDivisionSubs() {
     }
     var profMap = await _apGetProfilesMap(data.map(function(r){ return r.user_id; }));
     el.innerHTML = '<div class="ap-table-wrap"><table class="ap-table"><thead><tr>'
-      + '<th>البريد</th><th>الشعبة</th><th>الحالة</th><th>الإيصال</th><th>البداية</th><th>الانتهاء</th><th>إجراء</th>'
+      + '<th>البريد</th><th>الشعبة</th><th>رقم التحويل</th><th>الحالة</th><th>الإيصال</th><th>البداية</th><th>الانتهاء</th><th>إجراء</th>'
       + '</tr></thead><tbody>'
       + data.map(function(r) {
         var secTitle = (r.site_sections && r.site_sections.title) || ('#' + r.section_id);
@@ -13063,9 +13083,17 @@ async function apLoadDivisionSubs() {
         var emailCell = prof.full_name
           ? '<div style="font-weight:600;font-size:.78rem;margin-bottom:2px;">' + _apEsc(prof.full_name) + '</div><div class="ap-email-cell" style="font-size:.72rem;">' + _apEsc(prof.email || r.user_id) + '</div>'
           : '<div class="ap-email-cell" style="font-size:.72rem;">' + _apEsc(prof.email || r.user_id) + '</div>';
+        // ✅ رقم الهاتف اللي كتبه الطالب في نموذج الاشتراك (اللي حوّل منه الفلوس فعلياً)
+        // — عمود sender_phone في نفس صف subscriptions (وليس site_sections.payment_number
+        // اللي هو رقم استقبال الكورس نفسه ومعناه مختلف تماماً). لا نعتمد إطلاقاً على
+        // أي رقم داخل صورة الإيصال نفسها.
+        var senderPhoneCell = r.sender_phone
+          ? '<span style="direction:ltr;display:inline-block;font-weight:600;">' + _apEsc(r.sender_phone) + '</span>'
+          : '<span style="color:#b0b8c1;font-size:.72rem;">— غير مُدخل</span>';
         return '<tr>'
           + '<td style="max-width:210px;">' + emailCell + '</td>'
           + '<td>' + _apEsc(secTitle) + '</td>'
+          + '<td>' + senderPhoneCell + '</td>'
           + '<td>' + _divSubStatusLabel(r) + reasonRow + '</td>'
           + '<td>' + receiptCell + '</td>'
           + '<td>' + _apDate(r.start_date) + '</td>'
@@ -13206,13 +13234,18 @@ async function apLoadPayments() {
     };
     var profMapPay = await _apGetProfilesMap(data.map(function(r){ return r.user_id; }));
     el.innerHTML = '<div class="ap-table-wrap"><table class="ap-table"><thead><tr>'
-      + '<th>البريد</th><th>الشعبة/النوع</th><th>السعر</th><th>وسيلة الدفع</th><th>الحالة</th><th>الإيصال</th><th>إجراء</th>'
+      + '<th>البريد</th><th>الشعبة/النوع</th><th>السعر</th><th>وسيلة الدفع</th><th>رقم التحويل</th><th>الحالة</th><th>الإيصال</th><th>إجراء</th>'
       + '</tr></thead><tbody>'
       + data.map(function(r) {
         var secInfo   = r.site_sections || {};
         var label     = secInfo.title || (r.subscription_type === 'yearly' ? 'اشتراك سنوي عام' : 'اشتراك شهري عام');
         var price     = secInfo.price != null ? (secInfo.price + ' ج.م') : '—';
         var method    = secInfo.payment_method || '—';
+        // ✅ الرقم اللي كتبه الطالب نفسه في نموذج الاشتراك (اللي حوّل منه)، مش أي رقم
+        // مقروء من صورة الإيصال — عمود sender_phone في نفس صف subscriptions.
+        var senderPhoneCell = r.sender_phone
+          ? '<span style="direction:ltr;display:inline-block;font-weight:600;">' + _apEsc(r.sender_phone) + '</span>'
+          : '<span style="color:#b0b8c1;font-size:.72rem;">— غير مُدخل</span>';
         var receiptCell = '<button class="ap-btn ap-btn-ghost" style="padding:5px 9px;font-size:.72rem;" onclick="apViewReceipt(\'' + _apEsc(r.receipt_image).replace(/'/g,"\'") + '\')">🧾 عرض</button>';
         var actions = '';
         var prof = profMapPay[r.user_id] || {};
@@ -13227,6 +13260,7 @@ async function apLoadPayments() {
           + '<td>' + _apEsc(label) + '</td>'
           + '<td>' + _apEsc(price) + '</td>'
           + '<td>' + _apEsc(method) + '</td>'
+          + '<td>' + senderPhoneCell + '</td>'
           + '<td>' + (statusMap[r.payment_status] || r.payment_status) + '</td>'
           + '<td>' + receiptCell + '</td>'
           + '<td style="white-space:nowrap;">' + actions + '</td></tr>';
