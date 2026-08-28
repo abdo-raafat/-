@@ -8,9 +8,9 @@
 -->
 <script>
 // GLOBAL DEBUG_MODE FIX: make the flag visible to later script blocks.
-var DEBUG_MODE = true; window.DEBUG_MODE = DEBUG_MODE;
+var DEBUG_MODE = false; window.DEBUG_MODE = DEBUG_MODE;
 (function () {
-  const DEBUG_MODE = true;
+  const DEBUG_MODE = false;
   window.__BSM_DEBUG_MODE = false;
   window.isIOSDevice = function () {
     var ua = navigator.userAgent || '';
@@ -48,13 +48,13 @@ var DEBUG_MODE = true; window.DEBUG_MODE = DEBUG_MODE;
 <script>
 (function () {
   try {
-    window.__APP_BUILD_VERSION = '2026-08-27-dm-debug-content-fullscreen-fix';
+    window.__APP_BUILD_VERSION = '2026-08-28-mobile-video-player-fix';
   } catch (e) {}
 })();
 </script>
 <meta name="google-site-verification" content="my6dMoAsuc_97Jks_OQF75GK_f1PGWqz2Kng2obkIgE" />
 <meta charset="UTF-8">
-<meta name="app-build" content="2026-08-27-dm-debug-content-fullscreen-fix-v3">
+<meta name="app-build" content="2026-08-28-mobile-video-player-fix-v1">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <!-- ==================== PWA: manifest + platform metadata ==================== -->
 <link rel="manifest" href="./manifest.json">
@@ -2837,6 +2837,86 @@ img, video {
 .bsm-group-links{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}.bsm-group-link{display:inline-flex;align-items:center;gap:5px;padding:8px 11px;border-radius:10px;text-decoration:none;font-weight:800;font-size:.78rem;background:#eef7ff;color:#0a3d62;border:1px solid #c9e1f3}
 .bsm-assistant-perms{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px}.bsm-assistant-perm{display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid #dbe7f0;border-radius:10px}
 @media(max-width:600px){.bsm-assistant-perms{grid-template-columns:1fr}.bsm-reply-bar{margin-inline:6px}}
+</style>
+
+<style id="bsm-youtube-style-video-fix">
+/* ═══════════════════════════════════════════════════════════════════
+   BSM MOBILE VIDEO PLAYER — YouTube-style UI for direct video files
+   The existing functionality remains; this only upgrades the direct MP4 UI.
+   ═══════════════════════════════════════════════════════════════════ */
+.rv-video-player{
+  position:relative;width:100%;background:#000;overflow:hidden;
+  border-radius:0;line-height:1;font-family:inherit;
+  --rv-control-bg:rgba(8,12,18,.82);
+  --rv-control-bg-soft:rgba(8,12,18,.58);
+  --rv-accent:var(--teal,#18b6a4);
+  display:flex;flex-direction:column;min-height:0;
+  -webkit-user-select:none;user-select:none;touch-action:manipulation;
+}
+.rv-video-player .rv-video{width:100%;height:auto;max-height:calc(75vh - 0px);min-height:0;object-fit:contain;background:#000;display:block;flex:1 1 auto;}
+.rv-video-player .rv-center-play{
+  position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+  width:68px;height:68px;border:0;border-radius:50%;background:rgba(0,0,0,.72);
+  color:#fff;font-size:30px;display:flex;align-items:center;justify-content:center;
+  cursor:pointer;z-index:5;box-shadow:0 5px 24px rgba(0,0,0,.4);padding:0;
+  transition:transform .16s,opacity .16s,background .16s;opacity:.95;
+}
+.rv-video-player .rv-center-play:hover{transform:translate(-50%,-50%) scale(1.05);background:rgba(0,0,0,.86)}
+.rv-video-player .rv-center-play.is-playing{opacity:0;pointer-events:none}
+.rv-video-player:hover .rv-center-play:not(.is-playing){opacity:1}
+.rv-video-controls{
+  position:absolute!important;left:0;right:0;bottom:0;z-index:6;
+  padding:0 12px 10px!important;background:linear-gradient(to top,rgba(0,0,0,.92),rgba(0,0,0,.58) 58%,transparent)!important;
+  border:0!important;display:flex!important;flex-direction:column!important;gap:6px!important;
+  opacity:0;transform:translateY(5px);pointer-events:none;transition:opacity .18s,transform .18s;
+}
+.rv-video-player.rv-controls-visible .rv-video-controls,.rv-video-player:hover .rv-video-controls,.rv-video-player:focus-within .rv-video-controls{opacity:1;transform:none;pointer-events:auto}
+.rv-youtube-progress-wrap{width:100%;padding:5px 0 2px}
+.rv-video-controls .rv-progress-bar{width:100%;height:4px;margin:0;display:block;background:rgba(255,255,255,.32);border-radius:3px;cursor:pointer;touch-action:none}
+.rv-video-controls .rv-progress-bar::-webkit-slider-thumb{width:13px;height:13px;background:var(--rv-accent);border:2px solid #fff;margin-top:-4.5px;box-shadow:0 1px 5px rgba(0,0,0,.45)}
+.rv-video-controls .rv-progress-bar::-moz-range-thumb{width:13px;height:13px;background:var(--rv-accent);border:2px solid #fff}
+.rv-youtube-controls-row{display:flex!important;align-items:center!important;gap:3px!important;flex-wrap:nowrap!important;width:100%}
+.rv-youtube-controls-row .rv-ctrl-btn{background:transparent!important;min-width:34px;width:34px;height:34px;padding:0;border-radius:50%;font-size:18px;color:#fff}
+.rv-youtube-controls-row .rv-ctrl-btn:hover,.rv-youtube-controls-row .rv-ctrl-btn:active{background:rgba(255,255,255,.16)!important}
+.rv-youtube-controls-row .rv-seek-btn{font-size:15px;line-height:1;position:relative}
+.rv-youtube-controls-row .rv-seek-btn small{font-size:8px;margin-left:0}
+.rv-time-inline{color:#fff;font-size:12px;white-space:nowrap;line-height:34px;font-variant-numeric:tabular-nums;margin:0 2px}
+.rv-youtube-spacer{flex:1;min-width:2px}
+.rv-mobile-volume{width:62px!important;height:4px!important;flex:0 0 62px}
+.rv-speed-menu{
+  position:absolute;right:10px;bottom:54px;min-width:145px;padding:8px;border-radius:10px;
+  background:rgba(16,20,27,.97);box-shadow:0 8px 30px rgba(0,0,0,.55);display:none;z-index:10;
+}
+.rv-speed-menu.open{display:flex;flex-direction:column;gap:2px}
+.rv-speed-menu-title{color:#fff;font-size:12px;font-weight:800;padding:6px 8px 8px;border-bottom:1px solid rgba(255,255,255,.12);margin-bottom:2px}
+.rv-speed-menu button{border:0;background:transparent;color:#eee;text-align:right;padding:8px 9px;border-radius:7px;font-size:12px;cursor:pointer}
+.rv-speed-menu button:hover,.rv-speed-menu button.active{background:rgba(24,182,164,.18);color:#fff}
+.rv-seek-flash{position:absolute;top:50%;transform:translateY(-50%) scale(.85);opacity:0;pointer-events:none;color:#fff;background:rgba(0,0,0,.55);border-radius:50%;width:72px;height:72px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:14px;z-index:4}
+.rv-seek-flash-left{left:18%;}.rv-seek-flash-right{right:18%}
+.rv-seek-flash.show{animation:rvSeekFlash .55s ease}
+@keyframes rvSeekFlash{0%{opacity:0;transform:translateY(-50%) scale(.75)}25%{opacity:1;transform:translateY(-50%) scale(1)}75%{opacity:1;transform:translateY(-50%) scale(1)}100%{opacity:0;transform:translateY(-50%) scale(1.08)}}
+/* Direct-video fullscreen must contain the controls too, not only the <video>. */
+.rv-overlay.rv-video-manual-fs #rv-video-player{
+  position:fixed!important;inset:0!important;width:100vw!important;height:100vh!important;height:100dvh!important;
+  max-width:none!important;max-height:none!important;z-index:2147483647!important;border-radius:0!important;
+  display:flex!important;background:#000!important;
+}
+.rv-overlay.rv-video-manual-fs #rv-video-player .rv-video{width:100%!important;height:100%!important;max-width:none!important;max-height:none!important;flex:1 1 auto!important;object-fit:contain!important}
+.rv-overlay.rv-video-manual-fs #rv-video-el{position:static!important;inset:auto!important;z-index:auto!important}
+.rv-overlay.rv-video-manual-fs #rv-video-player .rv-video-controls{bottom:0!important}
+@media(max-width:600px){
+  .rv-video-player{min-height:46vw;max-height:calc(100dvh - 120px)}
+  .rv-video-player .rv-video{max-height:calc(100dvh - 120px);height:auto;aspect-ratio:16/9}
+  .rv-video-controls{padding:0 8px 8px!important}
+  .rv-youtube-controls-row .rv-ctrl-btn{min-width:32px;width:32px;height:32px;font-size:17px}
+  .rv-time-inline{font-size:10px}
+  .rv-mobile-volume{display:none!important}
+  .rv-speed-menu{right:7px;bottom:51px;min-width:132px}
+  .rv-video-player .rv-center-play{width:58px;height:58px;font-size:26px}
+  .rv-seek-flash{width:64px;height:64px}
+}
+@media(min-width:601px){.rv-video-player{max-height:calc(75vh - 0px)}.rv-video-player .rv-video{max-height:calc(75vh - 0px)}}
+@media(prefers-reduced-motion:reduce){.rv-video-controls,.rv-center-play{transition:none}.rv-seek-flash.show{animation:none;opacity:1}}
 </style>
 </head>
 <body>
@@ -6708,44 +6788,57 @@ const ResourceViewer = (function() {
         return `<div class="rv-loading" id="rv-loading-indicator"><div class="spinner-lg"></div><p>جاري فتح الملف...</p></div>`;
 
       case 'video_direct':
-        // ✅ لا "controls" هنا عمدًا — الشريط أسفل الفيديو (.rv-video-controls)
-        // هو المتحكم الوحيد؛ ده اللي بيمنع ظهور أي native controls فوقه.
+        // ✅ Mobile-first YouTube-style player: التحكم داخل طبقة فوق الفيديو،
+        // وليس شريطًا منفصلًا أسفله. كده Fullscreen يشمل الفيديو + التحكم معًا.
         return `
-          <video
-            class="rv-video"
-            playsinline
-            webkit-playsinline
-            x5-playsinline
-            x5-video-player-type="h5"
-            x5-video-player-fullscreen="true"
-            preload="metadata"
-            id="rv-video-el"
-            controlsList="nodownload noremoteplayback"
-            disablePictureInPicture
-            disableRemotePlayback
-            oncontextmenu="return false"
-            onerror="ResourceViewer._showMediaError('video')"
-          >
-            <source src="${escUrl(url)}">
-            <p style="color:#fff;padding:20px">متصفحك لا يدعم تشغيل الفيديو.</p>
-          </video>
-          <div class="rv-media-tools rv-video-controls" data-media-tools="video">
-            <div class="rv-progress-row">
-              <span class="rv-time-cur" data-media-time-current>00:00</span>
-              <input type="range" class="rv-progress-bar" data-media-progress min="0" max="1000" value="0" step="0.1" aria-label="تقدّم الفيديو">
-              <span class="rv-time-dur" data-media-time-duration>--:--</span>
-            </div>
-            <div class="rv-controls-row">
-              <button type="button" class="rv-ctrl-btn" data-media-playpause title="تشغيل" aria-label="تشغيل">▶️</button>
-              <button type="button" class="rv-ctrl-btn" data-media-seek="-10" title="ترجيع 10 ثواني" aria-label="ترجيع 10 ثواني">↶10</button>
-              <button type="button" class="rv-ctrl-btn" data-media-seek="10" title="تقديم 10 ثواني" aria-label="تقديم 10 ثواني">10↷</button>
-              <span class="rv-speed-group" data-media-speed-group role="group" aria-label="سرعة التشغيل"><button type="button" data-media-speed-btn="0.75">0.75x</button><button type="button" data-media-speed-btn="1" class="active">1x</button><button type="button" data-media-speed-btn="1.25">1.25x</button><button type="button" data-media-speed-btn="1.5">1.5x</button><button type="button" data-media-speed-btn="2">2x</button></span>
-              <span class="rv-volume-group">
+          <div class="rv-video-player" id="rv-video-player" data-rv-video-player tabindex="0" aria-label="مشغل الفيديو">
+            <video
+              class="rv-video"
+              playsinline
+              webkit-playsinline
+              x5-playsinline
+              x5-video-player-type="h5"
+              x5-video-player-fullscreen="true"
+              preload="metadata"
+              id="rv-video-el"
+              controlsList="nodownload noremoteplayback"
+              disableRemotePlayback
+              oncontextmenu="return false"
+              onerror="ResourceViewer._showMediaError('video')"
+            >
+              <source src="${escUrl(url)}">
+              <p style="color:#fff;padding:20px">متصفحك لا يدعم تشغيل الفيديو.</p>
+            </video>
+            <button type="button" class="rv-center-play" data-media-center-play aria-label="تشغيل الفيديو">▶</button>
+            <div class="rv-media-tools rv-video-controls" data-media-tools="video">
+              <div class="rv-youtube-progress-wrap">
+                <input type="range" class="rv-progress-bar" data-media-progress min="0" max="1000" value="0" step="0.1" aria-label="تقدّم الفيديو">
+              </div>
+              <div class="rv-controls-row rv-youtube-controls-row">
+                <button type="button" class="rv-ctrl-btn" data-media-playpause title="تشغيل" aria-label="تشغيل">▶</button>
+                <button type="button" class="rv-ctrl-btn rv-seek-btn" data-media-seek="-10" title="ترجيع 10 ثواني" aria-label="ترجيع 10 ثواني">↶<small>10</small></button>
+                <button type="button" class="rv-ctrl-btn rv-seek-btn" data-media-seek="10" title="تقديم 10 ثواني" aria-label="تقديم 10 ثواني">↷<small>10</small></button>
+                <span class="rv-time-inline"><span data-media-time-current>00:00</span> / <span data-media-time-duration>--:--</span></span>
+                <span class="rv-youtube-spacer"></span>
                 <button type="button" class="rv-ctrl-btn" data-media-mute title="كتم الصوت" aria-label="كتم الصوت">🔊</button>
-                <input type="range" class="rv-volume-bar" data-media-volume min="0" max="1" step="0.05" value="1" aria-label="مستوى الصوت">
-              </span>
-              <button type="button" class="rv-ctrl-btn" data-media-fs title="ملء الشاشة" aria-label="ملء الشاشة">⛶</button>
+                <input type="range" class="rv-volume-bar rv-mobile-volume" data-media-volume min="0" max="1" step="0.05" value="1" aria-label="مستوى الصوت">
+                <button type="button" class="rv-ctrl-btn" data-media-speed-toggle title="سرعة التشغيل" aria-label="سرعة التشغيل">1x</button>
+                <button type="button" class="rv-ctrl-btn" data-media-pip title="صورة داخل صورة" aria-label="صورة داخل صورة">▣</button>
+                <button type="button" class="rv-ctrl-btn" data-media-fs title="ملء الشاشة" aria-label="ملء الشاشة">⛶</button>
+              </div>
+              <div class="rv-speed-menu" data-media-speed-menu aria-hidden="true">
+                <div class="rv-speed-menu-title">سرعة التشغيل</div>
+                <button type="button" data-media-speed-btn="0.5">0.5x</button>
+                <button type="button" data-media-speed-btn="0.75">0.75x</button>
+                <button type="button" data-media-speed-btn="1" class="active">عادي · 1x</button>
+                <button type="button" data-media-speed-btn="1.25">1.25x</button>
+                <button type="button" data-media-speed-btn="1.5">1.5x</button>
+                <button type="button" data-media-speed-btn="1.75">1.75x</button>
+                <button type="button" data-media-speed-btn="2">2x</button>
+              </div>
             </div>
+            <div class="rv-seek-flash rv-seek-flash-left" data-seek-flash-left>↶ 10</div>
+            <div class="rv-seek-flash rv-seek-flash-right" data-seek-flash-right>10 ↷</div>
           </div>`;
 
       case 'youtube':
@@ -7183,10 +7276,152 @@ const ResourceViewer = (function() {
     }
 
     if (fsBtn) {
-      fsBtn.addEventListener('click', function() {
+      fsBtn.addEventListener('click', function(e) {
+        if (e) { e.preventDefault(); e.stopPropagation(); }
         try { _toggleFullscreen(); } catch(e) {}
       });
     }
+
+    if (media.tagName === 'VIDEO') {
+      _setupYouTubeStyleVideoUX(root, media, tools);
+    }
+  }
+
+
+  // ══════════════════════════════════════════════════════════════════
+  // MOBILE VIDEO UX — YouTube-style behavior for direct MP4/WebM videos
+  // ══════════════════════════════════════════════════════════════════
+  function _setupYouTubeStyleVideoUX(root, media, tools) {
+    if (!root || !media || media.tagName !== 'VIDEO' || !tools) return;
+    var player = root.querySelector('[data-rv-video-player]');
+    if (!player || player.dataset.ytUxReady === '1') return;
+    player.dataset.ytUxReady = '1';
+
+    var centerPlay = player.querySelector('[data-media-center-play]');
+    var speedToggle = player.querySelector('[data-media-speed-toggle]');
+    var speedMenu = player.querySelector('[data-media-speed-menu]');
+    var speedBtns = player.querySelectorAll('[data-media-speed-btn]');
+    var pipBtn = player.querySelector('[data-media-pip]');
+    var hideTimer = null;
+    var lastTap = 0;
+    var tapTimer = null;
+
+    function setControlsVisible(show, force) {
+      player.classList.toggle('rv-controls-visible', !!show);
+      if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; }
+      if (show && !force && !media.paused && !speedMenu.classList.contains('open')) {
+        hideTimer = setTimeout(function(){
+          if (!speedMenu.classList.contains('open')) player.classList.remove('rv-controls-visible');
+        }, 2800);
+      }
+    }
+    function updateCenter() {
+      if (!centerPlay) return;
+      var playing = !media.paused && !media.ended;
+      centerPlay.classList.toggle('is-playing', playing);
+      centerPlay.textContent = playing ? '⏸' : '▶';
+      centerPlay.setAttribute('aria-label', playing ? 'إيقاف مؤقت' : 'تشغيل الفيديو');
+      if (!playing) setControlsVisible(true, true);
+    }
+    function updateSpeed() {
+      var rate = Number(media.playbackRate || 1);
+      if (speedToggle) speedToggle.textContent = (rate === 1 ? '1x' : String(rate).replace('.0','') + 'x');
+      speedBtns.forEach(function(b){
+        var active = Math.abs(Number(b.getAttribute('data-media-speed-btn')) - rate) < .001;
+        b.classList.toggle('active', active);
+      });
+    }
+    function closeSpeedMenu() {
+      if (!speedMenu) return;
+      speedMenu.classList.remove('open');
+      speedMenu.setAttribute('aria-hidden','true');
+      setControlsVisible(true, true);
+    }
+    function toggleSpeedMenu(e) {
+      if (e) { e.preventDefault(); e.stopPropagation(); }
+      if (!speedMenu) return;
+      var open = !speedMenu.classList.contains('open');
+      speedMenu.classList.toggle('open', open);
+      speedMenu.setAttribute('aria-hidden', open ? 'false' : 'true');
+      if (open) setControlsVisible(true, true);
+      else setControlsVisible(true, true);
+    }
+    function seekBy(delta, flashEl) {
+      if (!Number.isFinite(media.duration)) return;
+      media.currentTime = Math.max(0, Math.min(media.duration, media.currentTime + delta));
+      if (flashEl) {
+        flashEl.classList.remove('show');
+        void flashEl.offsetWidth;
+        flashEl.classList.add('show');
+        setTimeout(function(){ flashEl.classList.remove('show'); }, 550);
+      }
+    }
+
+    if (speedToggle) speedToggle.addEventListener('click', toggleSpeedMenu);
+    speedBtns.forEach(function(btn){
+      btn.addEventListener('click', function(e){
+        e.preventDefault(); e.stopPropagation();
+        var rate = Number(btn.getAttribute('data-media-speed-btn')) || 1;
+        try { media.playbackRate = rate; } catch (_) {}
+        updateSpeed();
+        closeSpeedMenu();
+      });
+    });
+    if (pipBtn) pipBtn.addEventListener('click', function(e){
+      e.preventDefault(); e.stopPropagation();
+      if (document.pictureInPictureElement && document.exitPictureInPicture) {
+        document.exitPictureInPicture().catch(function(){});
+      } else if (media.requestPictureInPicture) {
+        media.requestPictureInPicture().catch(function(){
+          if (typeof _showToast === 'function') _showToast('ℹ️ وضع صورة داخل صورة غير مدعوم على هذا الجهاز', 'info');
+        });
+      } else if (typeof _showToast === 'function') _showToast('ℹ️ وضع صورة داخل صورة غير مدعوم على هذا الجهاز', 'info');
+    });
+
+    if (centerPlay) centerPlay.addEventListener('click', function(e){ e.preventDefault(); e.stopPropagation(); togglePlay(); });
+
+    // Touch UX: tap = show/hide controls; double tap = ±10s مثل YouTube.
+    media.addEventListener('pointerup', function(e){
+      if (e.pointerType === 'mouse') return;
+      if (e.target !== media) return;
+      var now = Date.now();
+      var rect = media.getBoundingClientRect();
+      var x = e.clientX - rect.left;
+      if (now - lastTap < 320) {
+        if (tapTimer) { clearTimeout(tapTimer); tapTimer = null; }
+        if (x < rect.width / 2) seekBy(-10, player.querySelector('[data-seek-flash-left]'));
+        else seekBy(10, player.querySelector('[data-seek-flash-right]'));
+        setControlsVisible(true, false);
+      } else {
+        tapTimer = setTimeout(function(){
+          tapTimer = null;
+          setControlsVisible(!player.classList.contains('rv-controls-visible'), true);
+        }, 320);
+      }
+      lastTap = now;
+    }, { passive: true });
+
+    player.addEventListener('mousemove', function(){ setControlsVisible(true, false); }, { passive:true });
+    player.addEventListener('mouseleave', function(){
+      if (!media.paused && !speedMenu.classList.contains('open')) {
+        if (hideTimer) clearTimeout(hideTimer);
+        hideTimer = setTimeout(function(){ player.classList.remove('rv-controls-visible'); }, 1400);
+      }
+    }, { passive:true });
+    player.addEventListener('keydown', function(e){
+      if (e.target && /INPUT|BUTTON/.test(e.target.tagName)) return;
+      if (e.code === 'Space' || e.code === 'Enter') { e.preventDefault(); togglePlay(); }
+      else if (e.key === 'ArrowLeft') { e.preventDefault(); seekBy(-10, player.querySelector('[data-seek-flash-left]')); }
+      else if (e.key === 'ArrowRight') { e.preventDefault(); seekBy(10, player.querySelector('[data-seek-flash-right]')); }
+      else if (e.key === 'f' || e.key === 'F') { e.preventDefault(); _toggleFullscreen(); }
+    });
+    document.addEventListener('pointerdown', function(e){
+      if (!player.contains(e.target)) closeSpeedMenu();
+    }, { passive:true });
+    ['play','playing'].forEach(function(ev){ media.addEventListener(ev, function(){ updateCenter(); setControlsVisible(true, false); }); });
+    ['pause','ended'].forEach(function(ev){ media.addEventListener(ev, updateCenter); });
+    media.addEventListener('loadedmetadata', updateSpeed, {passive:true});
+    updateCenter(); updateSpeed(); setControlsVisible(true, true);
   }
 
   function getTypeIcon(type) {
@@ -7261,6 +7496,7 @@ const ResourceViewer = (function() {
     const overlay = document.getElementById('rv-overlay');
     const modal = document.getElementById('rv-modal');
     const video = document.getElementById('rv-video-el');
+    const videoPlayer = document.getElementById('rv-video-player');
     const iframe = document.getElementById('rv-embed-iframe');
     if (!modal || !overlay) return;
 
@@ -7281,7 +7517,7 @@ const ResourceViewer = (function() {
     // الأولوية للميديا نفسها: ده يسمح لـAndroid WebView/iOS أن يتعامل مع
     // Fullscreen الفيديو الأصلي عندما يكون الدعم متاحًا، بدل محاولة Fullscreen
     // الـmodal فقط. للـEmbed نطلب Fullscreen من الـiframe نفسه.
-    var target = video || iframe || modal;
+    var target = videoPlayer || video || iframe || modal;
     var attemptedNative = false;
     var nativeConfirmed = false;
     var confirmNative = function() {
@@ -7301,7 +7537,7 @@ const ResourceViewer = (function() {
     // ResourceViewer كله. لأي target تاني (iframe يوتيوب/فيميو أو الـmodal) يفضل
     // نفس السلوك القديم (rv-manual-fs) زي ما هو بالظبط.
     var _fallbackFs = function() {
-      if (target === video) _enableVideoManualFullscreen();
+      if (target === videoPlayer || target === video) _enableVideoManualFullscreen();
       else _enableManualFullscreen();
     };
 
@@ -9393,6 +9629,8 @@ window.checkBanStatus = async function(email) {
         <div class="ap-nav-group">
           <div class="ap-nav-group-title">الرئيسية</div>
           <button class="ap-nav-btn active" onclick="apSwitchTab('dashboard')" id="ap-tab-dashboard" role="tab">📊 <span>لوحة المعلومات</span></button>
+          <!-- BSM FIX: أدمن مساعد ظاهر مباشرة تحت لوحة المعلومات للأدمن الرئيسي فقط -->
+          <button class="ap-nav-btn platform-only-nav" onclick="apSwitchTab('courseAssistants')" id="ap-tab-courseAssistants" role="tab">🧑‍💼 <span>الأدمن المساعد</span></button>
           <button class="ap-nav-btn platform-only-nav" onclick="apSwitchTab('courseAdminPhone')" id="ap-tab-courseAdminPhone" role="tab">📱 <span>رقم أدمن / دكتور الكورس</span></button>
           <button class="ap-nav-btn" onclick="apSwitchTab('notifications')" id="ap-tab-notifications" role="tab">🔔 <span>الإشعارات</span></button>
         </div>
@@ -11463,7 +11701,7 @@ function _applyBranchAdminPanelGating() {
     // مستخدم عادي أو أدمن المنصة: أظهر كل التابات كما هي
     ['ap-tab-requests','ap-tab-usermgmt','ap-tab-users','ap-tab-messages','ap-tab-divsubs','ap-tab-content','ap-tab-dashboard',
      'ap-tab-payments','ap-tab-sectionsmgmt','ap-tab-paths','ap-tab-ads','ap-tab-monthlystats','ap-tab-sectionchat','ap-tab-auditlog','ap-tab-notifications',
-     'ap-tab-branchsettings','ap-tab-studentlevels','ap-tab-lectures','ap-tab-announcements','ap-tab-subcontent','ap-tab-courseAdminPhone','ap-tab-ownerAssistant']
+     'ap-tab-branchsettings','ap-tab-studentlevels','ap-tab-lectures','ap-tab-announcements','ap-tab-subcontent','ap-tab-courseAdminPhone','ap-tab-courseAssistants','ap-tab-ownerAssistant']
       .forEach(function(id) { var el = document.getElementById(id); if (el) el.style.display = ''; });
     // ✅ حقل رقم أدمن/دكتور الكورس داخل "🗂️ الشعب/المواد/الفصول" يظل خاصًا بلوحة
     // تحكم المنصة فقط (أدمن المنصة الحقيقي، وليس أدمن الكورس/الشعبة) — يظهر هنا.
@@ -11471,6 +11709,8 @@ function _applyBranchAdminPanelGating() {
     if (cpWrap0) { cpWrap0.style.display = 'block'; cpWrap0.classList.add('platform-only-phone'); }
     var capNav0 = document.getElementById('ap-tab-courseAdminPhone');
     if (capNav0) capNav0.style.display = '';
+    var assistantNav0 = document.getElementById('ap-tab-courseAssistants');
+    if (assistantNav0) assistantNav0.style.display = 'flex';
       var ownerNav0 = document.getElementById('ap-tab-ownerAssistant');
     if (ownerNav0) ownerNav0.style.display = 'none';
     return;
@@ -11519,6 +11759,8 @@ function _applyBranchAdminPanelGating() {
   if (psTab) psTab.style.display = 'none';
   var capNav = document.getElementById('ap-tab-courseAdminPhone');
   if (capNav) capNav.style.display = 'none';
+  var assistantNav = document.getElementById('ap-tab-courseAssistants');
+  if (assistantNav) assistantNav.style.display = 'none';
   var ownerNav = document.getElementById('ap-tab-ownerAssistant');
   if (ownerNav) ownerNav.style.display = 'none';
 
@@ -16944,13 +17186,10 @@ var NativePDFViewer = (function() {
   return { open: open, close: close };
 })();
 
-// ==================== CONTENT PROTECTION — DEBUG DISABLED ====================
+// ==================== CONTENT PROTECTION — PRODUCTION ====================
 (function () {
-  // Disabled intentionally in DEBUG mode so browser/console testing is unobstructed.
-  window.__BSM_CONTENT_PROTECTION_DISABLED = true;
-  try {
-    document.body && document.body.classList.remove('content-protected');
-  } catch (e) {}
+  // Production mode: keep the existing protection system enabled.
+  window.__BSM_CONTENT_PROTECTION_DISABLED = false;
 })();
 // ==================== الحماية تُطبَّق بعد تحديد حالة المستخدم ====================
 // _renderUserBox يضبط window._isAdminUser و document.body classes عند تسجيل الدخول
@@ -19587,8 +19826,8 @@ window.diagnose = async function() {
 
 <script>
 (function () {
-  // DEBUG: disable/unregister Service Worker to prevent stale cache during testing.
-  window.__BSM_DEBUG_SW_DISABLED = true;
+  // Production: do not disable/unregister the existing Service Worker.
+  window.__BSM_DEBUG_SW_DISABLED = false;
   window.addEventListener('load', function () {
     if (!window.__BSM_DEBUG_MODE) return;
     try {
@@ -22401,8 +22640,8 @@ window.diagnose = async function() {
     try{timeStr=new Date(m.created_at).toLocaleTimeString('ar-EG',{hour:'2-digit',minute:'2-digit'});}catch(e){}
     var ticks='';if(mine){var isRead=_dmOtherLastRead&&new Date(_dmOtherLastRead)>=new Date(m.created_at);ticks='<span class="dm2-msg-ticks '+(isRead?'read':'sent')+'">'+(isRead?'✓✓':'✓')+'</span>';}
     var atts=_dmAttMap[m.id]||[],attHtml=atts.length?atts.map(_dmAttachmentHTML).join(''):'',bubbleHtml=m.message?'<div class="chat-msg-bubble">'+_dmEsc(m.message)+'</div>':'',quoted='';
-    if(m.reply_to_message_id){var original=_dmLoadedMessages.find(function(x){return String(x.id)===String(m.reply_to_message_id);});if(original)quoted='<div class="bsm-quoted" onclick="_bsmJumpToMessage(\'dm\','+Number(original.id)+')"><div class="bsm-quoted-title">↩️ رد على رسالة</div><div class="bsm-quoted-text">'+_dmEsc(original.message||'📎 مرفق')+'</div></div>';}
-    return '<div id="bsm-dm-msg-'+Number(m.id)+'" class="chat-msg-row bsm-msg-anchor '+(mine?'mine':'theirs')+'">'+quoted+bubbleHtml+attHtml+'<div class="chat-msg-meta">'+(mine?'':'<span>'+_dmEsc(displayName)+'</span>')+'<span>'+timeStr+'</span>'+ticks+'<button type="button" class="bsm-reply-btn" onclick="_bsmSetReply(\'dm\','+Number(m.id)+')">↩️ رد</button></div></div>';
+    if(m.reply_to_message_id){var original=_dmLoadedMessages.find(function(x){return String(x.id)===String(m.reply_to_message_id);});if(original)quoted='<div class="bsm-quoted" onclick="_bsmJumpToMessage(\'dm\','+Number(original.id)+')"><div class="bsm-quoted-title">↩️ رد على رسالة خاصة</div><div class="bsm-quoted-text">'+_dmEsc(original.message||'📎 مرفق')+'</div></div>';}
+    return '<div id="bsm-dm-msg-'+Number(m.id)+'" class="chat-msg-row bsm-msg-anchor '+(mine?'mine':'theirs')+'">'+quoted+bubbleHtml+attHtml+'<div class="chat-msg-meta">'+(mine?'':'<span>'+_dmEsc(displayName)+'</span>')+'<span>'+timeStr+'</span>'+ticks+'<button type="button" class="bsm-reply-btn" title="رد على هذه الرسالة في الخاص" onclick="_bsmSetReply(\'dm\','+Number(m.id)+')">↩️ رد خاص</button></div></div>';
   }
 
   window._dmHandleKeydown = function(ev) {
@@ -28729,7 +28968,7 @@ SELECT conname, pg_get_constraintdef(oid) FROM pg_constraint WHERE conname='audi
 'use strict';
 function db(){return window.supabase}
 function esc(v){return typeof _apEsc==='function'?_apEsc(v==null?'':String(v)):String(v==null?'':v).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
-function addReplyBar(type){var input=document.getElementById(type==='dm'?'dm-chat-input':'chat-input');if(!input||document.getElementById('bsm-reply-bar-'+type))return;var bar=document.createElement('div');bar.id='bsm-reply-bar-'+type;bar.className='bsm-reply-bar';bar.innerHTML='<div class="bsm-reply-text"><div class="bsm-reply-title">↩️ رد على رسالة</div><div class="bsm-reply-preview"></div></div><button class="bsm-reply-cancel" type="button" onclick="_bsmCancelReply(\''+type+'\')">✕</button>';input.parentElement.insertBefore(bar,input)}
+function addReplyBar(type){var input=document.getElementById(type==='dm'?'dm-chat-input':'chat-input');if(!input||document.getElementById('bsm-reply-bar-'+type))return;var bar=document.createElement('div');bar.id='bsm-reply-bar-'+type;bar.className='bsm-reply-bar';bar.innerHTML='<div class="bsm-reply-text"><div class="bsm-reply-title">'+(type==='dm'?'↩️ رد خاص على رسالة':'↩️ رد على رسالة')+'</div><div class="bsm-reply-preview"></div></div><button class="bsm-reply-cancel" type="button" onclick="_bsmCancelReply(\''+type+'\')">✕</button>';input.parentElement.insertBefore(bar,input)}
 window._bsmSetReply=function(type,id){var rows=type==='dm'?(window._dmGetLoadedMessages?window._dmGetLoadedMessages():[]):(window._chatGetLoadedMessages?window._chatGetLoadedMessages():[]),msg=rows.find(function(x){return String(x.id)===String(id)});if(!msg)return;if(type==='dm'){if(window._dmSetReplyTarget)window._dmSetReplyTarget(msg)}else{if(window._chatSetReplyTarget)window._chatSetReplyTarget(msg)}addReplyBar(type);var bar=document.getElementById('bsm-reply-bar-'+type);bar.classList.add('show');bar.querySelector('.bsm-reply-preview').textContent=msg.message||'📎 مرفق';var input=document.getElementById(type==='dm'?'dm-chat-input':'chat-input');if(input)input.focus()}
 window._bsmCancelReply=function(type){if(type==='dm'){if(window._dmSetReplyTarget)window._dmSetReplyTarget(null)}else{if(window._chatSetReplyTarget)window._chatSetReplyTarget(null)}var bar=document.getElementById('bsm-reply-bar-'+type);if(bar)bar.classList.remove('show')}
 window._bsmJumpToMessage=function(type,id){var el=document.getElementById((type==='dm'?'bsm-dm-msg-':'bsm-section-msg-')+Number(id));if(el){el.scrollIntoView({behavior:'smooth',block:'center'});el.style.outline='2px solid #0a3d62';setTimeout(function(){el.style.outline=''},900)}}
@@ -28748,7 +28987,22 @@ window.bsmLoadAssistants=async function(){var list=document.getElementById('bsm-
 window.bsmEditAssistant=function(id,email,sectionId,p){document.getElementById('bsm-as-course').value=String(sectionId);document.getElementById('bsm-as-email').value=email||'';setPerms(p||{});var msg=document.getElementById('bsm-as-msg');if(msg)msg.textContent='✏️ عدّل البيانات ثم اضغط حفظ.';var b=document.getElementById('bsm-as-save');b.textContent='💾 حفظ التعديل';b.onclick=function(){bsmUpdateAssistant(id)}}
 window.bsmUpdateAssistant=async function(id){var msg=document.getElementById('bsm-as-msg'),course=Number((document.getElementById('bsm-as-course')||{}).value||0),email=((document.getElementById('bsm-as-email')||{}).value||'').trim().toLowerCase();try{var pr=await db().from('profiles').select('id').eq('email',email).maybeSingle();if(pr.error)throw pr.error;if(!pr.data)throw new Error('الحساب غير موجود.');var r=await db().from('section_admins').update({user_id:pr.data.id,section_id:course,permissions:getPerms(),is_active:true}).eq('id',id).eq('role','assistant');if(r.error)throw r.error;if(msg)msg.textContent='✅ تم الحفظ.';await bsmLoadAssistants();var b=document.getElementById('bsm-as-save');b.textContent='➕ إضافة';b.onclick=window.bsmAddAssistant}catch(e){if(msg)msg.textContent='❌ '+(e.message||'فشل الحفظ')}}
 window.bsmDeleteAssistant=async function(id){if(!confirm('هل تريد حذف الأدمن المساعد من الكورس؟'))return;try{var r=await db().from('section_admins').delete().eq('id',id).eq('role','assistant');if(r.error)throw r.error;await bsmLoadAssistants()}catch(e){if(typeof _showToast==='function')_showToast('❌ '+e.message,'error')}}
-function injectNav(){var d=document.getElementById('ap-tab-dashboard');if(!d||document.getElementById('ap-tab-courseAssistants'))return;var b=document.createElement('button');b.className='ap-nav-btn platform-only-nav';b.id='ap-tab-courseAssistants';b.setAttribute('role','tab');b.innerHTML='🧑‍💼 <span>الأدمن المساعد</span>';b.onclick=function(){apSwitchTab('courseAssistants')};d.parentNode.insertBefore(b,d.nextSibling)}
+function injectNav(){
+  var d=document.getElementById('ap-tab-dashboard');
+  var existing=document.getElementById('ap-tab-courseAssistants');
+  if(!d) return;
+  if(!existing){
+    var b=document.createElement('button');
+    b.className='ap-nav-btn platform-only-nav';
+    b.id='ap-tab-courseAssistants';
+    b.setAttribute('role','tab');
+    b.innerHTML='🧑‍💼 <span>الأدمن المساعد</span>';
+    b.onclick=function(){apSwitchTab('courseAssistants')};
+    d.parentNode.insertBefore(b,d.nextSibling);
+  }
+  existing=document.getElementById('ap-tab-courseAssistants');
+  if(existing && (window._isSuperAdmin===true || window._currentUserRole==='admin')) existing.style.display='flex';
+}
 var oldSwitch=window.apSwitchTab;if(typeof oldSwitch==='function'&&!oldSwitch.__bsmAug28){window.apSwitchTab=function(tab){if(tab==='courseAssistants'){injectNav();document.querySelectorAll('.ap-nav-btn').forEach(function(x){x.classList.remove('active')});document.getElementById('ap-tab-courseAssistants').classList.add('active');document.querySelectorAll('.ap-tab-panel').forEach(function(x){x.classList.remove('active')});ensurePanel().then(bsmLoadAssistants);return}return oldSwitch.apply(this,arguments)};window.apSwitchTab.__bsmAug28=true}
 setTimeout(injectNav,900)
 
