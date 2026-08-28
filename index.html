@@ -3575,8 +3575,12 @@ function _secDataIsCached(id) {
 }
 
 function showLoading(containerId) {
-  const el = document.getElementById(containerId);
-  if (el) el.innerHTML = `<div class="loading"><div class="spinner"></div> جاري التحميل من قاعدة البيانات...</div>`;
+  // ✅ FIX (طلب: إلغاء شاشة "جاري التحميل من قاعدة البيانات..." نهائيًا عند
+  // تنقل الطالب بين الأقسام/المواد/الشابترز) — لا نعرض أي رسالة تحميل بعد
+  // الآن. نسيب المحتوى الحالي في مكانه (أو فاضي) لحد ما البيانات توصل فعليًا
+  // وتستبدله _renderDynamicSectionPage نفسها. باقي منطق التحميل/الكاش/الصلاحيات
+  // لم يتغيّر إطلاقًا — فقط هذه الطبقة البصرية (Spinner + الرسالة) أُلغيت.
+  return;
 }
 
 function showError(containerId, msg) {
@@ -6707,6 +6711,7 @@ const ResourceViewer = (function() {
           <span class="rv-title">${escHtml(title || url)}</span>
           <span class="rv-type-badge">${typeBadge(type)}</span>
           <button class="rv-close" onclick="ResourceViewer._toggleFullscreen()" title="ملء الشاشة" id="rv-fs-btn">⛶</button>
+          ${(type === 'video_direct' || type === 'youtube' || type === 'vimeo' || type === 'dailymotion' || type === 'fembed') ? `<button class="rv-close" onclick="ResourceViewer._toggleLandscape()" title="عرضي (أفقي)" id="rv-landscape-btn">⛶ عرضي</button>` : ''}
           <button class="rv-close" onclick="ResourceViewer.close()" title="إغلاق">✕</button>
         </div>
         <div class="rv-body" id="rv-body">
@@ -6970,6 +6975,108 @@ const ResourceViewer = (function() {
     }, attemptedNative ? 250 : 0);
   }
 
+  // ✅ FIX (طلب: زر "⛶ عرضي" — Landscape) — يحاول ملء الشاشة ثم يقفل الاتجاه
+  // على landscape عبر Screen Orientation API لو مدعوم. لا يغيّر أي من منطق
+  // _toggleFullscreen الأصلي أعلاه (لسه شغال زي ما هو)؛ ده زرار/دالة إضافية
+  // منفصلة تمامًا. طلب الـfullscreen نفسه بيتنفّذ Sync جوه الـclick handler
+  // (زي ما الكونسول بيطلب)، وقفل الاتجاه بيتم بعده مباشرة في الـ.then() —
+  // مش عبر setTimeout ولا انتظار غير مرتبط بالحدث.
+  var _rvLandscapeLockActive = false;
+
+  function _rvLockLandscapeOrientation() {
+    try {
+      if (window.screen && screen.orientation && screen.orientation.lock) {
+        _rvLandscapeLockActive = true;
+        screen.orientation.lock('landscape').catch(function(err) {
+          _rvLandscapeLockActive = false;
+          console.warn('[Landscape] screen.orientation.lock غير مدعوم أو رُفض:', err && err.message);
+        });
+      }
+    } catch (e) {
+      console.warn('[Landscape] orientation lock error:', e && e.message);
+    }
+  }
+
+  function _rvUnlockOrientationIfNeeded() {
+    if (!_rvLandscapeLockActive) return;
+    _rvLandscapeLockActive = false;
+    try {
+      if (window.screen && screen.orientation && screen.orientation.unlock) screen.orientation.unlock();
+    } catch (e) {
+      console.warn('[Landscape] orientation unlock error:', e && e.message);
+    }
+  }
+
+  function _toggleLandscape() {
+    const overlay = document.getElementById('rv-overlay');
+    const modal = document.getElementById('rv-modal');
+    const video = document.getElementById('rv-video-el');
+    const iframe = document.getElementById('rv-embed-iframe');
+    if (!modal || !overlay) return;
+
+    var nativeActive = !!(document.fullscreenElement || document.webkitFullscreenElement);
+    var manualActive = overlay.classList.contains('rv-manual-fs');
+    var videoManualActive = overlay.classList.contains('rv-video-manual-fs');
+
+    // لو أصلاً في وضع ملء الشاشة (بأي طريقة)، الضغط على "عرضي" يخرج منه.
+    if (manualActive) { _disableManualFullscreen(); _rvUnlockOrientationIfNeeded(); return; }
+    if (videoManualActive) { _disableVideoManualFullscreen(); _rvUnlockOrientationIfNeeded(); return; }
+    if (nativeActive) {
+      try {
+        var exit = document.exitFullscreen || document.webkitExitFullscreen;
+        if (exit) Promise.resolve(exit.call(document)).catch(function(err){ console.warn('[Landscape]', err && err.message); });
+      } catch (e) { console.warn('[Landscape]', e && e.message); }
+      return; // الخروج نفسه هيسيب unlock للـ 'fullscreenchange' listener تحت
+    }
+
+    // الأولوية لملء شاشة الفيديو نفسه، وإلا الـiframe (Embed خارجي زي Fembed)، وإلا الـmodal.
+    var target = video || iframe || modal;
+
+    try {
+      if (video && video.webkitEnterFullscreen && !video.requestFullscreen && !video.webkitRequestFullscreen) {
+        // مشغل iOS الأصلي: لا يدعم screen.orientation.lock من الجافاسكريبت.
+        video.webkitEnterFullscreen();
+      } else {
+        var req = target && (target.requestFullscreen || target.webkitRequestFullscreen);
+        if (req) {
+          // ✅ لازم يتنادى Sync هنا (جوه click handler) عشان الميزة تشتغل —
+          // "API can only be initiated by a user gesture".
+          var result = req.call(target);
+          if (result && typeof result.then === 'function') {
+            result.then(_rvLockLandscapeOrientation).catch(function(err) {
+              console.warn('[Landscape] fullscreen request فشل، تفعيل fallback CSS:', err && err.message);
+              if (target === video) _enableVideoManualFullscreen(); else _enableManualFullscreen();
+              _rvLockLandscapeOrientation();
+            });
+          } else {
+            // بعض المتصفحات القديمة (Safari webkit) لا ترجع Promise.
+            _rvLockLandscapeOrientation();
+          }
+        } else {
+          // لا يوجد Fullscreen API أصلاً — fallback CSS يدوي (نفس آلية ⛶ العادي).
+          if (target === video) _enableVideoManualFullscreen(); else _enableManualFullscreen();
+          _rvLockLandscapeOrientation();
+        }
+      }
+    } catch (e) {
+      console.warn('[Landscape] request failed:', e && e.message);
+      if (target === video) _enableVideoManualFullscreen(); else _enableManualFullscreen();
+      _rvLockLandscapeOrientation();
+    }
+  }
+
+  function _onRvLandscapeBtnChange() {
+    var btn = document.getElementById('rv-landscape-btn');
+    if (!btn) return;
+    var overlay = document.getElementById('rv-overlay');
+    var inFs = !!(document.fullscreenElement || document.webkitFullscreenElement) ||
+               !!(overlay && (overlay.classList.contains('rv-manual-fs') || overlay.classList.contains('rv-video-manual-fs')));
+    if (!inFs) _rvUnlockOrientationIfNeeded();
+    btn.textContent = inFs ? '✕ خروج' : '⛶ عرضي';
+  }
+  document.addEventListener('fullscreenchange', _onRvLandscapeBtnChange);
+  document.addEventListener('webkitfullscreenchange', _onRvLandscapeBtnChange);
+
   function _rvFallbackVideoFullscreen() {
     var video = document.getElementById('rv-video-el');
     if (!video) return;
@@ -6994,6 +7101,7 @@ const ResourceViewer = (function() {
   function _disableManualFullscreen() {
     var overlay = document.getElementById('rv-overlay');
     document.documentElement.classList.remove('rv-manual-fs-active');
+    _rvUnlockOrientationIfNeeded(); // ✅ FIX: يرجّع الاتجاه لو كان مقفول بزر "عرضي"
     if (!overlay) return;
     overlay.classList.remove('rv-manual-fs');
     _onRvFsChange();
@@ -7016,6 +7124,7 @@ const ResourceViewer = (function() {
   function _disableVideoManualFullscreen() {
     var overlay = document.getElementById('rv-overlay');
     document.documentElement.classList.remove('rv-manual-fs-active');
+    _rvUnlockOrientationIfNeeded(); // ✅ FIX: يرجّع الاتجاه لو كان مقفول بزر "عرضي"
     if (!overlay) return;
     overlay.classList.remove('rv-video-manual-fs');
     _onRvFsChange();
@@ -7098,7 +7207,7 @@ const ResourceViewer = (function() {
       </div>`;
   }
 
-  return { open, close, detectType, _reload, _showExternalFallback, _showMediaError, _toggleFullscreen };
+  return { open, close, detectType, _reload, _showExternalFallback, _showMediaError, _toggleFullscreen, _toggleLandscape };
 })();
 // FIX: const لا تُضاف تلقائياً إلى window في classic script؛ أزرار HTML وتهيئة الموبايل
 // تعتمد على ResourceViewer كـ global، لذلك نكشف نفس الكائن بدون إنشاء نسخة ثانية.
@@ -27962,16 +28071,30 @@ SELECT conname, pg_get_constraintdef(oid) FROM pg_constraint WHERE conname='audi
       return false;
     };
   }
+  /* ✅ FIX (زر "⛶ عرضي"): نفس آلية التحصين ضد ازدواج touchend/click على أندرويد،
+     لكن لزر الـLandscape الجديد. لا تغيّر أي من منطق زر الـfullscreen العادي فوق. */
+  function _bsmBindLandscapeButton(){
+    var btn=document.getElementById('rv-landscape-btn');
+    if(!btn||btn.__bsmLsBound)return;
+    btn.__bsmLsBound=true;
+    btn.onclick=function(e){
+      if(e){e.preventDefault();e.stopPropagation();}
+      try{ ResourceViewer._toggleLandscape(); }catch(err){console.warn('[Landscape]',err); }
+      return false;
+    };
+  }
   function _bsmInstallFsObserver(){
     var root=document.getElementById('rv-overlay');
     if(!root||root.__bsmFsObserved)return;
     root.__bsmFsObserved=true;
     _bsmBindFullscreenButton();
-    var mo=new MutationObserver(function(){_bsmBindFullscreenButton();});
+    _bsmBindLandscapeButton();
+    var mo=new MutationObserver(function(){_bsmBindFullscreenButton();_bsmBindLandscapeButton();});
     mo.observe(root,{childList:true,subtree:true});
   }
   document.addEventListener('click',function(e){
     if(e.target&&e.target.id==='rv-fs-btn') setTimeout(_bsmBindFullscreenButton,0);
+    if(e.target&&e.target.id==='rv-landscape-btn') setTimeout(_bsmBindLandscapeButton,0);
   },true);
   var _rvOpen=window.ResourceViewer&&window.ResourceViewer.open;
   if(_rvOpen&&!window.__BSM_RV_OPEN_PATCH){
