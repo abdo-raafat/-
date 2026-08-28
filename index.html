@@ -8,9 +8,9 @@
 -->
 <script>
 // GLOBAL DEBUG_MODE FIX: make the flag visible to later script blocks.
-var DEBUG_MODE = true; window.DEBUG_MODE = DEBUG_MODE;
+var DEBUG_MODE = false; window.DEBUG_MODE = DEBUG_MODE;
 (function () {
-  const DEBUG_MODE = true;
+  const DEBUG_MODE = false;
   window.__BSM_DEBUG_MODE = false;
   window.isIOSDevice = function () {
     var ua = navigator.userAgent || '';
@@ -16915,9 +16915,10 @@ var NativePDFViewer = (function() {
   return { open: open, close: close };
 })();
 
-// ==================== CONTENT PROTECTION — DEBUG DISABLED ====================
+// ==================== CONTENT PROTECTION — DEBUG ONLY ====================
 (function () {
-  // Disabled intentionally in DEBUG mode so browser/console testing is unobstructed.
+  // تعطيل الحماية هذا المسار لا يعمل إلا عند DEBUG_MODE=true.
+  if (!DEBUG_MODE) return;
   window.__BSM_CONTENT_PROTECTION_DISABLED = true;
   try {
     document.body && document.body.classList.remove('content-protected');
