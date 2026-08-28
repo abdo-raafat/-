@@ -1372,6 +1372,57 @@ html.rv-manual-fs-active #rv-overlay * {
   z-index: 2147483647 !important;
 }
 
+/* ✅ FIX (طلب: fallback حقيقي لـFembed تحديدًا) — لما JWPlayer/Fembed نفسه
+   يرفض الـFullscreen بسبب Permissions Policy جوه WebView (خصوصًا التطبيقات
+   المخصصة اللي معندهاش WebChromeClient.onShowCustomView)، iframe.requestFullscreen()
+   بيفشل بغض النظر عن أي allow attribute. الحل هنا مختلف عن rv-manual-fs
+   العام (اللي بيسيب 120px للهيدر/الفوتر): iframe الـFembed نفسه (id
+   rv-embed-iframe مع data-fembed-embed="1") بيتمدد Edge-to-Edge حرفيًا على
+   كامل الشاشة، والهيدر (فيه زرار "عرضي"/"✕") بيفضل عايم فوقه بخلفية شفافة
+   شوية عشان يفضل الخروج ممكن دايمًا، والفوتر بيتخفي. ده Class منفصل تمامًا
+   (rv-fembed-fill) عن rv-manual-fs، فمفيش أي تأثير على أي نوع مصدر تاني
+   (فيديو HTML5 / يوتيوب / فيميو / PDF / صور). */
+.rv-overlay.rv-fembed-fill .rv-modal {
+  max-width: 100vw !important;
+  max-height: 100vh !important;
+  max-height: 100dvh !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  height: 100dvh !important;
+  border-radius: 0 !important;
+  padding: 0 !important;
+}
+.rv-overlay.rv-fembed-fill .rv-modal .rv-header {
+  position: fixed !important;
+  top: 0 !important; left: 0 !important; right: 0 !important;
+  background: rgba(0,0,0,.55) !important;
+  z-index: 2147483647 !important;
+}
+.rv-overlay.rv-fembed-fill .rv-modal .rv-footer {
+  display: none !important;
+}
+.rv-overlay.rv-fembed-fill .rv-modal .rv-body {
+  padding: 0 !important;
+  margin: 0 !important;
+  min-height: 0 !important;
+  height: auto !important;
+  overflow: hidden !important;
+}
+.rv-overlay.rv-fembed-fill .rv-modal iframe[data-fembed-embed="1"] {
+  position: fixed !important;
+  inset: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  height: 100dvh !important;
+  max-width: 100vw !important;
+  max-height: 100vh !important;
+  max-height: 100dvh !important;
+  margin: 0 !important;
+  border: 0 !important;
+  z-index: 2147483646 !important;
+  background: #000 !important;
+}
+
 .rv-overlay.rv-manual-fs .rv-modal .rv-embed-frame,
 .rv-overlay.rv-manual-fs .rv-modal .rv-video {
   width: 100% !important;
@@ -6524,6 +6575,7 @@ const ResourceViewer = (function() {
             src="${escUrl(embedUrl)}"
             style="display:none"
             id="rv-embed-iframe"
+            ${type === 'fembed' ? 'data-fembed-embed="1"' : ''}
             allow="accelerometer;autoplay;clipboard-write;encrypted-media;gyroscope;picture-in-picture;fullscreen"
             webkitallowfullscreen
             onload="
@@ -6745,6 +6797,7 @@ const ResourceViewer = (function() {
       if (e.key !== 'Escape') return;
       if (document.fullscreenElement || document.webkitFullscreenElement) return;
       var ov = document.getElementById('rv-overlay');
+      if (ov && ov.classList.contains('rv-fembed-fill')) { _disableFembedFillFallback(); return; }
       if (ov && ov.classList.contains('rv-manual-fs')) { _disableManualFullscreen(); return; }
       if (ov && ov.classList.contains('rv-video-manual-fs')) { _disableVideoManualFullscreen(); return; }
       close();
@@ -6869,6 +6922,7 @@ const ResourceViewer = (function() {
     // لازم نشيل class الإخفاء الفعلي لباقي عناصر الصفحة، وإلا الصفحة كلها تفضل
     // مخفية (visibility:hidden) حتى بعد إغلاق المشغل.
     document.documentElement.classList.remove('rv-manual-fs-active');
+    _rvUnlockOrientationIfNeeded(); // ✅ FIX: تنضيف لو المستخدم قفل المشغل وهو لسه قافل orientation
     if (document._rvKeyHandler) {
       document.removeEventListener('keydown', document._rvKeyHandler);
     }
@@ -7007,6 +7061,20 @@ const ResourceViewer = (function() {
     }
   }
 
+  function _enableFembedFillFallback() {
+    var overlay = document.getElementById('rv-overlay');
+    if (!overlay || overlay.classList.contains('rv-fembed-fill')) return;
+    overlay.classList.add('rv-fembed-fill');
+    document.documentElement.classList.add('rv-manual-fs-active');
+  }
+  function _disableFembedFillFallback() {
+    var overlay = document.getElementById('rv-overlay');
+    document.documentElement.classList.remove('rv-manual-fs-active');
+    _rvUnlockOrientationIfNeeded();
+    if (!overlay) return;
+    overlay.classList.remove('rv-fembed-fill');
+  }
+
   function _toggleLandscape() {
     const overlay = document.getElementById('rv-overlay');
     const modal = document.getElementById('rv-modal');
@@ -7014,11 +7082,14 @@ const ResourceViewer = (function() {
     const iframe = document.getElementById('rv-embed-iframe');
     if (!modal || !overlay) return;
 
+    var isFembed = !!(iframe && iframe.dataset && iframe.dataset.fembedEmbed === '1');
     var nativeActive = !!(document.fullscreenElement || document.webkitFullscreenElement);
     var manualActive = overlay.classList.contains('rv-manual-fs');
     var videoManualActive = overlay.classList.contains('rv-video-manual-fs');
+    var fembedFillActive = overlay.classList.contains('rv-fembed-fill');
 
     // لو أصلاً في وضع ملء الشاشة (بأي طريقة)، الضغط على "عرضي" يخرج منه.
+    if (fembedFillActive) { _disableFembedFillFallback(); return; }
     if (manualActive) { _disableManualFullscreen(); _rvUnlockOrientationIfNeeded(); return; }
     if (videoManualActive) { _disableVideoManualFullscreen(); _rvUnlockOrientationIfNeeded(); return; }
     if (nativeActive) {
@@ -7029,7 +7100,41 @@ const ResourceViewer = (function() {
       return; // الخروج نفسه هيسيب unlock للـ 'fullscreenchange' listener تحت
     }
 
-    // الأولوية لملء شاشة الفيديو نفسه، وإلا الـiframe (Embed خارجي زي Fembed)، وإلا الـmodal.
+    // ✅ Fembed تحديدًا: زرار "عرضي" هو المتحكم الأساسي والوحيد من عندنا في
+    // الـFullscreen، وبيطلبه على iframe نفسه مباشرة (مش على أي عنصر جوه
+    // مستند JWPlayer، ده أصلًا مش متاح لنا لأنه Cross-Origin). لو الطلب
+    // اتمنع (Permissions Policy جوه WebView غالبًا)، الـfallback الحقيقي
+    // (rv-fembed-fill) بيخلي iframe نفسه يملأ الشاشة كاملة فورًا — لا يوجد
+    // أي setTimeout هنا قبل محاولة الـFullscreen نفسها.
+    if (isFembed) {
+      try {
+        var reqF = iframe.requestFullscreen || iframe.webkitRequestFullscreen;
+        if (reqF) {
+          var resultF = reqF.call(iframe); // Sync، جوه الـclick handler مباشرة
+          if (resultF && typeof resultF.then === 'function') {
+            resultF.then(_rvLockLandscapeOrientation).catch(function(err) {
+              console.warn('[Landscape][Fembed] iframe.requestFullscreen رفضته Permissions Policy:', err && err.message);
+              _enableFembedFillFallback();
+            });
+          } else {
+            // متصفح/WebView قديم من غير Promise — نفترض النجاح ونحاول القفل.
+            _rvLockLandscapeOrientation();
+          }
+        } else {
+          // لا يوجد Fullscreen API على iframe أصلًا في هذا الـWebView.
+          _enableFembedFillFallback();
+        }
+      } catch (e) {
+        // ده بالظبط حالة "TypeError: Disallowed by permissions policy" لو
+        // اتحققت Sync بدل ما تترفض جوه Promise.
+        console.warn('[Landscape][Fembed] iframe.requestFullscreen رمى استثناء:', e && e.message);
+        _enableFembedFillFallback();
+      }
+      return;
+    }
+
+    // باقي الأنواع (فيديو HTML5، يوتيوب/فيميو/دايلي موشن، إلخ) — بدون أي
+    // تغيير عن السلوك الأصلي.
     var target = video || iframe || modal;
 
     try {
@@ -7070,7 +7175,7 @@ const ResourceViewer = (function() {
     if (!btn) return;
     var overlay = document.getElementById('rv-overlay');
     var inFs = !!(document.fullscreenElement || document.webkitFullscreenElement) ||
-               !!(overlay && (overlay.classList.contains('rv-manual-fs') || overlay.classList.contains('rv-video-manual-fs')));
+               !!(overlay && (overlay.classList.contains('rv-manual-fs') || overlay.classList.contains('rv-video-manual-fs') || overlay.classList.contains('rv-fembed-fill')));
     if (!inFs) _rvUnlockOrientationIfNeeded();
     btn.textContent = inFs ? '✕ خروج' : '⛶ عرضي';
   }
