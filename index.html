@@ -37,45 +37,11 @@ var DEBUG_MODE = false; window.DEBUG_MODE = DEBUG_MODE;
   // تطبيق رسمي = تطبيق أندرويد أو iOS مثبّت كـ Standalone PWA.
   window.isOfficialApp = function () {
     try {
-      // Android: allow the existing official WebView identification.
-      if (_isAndroidAppEarly()) return true;
-
-      // iOS: allow only an installed standalone PWA.
-      if (window.isIOSDevice() && window.isIOSStandalone()) return true;
-
-      // Desktop browsers / desktop-installed PWAs are not official app clients.
-      return false;
+      return _isAndroidAppEarly() || (window.isIOSDevice() && window.isIOSStandalone());
     } catch (e) { return false; }
   };
   window.__bsmGateBlocked = !DEBUG_MODE && !window.isOfficialApp();
   try { document.documentElement.style.visibility = 'visible'; } catch (e) {}
-})();
-</script>
-<!-- BSM DESKTOP APP GATE HARDENING: existing App Gate only; no DB/Auth/RLS changes -->
-<script>
-(function () {
-  'use strict';
-  function enforceOfficialClientGate() {
-    try {
-      if (window.__BSM_DEBUG_MODE === true) return;
-      if (typeof window.isOfficialApp !== 'function') return;
-      var gate = document.getElementById('bsm-app-gate');
-      if (!gate) return;
-      if (window.isOfficialApp()) {
-        gate.style.display = 'none';
-        return;
-      }
-      gate.style.display = 'flex';
-      document.documentElement.style.overflow = 'hidden';
-      if (document.body) document.body.style.overflow = 'hidden';
-    } catch (e) {}
-  }
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', enforceOfficialClientGate);
-  } else {
-    enforceOfficialClientGate();
-  }
-  window.addEventListener('pageshow', enforceOfficialClientGate);
 })();
 </script>
 <!-- CACHE UPDATE GUARD: 2026-08-21-v3 -->
