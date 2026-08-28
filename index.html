@@ -1215,6 +1215,83 @@ footer strong { color: var(--accent2); }
   width: 100%; max-height: 75vh; display: block;
   background: #000; outline: none;
 }
+
+/* ===== Custom video controls (بديل الـnative controls) =====
+   شريط تحكم كامل تحت الفيديو مباشرة: Progress bar قابل للسحب، Play/Pause،
+   الوقت الحالي/المدة، تقديم/ترجيع 10ث، السرعة، Volume/Mute، Fullscreen.
+   لا يعتمد على أي native controls — الفيديو نفسه بدون attribute "controls". */
+.rv-video-controls {
+  background: #10161f;
+  padding: 8px 10px 10px;
+  display: flex; flex-direction: column; gap: 6px;
+  border-top: 1px solid rgba(255,255,255,.08);
+  direction: ltr; /* عناصر التحكم (وقت/سلايدر) أوضح LTR حتى داخل موقع RTL */
+}
+.rv-progress-row {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+}
+.rv-time-cur, .rv-time-dur {
+  color: #cfe3f5; font-size: .72rem; font-variant-numeric: tabular-nums;
+  min-width: 40px; text-align: center; flex-shrink: 0; user-select: none;
+}
+.rv-progress-bar {
+  flex: 1; min-width: 0; -webkit-appearance: none; appearance: none;
+  height: 6px; border-radius: 4px; background: rgba(255,255,255,.22);
+  outline: none; cursor: pointer; margin: 0; touch-action: pan-x;
+}
+.rv-progress-bar::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 16px; height: 16px; border-radius: 50%;
+  background: var(--teal, #17b6a4); border: 2px solid #fff; cursor: pointer;
+  box-shadow: 0 1px 4px rgba(0,0,0,.4); margin-top: -5px;
+}
+.rv-progress-bar::-moz-range-thumb {
+  width: 16px; height: 16px; border-radius: 50%;
+  background: var(--teal, #17b6a4); border: 2px solid #fff; cursor: pointer;
+}
+.rv-progress-bar::-moz-range-track { height: 6px; border-radius: 4px; background: rgba(255,255,255,.22); }
+.rv-controls-row {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+}
+.rv-ctrl-btn {
+  background: rgba(255,255,255,.1); border: none; color: #fff;
+  min-width: 38px; height: 38px; padding: 0 8px; border-radius: 9px;
+  font-size: .95rem; font-weight: 700;
+  display: inline-flex; align-items: center; justify-content: center;
+  cursor: pointer; transition: background .15s; flex-shrink: 0;
+}
+.rv-ctrl-btn:hover, .rv-ctrl-btn:active { background: rgba(255,255,255,.24); }
+.rv-speed-group {
+  display: inline-flex; gap: 4px; flex-wrap: wrap; margin: 0 2px;
+}
+.rv-speed-group button {
+  background: rgba(255,255,255,.08); border: none; color: #cfe3f5;
+  font-size: .68rem; font-weight: 700; padding: 0 7px; height: 32px;
+  border-radius: 7px; cursor: pointer; min-width: 36px;
+}
+.rv-speed-group button.active { background: var(--teal, #17b6a4); color: #06231f; }
+.rv-volume-group {
+  display: inline-flex; align-items: center; gap: 6px; margin-inline-start: auto;
+}
+.rv-volume-bar {
+  -webkit-appearance: none; appearance: none;
+  width: 72px; height: 5px; border-radius: 4px;
+  background: rgba(255,255,255,.22); outline: none; cursor: pointer; touch-action: pan-x;
+}
+.rv-volume-bar::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 13px; height: 13px; border-radius: 50%;
+  background: #fff; cursor: pointer; margin-top: -4px;
+}
+.rv-volume-bar::-moz-range-thumb { width: 13px; height: 13px; border-radius: 50%; background: #fff; cursor: pointer; }
+.rv-volume-bar::-moz-range-track { height: 5px; border-radius: 4px; background: rgba(255,255,255,.22); }
+@media (max-width: 420px) {
+  .rv-volume-bar { width: 46px; }
+  .rv-speed-group button { padding: 0 5px; font-size: .62rem; min-width: 30px; }
+  .rv-ctrl-btn { min-width: 34px; height: 34px; font-size: .85rem; }
+}
+/* أزرار كبيرة وواضحة وقابلة للضغط بسهولة على اللمس دايمًا (Portrait/Landscape) */
+.rv-video-controls button { touch-action: manipulation; }
+
 /* YouTube / embed iframe */
 .rv-embed-frame {
   width: 100%; height: 75vh; border: none; display: block;
@@ -1451,30 +1528,49 @@ html.rv-manual-fs-active #rv-overlay * {
   flex: 1 1 auto !important;
   min-height: 0 !important;
   width: 100% !important;
-  display: flex !important;
-  align-items: center !important;
-  justify-content: center !important;
+  /* ✅ FIX (باگ "الفيديو مرفوع لفوق ومقصوص"): كانت .rv-body هنا display:flex
+     بدون flex-direction، يعني flex-direction الافتراضي row — فالفيديو
+     وشريط الأدوات (.rv-media-tools) كانوا بيتحطوا جنب بعض أفقيًا بدل ما
+     يترصّوا فوق بعض عموديًا، فكان الفيديو بيتزنق في ركن وجزء منه بيخرج
+     برّه الشاشة. الحل: نخلي .rv-body block عادي (زي بالظبط سلوكها في
+     الوضع الطولي العادي — مفيش display:flex أصلاً هناك) فالعناصر جواها
+     (الفيديو ثم شريط الأدوات) تترصّ عموديًا فوق بعض بشكل طبيعي 100%،
+     ومفيش أي احتياج لإعادة هيكلة الـHTML خالص. */
+  display: block !important;
   padding: 0 !important;
   overflow: hidden !important;
   position: relative !important;
+  text-align: center !important;
 }
 .rv-overlay.rv-landscape-visual .rv-modal .rv-video,
 .rv-overlay.rv-landscape-visual .rv-modal #rv-video-el,
 .rv-overlay.rv-landscape-visual .rv-modal iframe[data-fembed-embed="1"],
 .rv-overlay.rv-landscape-visual .rv-modal .rv-embed-frame,
 .rv-overlay.rv-landscape-visual .rv-modal iframe {
+  display: block !important;
   position: static !important;
   inset: auto !important;
   max-width: none !important;
   max-height: none !important;
   flex: none !important;
-  margin: 0 !important;
+  margin: 0 auto !important;
   border: 0 !important;
   object-fit: contain !important;
   transform-origin: center center !important;
   /* width / height / transform (rotate 90deg لو الviewport طولي) بتتحدد
      inline بواسطة JS (_rvApplyLandscapeMetrics) حسب المساحة المتاحة فعليًا
-     تحت الهيدر — العنصر ده لوحده هو اللي بيتلف بصريًا، مش الهيدر ولا زر X. */
+     تحت الهيدر وفوق شريط الأدوات (.rv-media-tools) — العنصر ده لوحده هو
+     اللي بيتلف بصريًا، مش الهيدر ولا شريط الأدوات ولا زر X. margin:0 auto
+     بيتوسّط العنصر أفقيًا لو عرضه (بعد الدوران) أقل شويّة من عرض .rv-body
+     الفعلي (فروق تقريب بسيطة). */
+}
+/* ✅ شريط أدوات الفيديو (تقديم/ترجيع 10ث + السرعة) — يفضل عنصر عادي غير
+   ملفوف تحت الفيديو مباشرة (ترتيبه في الـDOM أصلاً بعد الفيديو)، وواضح
+   وقابل للضغط دايمًا فوق خلفية غامقة، بعيد تمامًا عن أي transform. */
+.rv-overlay.rv-landscape-visual .rv-modal .rv-media-tools {
+  position: relative !important;
+  transform: none !important;
+  margin: 8px auto 6px !important;
 }
 
 /* Zoom للصور: pinch على الهاتف */
@@ -6597,10 +6693,11 @@ const ResourceViewer = (function() {
         return `<div class="rv-loading" id="rv-loading-indicator"><div class="spinner-lg"></div><p>جاري فتح الملف...</p></div>`;
 
       case 'video_direct':
+        // ✅ لا "controls" هنا عمدًا — الشريط أسفل الفيديو (.rv-video-controls)
+        // هو المتحكم الوحيد؛ ده اللي بيمنع ظهور أي native controls فوقه.
         return `
           <video
             class="rv-video"
-            controls
             playsinline
             webkit-playsinline
             x5-playsinline
@@ -6608,7 +6705,7 @@ const ResourceViewer = (function() {
             x5-video-player-fullscreen="true"
             preload="metadata"
             id="rv-video-el"
-            controlsList="nodownload"
+            controlsList="nodownload noremoteplayback"
             disablePictureInPicture
             disableRemotePlayback
             oncontextmenu="return false"
@@ -6617,11 +6714,23 @@ const ResourceViewer = (function() {
             <source src="${escUrl(url)}">
             <p style="color:#fff;padding:20px">متصفحك لا يدعم تشغيل الفيديو.</p>
           </video>
-          <div class="rv-media-tools" data-media-tools="video">
-            <button type="button" data-media-seek="-10">↶ 10ث</button>
-            <button type="button" data-media-seek="10">10ث ↷</button>
-            <label>السرعة <select data-media-speed><option value="0.5">0.5x</option><option value="0.75">0.75x</option><option value="1" selected>1x</option><option value="1.25">1.25x</option><option value="1.5">1.5x</option><option value="1.75">1.75x</option><option value="2">2x</option></select></label>
-            <span data-media-time>00:00 / --:--</span>
+          <div class="rv-media-tools rv-video-controls" data-media-tools="video">
+            <div class="rv-progress-row">
+              <span class="rv-time-cur" data-media-time-current>00:00</span>
+              <input type="range" class="rv-progress-bar" data-media-progress min="0" max="1000" value="0" step="0.1" aria-label="تقدّم الفيديو">
+              <span class="rv-time-dur" data-media-time-duration>--:--</span>
+            </div>
+            <div class="rv-controls-row">
+              <button type="button" class="rv-ctrl-btn" data-media-playpause title="تشغيل" aria-label="تشغيل">▶️</button>
+              <button type="button" class="rv-ctrl-btn" data-media-seek="-10" title="ترجيع 10 ثواني" aria-label="ترجيع 10 ثواني">↶10</button>
+              <button type="button" class="rv-ctrl-btn" data-media-seek="10" title="تقديم 10 ثواني" aria-label="تقديم 10 ثواني">10↷</button>
+              <span class="rv-speed-group" data-media-speed-group role="group" aria-label="سرعة التشغيل"><button type="button" data-media-speed-btn="0.75">0.75x</button><button type="button" data-media-speed-btn="1" class="active">1x</button><button type="button" data-media-speed-btn="1.25">1.25x</button><button type="button" data-media-speed-btn="1.5">1.5x</button><button type="button" data-media-speed-btn="2">2x</button></span>
+              <span class="rv-volume-group">
+                <button type="button" class="rv-ctrl-btn" data-media-mute title="كتم الصوت" aria-label="كتم الصوت">🔊</button>
+                <input type="range" class="rv-volume-bar" data-media-volume min="0" max="1" step="0.05" value="1" aria-label="مستوى الصوت">
+              </span>
+              <button type="button" class="rv-ctrl-btn" data-media-fs title="ملء الشاشة" aria-label="ملء الشاشة">⛶</button>
+            </div>
           </div>`;
 
       case 'youtube':
@@ -6697,7 +6806,7 @@ const ResourceViewer = (function() {
             <div class="rv-media-tools" data-media-tools="audio">
               <button type="button" data-media-seek="-10">↶ 10ث</button>
               <button type="button" data-media-seek="10">10ث ↷</button>
-              <label>السرعة <select data-media-speed><option value="0.5">0.5x</option><option value="0.75">0.75x</option><option value="1" selected>1x</option><option value="1.25">1.25x</option><option value="1.5">1.5x</option><option value="1.75">1.75x</option><option value="2">2x</option></select></label>
+              <span class="rv-speed-group" data-media-speed-group role="group" aria-label="سرعة التشغيل"><button type="button" data-media-speed-btn="0.75">0.75x</button><button type="button" data-media-speed-btn="1" class="active">1x</button><button type="button" data-media-speed-btn="1.25">1.25x</button><button type="button" data-media-speed-btn="1.5">1.5x</button><button type="button" data-media-speed-btn="2">2x</button></span>
               <span data-media-time>00:00 / --:--</span>
             </div>
           </div>`;
@@ -6927,23 +7036,142 @@ const ResourceViewer = (function() {
       } catch (e) {}
     }
     if (!tools) return;
+
+    // تقديم/ترجيع 10 ثواني (مشترك بين الفيديو والصوت)
     tools.querySelectorAll('[data-media-seek]').forEach(function(btn) {
       btn.addEventListener('click', function() {
         var delta = Number(btn.getAttribute('data-media-seek')) || 0;
         if (Number.isFinite(media.duration)) media.currentTime = Math.max(0, Math.min(media.duration, media.currentTime + delta));
       });
     });
-    var speed = tools.querySelector('[data-media-speed]');
-    if (speed) speed.addEventListener('change', function() {
-      var rate = Number(speed.value) || 1;
-      try { media.playbackRate = rate; } catch(e) {}
-    });
-    var timeEl = tools.querySelector('[data-media-time]');
-    function updateTime() {
-      if (timeEl) timeEl.textContent = _formatMediaTime(media.currentTime || 0) + ' / ' + _formatMediaTime(media.duration);
+
+    // السرعة (مشترك بين الفيديو والصوت)
+    var speedBtns = tools.querySelectorAll('[data-media-speed-btn]');
+    if (speedBtns.length) {
+      speedBtns.forEach(function(btn) {
+        btn.addEventListener('click', function() {
+          var rate = Number(btn.getAttribute('data-media-speed-btn')) || 1;
+          try { media.playbackRate = rate; } catch(e) {}
+          speedBtns.forEach(function(b) { b.classList.toggle('active', b === btn); });
+        });
+      });
     }
-    ['loadedmetadata','durationchange','timeupdate','progress'].forEach(function(ev) { media.addEventListener(ev, updateTime, { passive: true }); });
-    updateTime();
+
+    // تنسيق الوقت القديم (نص واحد "00:00 / --:--") — لسه مستخدم في مشغل الصوت
+    var timeEl = tools.querySelector('[data-media-time]');
+    if (timeEl) {
+      var updateTime = function() {
+        timeEl.textContent = _formatMediaTime(media.currentTime || 0) + ' / ' + _formatMediaTime(media.duration);
+      };
+      ['loadedmetadata','durationchange','timeupdate','progress'].forEach(function(ev) { media.addEventListener(ev, updateTime, { passive: true }); });
+      updateTime();
+    }
+
+    // ===== شريط التحكم المخصّص الكامل بالفيديو (لا يعتمد على أي native controls) =====
+    // Progress bar قابل للسحب + Play/Pause + الوقت الحالي/المدة + Volume/Mute + Fullscreen
+    var progressBar = tools.querySelector('[data-media-progress]');
+    var curEl = tools.querySelector('[data-media-time-current]');
+    var durEl = tools.querySelector('[data-media-time-duration]');
+    var playBtn = tools.querySelector('[data-media-playpause]');
+    var muteBtn = tools.querySelector('[data-media-mute]');
+    var volumeBar = tools.querySelector('[data-media-volume]');
+    var fsBtn = tools.querySelector('[data-media-fs]');
+
+    function togglePlay() {
+      if (media.paused || media.ended) { media.play().catch(function(){}); }
+      else { media.pause(); }
+    }
+
+    if (progressBar) {
+      var PROGRESS_MAX = 1000;
+      var scrubbing = false;
+      var updateProgressUI = function() {
+        if (scrubbing) return;
+        var dur = media.duration;
+        var pct = (Number.isFinite(dur) && dur > 0) ? (media.currentTime / dur) * PROGRESS_MAX : 0;
+        progressBar.value = String(pct);
+        if (curEl) curEl.textContent = _formatMediaTime(media.currentTime || 0);
+        if (durEl) durEl.textContent = _formatMediaTime(dur);
+      };
+      ['loadedmetadata','durationchange','timeupdate','progress'].forEach(function(ev) {
+        media.addEventListener(ev, updateProgressUI, { passive: true });
+      });
+      updateProgressUI();
+
+      // السحب (Scrub): بنعرض الوقت المستهدف live أثناء السحب من غير ما نقاطع
+      // القيمة اللي المستخدم بيسحبها بتحديثات timeupdate المتزامنة.
+      progressBar.addEventListener('input', function() {
+        scrubbing = true;
+        var dur = media.duration;
+        if (Number.isFinite(dur) && dur > 0 && curEl) {
+          curEl.textContent = _formatMediaTime((Number(progressBar.value) / PROGRESS_MAX) * dur);
+        }
+      });
+      var commitSeek = function() {
+        if (!scrubbing) return;
+        var dur = media.duration;
+        if (Number.isFinite(dur) && dur > 0) {
+          media.currentTime = (Number(progressBar.value) / PROGRESS_MAX) * dur;
+        }
+        scrubbing = false;
+        updateProgressUI();
+      };
+      progressBar.addEventListener('change', commitSeek);
+      progressBar.addEventListener('mouseup', commitSeek);
+      progressBar.addEventListener('touchend', commitSeek, { passive: true });
+    }
+
+    if (playBtn) {
+      var updatePlayBtn = function() {
+        var playing = !media.paused && !media.ended;
+        playBtn.textContent = playing ? '⏸️' : '▶️';
+        playBtn.title = playing ? 'إيقاف مؤقت' : 'تشغيل';
+        playBtn.setAttribute('aria-label', playBtn.title);
+      };
+      playBtn.addEventListener('click', togglePlay);
+      ['play','pause','ended'].forEach(function(ev) { media.addEventListener(ev, updatePlayBtn); });
+      updatePlayBtn();
+      // الضغط على الفيديو نفسه (بعد إلغاء الـnative controls) بيشغّل/يوقف كمان
+      if (media.tagName === 'VIDEO') {
+        media.addEventListener('click', togglePlay);
+      }
+    }
+
+    if (muteBtn || volumeBar) {
+      var updateVolumeUI = function() {
+        var vol = media.muted ? 0 : media.volume;
+        if (volumeBar) volumeBar.value = String(vol);
+        if (muteBtn) {
+          muteBtn.textContent = vol === 0 ? '🔇' : (vol < .5 ? '🔉' : '🔊');
+          var muted = media.muted || vol === 0;
+          muteBtn.title = muted ? 'إلغاء الكتم' : 'كتم الصوت';
+          muteBtn.setAttribute('aria-label', muteBtn.title);
+        }
+      };
+      if (muteBtn) {
+        muteBtn.addEventListener('click', function() {
+          media.muted = !media.muted;
+          if (!media.muted && media.volume === 0) media.volume = 1;
+          updateVolumeUI();
+        });
+      }
+      if (volumeBar) {
+        volumeBar.addEventListener('input', function() {
+          var v = Number(volumeBar.value);
+          media.volume = v;
+          media.muted = (v === 0);
+          updateVolumeUI();
+        });
+      }
+      ['volumechange','loadedmetadata'].forEach(function(ev) { media.addEventListener(ev, updateVolumeUI, { passive: true }); });
+      updateVolumeUI();
+    }
+
+    if (fsBtn) {
+      fsBtn.addEventListener('click', function() {
+        try { _toggleFullscreen(); } catch(e) {}
+      });
+    }
   }
 
   function getTypeIcon(type) {
@@ -7161,8 +7389,15 @@ const ResourceViewer = (function() {
     var media = _rvGetLandscapeMediaEl();
     if (!media) return;
 
+    // ✅ شريط أدوات الفيديو (تقديم/ترجيع/سرعة) بيقعد تحت الفيديو مباشرة
+    // (ترتيب طبيعي في .rv-body اللي بقت block دلوقتي) — لازم نخصم ارتفاعه
+    // الفعلي من المساحة المتاحة، وإلا الفيديو هياخد كل ارتفاع .rv-body
+    // ويدفع الشريط برّه المنطقة الظاهرة (overflow:hidden).
+    var tools = body.querySelector('.rv-media-tools');
+    var toolsH = tools ? tools.offsetHeight : 0;
+
     var availW = body.clientWidth;
-    var availH = body.clientHeight;
+    var availH = Math.max(0, body.clientHeight - toolsH);
     if (availW <= 0 || availH <= 0) return;
 
     if (_rvIsPortraitViewport()) {
@@ -22950,6 +23185,9 @@ window.__FIXED2_AUDIT = { version: 'FIXED-2', date: '2026-08-12' };
 .rv-media-tools select option{color:#111;background:#fff;}
 .rv-media-tools label{display:inline-flex;align-items:center;gap:5px;}
 .rv-media-tools span{font-variant-numeric:tabular-nums;direction:ltr;opacity:.9;}
+.rv-speed-group{display:inline-flex;align-items:center;gap:4px;direction:ltr;}
+.rv-media-tools [data-media-speed-btn]{min-width:38px;}
+.rv-media-tools [data-media-speed-btn].active{background:var(--teal);border-color:var(--teal);color:#fff;font-weight:700;}
 </style>
 <script>
 (function(){
