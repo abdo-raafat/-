@@ -6638,6 +6638,7 @@ const ResourceViewer = (function() {
             id="rv-embed-iframe"
             ${type === 'fembed' ? 'data-fembed-embed="1"' : ''}
             allow="accelerometer;autoplay;clipboard-write;encrypted-media;gyroscope;picture-in-picture;fullscreen"
+            allowfullscreen
             webkitallowfullscreen
             onload="
               document.getElementById('rv-loading-indicator').style.display='none';
@@ -7211,6 +7212,77 @@ const ResourceViewer = (function() {
     overlay.classList.remove('rv-fembed-fill');
   }
 
+  // ✅ FIX (طلب: إعادة بناء معماري لمسار Fembed Landscape) — بيتحقق هل وضع
+  // الـLandscape الخاص بالـFembed شغّال دلوقتي، سواء عن طريق Native
+  // Fullscreen حقيقي على الـoverlay (اللي إحنا مالكينه) أو عن طريق fallback
+  // الـCSS (rv-fembed-fill) لوحده لما الـFullscreen الحقيقي مش متاح/اتمنع.
+  function _isFembedLandscapeActive(overlay) {
+    return !!(document.fullscreenElement || document.webkitFullscreenElement) ||
+           overlay.classList.contains('rv-fembed-fill');
+  }
+
+  // ✅ الحالة 1 (Native Fullscreen متاح): بنطلب Fullscreen على الـoverlay
+  // نفسه — عنصر بنملكه في المستند الرئيسي (ResourceViewer)، مش على iframe
+  // الـFembed ولا أي عنصر جوه مستند JWPlayer الـCross-Origin. ده بالظبط
+  // اللي كان بيترفض بـ"Permissions policy violation" لأنه كان بيتنفذ من
+  // جوه سياق الـiframe/JWPlayer. بعد نجاح الـFullscreen (فعليًا، مش شكليًا)
+  // بنضيف rv-fembed-fill عشان الـiframe يملأ الـviewport بالكامل Edge-to-Edge
+  // (نفس تصميم الـfallback بالظبط)، وبعدين بنحاول screen.orientation.lock.
+  // ✅ الحالة 2 (Fullscreen على الـoverlay مش متاح أو اتمنع): بنكتفي بـ
+  // rv-fembed-fill (الـManual Fullscreen الموجود) ونحاول الـOrientation Lock
+  // برضو فوقه — مفيش أي طريق بيعتمد على iframe.requestFullscreen() تاني.
+  // ✅ الحالة 3 (الـOrientation Lock فشل هو كمان): بتتفعّل تلقائيًا جوه
+  // _rvLockLandscapeOrientation() → _rvActivateRotateFallback() (CSS rotate
+  // كآخر حل فقط)، والـiframe يفضل ظاهر وشغّال في كل الحالات التلاتة.
+  function _rvEnterFembedLandscape(overlay) {
+    var afterParentFullscreen = function() {
+      _enableFembedFillFallback();
+      _rvLockLandscapeOrientation();
+    };
+    try {
+      var reqP = overlay.requestFullscreen || overlay.webkitRequestFullscreen;
+      if (reqP) {
+        var resultP = reqP.call(overlay); // Sync، جوه الـclick handler مباشرة
+        if (resultP && typeof resultP.then === 'function') {
+          resultP.then(afterParentFullscreen).catch(function(err) {
+            console.warn('[Landscape][Fembed] overlay.requestFullscreen رفضته:', err && err.message);
+            afterParentFullscreen();
+          });
+        } else {
+          // متصفح/WebView قديم من غير Promise — نفترض النجاح ونكمّل.
+          afterParentFullscreen();
+        }
+      } else {
+        // لا يوجد Fullscreen API أصلًا في هذا الـWebView.
+        afterParentFullscreen();
+      }
+    } catch (e) {
+      console.warn('[Landscape][Fembed] overlay.requestFullscreen رمى استثناء:', e && e.message);
+      afterParentFullscreen();
+    }
+  }
+
+  // ✅ زر "✕ خروج": exitFullscreen (لو Native Fullscreen شغّال فعلًا على
+  // الـoverlay) ثم orientation.unlock ثم إزالة rv-fembed-fill ثم إزالة أي
+  // rotate fallback — الكل بيتم جوه _disableFembedFillFallback() اللي بتعمل
+  // unlock + توقيف مراقبة الدوران + إزالة الكلاس، فبيرجع Portrait نضيف.
+  function _rvExitFembedLandscape() {
+    try {
+      if (document.fullscreenElement || document.webkitFullscreenElement) {
+        var exit = document.exitFullscreen || document.webkitExitFullscreen;
+        if (exit) Promise.resolve(exit.call(document)).catch(function(err){ console.warn('[Landscape][Fembed]', err && err.message); });
+      }
+    } catch (e) { console.warn('[Landscape][Fembed]', e && e.message); }
+    _disableFembedFillFallback();
+  }
+
+  // ✅ Fembed تحديدًا: مسار منفصل تمامًا عن باقي الأنواع تحت (الترتيب:
+  // Parent Fullscreen ← Orientation Lock ← Fembed iframe يملأ الـviewport).
+  function _toggleFembedLandscape(overlay) {
+    if (_isFembedLandscapeActive(overlay)) _rvExitFembedLandscape();
+    else _rvEnterFembedLandscape(overlay);
+  }
+
   function _toggleLandscape() {
     const overlay = document.getElementById('rv-overlay');
     const modal = document.getElementById('rv-modal');
@@ -7219,13 +7291,19 @@ const ResourceViewer = (function() {
     if (!modal || !overlay) return;
 
     var isFembed = !!(iframe && iframe.dataset && iframe.dataset.fembedEmbed === '1');
+
+    // ✅ مسار Fembed منفصل بالكامل (دخول وخروج) عن باقي الأنواع تحت، عشان
+    // نضمن إن iframe.requestFullscreen() مبقاش يُستدعى خالص لأي نوع Fembed.
+    if (isFembed) {
+      _toggleFembedLandscape(overlay);
+      return;
+    }
+
     var nativeActive = !!(document.fullscreenElement || document.webkitFullscreenElement);
     var manualActive = overlay.classList.contains('rv-manual-fs');
     var videoManualActive = overlay.classList.contains('rv-video-manual-fs');
-    var fembedFillActive = overlay.classList.contains('rv-fembed-fill');
 
     // لو أصلاً في وضع ملء الشاشة (بأي طريقة)، الضغط على "عرضي" يخرج منه.
-    if (fembedFillActive) { _disableFembedFillFallback(); return; }
     if (manualActive) { _disableManualFullscreen(); _rvUnlockOrientationIfNeeded(); return; }
     if (videoManualActive) { _disableVideoManualFullscreen(); _rvUnlockOrientationIfNeeded(); return; }
     if (nativeActive) {
@@ -7234,46 +7312,6 @@ const ResourceViewer = (function() {
         if (exit) Promise.resolve(exit.call(document)).catch(function(err){ console.warn('[Landscape]', err && err.message); });
       } catch (e) { console.warn('[Landscape]', e && e.message); }
       return; // الخروج نفسه هيسيب unlock للـ 'fullscreenchange' listener تحت
-    }
-
-    // ✅ Fembed تحديدًا: زرار "عرضي" هو المتحكم الأساسي والوحيد من عندنا في
-    // الـFullscreen، وبيطلبه على iframe نفسه مباشرة (مش على أي عنصر جوه
-    // مستند JWPlayer، ده أصلًا مش متاح لنا لأنه Cross-Origin). لو الطلب
-    // اتمنع (Permissions Policy جوه WebView غالبًا)، الـfallback الحقيقي
-    // (rv-fembed-fill) بيخلي iframe نفسه يملأ الشاشة كاملة فورًا — لا يوجد
-    // أي setTimeout هنا قبل محاولة الـFullscreen نفسها.
-    if (isFembed) {
-      try {
-        var reqF = iframe.requestFullscreen || iframe.webkitRequestFullscreen;
-        if (reqF) {
-          var resultF = reqF.call(iframe); // Sync، جوه الـclick handler مباشرة
-          if (resultF && typeof resultF.then === 'function') {
-            resultF.then(_rvLockLandscapeOrientation).catch(function(err) {
-              console.warn('[Landscape][Fembed] iframe.requestFullscreen رفضته Permissions Policy:', err && err.message);
-              // ✅ Fullscreen اتمنع — نملأ الشاشة بالـfallback الحالي (بدون
-              // دوران لسه)، ونفضل نحاول Orientation Lock الحقيقي كمان؛
-              // الدوران (rv-force-rotate) مش هيتفعّل إلا لو الـlock ده فشل هو
-              // كمان (جوه _rvLockLandscapeOrientation نفسها).
-              _enableFembedFillFallback();
-              _rvLockLandscapeOrientation();
-            });
-          } else {
-            // متصفح/WebView قديم من غير Promise — نفترض النجاح ونحاول القفل.
-            _rvLockLandscapeOrientation();
-          }
-        } else {
-          // لا يوجد Fullscreen API على iframe أصلًا في هذا الـWebView.
-          _enableFembedFillFallback();
-          _rvLockLandscapeOrientation();
-        }
-      } catch (e) {
-        // ده بالظبط حالة "TypeError: Disallowed by permissions policy" لو
-        // اتحققت Sync بدل ما تترفض جوه Promise.
-        console.warn('[Landscape][Fembed] iframe.requestFullscreen رمى استثناء:', e && e.message);
-        _enableFembedFillFallback();
-        _rvLockLandscapeOrientation();
-      }
-      return;
     }
 
     // باقي الأنواع (فيديو HTML5، يوتيوب/فيميو/دايلي موشن، إلخ) — بدون أي
