@@ -9,6 +9,11 @@
 <script>
 // GLOBAL DEBUG_MODE FIX: make the flag visible to later script blocks.
 var DEBUG_MODE = true; window.DEBUG_MODE = DEBUG_MODE;
+
+// Official desktop Electron token. DEBUG_MODE never bypasses App Gate.
+var BSM_DESKTOP_UA_TOKEN = 'BSMDesktopApp/1.0';
+window.BSM_DESKTOP_UA_TOKEN = BSM_DESKTOP_UA_TOKEN;
+
 (function () {
   const DEBUG_MODE = true;
   window.__BSM_DEBUG_MODE = DEBUG_MODE;
@@ -34,7 +39,7 @@ var DEBUG_MODE = true; window.DEBUG_MODE = DEBUG_MODE;
       return false;
     } catch (e) { return false; }
   }
-  // تطبيق رسمي = تطبيق أندرويد أو iOS مثبّت كـ Standalone PWA.
+  // تطبيق رسمي = Android App أو iOS Standalone PWA أو Electron Desktop App الرسمي.
   window.isOfficialApp = function () {
     try {
       // Official Android app/WebView.
@@ -45,7 +50,7 @@ var DEBUG_MODE = true; window.DEBUG_MODE = DEBUG_MODE;
 
       // Official desktop app/WebView only.
       var ua = navigator.userAgent || '';
-      if (ua.indexOf('BSMDesktopApp/1.0') !== -1 || window.BSMDesktopBridge) return true;
+      if (ua.indexOf(window.BSM_DESKTOP_UA_TOKEN) !== -1 || window.BSMDesktopBridge) return true;
 
       // Direct web browsers remain blocked.
       return false;
@@ -3057,6 +3062,11 @@ img, video {
       } catch (e2) {}
     });
   } catch (e) {
+    // Fail closed: an App Gate error must never expose the web app in a browser.
+    try {
+      var gateFailClosed = document.getElementById('bsm-app-gate');
+      if (gateFailClosed) gateFailClosed.style.display = 'flex';
+    } catch (ignore) {}
     document.documentElement.style.visibility = 'visible';
   }
 })();
