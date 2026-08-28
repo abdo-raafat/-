@@ -8,10 +8,10 @@
 -->
 <script>
 // GLOBAL DEBUG_MODE FIX: make the flag visible to later script blocks.
-var DEBUG_MODE = false; window.DEBUG_MODE = DEBUG_MODE;
+var DEBUG_MODE = true; window.DEBUG_MODE = DEBUG_MODE;
 (function () {
-  const DEBUG_MODE = false;
-  window.__BSM_DEBUG_MODE = false;
+  const DEBUG_MODE = true;
+  window.__BSM_DEBUG_MODE = DEBUG_MODE;
   window.isIOSDevice = function () {
     var ua = navigator.userAgent || '';
     return /iPhone|iPad|iPod/i.test(ua) ||
@@ -37,10 +37,17 @@ var DEBUG_MODE = false; window.DEBUG_MODE = DEBUG_MODE;
   // تطبيق رسمي = تطبيق أندرويد أو iOS مثبّت كـ Standalone PWA.
   window.isOfficialApp = function () {
     try {
-      return _isAndroidAppEarly() || (window.isIOSDevice() && window.isIOSStandalone());
+      // Official app/WebView: use the existing BSMApp/1.0 or bridge detection.
+      if (_isAndroidAppEarly()) return true;
+
+      // iOS: only the installed standalone PWA is allowed.
+      if (window.isIOSDevice() && window.isIOSStandalone()) return true;
+
+      // All normal web browsers, including desktop-installed PWAs, are blocked.
+      return false;
     } catch (e) { return false; }
   };
-  window.__bsmGateBlocked = !DEBUG_MODE && !window.isOfficialApp();
+  window.__bsmGateBlocked = !window.isOfficialApp();
   try { document.documentElement.style.visibility = 'visible'; } catch (e) {}
 })();
 </script>
