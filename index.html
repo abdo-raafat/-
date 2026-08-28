@@ -2827,6 +2827,17 @@ img, video {
   if (window.MutationObserver) new MutationObserver(relaxProtection).observe(document.documentElement,{childList:true,subtree:true});
 })();
 </script>
+<style id="bsm-aug28-feature-css">
+.sp-reject-reason{margin-top:10px;padding:10px 12px;border-radius:12px;background:#fff5f5;border:1px solid #f3c4c4;color:#a51d1d;font-size:.82rem;line-height:1.7}
+[data-theme="dark"] .sp-reject-reason{background:#351d1d;border-color:#693434;color:#ffb3b3}
+.bsm-reply-bar{display:none;align-items:center;justify-content:space-between;gap:8px;margin:0 10px 8px;padding:8px 10px;border-right:4px solid #0a3d62;background:#f3f7fb;border-radius:10px}
+.bsm-reply-bar.show{display:flex}.bsm-reply-text{min-width:0;overflow:hidden}.bsm-reply-title{font-weight:900;font-size:.72rem;color:#0a3d62}.bsm-reply-preview{font-size:.78rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#667}.bsm-reply-cancel{border:0;background:transparent;cursor:pointer;font-size:1.05rem}
+.bsm-quoted{margin-bottom:6px;padding:6px 8px;border-right:3px solid #0a3d62;background:rgba(10,61,98,.07);border-radius:8px;cursor:pointer;max-width:100%;overflow:hidden}.bsm-quoted-title{font-size:.68rem;font-weight:900;color:#0a3d62}.bsm-quoted-text{font-size:.74rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#667}
+.bsm-reply-btn{border:0;background:transparent;cursor:pointer;font-size:.68rem;color:#0a3d62;font-weight:800;margin-right:4px}.bsm-msg-anchor{scroll-margin-top:20px}
+.bsm-group-links{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}.bsm-group-link{display:inline-flex;align-items:center;gap:5px;padding:8px 11px;border-radius:10px;text-decoration:none;font-weight:800;font-size:.78rem;background:#eef7ff;color:#0a3d62;border:1px solid #c9e1f3}
+.bsm-assistant-perms{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px}.bsm-assistant-perm{display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid #dbe7f0;border-radius:10px}
+@media(max-width:600px){.bsm-assistant-perms{grid-template-columns:1fr}.bsm-reply-bar{margin-inline:6px}}
+</style>
 </head>
 <body>
 <script>
@@ -4635,6 +4646,7 @@ async function _renderDynamicSectionPage(sec) {
     if (!contact) return;
     var international = window._coursePhoneToInternational(contact.phone);
     var digits = window._coursePhoneDigits(contact.phone);
+    var groupLinks = Array.isArray(contact.groups) ? contact.groups : [];
     if (!international || !digits) return;
     var telegramHref = contact.telegram
       ? 'https://t.me/' + contact.telegram.replace(/^@/, '')
@@ -4654,9 +4666,10 @@ async function _renderDynamicSectionPage(sec) {
       '<div style="font-size:1.05rem;font-weight:900;color:#0a3d62;margin-bottom:6px;">📱 اختر طريقة التواصل' + (contact.name ? ' — ' + _apEsc(contact.name) : '') + '</div>' +
       '<div style="font-size:.82rem;color:#667;margin-bottom:16px;direction:ltr;">' + _apEsc(international) + '</div>' +
       '<div style="display:grid;gap:10px;">' +
-        '<a href="https://wa.me/' + digits + '" target="_blank" rel="noopener noreferrer" style="display:block;padding:12px 14px;border-radius:12px;background:#16a34a;color:#fff;text-decoration:none;font-weight:900;">🟢 WhatsApp</a>' +
-        '<a href="' + telegramHref + '" target="_blank" rel="noopener noreferrer" style="display:block;padding:12px 14px;border-radius:12px;background:#229ed9;color:#fff;text-decoration:none;font-weight:900;">🔵 Telegram</a>' +
-        '<a href="tel:' + international + '" style="display:block;padding:12px 14px;border-radius:12px;background:#0a3d62;color:#fff;text-decoration:none;font-weight:900;">📞 اتصال هاتفي</a>' +
+        (digits ? '<a href="https://wa.me/' + digits + '" target="_blank" rel="noopener noreferrer" style="display:block;padding:12px 14px;border-radius:12px;background:#16a34a;color:#fff;text-decoration:none;font-weight:900;">🟢 WhatsApp</a>' : '') +
+        (telegramHref ? '<a href="' + telegramHref + '" target="_blank" rel="noopener noreferrer" style="display:block;padding:12px 14px;border-radius:12px;background:#229ed9;color:#fff;text-decoration:none;font-weight:900;">🔵 Telegram</a>' : '') +
+        (international ? '<a href="tel:' + international + '" style="display:block;padding:12px 14px;border-radius:12px;background:#0a3d62;color:#fff;text-decoration:none;font-weight:900;">📞 اتصال هاتفي</a>' : '') +
+        (groupLinks.length ? '<div class="bsm-group-links">' + groupLinks.map(function(g){return '<a class="bsm-group-link" href="' + _apEsc(g.url) + '" target="_blank" rel="noopener noreferrer">🔗 ' + _apEsc(g.name||'جروب الكورس') + '</a>';}).join('') + '</div>' : '') +
       '</div>' +
       '<button type="button" onclick="window._closeCourseContactActions()" style="margin-top:12px;width:100%;padding:10px 14px;border:0;border-radius:12px;background:#eef3f7;color:#345;font-weight:800;cursor:pointer;">إغلاق</button>';
 
@@ -4695,11 +4708,13 @@ async function _renderDynamicSectionPage(sec) {
       if (!contacts.length) { adminPhoneEl.innerHTML = ''; return; }
       var cardsHTML = contacts.map(function(c, idx){
         var normalized = window._coursePhoneToInternational(c.phone);
-        if (!normalized) return '';
+        var groups = Array.isArray(c.groups) ? c.groups : [];
+        if (!normalized && !groups.length) return '';
         return '<button type="button" class="course-contact-card" onclick="window._openCourseContactActions(' + idx + ')" '
           + 'style="display:inline-flex;flex-direction:column;align-items:center;gap:2px;border:0;cursor:pointer;background:linear-gradient(135deg,#0a3d62,#17a589);color:#fff;padding:9px 18px;border-radius:16px;font-weight:800;font-size:.86rem;min-width:150px;max-width:100%;">'
           + (c.name ? '<span style="font-size:.72rem;opacity:.9;">' + _apEsc(c.name) + '</span>' : '')
-          + '<span style="direction:ltr;">📞 ' + _apEsc(normalized) + '</span>'
+          + (normalized ? '<span style="direction:ltr;">📞 ' + _apEsc(normalized) + '</span>' : '')
+          + (groups.length ? '<span style="font-size:.72rem;opacity:.95;">🔗 ' + groups.length + ' جروب</span>' : '')
           + '</button>';
       }).join('');
       adminPhoneEl.innerHTML = cardsHTML
@@ -11802,37 +11817,20 @@ window._capContacts = [];
 // أي جدول جديد. متوافق تمامًا مع القيمة القديمة (رقم هاتف كنص عادي فقط) —
 // أي رقم قديم يُقرأ تلقائيًا كجهة اتصال واحدة بلا اسم/Telegram.
 // ────────────────────────────────────────────────────────────────
-window._capParseContacts = window._capParseContacts || function(raw){
-  var value = (raw === null || raw === undefined) ? '' : String(raw).trim();
-  if (!value) return [];
-  if (value.charAt(0) === '[') {
-    try {
-      var arr = JSON.parse(value);
-      if (Array.isArray(arr)) {
-        return arr.map(function(c){
-          return {
-            name: (c && c.name) ? String(c.name).trim() : '',
-            phone: (c && c.phone) ? String(c.phone).trim() : '',
-            telegram: (c && c.telegram) ? String(c.telegram).trim().replace(/^@/, '') : ''
-          };
-        }).filter(function(c){ return c.phone; });
-      }
-    } catch (e) { /* ليست JSON صحيحة — نتعامل معها كرقم قديم بالأسفل */ }
-  }
-  // قيمة قديمة: رقم هاتف نصي عادي واحد فقط.
-  return [{ name: '', phone: value, telegram: '' }];
+window._capParseContacts = function(raw){
+  var value=raw==null?'':String(raw).trim(); if(!value)return [];
+  if(value.charAt(0)==='['){try{var arr=JSON.parse(value);if(Array.isArray(arr))return arr.map(function(c){
+    return {name:c&&c.name?String(c.name).trim():'',phone:c&&c.phone?String(c.phone).trim():'',
+      telegram:c&&c.telegram?String(c.telegram).trim().replace(/^@/,''):'',
+      groups:Array.isArray(c&&c.groups)?c.groups.map(function(g){return {name:g&&g.name?String(g.name).trim():'',url:g&&g.url?String(g.url).trim():''};}).filter(function(g){return g.url;}):[]};
+  }).filter(function(c){return c.phone||c.groups.length;});}catch(e){}}
+  return [{name:'',phone:value,telegram:'',groups:[]}];
 };
-
-window._capSerializeContacts = window._capSerializeContacts || function(contacts){
-  var clean = (contacts || []).map(function(c){
-    return {
-      name: (c.name || '').trim(),
-      phone: (c.phone || '').trim(),
-      telegram: (c.telegram || '').trim().replace(/^@/, '')
-    };
-  }).filter(function(c){ return c.phone; });
-  if (!clean.length) return null;
-  return JSON.stringify(clean);
+window._capSerializeContacts = function(contacts){
+  var clean=(contacts||[]).map(function(c){return {name:(c.name||'').trim(),phone:(c.phone||'').trim(),telegram:(c.telegram||'').trim().replace(/^@/,''),
+    groups:(Array.isArray(c.groups)?c.groups:[]).map(function(g){return {name:(g.name||'').trim(),url:(g.url||'').trim()};}).filter(function(g){return g.url;})};
+  }).filter(function(c){return c.phone||c.groups.length;});
+  return clean.length?JSON.stringify(clean):null;
 };
 
 window.capInit = async function(){
@@ -11886,50 +11884,34 @@ window.capLoadCourse = async function(){
 
 // يرسم صفوف جهات الاتصال (اسم اختياري + هاتف + Telegram اختياري + حذف).
 function capRenderContacts(contacts){
-  var wrap=document.getElementById('cap-contacts-list');
-  if(!wrap) return;
-  if(!contacts || !contacts.length) contacts=[{name:'',phone:'',telegram:''}];
-  wrap.innerHTML = contacts.map(function(c, idx){
-    return '<div class="ap-card" data-cap-row="'+idx+'" style="padding:10px;margin-bottom:8px;display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:8px;align-items:end;">'+
-      '<div><label class="ap-label" style="font-size:.7rem;">👤 الاسم (اختياري)</label>'+
-        '<input class="ap-input cap-c-name" type="text" value="'+_apEsc(c.name||'')+'" placeholder="اسم الأدمن/الدكتور"></div>'+
-      '<div><label class="ap-label" style="font-size:.7rem;">📱 رقم الهاتف</label>'+
-        '<input class="ap-input cap-c-phone" type="text" inputmode="tel" dir="ltr" style="text-align:right;" value="'+_apEsc(c.phone||'')+'" placeholder="01xxxxxxxxx"></div>'+
-      '<div><label class="ap-label" style="font-size:.7rem;">🔵 Telegram Username (اختياري)</label>'+
-        '<input class="ap-input cap-c-telegram" type="text" dir="ltr" value="'+_apEsc(c.telegram||'')+'" placeholder="username بدون @"></div>'+
-      '<button type="button" class="ap-btn ap-btn-ghost" style="padding:9px 10px;" title="حذف هذا الرقم" onclick="capRemoveContactRow('+idx+')">🗑️</button>'+
-    '</div>';
+  var wrap=document.getElementById('cap-contacts-list');if(!wrap)return;
+  if(!contacts||!contacts.length)contacts=[{name:'',phone:'',telegram:'',groups:[]}];
+  wrap.innerHTML=contacts.map(function(c,idx){
+    c.groups=Array.isArray(c.groups)?c.groups:[];
+    var gh=c.groups.map(function(g,gi){return '<div class="cap-group-row" data-cap-group-row="'+gi+'" style="display:grid;grid-template-columns:1fr 2fr auto;gap:7px;margin-top:7px;align-items:end;">'+
+      '<input class="ap-input cap-g-name" type="text" value="'+_apEsc(g.name||'')+'" placeholder="اسم الجروب">'+
+      '<input class="ap-input cap-g-url" type="url" dir="ltr" value="'+_apEsc(g.url||'')+'" placeholder="https://chat.whatsapp.com/... أو https://t.me/...">'+
+      '<button type="button" class="ap-btn ap-btn-ghost" style="padding:8px 10px;" onclick="capRemoveGroupRow('+idx+','+gi+')">🗑️</button></div>';}).join('');
+    return '<div class="ap-card" data-cap-row="'+idx+'" style="padding:10px;margin-bottom:8px;">'+
+      '<div style="display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:8px;align-items:end;">'+
+      '<div><label class="ap-label" style="font-size:.7rem;">👤 الاسم (اختياري)</label><input class="ap-input cap-c-name" type="text" value="'+_apEsc(c.name||'')+'" placeholder="اسم الأدمن/الدكتور"></div>'+
+      '<div><label class="ap-label" style="font-size:.7rem;">📱 رقم الهاتف</label><input class="ap-input cap-c-phone" type="text" inputmode="tel" dir="ltr" value="'+_apEsc(c.phone||'')+'" placeholder="01xxxxxxxxx"></div>'+
+      '<div><label class="ap-label" style="font-size:.7rem;">🔵 Telegram Username</label><input class="ap-input cap-c-telegram" type="text" dir="ltr" value="'+_apEsc(c.telegram||'')+'" placeholder="username بدون @"></div>'+
+      '<button type="button" class="ap-btn ap-btn-ghost" style="padding:9px 10px;" onclick="capRemoveContactRow('+idx+')">🗑️</button></div>'+
+      '<div style="margin-top:10px;font-weight:900;color:#0a3d62;font-size:.78rem;">🔗 جروبات الكورس</div><div class="cap-groups-list">'+gh+'</div>'+
+      '<button type="button" class="ap-btn ap-btn-ghost" style="margin-top:7px;padding:7px 10px;" onclick="capAddGroupRow('+idx+')">➕ إضافة رابط جروب</button></div>';
   }).join('');
 }
-
-// يقرأ الصفوف الحالية من الـDOM (وليس من window._capContacts القديمة)، حتى
-// يعكس أي تعديل كتبه المستخدم قبل الضغط على حذف/إضافة/حفظ.
 function capReadContactsFromDOM(){
-  var rows=document.querySelectorAll('#cap-contacts-list [data-cap-row]');
-  var out=[];
-  rows.forEach(function(row){
-    var name=(row.querySelector('.cap-c-name')||{}).value||'';
-    var phone=(row.querySelector('.cap-c-phone')||{}).value||'';
-    var telegram=(row.querySelector('.cap-c-telegram')||{}).value||'';
-    out.push({name:name, phone:phone, telegram:telegram});
-  });
+  var rows=document.querySelectorAll('#cap-contacts-list [data-cap-row]'),out=[];
+  rows.forEach(function(row){var groups=[];row.querySelectorAll('[data-cap-group-row]').forEach(function(gr){var n=(gr.querySelector('.cap-g-name')||{}).value||'',u=(gr.querySelector('.cap-g-url')||{}).value||'';if(u.trim())groups.push({name:n,url:u});});
+    out.push({name:(row.querySelector('.cap-c-name')||{}).value||'',phone:(row.querySelector('.cap-c-phone')||{}).value||'',telegram:(row.querySelector('.cap-c-telegram')||{}).value||'',groups:groups});});
   return out;
 }
-
-window.capAddContactRow = function(){
-  var contacts = capReadContactsFromDOM();
-  contacts.push({name:'',phone:'',telegram:''});
-  window._capContacts = contacts;
-  capRenderContacts(contacts);
-};
-
-window.capRemoveContactRow = function(idx){
-  var contacts = capReadContactsFromDOM();
-  contacts.splice(idx, 1);
-  if(!contacts.length) contacts=[{name:'',phone:'',telegram:''}];
-  window._capContacts = contacts;
-  capRenderContacts(contacts);
-};
+window.capAddContactRow=function(){var c=capReadContactsFromDOM();c.push({name:'',phone:'',telegram:'',groups:[]});capRenderContacts(c);};
+window.capRemoveContactRow=function(i){var c=capReadContactsFromDOM();c.splice(i,1);if(!c.length)c=[{name:'',phone:'',telegram:'',groups:[]}];capRenderContacts(c);};
+window.capAddGroupRow=function(i){var c=capReadContactsFromDOM();if(c[i])c[i].groups.push({name:'',url:''});capRenderContacts(c);};
+window.capRemoveGroupRow=function(i,j){var c=capReadContactsFromDOM();if(c[i])c[i].groups.splice(j,1);capRenderContacts(c);};
 
 window.capSave = async function(){
   var sel=document.getElementById('cap-course-select'),msg=document.getElementById('cap-save-msg');
@@ -20922,6 +20904,9 @@ window.diagnose = async function() {
   var _chatScrollListenerAttached = false;
   var _chatPendingFile     = null; // ملف مُختار بانتظار الإرسال
   var _chatPendingFileKind = null; // 'image' | 'pdf' | 'file'
+  var _chatReplyTo = null;
+  window._chatSetReplyTarget = function(m){ _chatReplyTo = m || null; };
+  window._chatGetLoadedMessages = function(){ return _chatLoadedMessages; };
   var _chatAttMap          = {};   // message_id -> [attachment,...] لكل الرسائل المحمّلة حالياً في الغرفة المفتوحة
 
   // ==================== Attachments (chat-attachments bucket — PRIVATE) ====================
@@ -21147,7 +21132,7 @@ window.diagnose = async function() {
     try {
       // آخر 50 رسالة فقط (الأحدث أولاً في الاستعلام، ثم نعكسها للترتيب الزمني الطبيعي)
       var msgRes = await db.from('chat_messages')
-        .select('id, room_id, user_id, user_name, message, created_at')
+        .select('id, room_id, user_id, user_name, message, reply_to_message_id, created_at')
         .eq('room_id', _chatRoom.id)
         .order('created_at', { ascending: false })
         .limit(_CHAT_PAGE_SIZE);
@@ -21175,7 +21160,7 @@ window.diagnose = async function() {
     try {
       var oldestCreatedAt = _chatLoadedMessages[0].created_at;
       var res = await db.from('chat_messages')
-        .select('id, room_id, user_id, user_name, message, created_at')
+        .select('id, room_id, user_id, user_name, message, reply_to_message_id, created_at')
         .eq('room_id', _chatRoom.id)
         .lt('created_at', oldestCreatedAt)
         .order('created_at', { ascending: false })
@@ -21326,29 +21311,12 @@ window.diagnose = async function() {
   }
 
   function _chatRenderOneMessage(m) {
-    var mine = _chatMe && m.user_id === _chatMe.id;
-    var prof = _chatProfilesCache[m.user_id];
-    var displayName = (prof && (prof.full_name || prof.email)) || m.user_name || 'مستخدم';
-    var isSenderAdmin = prof && (prof.role === 'admin' || prof.role === 'branch_admin');
-    var timeStr = '';
-    try { timeStr = new Date(m.created_at).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }); } catch(e) {}
-
-    var canDelete = _chatIsAdmin; // الحذف للأدمن فقط (RLS تفرض هذا فعلياً على أي حال)
-    var delBtn = canDelete ? '<button class="chat-msg-del" onclick="_chatDeleteMessage(' + m.id + ')">🗑️ حذف</button>' : '';
-
-    var atts = _chatAttMap[m.id] || [];
-    var attHtml = atts.length ? atts.map(_chatAttachmentHTML).join('') : '';
-    var bubbleHtml = m.message ? '<div class="chat-msg-bubble">' + _chatEsc(m.message) + '</div>' : '';
-
-    return '' +
-      '<div class="chat-msg-row ' + (mine ? 'mine' : 'theirs') + '">' +
-        bubbleHtml + attHtml +
-        '<div class="chat-msg-meta">' +
-          (mine ? '' : '<span>' + _chatEsc(displayName) + '</span>') +
-          (isSenderAdmin ? '<span class="chat-msg-admin-badge">🛡️ أدمن</span>' : '') +
-          '<span>' + timeStr + '</span>' + delBtn +
-        '</div>' +
-      '</div>';
+    var mine=_chatMe&&m.user_id===_chatMe.id,prof=_chatProfilesCache[m.user_id],displayName=(prof&&(prof.full_name||prof.email))||m.user_name||'مستخدم',isSenderAdmin=prof&&(prof.role==='admin'||prof.role==='branch_admin'),timeStr='';
+    try{timeStr=new Date(m.created_at).toLocaleTimeString('ar-EG',{hour:'2-digit',minute:'2-digit'});}catch(e){}
+    var delBtn=_chatIsAdmin?'<button class="chat-msg-del" onclick="_chatDeleteMessage('+m.id+')">🗑️ حذف</button>':'',atts=_chatAttMap[m.id]||[],attHtml=atts.length?atts.map(_chatAttachmentHTML).join(''):'',bubbleHtml=m.message?'<div class="chat-msg-bubble">'+_chatEsc(m.message)+'</div>':'',quoted='';
+    if(m.reply_to_message_id){var original=_chatLoadedMessages.find(function(x){return String(x.id)===String(m.reply_to_message_id);});if(original)quoted='<div class="bsm-quoted" onclick="_bsmJumpToMessage(\'section\','+Number(original.id)+')"><div class="bsm-quoted-title">↩️ رد على رسالة</div><div class="bsm-quoted-text">'+_chatEsc(original.message||'📎 مرفق')+'</div></div>';}
+    var replyBtn=_chatIsAdmin?'<button type="button" class="bsm-reply-btn" onclick="_bsmSetReply(\'section\','+Number(m.id)+')">↩️ رد</button>':'';
+    return '<div id="bsm-section-msg-'+Number(m.id)+'" class="chat-msg-row bsm-msg-anchor '+(mine?'mine':'theirs')+'">'+quoted+bubbleHtml+attHtml+'<div class="chat-msg-meta">'+(mine?'':'<span>'+_chatEsc(displayName)+'</span>')+(isSenderAdmin?'<span class="chat-msg-admin-badge">🛡️ أدمن</span>':'')+'<span>'+timeStr+'</span>'+replyBtn+delBtn+'</div></div>';
   }
 
   // ── إرسال رسالة جديدة — user_id/user_name يُفرَضان من السيرفر عبر Trigger دائماً ──
@@ -21444,6 +21412,7 @@ window.diagnose = async function() {
       var insRes = await db.from('chat_messages').insert([{
         room_id: _chatRoom.id,
         message: text,
+        reply_to_message_id: _chatReplyTo ? _chatReplyTo.id : null,
         user_id: _chatMe ? _chatMe.id : null,   // ✅ يُعاد ضبطه دائماً من السيرفر عبر Trigger
         user_name: '' // ✅ يُعاد ضبطه دائماً من profiles عبر Trigger — لا نثق بأي قيمة هنا
       }]).select('id').single();
@@ -21642,6 +21611,9 @@ window.diagnose = async function() {
   var _dmConvRowsCache    = [];  // آخر نتيجة لقائمة المحادثات (لإتاحة الفلترة بالبحث بدون إعادة الجلب)
   var _dmPendingFile      = null; // ملف مُختار بانتظار الإرسال
   var _dmPendingFileKind  = null; // 'image' | 'pdf' | 'file'
+  var _dmReplyTo = null;
+  window._dmSetReplyTarget = function(m){ _dmReplyTo = m || null; };
+  window._dmGetLoadedMessages = function(){ return _dmLoadedMessages; };
   var _dmAttMap           = {};   // message_id -> [attachment,...] لكل الرسائل المحمّلة حالياً في المحادثة المفتوحة
 
   // ==================== Attachments (chat-attachments bucket — PRIVATE) ====================
@@ -22233,7 +22205,7 @@ window.diagnose = async function() {
     var bodyEl = document.getElementById('dm-chat-body');
     try {
       var msgRes = await db.from('chat_messages')
-        .select('id, room_id, user_id, user_name, message, created_at')
+        .select('id, room_id, user_id, user_name, message, reply_to_message_id, created_at')
         .eq('room_id', _dmRoom.id)
         .order('created_at', { ascending: false })
         .limit(_DM_PAGE_SIZE);
@@ -22241,6 +22213,7 @@ window.diagnose = async function() {
       var rows = (msgRes.data || []).slice().reverse();
       _dmHasMoreOlder = rows.length === _DM_PAGE_SIZE;
       _dmLoadedMessages = rows;
+      if(window._dmGetLoadedMessages){}
       _dmAttMap = await _dmFetchAttachmentsFor(rows); // تحميل كامل — نبدأ الخريطة من جديد
       _dmRenderMessages(rows, { scrollToBottom: true });
     } catch(e) {
@@ -22258,7 +22231,7 @@ window.diagnose = async function() {
     try {
       var oldestCreatedAt = _dmLoadedMessages[0].created_at;
       var res = await db.from('chat_messages')
-        .select('id, room_id, user_id, user_name, message, created_at')
+        .select('id, room_id, user_id, user_name, message, reply_to_message_id, created_at')
         .eq('room_id', _dmRoom.id)
         .lt('created_at', oldestCreatedAt)
         .order('created_at', { ascending: false })
@@ -22424,26 +22397,12 @@ window.diagnose = async function() {
   // Read receipts (✓/✓✓) للرسائل التي أرسلتها أنا فقط، بمقارنة last_read_at
   // الخاص بالطرف الآخر (المجلوب عند فتح المحادثة) بوقت إنشاء الرسالة.
   function _dmRenderOneMessage(m) {
-    var mine = _dmMe && m.user_id === _dmMe.id;
-    var displayName = m.user_name || 'مستخدم';
-    var timeStr = '';
-    try { timeStr = new Date(m.created_at).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }); } catch(e) {}
-    var ticks = '';
-    if (mine) {
-      var isRead = _dmOtherLastRead && new Date(_dmOtherLastRead) >= new Date(m.created_at);
-      ticks = '<span class="dm2-msg-ticks ' + (isRead ? 'read' : 'sent') + '">' + (isRead ? '✓✓' : '✓') + '</span>';
-    }
-    var atts = _dmAttMap[m.id] || [];
-    var attHtml = atts.length ? atts.map(_dmAttachmentHTML).join('') : '';
-    var bubbleHtml = m.message ? '<div class="chat-msg-bubble">' + _dmEsc(m.message) + '</div>' : '';
-    return '' +
-      '<div class="chat-msg-row ' + (mine ? 'mine' : 'theirs') + '">' +
-        bubbleHtml + attHtml +
-        '<div class="chat-msg-meta">' +
-          (mine ? '' : '<span>' + _dmEsc(displayName) + '</span>') +
-          '<span>' + timeStr + '</span>' + ticks +
-        '</div>' +
-      '</div>';
+    var mine=_dmMe&&m.user_id===_dmMe.id, displayName=m.user_name||'مستخدم', timeStr='';
+    try{timeStr=new Date(m.created_at).toLocaleTimeString('ar-EG',{hour:'2-digit',minute:'2-digit'});}catch(e){}
+    var ticks='';if(mine){var isRead=_dmOtherLastRead&&new Date(_dmOtherLastRead)>=new Date(m.created_at);ticks='<span class="dm2-msg-ticks '+(isRead?'read':'sent')+'">'+(isRead?'✓✓':'✓')+'</span>';}
+    var atts=_dmAttMap[m.id]||[],attHtml=atts.length?atts.map(_dmAttachmentHTML).join(''):'',bubbleHtml=m.message?'<div class="chat-msg-bubble">'+_dmEsc(m.message)+'</div>':'',quoted='';
+    if(m.reply_to_message_id){var original=_dmLoadedMessages.find(function(x){return String(x.id)===String(m.reply_to_message_id);});if(original)quoted='<div class="bsm-quoted" onclick="_bsmJumpToMessage(\'dm\','+Number(original.id)+')"><div class="bsm-quoted-title">↩️ رد على رسالة</div><div class="bsm-quoted-text">'+_dmEsc(original.message||'📎 مرفق')+'</div></div>';}
+    return '<div id="bsm-dm-msg-'+Number(m.id)+'" class="chat-msg-row bsm-msg-anchor '+(mine?'mine':'theirs')+'">'+quoted+bubbleHtml+attHtml+'<div class="chat-msg-meta">'+(mine?'':'<span>'+_dmEsc(displayName)+'</span>')+'<span>'+timeStr+'</span>'+ticks+'<button type="button" class="bsm-reply-btn" onclick="_bsmSetReply(\'dm\','+Number(m.id)+')">↩️ رد</button></div></div>';
   }
 
   window._dmHandleKeydown = function(ev) {
@@ -22541,6 +22500,7 @@ window.diagnose = async function() {
       var insRes = await db.from('chat_messages').insert([{
         room_id: _dmRoom.id,
         message: text,
+        reply_to_message_id: _dmReplyTo ? _dmReplyTo.id : null,
         user_id: _dmMe ? _dmMe.id : null,
         user_name: ''
       }]).select('id').single();
@@ -24805,7 +24765,7 @@ window.qzShowPastReview = qzShowPastReview;
   // ── 1) حالة الاشتراك — subscriptions مقيّدة بـ user_id = uid فقط ──
   async function spRenderSubscriptions(db, uid) {
     var res = await db.from('subscriptions')
-      .select('id,section_id,payment_status,start_date,end_date,created_at,site_sections(title,icon)')
+      .select('id,section_id,payment_status,reject_reason,start_date,end_date,created_at,site_sections(title,icon)')
       .eq('user_id', uid)
       .order('created_at', { ascending: false });
     if (res.error) throw res.error;
@@ -24823,8 +24783,8 @@ window.qzShowPastReview = qzShowPastReview;
           active: isActive ? 'نشط ✅' : 'منتهي ⏰',
           pending: 'قيد المراجعة ⏳',
           expired: 'منتهي ⏰',
-          cancelled: 'ملغى ❌',
-          rejected: 'مرفوض ❌'
+          cancelled: 'تم رفض الاشتراك ❌',
+          rejected: 'تم رفض الاشتراك ❌'
         }[r.payment_status] || (r.payment_status || '—');
         return '<div class="sp-sub-card">' +
           '<div class="sp-sub-top"><span class="sp-sub-icon">' + spEsc(sec.icon || '📚') + '</span>' +
@@ -24834,7 +24794,12 @@ window.qzShowPastReview = qzShowPastReview;
             '<span>🟢 بداية الاشتراك: ' + spDate(r.start_date) + '</span>' +
             '<span>🔴 نهاية الاشتراك: ' + spDate(r.end_date) + '</span>' +
             '<span>' + (isActive ? '✅ الاشتراك فعّال' : '❌ الاشتراك غير فعّال') + '</span>' +
-          '</div></div>';
+          '</div>' +
+          (r.payment_status === 'cancelled' || r.payment_status === 'rejected'
+            ? '<div class="sp-reject-reason"><strong>❌ تم رفض الاشتراك</strong>' +
+              (r.reject_reason ? '<div style="margin-top:5px;line-height:1.8;"><b>سبب الرفض:</b> ' + spEsc(r.reject_reason) + '</div>' : '') +
+              '</div>' : '') +
+          '</div>';
       }).join('') + '</div>';
     }
     return '<div class="sp-section"><h3 class="sp-section-title">💳 حالة الاشتراك</h3>' + body + '</div>';
@@ -28756,6 +28721,150 @@ SELECT conname, pg_get_constraintdef(oid) FROM pg_constraint WHERE conname='audi
       return r;
     };
   }
+})();
+</script>
+
+<script id="bsm-aug28-features">
+(function(){
+'use strict';
+function db(){return window.supabase}
+function esc(v){return typeof _apEsc==='function'?_apEsc(v==null?'':String(v)):String(v==null?'':v).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
+function addReplyBar(type){var input=document.getElementById(type==='dm'?'dm-chat-input':'chat-input');if(!input||document.getElementById('bsm-reply-bar-'+type))return;var bar=document.createElement('div');bar.id='bsm-reply-bar-'+type;bar.className='bsm-reply-bar';bar.innerHTML='<div class="bsm-reply-text"><div class="bsm-reply-title">↩️ رد على رسالة</div><div class="bsm-reply-preview"></div></div><button class="bsm-reply-cancel" type="button" onclick="_bsmCancelReply(\''+type+'\')">✕</button>';input.parentElement.insertBefore(bar,input)}
+window._bsmSetReply=function(type,id){var rows=type==='dm'?(window._dmGetLoadedMessages?window._dmGetLoadedMessages():[]):(window._chatGetLoadedMessages?window._chatGetLoadedMessages():[]),msg=rows.find(function(x){return String(x.id)===String(id)});if(!msg)return;if(type==='dm'){if(window._dmSetReplyTarget)window._dmSetReplyTarget(msg)}else{if(window._chatSetReplyTarget)window._chatSetReplyTarget(msg)}addReplyBar(type);var bar=document.getElementById('bsm-reply-bar-'+type);bar.classList.add('show');bar.querySelector('.bsm-reply-preview').textContent=msg.message||'📎 مرفق';var input=document.getElementById(type==='dm'?'dm-chat-input':'chat-input');if(input)input.focus()}
+window._bsmCancelReply=function(type){if(type==='dm'){if(window._dmSetReplyTarget)window._dmSetReplyTarget(null)}else{if(window._chatSetReplyTarget)window._chatSetReplyTarget(null)}var bar=document.getElementById('bsm-reply-bar-'+type);if(bar)bar.classList.remove('show')}
+window._bsmJumpToMessage=function(type,id){var el=document.getElementById((type==='dm'?'bsm-dm-msg-':'bsm-section-msg-')+Number(id));if(el){el.scrollIntoView({behavior:'smooth',block:'center'});el.style.outline='2px solid #0a3d62';setTimeout(function(){el.style.outline=''},900)}}
+function wrapSend(type){var fn=type==='dm'?'_dmSend':'_chatSend',old=window[fn];if(typeof old!=='function'||old.__bsmReplyWrapped)return;var w=async function(){try{return await old.apply(this,arguments)}finally{window._bsmCancelReply(type)}};w.__bsmReplyWrapped=true;window[fn]=w}
+function initReply(){addReplyBar('dm');addReplyBar('section');wrapSend('dm');wrapSend('section')}
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',initReply);else initReply();setInterval(initReply,1500)
+
+var perms=[['manage_content','إدارة محتوى الكورس'],['manage_lessons','إضافة/تعديل/حذف الدروس'],['manage_resources','إدارة ملفات وموارد الكورس'],['manage_quizzes','إدارة أسئلة/اختبارات الكورس'],['view_students','مشاهدة الطلاب والتقدم'],['manage_chats','إدارة محادثات الكورس'],['manage_contacts','إدارة بيانات التواصل والجروبات']];
+function panelHTML(){return '<div class="ap-section-heading">🧑‍💼 الأدمن المساعد</div><div class="ap-card" style="padding:16px;"><div style="color:#667;line-height:1.8;font-size:.8rem;margin-bottom:12px;">إسناد حساب مستخدم موجود كأدمن مساعد لكورس محدد. لا يحصل على صلاحيات المنصة العامة.</div><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;"><div><label class="ap-label">📚 الكورس</label><select id="bsm-as-course" class="ap-input"></select></div><div><label class="ap-label">📧 بريد الحساب</label><input id="bsm-as-email" class="ap-input" type="email" dir="ltr" placeholder="user@example.com"></div></div><div style="margin-top:12px;"><label class="ap-label">🔐 الصلاحيات</label><div class="bsm-assistant-perms">'+perms.map(function(p){return '<label class="bsm-assistant-perm"><input type="checkbox" class="bsm-as-perm" data-perm="'+p[0]+'"> <span>'+esc(p[1])+'</span></label>'}).join('')+'</div></div><div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;"><button id="bsm-as-save" class="ap-btn ap-btn-success" onclick="bsmAddAssistant()">➕ إضافة</button><button class="ap-btn ap-btn-ghost" onclick="bsmLoadAssistants()">🔄 تحديث</button></div><div id="bsm-as-msg" style="margin-top:10px;font-size:.8rem;"></div></div><div class="ap-card" style="padding:16px;margin-top:12px;"><div class="ap-section-heading" style="font-size:.9rem;">👥 الأدمنز المساعدون الحاليون</div><div id="bsm-as-list">جاري التحميل...</div></div>'}
+async function ensurePanel(){var p=document.getElementById('ap-panel-courseAssistants');if(!p){p=document.createElement('div');p.id='ap-panel-courseAssistants';p.className='ap-tab-panel';p.setAttribute('role','tabpanel');p.innerHTML=panelHTML();var body=document.querySelector('#admin-panel .ap-body');if(body)body.appendChild(p);else{var w=document.querySelector('#admin-panel .ap-workspace');if(w)w.appendChild(p)}}await bsmLoadCourses()}
+async function bsmLoadCourses(){var sel=document.getElementById('bsm-as-course');if(!sel||!db())return;try{var r=await db().from('site_sections').select('id,title').eq('type','course').order('title');if(r.error)throw r.error;sel.innerHTML='<option value="">— اختر الكورس —</option>'+(r.data||[]).map(function(x){return '<option value="'+x.id+'">'+esc(x.title)+'</option>'}).join('')}catch(e){sel.innerHTML='<option value="">تعذر تحميل الكورسات</option>'}}
+function getPerms(){var o={};document.querySelectorAll('.bsm-as-perm').forEach(function(x){o[x.dataset.perm]=x.checked});return o}
+function setPerms(p){document.querySelectorAll('.bsm-as-perm').forEach(function(x){x.checked=!!(p||{})[x.dataset.perm]})}
+window.bsmAddAssistant=async function(){var msg=document.getElementById('bsm-as-msg'),course=Number((document.getElementById('bsm-as-course')||{}).value||0),email=((document.getElementById('bsm-as-email')||{}).value||'').trim().toLowerCase();if(!course||!email){if(msg)msg.textContent='❌ اختر الكورس واكتب البريد.';return}try{var pr=await db().from('profiles').select('id,role').eq('email',email).maybeSingle();if(pr.error)throw pr.error;if(!pr.data)throw new Error('لا يوجد حساب بهذا البريد.');if(pr.data.role==='admin')throw new Error('هذا حساب أدمن منصة عام.');var r=await db().from('section_admins').insert([{user_id:pr.data.id,section_id:course,role:'assistant',is_active:true,permissions:getPerms(),created_by:(window._currentAuthUser&&window._currentAuthUser.id)||null}]).select('id').single();if(r.error)throw r.error;if(msg)msg.textContent='✅ تمت الإضافة بنجاح.';document.getElementById('bsm-as-email').value='';setPerms({});await bsmLoadAssistants()}catch(e){if(msg)msg.textContent='❌ '+(e.message||'فشل الإضافة')}}
+window.bsmLoadAssistants=async function(){var list=document.getElementById('bsm-as-list'),course=Number((document.getElementById('bsm-as-course')||{}).value||0);if(!list||!db())return;if(!course){list.innerHTML='<div class="ap-empty">اختر كورسًا.</div>';return}try{var r=await db().from('section_admins').select('id,user_id,section_id,role,is_active,permissions,created_at').eq('section_id',course).eq('role','assistant').order('created_at');if(r.error)throw r.error;var ids=(r.data||[]).map(function(x){return x.user_id}),pm={};if(ids.length){var p=await db().from('profiles').select('id,full_name,email').in('id',ids);(p.data||[]).forEach(function(x){pm[x.id]=x})}if(!r.data.length){list.innerHTML='<div class="ap-empty">لا يوجد أدمن مساعد لهذا الكورس.</div>';return}list.innerHTML=r.data.map(function(x){var p=pm[x.user_id]||{},pp=x.permissions||{},badges=perms.filter(function(a){return pp[a[0]]}).map(function(a){return '<span class="ap-badge active" style="margin:2px;">'+esc(a[1])+'</span>'}).join('');return '<div class="ap-card" style="padding:12px;margin-top:8px;"><b>'+esc(p.full_name||'—')+'</b><div class="ap-email-cell">'+esc(p.email||'—')+'</div><div style="margin-top:7px;">'+(badges||'<span style="color:#999">لا توجد صلاحيات</span>')+'</div><div style="margin-top:9px;display:flex;gap:6px;flex-wrap:wrap;"><button class="ap-btn ap-btn-primary" onclick="bsmEditAssistant('+x.id+',\''+esc(p.email||'').replace(/'/g,"\\'")+'\','+x.section_id+', '+JSON.stringify(pp).replace(/</g,'\\u003c')+')">✏️ تعديل</button><button class="ap-btn ap-btn-danger" onclick="bsmDeleteAssistant('+x.id+')">🗑️ حذف</button></div></div>'}).join('')}catch(e){list.innerHTML='<div style="color:#e74c3c">❌ '+esc(e.message)+'</div>'}}
+window.bsmEditAssistant=function(id,email,sectionId,p){document.getElementById('bsm-as-course').value=String(sectionId);document.getElementById('bsm-as-email').value=email||'';setPerms(p||{});var msg=document.getElementById('bsm-as-msg');if(msg)msg.textContent='✏️ عدّل البيانات ثم اضغط حفظ.';var b=document.getElementById('bsm-as-save');b.textContent='💾 حفظ التعديل';b.onclick=function(){bsmUpdateAssistant(id)}}
+window.bsmUpdateAssistant=async function(id){var msg=document.getElementById('bsm-as-msg'),course=Number((document.getElementById('bsm-as-course')||{}).value||0),email=((document.getElementById('bsm-as-email')||{}).value||'').trim().toLowerCase();try{var pr=await db().from('profiles').select('id').eq('email',email).maybeSingle();if(pr.error)throw pr.error;if(!pr.data)throw new Error('الحساب غير موجود.');var r=await db().from('section_admins').update({user_id:pr.data.id,section_id:course,permissions:getPerms(),is_active:true}).eq('id',id).eq('role','assistant');if(r.error)throw r.error;if(msg)msg.textContent='✅ تم الحفظ.';await bsmLoadAssistants();var b=document.getElementById('bsm-as-save');b.textContent='➕ إضافة';b.onclick=window.bsmAddAssistant}catch(e){if(msg)msg.textContent='❌ '+(e.message||'فشل الحفظ')}}
+window.bsmDeleteAssistant=async function(id){if(!confirm('هل تريد حذف الأدمن المساعد من الكورس؟'))return;try{var r=await db().from('section_admins').delete().eq('id',id).eq('role','assistant');if(r.error)throw r.error;await bsmLoadAssistants()}catch(e){if(typeof _showToast==='function')_showToast('❌ '+e.message,'error')}}
+function injectNav(){var d=document.getElementById('ap-tab-dashboard');if(!d||document.getElementById('ap-tab-courseAssistants'))return;var b=document.createElement('button');b.className='ap-nav-btn platform-only-nav';b.id='ap-tab-courseAssistants';b.setAttribute('role','tab');b.innerHTML='🧑‍💼 <span>الأدمن المساعد</span>';b.onclick=function(){apSwitchTab('courseAssistants')};d.parentNode.insertBefore(b,d.nextSibling)}
+var oldSwitch=window.apSwitchTab;if(typeof oldSwitch==='function'&&!oldSwitch.__bsmAug28){window.apSwitchTab=function(tab){if(tab==='courseAssistants'){injectNav();document.querySelectorAll('.ap-nav-btn').forEach(function(x){x.classList.remove('active')});document.getElementById('ap-tab-courseAssistants').classList.add('active');document.querySelectorAll('.ap-tab-panel').forEach(function(x){x.classList.remove('active')});ensurePanel().then(bsmLoadAssistants);return}return oldSwitch.apply(this,arguments)};window.apSwitchTab.__bsmAug28=true}
+setTimeout(injectNav,900)
+
+window.printAug28FeaturesSQL=function(){var sql=`-- BSM Aug 28 2026: additive migration
+ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS reject_reason TEXT;
+ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS rejected_at TIMESTAMPTZ;
+ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS rejected_by UUID REFERENCES profiles(id);
+
+ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS reply_to_message_id BIGINT REFERENCES chat_messages(id) ON DELETE SET NULL;
+CREATE INDEX IF NOT EXISTS idx_chat_messages_reply_to ON chat_messages(reply_to_message_id);
+
+ALTER TABLE section_admins ADD COLUMN IF NOT EXISTS permissions JSONB NOT NULL DEFAULT '{}'::jsonb;
+DO $$
+DECLARE c RECORD;
+BEGIN
+  FOR c IN SELECT conname FROM pg_constraint WHERE conrelid='section_admins'::regclass AND contype='c' AND pg_get_constraintdef(oid) ILIKE '%role%' LOOP
+    EXECUTE format('ALTER TABLE section_admins DROP CONSTRAINT IF EXISTS %I',c.conname);
+  END LOOP;
+END $$;
+ALTER TABLE section_admins ADD CONSTRAINT section_admins_role_check CHECK (role IN ('admin','owner','assistant'));
+CREATE INDEX IF NOT EXISTS idx_section_admins_assistant ON section_admins(section_id,role,is_active);
+
+CREATE OR REPLACE FUNCTION public.is_course_assistant(target_section_id BIGINT)
+RETURNS BOOLEAN LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
+SELECT EXISTS(SELECT 1 FROM section_admins sa WHERE sa.user_id=auth.uid() AND sa.section_id=target_section_id AND sa.role='assistant' AND sa.is_active=true);
+$$;
+CREATE OR REPLACE FUNCTION public.assistant_has_permission(target_section_id BIGINT,p_permission TEXT)
+RETURNS BOOLEAN LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
+SELECT EXISTS(SELECT 1 FROM section_admins sa WHERE sa.user_id=auth.uid() AND sa.section_id=target_section_id AND sa.role='assistant' AND sa.is_active=true AND COALESCE((sa.permissions->>p_permission)::boolean,false)=true);
+$$;
+
+-- Permission + subtree helper: the assistant can operate only on the assigned course
+-- and its descendants, never on another course.
+CREATE OR REPLACE FUNCTION public.assistant_can_access_section(target_section_id BIGINT,p_permission TEXT)
+RETURNS BOOLEAN LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
+WITH RECURSIVE ancestors AS (
+  SELECT id,parent_id FROM site_sections WHERE id=target_section_id
+  UNION ALL
+  SELECT s.id,s.parent_id FROM site_sections s JOIN ancestors a ON s.id=a.parent_id
+)
+SELECT EXISTS(
+  SELECT 1 FROM section_admins sa
+  WHERE sa.user_id=auth.uid() AND sa.role='assistant' AND sa.is_active=true
+    AND COALESCE((sa.permissions->>p_permission)::boolean,false)=true
+    AND sa.section_id IN (SELECT id FROM ancestors)
+);
+$$;
+GRANT EXECUTE ON FUNCTION public.is_course_assistant(BIGINT) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.assistant_has_permission(BIGINT,TEXT) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.assistant_can_access_section(BIGINT,TEXT) TO authenticated;
+
+-- Assistant RLS: only scoped course descendants and only the selected capability.
+ALTER TABLE section_content ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "section_content_assistant_manage" ON section_content;
+CREATE POLICY "section_content_assistant_manage" ON section_content FOR ALL
+USING (assistant_can_access_section(section_id,'manage_content') OR assistant_can_access_section(section_id,'manage_lessons'))
+WITH CHECK (assistant_can_access_section(section_id,'manage_content') OR assistant_can_access_section(section_id,'manage_lessons'));
+
+ALTER TABLE section_resources ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "section_resources_assistant_manage" ON section_resources;
+CREATE POLICY "section_resources_assistant_manage" ON section_resources FOR ALL
+USING (assistant_can_access_section(section_id,'manage_resources'))
+WITH CHECK (assistant_can_access_section(section_id,'manage_resources'));
+
+ALTER TABLE quizzes ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "quizzes_assistant_manage" ON quizzes;
+CREATE POLICY "quizzes_assistant_manage" ON quizzes FOR ALL
+USING (assistant_can_access_section(section_id,'manage_quizzes'))
+WITH CHECK (assistant_can_access_section(section_id,'manage_quizzes'));
+
+ALTER TABLE quiz_questions ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "quiz_questions_assistant_manage" ON quiz_questions;
+CREATE POLICY "quiz_questions_assistant_manage" ON quiz_questions FOR ALL
+USING (assistant_can_access_section((SELECT q.section_id FROM quizzes q WHERE q.id=quiz_questions.quiz_id),'manage_quizzes'))
+WITH CHECK (assistant_can_access_section((SELECT q.section_id FROM quizzes q WHERE q.id=quiz_questions.quiz_id),'manage_quizzes'));
+
+ALTER TABLE user_progress ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "user_progress_assistant_read" ON user_progress;
+CREATE POLICY "user_progress_assistant_read" ON user_progress FOR SELECT
+USING (assistant_can_access_section(section_id,'view_students'));
+
+ALTER TABLE chat_rooms ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "chatrooms_assistant_read" ON chat_rooms;
+CREATE POLICY "chatrooms_assistant_read" ON chat_rooms FOR SELECT
+USING (assistant_can_access_section(section_id,'manage_chats'));
+
+ALTER TABLE chat_messages ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "chatmsg_assistant_read" ON chat_messages;
+DROP POLICY IF EXISTS "chatmsg_assistant_insert" ON chat_messages;
+DROP POLICY IF EXISTS "chatmsg_assistant_delete" ON chat_messages;
+CREATE POLICY "chatmsg_assistant_read" ON chat_messages FOR SELECT
+USING (assistant_can_access_section((SELECT cr.section_id FROM chat_rooms cr WHERE cr.id=chat_messages.room_id),'manage_chats'));
+CREATE POLICY "chatmsg_assistant_insert" ON chat_messages FOR INSERT
+WITH CHECK (assistant_can_access_section((SELECT cr.section_id FROM chat_rooms cr WHERE cr.id=chat_messages.room_id),'manage_chats'));
+CREATE POLICY "chatmsg_assistant_delete" ON chat_messages FOR DELETE
+USING (assistant_can_access_section((SELECT cr.section_id FROM chat_rooms cr WHERE cr.id=chat_messages.room_id),'manage_chats'));
+
+ALTER TABLE section_admins ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "section_admins_assistant_platform_manage" ON section_admins;
+CREATE POLICY "section_admins_assistant_platform_manage" ON section_admins FOR ALL USING (is_admin()) WITH CHECK (is_admin());
+
+CREATE OR REPLACE FUNCTION public.validate_chat_reply_room()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
+DECLARE original_room BIGINT;
+BEGIN
+ IF NEW.reply_to_message_id IS NULL THEN RETURN NEW; END IF;
+ SELECT room_id INTO original_room FROM chat_messages WHERE id=NEW.reply_to_message_id;
+ IF original_room IS NULL OR original_room<>NEW.room_id THEN RAISE EXCEPTION 'Invalid reply target'; END IF;
+ RETURN NEW;
+END $$;
+DROP TRIGGER IF EXISTS trg_validate_chat_reply_room ON chat_messages;
+CREATE TRIGGER trg_validate_chat_reply_room BEFORE INSERT OR UPDATE OF reply_to_message_id ON chat_messages FOR EACH ROW EXECUTE FUNCTION public.validate_chat_reply_room();
+
+NOTIFY pgrst,'reload schema';`;
+console.group('%cBSM Aug 28 Features SQL','color:#0a3d62;font-weight:900');console.log(sql);console.groupEnd();if(navigator.clipboard)navigator.clipboard.writeText(sql).catch(function(){});return sql}
+console.log('%c[BSM] Aug 28 features loaded. Run printAug28FeaturesSQL() once in Supabase SQL Editor.','color:#0a3d62;font-weight:900')
 })();
 </script>
 </body>
