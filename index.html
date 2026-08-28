@@ -8,9 +8,10 @@
 -->
 <script>
 // GLOBAL DEBUG_MODE FIX: make the flag visible to later script blocks.
-var DEBUG_MODE = false; window.DEBUG_MODE = DEBUG_MODE;
+var DEBUG_MODE = true; window.DEBUG_MODE = DEBUG_MODE;
 (function () {
-  const DEBUG_MODE = false;
+  const DEBUG_MODE = true;
+  // Keep Service Worker/PWA untouched while DEBUG_MODE bypasses Frontend protection.
   window.__BSM_DEBUG_MODE = false;
   window.isIOSDevice = function () {
     var ua = navigator.userAgent || '';
@@ -2822,6 +2823,7 @@ img, video {
       });
     } catch(e) {}
     try { document.body && document.body.classList.remove('content-protected'); } catch(e) {}
+    try { var cps = document.getElementById('__content-protection-style'); if (cps) cps.disabled = true; } catch(e) {}
   }
   relaxProtection();
   if (window.MutationObserver) new MutationObserver(relaxProtection).observe(document.documentElement,{childList:true,subtree:true});
@@ -2923,7 +2925,7 @@ img, video {
   <div style="position:relative; width:100%; max-width:560px; margin:0 auto; background:#000; border-radius:14px; overflow:hidden;">
     <button type="button" data-close-video-modal aria-label="إغلاق" style="position:absolute; top:8px; left:8px; z-index:2; background:rgba(0,0,0,.6); color:#fff; border:none; border-radius:50%; width:32px; height:32px; font-size:1.1rem; line-height:1; cursor:pointer; display:flex; align-items:center; justify-content:center;">✕</button>
     <video id="bsm-course-ad-video" controls playsinline webkit-playsinline x5-playsinline preload="none" style="width:100%; max-height:80vh; display:block; background:#000;">
-      <source src="https://19bey0t9zc.ucarecd.net/665cd2e0-7eb4-4de6-b4fd-860ed9c23f5c/Record_20260824072212.mp4" type="video/mp4">
+      <source src="https://5hh9k0g78x.ucarecd.net/12879b2f-3f64-4bfb-9885-6520c30cb0da/Record_20260824072212.mp4" type="video/mp4">
     </video>
   </div>
 </div>
@@ -2933,7 +2935,7 @@ img, video {
   <div style="position:relative; width:100%; max-width:560px; margin:0 auto; background:#000; border-radius:14px; overflow:hidden;">
     <button type="button" data-close-video-modal aria-label="إغلاق" style="position:absolute; top:8px; left:8px; z-index:2; background:rgba(0,0,0,.6); color:#fff; border:none; border-radius:50%; width:32px; height:32px; font-size:1.1rem; line-height:1; cursor:pointer; display:flex; align-items:center; justify-content:center;">✕</button>
     <video id="bsm-install-app-video" controls playsinline webkit-playsinline x5-playsinline preload="metadata" style="width:100%; max-height:80vh; display:block; background:#000;">
-      <source src="https://19bey0t9zc.ucarecd.net/f7fd79ec-417c-42ae-84cc-7c3607f80ce3/WhatsAppVideo20260824at84018AM.mp4" type="video/mp4">
+      <source src="https://res.cloudinary.com/dcuxv356y/video/upload/v1787937963/WhatsApp_Video_2026-08-24_at_8.40.18_AM_k73eqf.mp4" type="video/mp4">
     </video>
   </div>
 </div>
@@ -2941,8 +2943,8 @@ img, video {
 <script>
 (function () {
   var SPECIAL_VIDEO_URLS = {
-    course: 'https://19bey0t9zc.ucarecd.net/665cd2e0-7eb4-4de6-b4fd-860ed9c23f5c/Record_20260824072212.mp4',
-    install: 'https://19bey0t9zc.ucarecd.net/f7fd79ec-417c-42ae-84cc-7c3607f80ce3/WhatsAppVideo20260824at84018AM.mp4'
+    course: 'https://5hh9k0g78x.ucarecd.net/12879b2f-3f64-4bfb-9885-6520c30cb0da/Record_20260824072212.mp4',
+    install: 'https://res.cloudinary.com/dcuxv356y/video/upload/v1787937963/WhatsApp_Video_2026-08-24_at_8.40.18_AM_k73eqf.mp4'
   };
   window._bsmOpenSpecialVideo = function(kind) {
     var url = SPECIAL_VIDEO_URLS[kind];
@@ -24807,6 +24809,7 @@ window.qzShowPastReview = qzShowPastReview;
 
   // ---- 1 و 7) تقوية الصور/الفيديو تحديداً: منع السحب + منع قائمة اللمس المطول على iOS/Android ----
   function hardenMediaElement(el) {
+    if (DEBUG_MODE) return;
     if (!el || el.__bsmProtected) return;
     el.__bsmProtected = true;
     el.setAttribute('draggable', 'false');
@@ -29126,5 +29129,144 @@ function install(){
 }
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',install);else install();setInterval(install,1500);
 })();
-</script></body>
+</script>
+<!-- BSM CHAT MOBILE COMPOSER VISIBILITY FIX -->
+<style id="bsm-chat-composer-visibility-fix">
+/* Keep the message composer visible and tappable on Android/WebView when the keyboard opens. */
+.chat-footer,
+.dm2-composer {
+  position: relative;
+  z-index: 50;
+  flex: 0 0 auto;
+  min-height: 66px;
+  box-sizing: border-box;
+  padding-bottom: max(12px, env(safe-area-inset-bottom));
+  background: #fff;
+  visibility: visible !important;
+  opacity: 1 !important;
+}
+.chat-send-btn {
+  position: relative;
+  z-index: 51;
+  display: inline-flex !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  width: 44px;
+  min-width: 44px;
+  height: 44px;
+  min-height: 44px;
+  flex: 0 0 44px;
+  align-items: center;
+  justify-content: center;
+  pointer-events: auto !important;
+  touch-action: manipulation;
+}
+.chat-input {
+  min-width: 0;
+  min-height: 42px;
+  max-height: 90px;
+  box-sizing: border-box;
+}
+/* The message area must shrink instead of pushing the composer below the viewport. */
+.chat-modal > .chat-body,
+.dm2-chat-active-wrap > .chat-body {
+  min-height: 0 !important;
+  flex: 1 1 auto !important;
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch;
+}
+@media (max-width: 768px) {
+  .chat-overlay,
+  .dm2-overlay {
+    overflow: hidden !important;
+    overscroll-behavior: none;
+  }
+  .chat-modal,
+  .dm2-app {
+    min-height: 0 !important;
+    max-height: none !important;
+  }
+  .chat-footer,
+  .dm2-composer {
+    padding-left: max(10px, env(safe-area-inset-left));
+    padding-right: max(10px, env(safe-area-inset-right));
+  }
+}
+</style>
+
+<script id="bsm-chat-composer-viewport-fix">
+(function(){
+  'use strict';
+  function applyViewportFix(){
+    try{
+      var vv=window.visualViewport;
+      var h=vv && vv.height ? vv.height : window.innerHeight;
+      if(!h || h < 180) return;
+      document.documentElement.style.setProperty('--bsm-visible-vh', h + 'px');
+      var ids=['chat-modal-overlay','dm2-overlay'];
+      ids.forEach(function(id){
+        var el=document.getElementById(id);
+        if(!el) return;
+        if(el.classList.contains('chat-open') || el.classList.contains('dm2-open') || el.style.display!=='none'){
+          el.style.height=h+'px';
+          el.style.maxHeight=h+'px';
+        }
+      });
+      var cm=document.querySelector('#chat-modal-overlay .chat-modal');
+      if(cm && document.getElementById('chat-modal-overlay').classList.contains('chat-open')){
+        cm.style.height=h+'px'; cm.style.maxHeight=h+'px';
+      }
+      var app=document.querySelector('#dm2-overlay .dm2-app');
+      if(app && document.getElementById('dm2-overlay').classList.contains('dm2-open')){
+        app.style.height=h+'px'; app.style.maxHeight=h+'px';
+      }
+    }catch(e){}
+  }
+  function restoreViewport(){
+    try{
+      ['chat-modal-overlay','dm2-overlay'].forEach(function(id){
+        var el=document.getElementById(id); if(el){el.style.height='';el.style.maxHeight='';}
+      });
+      var cm=document.querySelector('#chat-modal-overlay .chat-modal');
+      if(cm){cm.style.height='';cm.style.maxHeight='';}
+      var app=document.querySelector('#dm2-overlay .dm2-app');
+      if(app){app.style.height='';app.style.maxHeight='';}
+    }catch(e){}
+  }
+  function bindInputFocus(){
+    ['chat-input','dm-chat-input'].forEach(function(id){
+      var el=document.getElementById(id); if(!el || el.__bsmViewportBound) return;
+      el.__bsmViewportBound=true;
+      ['focus','input','click','touchstart'].forEach(function(ev){
+        el.addEventListener(ev,function(){
+          setTimeout(applyViewportFix,0);
+          setTimeout(applyViewportFix,120);
+          setTimeout(applyViewportFix,350);
+        },{passive:true});
+      });
+    });
+  }
+  if(window.visualViewport){
+    window.visualViewport.addEventListener('resize',applyViewportFix,{passive:true});
+    window.visualViewport.addEventListener('scroll',applyViewportFix,{passive:true});
+  }
+  window.addEventListener('resize',applyViewportFix,{passive:true});
+  window.addEventListener('orientationchange',function(){setTimeout(applyViewportFix,250);},{passive:true});
+  document.addEventListener('focusin',function(e){
+    if(e.target && (e.target.id==='chat-input'||e.target.id==='dm-chat-input')){
+      bindInputFocus(); setTimeout(applyViewportFix,80); setTimeout(applyViewportFix,300);
+    }
+  });
+  document.addEventListener('click',function(e){
+    var b=e.target && e.target.closest ? e.target.closest('#chat-send-btn,#dm-chat-send-btn') : null;
+    if(b){ b.style.visibility='visible'; b.style.display='inline-flex'; }
+  },true);
+  setInterval(bindInputFocus,1000);
+  window._bsmApplyChatViewportFix=applyViewportFix;
+  window._bsmRestoreChatViewport=restoreViewport;
+  setTimeout(bindInputFocus,300);
+  setTimeout(applyViewportFix,500);
+})();
+</script>
+</body>
 </html>
