@@ -1428,6 +1428,67 @@ html.rv-manual-fs-active #rv-overlay * {
   width: 100% !important;
 }
 
+/* ✅ FIX (طلب: "⛶ عرضي" لازم يبان أفقي حقيقي، مش مجرد تكبير داخل نفس الشكل
+   الرأسي) — لما زر "عرضي" يضطر يستخدم أي من الـfallbacks التلاتة فوق
+   (rv-manual-fs / rv-video-manual-fs / rv-fembed-fill) لأن كل من
+   requestFullscreen() و screen.orientation.lock() اترفضوا (أغلب المتصفحات
+   بتربط orientation.lock بنجاح الدخول Fullscreen الأول، فلو الأول اتمنع
+   بسبب Permissions Policy زي مشكلة JWPlayer، التاني هيتمنع تلقائيًا هو
+   كمان)، الجهاز الفعلي يفضل Portrait. الكلاس ده (rv-force-rotate) بيتضاف
+   فوق أي من التلاتة (مش بديل عنهم) ويلف .rv-modal بصريًا 90 درجة عبر CSS
+   transform بحيث يملأ الفيديو الشاشة بمظهر Landscape حقيقي فعليًا، مش رأسي
+   مكبّر. الفوتر بيتخفي زي fembed-fill بالظبط، والهيدر (وفيه زرار "✕ خروج")
+   بيفضل موجود وشغّال، بيلف مع باقي الـmodal فبيبان على حافة الشاشة لكنه
+   يفضل قابل للضغط عادي (تحويلات CSS مش بتأثر على دقة الضغط في المتصفحات).
+   ✅ الكلاس ده جوه @media(orientation:portrait) فقط، فلو المستخدم دوّر
+   الموبايل فعليًا لـLandscape حقيقي أثناء الفallback شغّال، الـmedia query
+   بتوقف تنطبق تلقائيًا والـCSS الأساسي (غير المدوّر) بتاع نفس الـfallback
+   (فوق) هو اللي بيشتغل عادي ويملأ الشاشة الحقيقية بدون أي دوران زيادة —
+   الـJS في _rvSyncForceRotate() بيتابع الحالة ده كمان ويشيل/يرجّع الكلاس. */
+@media (orientation: portrait) {
+  .rv-overlay.rv-force-rotate .rv-modal {
+    position: fixed !important;
+    top: 50% !important;
+    left: 50% !important;
+    width: 100vh !important;
+    width: 100dvh !important;
+    height: 100vw !important;
+    height: 100dvw !important;
+    max-width: none !important;
+    max-height: none !important;
+    transform: translate(-50%, -50%) rotate(90deg) !important;
+    transform-origin: center center !important;
+    margin: 0 !important;
+    border-radius: 0 !important;
+  }
+  .rv-overlay.rv-force-rotate .rv-modal .rv-footer {
+    display: none !important;
+  }
+  .rv-overlay.rv-force-rotate .rv-modal .rv-body {
+    height: 100% !important;
+    min-height: 0 !important;
+    display: flex !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+  }
+  .rv-overlay.rv-force-rotate .rv-modal .rv-video,
+  .rv-overlay.rv-force-rotate .rv-modal #rv-video-el,
+  .rv-overlay.rv-force-rotate .rv-modal iframe[data-fembed-embed="1"],
+  .rv-overlay.rv-force-rotate .rv-modal .rv-embed-frame {
+    position: static !important;
+    inset: auto !important;
+    width: 100% !important;
+    height: 100% !important;
+    max-width: none !important;
+    max-height: none !important;
+    flex: 1 1 auto !important;
+    transform: none !important;
+    margin: 0 !important;
+    border: 0 !important;
+    object-fit: contain !important;
+  }
+}
+
 /* Zoom للصور: pinch على الهاتف */
 .rv-image-wrap {
   touch-action: pinch-zoom;
@@ -6923,6 +6984,7 @@ const ResourceViewer = (function() {
     // مخفية (visibility:hidden) حتى بعد إغلاق المشغل.
     document.documentElement.classList.remove('rv-manual-fs-active');
     _rvUnlockOrientationIfNeeded(); // ✅ FIX: تنضيف لو المستخدم قفل المشغل وهو لسه قافل orientation
+    _rvStopRotateWatch(); // ✅ FIX: يشيل resize/orientationchange listeners بتاعة rv-force-rotate لو اتقفل المشغل وهو لسه في وضع الدوران اليدوي (بدل ما يفضلوا معلّقين على window)
     if (document._rvKeyHandler) {
       document.removeEventListener('keydown', document._rvKeyHandler);
     }
@@ -7041,13 +7103,26 @@ const ResourceViewer = (function() {
     try {
       if (window.screen && screen.orientation && screen.orientation.lock) {
         _rvLandscapeLockActive = true;
-        screen.orientation.lock('landscape').catch(function(err) {
+        screen.orientation.lock('landscape').then(function() {
+          // ✅ Landscape حقيقي فعلًا (زي تدوير الموبايل يدويًا) — لو كان في
+          // محاولة CSS rotate اتفعّلت قبل كده لأي سبب، بنشيلها فورًا لأنها
+          // بقت مش لازمة خالص.
+          _rvStopRotateWatch();
+        }).catch(function(err) {
           _rvLandscapeLockActive = false;
           console.warn('[Landscape] screen.orientation.lock غير مدعوم أو رُفض:', err && err.message);
+          // ✅ آخر حل فقط: Landscape حقيقي (Fullscreen + Orientation Lock)
+          // مش ممكن في هذه البيئة — بنلجأ لتدوير الفيديو بصريًا عبر CSS.
+          _rvActivateRotateFallback();
         });
+      } else {
+        // ✅ الـAPI نفسها مش موجودة في هذا المتصفح/WebView — مفيش طريقة لقفل
+        // الاتجاه أصلًا، فالحل الأخير (CSS rotate) بيتفعّل على طول.
+        _rvActivateRotateFallback();
       }
     } catch (e) {
       console.warn('[Landscape] orientation lock error:', e && e.message);
+      _rvActivateRotateFallback();
     }
   }
 
@@ -7061,6 +7136,66 @@ const ResourceViewer = (function() {
     }
   }
 
+  // ✅ FIX (طلب: الأولوية لـNative Fullscreen + screen.orientation.lock —
+  // الـCSS rotate هو "آخر حل داخل آخر حل" بس) — بيتفعّل حصريًا من جوه catch/
+  // else الخاصة بـ_rvLockLandscapeOrientation() فوق، يعني بعد التأكد فعلاً
+  // إن مفيش طريقة لتحقيق Landscape حقيقي (لا Fullscreen API قبلها، ولا
+  // Orientation Lock نفسها). مش مرتبط بأي من دوال تفعيل الـfallback الثلاثة
+  // (rv-manual-fs/rv-video-manual-fs/rv-fembed-fill) — دول بيملوا الشاشة
+  // بس CSS، وده منفصل تمامًا وبيتفعّل بعدهم فقط لو الـlock فشل كمان.
+  function _rvActivateRotateFallback() {
+    var overlay = document.getElementById('rv-overlay');
+    if (!overlay) return;
+    _rvStartRotateWatch(overlay);
+  }
+
+  // ✅ FIX (طلب: "عرضي" حقيقي حتى بدون orientation lock) — راجع تعليق CSS
+  // "rv-force-rotate" فوق لتفاصيل السبب. الدوال دي بتُستدعى فقط من مسار
+  // زر "⛶ عرضي" (_toggleLandscape)، ومفيش أي استدعاء ليها من زر "⛶" العادي
+  // (_toggleFullscreen)، فسلوك الزر العادي ما اتغيرش خالص.
+  function _rvIsPortrait() {
+    try {
+      if (window.matchMedia) return window.matchMedia('(orientation: portrait)').matches;
+    } catch (e) {}
+    return window.innerHeight >= window.innerWidth;
+  }
+
+  function _rvSyncForceRotate() {
+    var overlay = document.getElementById('rv-overlay');
+    if (!overlay || !overlay.__rvWantsRotate) return;
+    // ✅ يشمل حالة Native Fullscreen ناجح لكن orientation.lock فشل (نادرة)،
+    // مش بس حالات الـCSS fallback التلاتة — في الحالتين لسه محتاجين نراقب
+    // اتجاه الجهاز الفعلي عشان نشيل الدوران أوتوماتيك لو اتلف landscape فعلاً.
+    var stillActive = !!(document.fullscreenElement || document.webkitFullscreenElement) ||
+                       overlay.classList.contains('rv-video-manual-fs') ||
+                       overlay.classList.contains('rv-manual-fs') ||
+                       overlay.classList.contains('rv-fembed-fill');
+    if (!stillActive) { _rvStopRotateWatch(); return; }
+    if (_rvIsPortrait()) overlay.classList.add('rv-force-rotate');
+    else overlay.classList.remove('rv-force-rotate'); // الجهاز بقى Landscape فعليًا — مفيش داعي لدوران CSS زيادة
+  }
+
+  function _rvStartRotateWatch(overlay) {
+    if (!overlay) return;
+    overlay.__rvWantsRotate = true;
+    if (overlay.__rvRotateWatchBound) { _rvSyncForceRotate(); return; }
+    overlay.__rvRotateWatchBound = true;
+    window.addEventListener('resize', _rvSyncForceRotate, { passive: true });
+    window.addEventListener('orientationchange', _rvSyncForceRotate, { passive: true });
+    _rvSyncForceRotate();
+  }
+
+  function _rvStopRotateWatch() {
+    var overlay = document.getElementById('rv-overlay');
+    window.removeEventListener('resize', _rvSyncForceRotate);
+    window.removeEventListener('orientationchange', _rvSyncForceRotate);
+    if (overlay) {
+      overlay.__rvWantsRotate = false;
+      overlay.__rvRotateWatchBound = false;
+      overlay.classList.remove('rv-force-rotate');
+    }
+  }
+
   function _enableFembedFillFallback() {
     var overlay = document.getElementById('rv-overlay');
     if (!overlay || overlay.classList.contains('rv-fembed-fill')) return;
@@ -7071,6 +7206,7 @@ const ResourceViewer = (function() {
     var overlay = document.getElementById('rv-overlay');
     document.documentElement.classList.remove('rv-manual-fs-active');
     _rvUnlockOrientationIfNeeded();
+    _rvStopRotateWatch();
     if (!overlay) return;
     overlay.classList.remove('rv-fembed-fill');
   }
@@ -7114,7 +7250,12 @@ const ResourceViewer = (function() {
           if (resultF && typeof resultF.then === 'function') {
             resultF.then(_rvLockLandscapeOrientation).catch(function(err) {
               console.warn('[Landscape][Fembed] iframe.requestFullscreen رفضته Permissions Policy:', err && err.message);
+              // ✅ Fullscreen اتمنع — نملأ الشاشة بالـfallback الحالي (بدون
+              // دوران لسه)، ونفضل نحاول Orientation Lock الحقيقي كمان؛
+              // الدوران (rv-force-rotate) مش هيتفعّل إلا لو الـlock ده فشل هو
+              // كمان (جوه _rvLockLandscapeOrientation نفسها).
               _enableFembedFillFallback();
+              _rvLockLandscapeOrientation();
             });
           } else {
             // متصفح/WebView قديم من غير Promise — نفترض النجاح ونحاول القفل.
@@ -7123,12 +7264,14 @@ const ResourceViewer = (function() {
         } else {
           // لا يوجد Fullscreen API على iframe أصلًا في هذا الـWebView.
           _enableFembedFillFallback();
+          _rvLockLandscapeOrientation();
         }
       } catch (e) {
         // ده بالظبط حالة "TypeError: Disallowed by permissions policy" لو
         // اتحققت Sync بدل ما تترفض جوه Promise.
         console.warn('[Landscape][Fembed] iframe.requestFullscreen رمى استثناء:', e && e.message);
         _enableFembedFillFallback();
+        _rvLockLandscapeOrientation();
       }
       return;
     }
@@ -7176,7 +7319,11 @@ const ResourceViewer = (function() {
     var overlay = document.getElementById('rv-overlay');
     var inFs = !!(document.fullscreenElement || document.webkitFullscreenElement) ||
                !!(overlay && (overlay.classList.contains('rv-manual-fs') || overlay.classList.contains('rv-video-manual-fs') || overlay.classList.contains('rv-fembed-fill')));
-    if (!inFs) _rvUnlockOrientationIfNeeded();
+    // ✅ FIX: لو حصل خروج فعلي من Native Fullscreen (زرار المتصفح نفسه، ESC،
+    // أو زرار "✕ خروج" بتاعنا) وكان في نفس الوقت CSS rotate (rv-force-rotate)
+    // شغّال كـ"آخر حل" فوق الـFullscreen ده، لازم نشيله وننضّف الـlisteners
+    // بتاعته هنا كمان، مش بس orientation.unlock.
+    if (!inFs) { _rvUnlockOrientationIfNeeded(); _rvStopRotateWatch(); }
     btn.textContent = inFs ? '✕ خروج' : '⛶ عرضي';
   }
   document.addEventListener('fullscreenchange', _onRvLandscapeBtnChange);
@@ -7207,6 +7354,7 @@ const ResourceViewer = (function() {
     var overlay = document.getElementById('rv-overlay');
     document.documentElement.classList.remove('rv-manual-fs-active');
     _rvUnlockOrientationIfNeeded(); // ✅ FIX: يرجّع الاتجاه لو كان مقفول بزر "عرضي"
+    _rvStopRotateWatch();
     if (!overlay) return;
     overlay.classList.remove('rv-manual-fs');
     _onRvFsChange();
@@ -7230,6 +7378,7 @@ const ResourceViewer = (function() {
     var overlay = document.getElementById('rv-overlay');
     document.documentElement.classList.remove('rv-manual-fs-active');
     _rvUnlockOrientationIfNeeded(); // ✅ FIX: يرجّع الاتجاه لو كان مقفول بزر "عرضي"
+    _rvStopRotateWatch();
     if (!overlay) return;
     overlay.classList.remove('rv-video-manual-fs');
     _onRvFsChange();
