@@ -20518,6 +20518,9 @@ window.diagnose = async function() {
 .dm2-msg-ticks { font-size: .74rem; }
 .dm2-msg-ticks.read { color: #4fc3f7; }
 .dm2-msg-ticks.sent { color: #b8c6d4; }
+.dm2-reply-preview{display:flex;flex-direction:column;gap:2px;width:100%;box-sizing:border-box;border:0;border-right:3px solid #17a589;background:rgba(23,165,137,.08);padding:6px 8px;margin-bottom:4px;border-radius:8px;cursor:pointer;text-align:right;color:#526575;font-size:.7rem;}
+.dm2-reply-preview span:last-child{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.dm2-reply-action{border:0;background:transparent;cursor:pointer;font-size:.76rem;padding:2px 4px;touch-action:manipulation;}
 
 /* Attachment card / preview inside bubbles */
 .dm2-att-image { max-width: 220px; max-height: 220px; border-radius: 10px; display: block; margin-bottom: 4px; cursor: pointer; object-fit: cover; background: rgba(0,0,0,.06); }
@@ -21605,6 +21608,7 @@ window.diagnose = async function() {
   var _dmPendingFile      = null; // ملف مُختار بانتظار الإرسال
   var _dmPendingFileKind  = null; // 'image' | 'pdf' | 'file'
   var _dmAttMap           = {};   // message_id -> [attachment,...] لكل الرسائل المحمّلة حالياً في المحادثة المفتوحة
+  var _dmReplyToMessage = null; // الرسالة التي يرد عليها المستخدم داخل الـDM
 
   // ==================== Attachments (chat-attachments bucket — PRIVATE) ====================
   // Bucket وStorage Policies موجودة بالفعل (safe_chat_room_id_from_path)، لم يتم إنشاء أو تعديل أي منها هنا.
@@ -22098,6 +22102,8 @@ window.diagnose = async function() {
     _dmOtherUserId = otherUserId || null;
     _dmOtherProfile = null;
     _dmOtherLastRead = null;
+    _dmReplyToMessage = null;
+    var existingReplyBar = document.getElementById('dm2-reply-bar'); if (existingReplyBar) existingReplyBar.remove();
 
     var db = window.supabase;
     if (!db) { bodyEl.innerHTML = '<div class="chat-empty">تعذّر الاتصال بالخادم، حاول مجدداً.</div>'; return; }
@@ -22218,10 +22224,14 @@ window.diagnose = async function() {
     var bodyEl = document.getElementById('dm-chat-body');
     try {
       var msgRes = await db.from('chat_messages')
-        .select('id, room_id, user_id, user_name, message, created_at')
+        .select('id, room_id, user_id, user_name, message, created_at, reply_to_message_id')
         .eq('room_id', _dmRoom.id)
         .order('created_at', { ascending: false })
         .limit(_DM_PAGE_SIZE);
+      if (msgRes.error) { bodyEl.innerHTML = '<div class="chat-empty">' + _dmFriendlyError() + '</div>'; return; }
+      if (msgRes.error && /column .*reply_to_message_id|schema cache|could not find/i.test(msgRes.error.message || '')) {
+        msgRes = await db.from('chat_messages').select('id, room_id, user_id, user_name, message, created_at').eq('room_id', _dmRoom.id).order('created_at', { ascending: false }).limit(_DM_PAGE_SIZE);
+      }
       if (msgRes.error) { bodyEl.innerHTML = '<div class="chat-empty">' + _dmFriendlyError() + '</div>'; return; }
       var rows = (msgRes.data || []).slice().reverse();
       _dmHasMoreOlder = rows.length === _DM_PAGE_SIZE;
@@ -22243,11 +22253,15 @@ window.diagnose = async function() {
     try {
       var oldestCreatedAt = _dmLoadedMessages[0].created_at;
       var res = await db.from('chat_messages')
-        .select('id, room_id, user_id, user_name, message, created_at')
+        .select('id, room_id, user_id, user_name, message, created_at, reply_to_message_id')
         .eq('room_id', _dmRoom.id)
         .lt('created_at', oldestCreatedAt)
         .order('created_at', { ascending: false })
         .limit(_DM_PAGE_SIZE);
+      if (res.error) throw res.error;
+      if (res.error && /column .*reply_to_message_id|schema cache|could not find/i.test(res.error.message || '')) {
+        res = await db.from('chat_messages').select('id, room_id, user_id, user_name, message, created_at').eq('room_id', _dmRoom.id).lt('created_at', oldestCreatedAt).order('created_at', { ascending: false }).limit(_DM_PAGE_SIZE);
+      }
       if (res.error) throw res.error;
       var older = (res.data || []).slice().reverse();
       _dmHasMoreOlder = older.length === _DM_PAGE_SIZE;
@@ -22420,17 +22434,47 @@ window.diagnose = async function() {
     }
     var atts = _dmAttMap[m.id] || [];
     var attHtml = atts.length ? atts.map(_dmAttachmentHTML).join('') : '';
+    var original = null;
+    if (m.reply_to_message_id) original = (_dmLoadedMessages || []).find(function(x){ return String(x.id) === String(m.reply_to_message_id); }) || null;
+    var replyHtml = m.reply_to_message_id
+      ? '<button type="button" class="dm2-reply-preview" onclick="_dmJumpToMessage(\'' + _dmEsc(m.reply_to_message_id).replace(/'/g, '&#39;') + '\')" title="الانتقال للرسالة الأصلية">' +
+          '<span style="font-weight:900;">↩️ ' + _dmEsc(original ? (original.user_name || 'رسالة أصلية') : 'الرسالة الأصلية') + '</span>' +
+          '<span>' + _dmEsc(original ? (original.message || 'مرفق') : 'اضغط للانتقال') + '</span>' +
+        '</button>'
+      : '';
     var bubbleHtml = m.message ? '<div class="chat-msg-bubble">' + _dmEsc(m.message) + '</div>' : '';
     return '' +
-      '<div class="chat-msg-row ' + (mine ? 'mine' : 'theirs') + '">' +
-        bubbleHtml + attHtml +
+      '<div class="chat-msg-row ' + (mine ? 'mine' : 'theirs') + '" data-dm-message-id="' + _dmEsc(m.id) + '">' +
+        replyHtml + bubbleHtml + attHtml +
         '<div class="chat-msg-meta">' +
           (mine ? '' : '<span>' + _dmEsc(displayName) + '</span>') +
           '<span>' + timeStr + '</span>' + ticks +
+          '<button type="button" class="dm2-reply-action" onclick="_dmSetReply(\'' + _dmEsc(m.id).replace(/'/g, '&#39;') + '\')" title="رد">↩️</button>' +
         '</div>' +
       '</div>';
   }
 
+  window._dmSetReply = function(messageId) {
+    var msg = (_dmLoadedMessages || []).find(function(x){ return String(x.id) === String(messageId); });
+    if (!msg) return;
+    _dmReplyToMessage = msg;
+    var wrap = document.getElementById('dm2-att-pending-wrap');
+    if (!wrap) return;
+    var old = document.getElementById('dm2-reply-bar'); if (old) old.remove();
+    var bar = document.createElement('div');
+    bar.id = 'dm2-reply-bar';
+    bar.style.cssText = 'display:flex;align-items:center;gap:8px;margin:4px 8px 0;padding:8px 10px;border-right:4px solid #17a589;background:#eef8f6;border-radius:10px;box-sizing:border-box;';
+    bar.innerHTML = '<div style="flex:1;min-width:0;"><div style="font-size:.68rem;font-weight:900;color:#0a3d62;">↩️ رد على ' + _dmEsc(msg.user_name || 'رسالة') + '</div><div style="font-size:.74rem;color:#536777;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + _dmEsc(msg.message || 'مرفق') + '</div></div><button type="button" class="dm2-icon-btn" aria-label="إلغاء الرد">✕</button>';
+    bar.querySelector('button').onclick = function(){ _dmReplyToMessage = null; bar.remove(); };
+    wrap.parentNode.insertBefore(bar, wrap);
+    var input = document.getElementById('dm-chat-input'); if (input) input.focus();
+  };
+  window._dmJumpToMessage = function(messageId) {
+    var el = document.querySelector('#dm-chat-body [data-dm-message-id="' + String(messageId).replace(/"/g,'') + '"]');
+    if (el) { el.scrollIntoView({behavior:'smooth',block:'center'}); return; }
+    if (typeof window._dmLoadOlderMessages === 'function') window._dmLoadOlderMessages();
+    if (window._showToast) _showToast('⚠️ الرسالة الأصلية غير موجودة ضمن الرسائل المحمّلة حالياً. حمّل الرسائل الأقدم إذا لزم.', 'warning');
+  };
   window._dmHandleKeydown = function(ev) {
     if (ev.key === 'Enter' && !ev.shiftKey) { ev.preventDefault(); _dmSend(); }
   };
@@ -22523,12 +22567,20 @@ window.diagnose = async function() {
     try {
       // 1) أنشئ الرسالة أولاً بنفس الطريقة الآمنة الحالية (user_id/user_name يُعاد ضبطهما من Trigger)
       //    الرسالة ممكن تكون بنص فارغ لو كانت مرفق فقط بدون تعليق نصي.
-      var insRes = await db.from('chat_messages').insert([{
+      var messagePayload = {
         room_id: _dmRoom.id,
         message: text,
         user_id: _dmMe ? _dmMe.id : null,
         user_name: ''
-      }]).select('id').single();
+      };
+      if (_dmReplyToMessage && _dmReplyToMessage.id) messagePayload.reply_to_message_id = _dmReplyToMessage.id;
+      var insRes = await db.from('chat_messages').insert([messagePayload]).select('id').single();
+      if (insRes.error && messagePayload.reply_to_message_id &&
+          /column .*reply_to_message_id|schema cache|could not find/i.test(insRes.error.message || '')) {
+        delete messagePayload.reply_to_message_id;
+        insRes = await db.from('chat_messages').insert([messagePayload]).select('id').single();
+        console.warn('[DM] reply_to_message_id غير موجود في قاعدة البيانات الحالية؛ تم إرسال الرسالة بدون ربط الرد.');
+      }
       if (insRes.error || !insRes.data) {
         console.error('[DM] send error:', insRes.error && insRes.error.message);
         if (window._showToast) _showToast(_dmFriendlyError(), 'error');
@@ -22547,6 +22599,8 @@ window.diagnose = async function() {
 
       input.value = '';
       _dmRemovePendingFile();
+      _dmReplyToMessage = null;
+      var replyBar = document.getElementById('dm2-reply-bar'); if (replyBar) replyBar.remove();
       await _dmLoadMessages();
     } catch(e) {
       console.error('[DM] send exception:', e && e.message);
@@ -29178,6 +29232,124 @@ ORDER BY tablename, policyname;
 })();
 </script>
 
+
+
+<!-- ============================================================
+     BSM FINAL DB-AWARE FRONTEND HARDENING — 2026-08-29
+     Uses confirmed existing columns: subscriptions.reject_reason
+     and chat_messages.reply_to_message_id. No SQL/RLS changes.
+============================================================ -->
+<script>
+(function(){
+  'use strict';
+  if(window.__BSM_DB_AWARE_HARDENING_20260829)return;
+  window.__BSM_DB_AWARE_HARDENING_20260829=true;
+
+  function _bsmDb(){return window.supabase||null;}
+  function _bsmSessionUser(){
+    return (typeof window._currentAuthUser!=='undefined' && window._currentAuthUser)
+      || null;
+  }
+  async function _bsmGetUser(){
+    try{
+      var d=_bsmDb(); if(!d||!d.auth)return null;
+      var r=typeof window._getSessionSafe==='function'
+        ? await window._getSessionSafe(8000)
+        : await d.auth.getSession();
+      return r&&r.data&&r.data.session&&r.data.session.user||null;
+    }catch(e){return _bsmSessionUser();}
+  }
+  async function _bsmPending(uid,sectionId){
+    var d=_bsmDb();
+    if(!d||!uid||!sectionId)return false;
+    try{
+      var r=await d.from('subscriptions')
+        .select('id,payment_status,created_at,requested_at')
+        .eq('user_id',uid)
+        .eq('section_id',Number(sectionId))
+        .eq('payment_status','pending')
+        .order('created_at',{ascending:false})
+        .limit(1);
+      if(r.error)throw r.error;
+      return !!(r.data&&r.data.length);
+    }catch(e){
+      console.warn('[BSM][pending guard] read failed:',e&&e.message);
+      return false;
+    }
+  }
+  async function _bsmFreshAnchor(anchor){
+    try{
+      if(anchor&&anchor.id&&typeof window._findSubscriptionAnchor==='function'){
+        var a=await window._findSubscriptionAnchor(Number(anchor.id));
+        if(a&&a.id)return a;
+      }
+    }catch(e){console.warn('[BSM][pending guard] anchor refresh:',e&&e.message);}
+    return anchor||null;
+  }
+
+  /* Final pending guard: runs immediately before any receipt upload/RPC. */
+  if(typeof window._pmSubmit==='function'&&!window.__BSM_PM_FINAL_GATE){
+    var _bsmOldSubmit=window._pmSubmit;
+    window._pmSubmit=async function(){
+      var msg=document.getElementById('pm-msg');
+      var btn=document.getElementById('pm-submit-btn');
+      try{
+        var u=await _bsmGetUser();
+        var anchor=await _bsmFreshAnchor(window._currentGateAnchor||window._pmAnchor);
+        if(u&&anchor&&anchor.id){
+          window._currentGateAnchor=anchor;
+          window._pmAnchor=anchor;
+          if(await _bsmPending(u.id,anchor.id)){
+            if(msg){msg.style.color='#f39c12';msg.textContent='⏳ لديك بالفعل طلب اشتراك قيد المراجعة لهذا الكورس. لا يمكن إرسال طلب جديد حتى يتم قبول الطلب الحالي أو رفضه.';}
+            if(btn){btn.disabled=false;btn.textContent='🚀 إرسال الطلب';}
+            if(typeof window._showToast==='function')window._showToast('⏳ الطلب الحالي قيد المراجعة بالفعل','warning');
+            return;
+          }
+        }
+      }catch(e){console.warn('[BSM][pending guard] pre-submit:',e&&e.message);}
+      return _bsmOldSubmit.apply(this,arguments);
+    };
+    window.__BSM_PM_FINAL_GATE=true;
+  }
+
+  /* Keep the modal opener guarded too, including rejected -> re-request. */
+  if(typeof window.requestOrRenewSubscription==='function'&&!window.__BSM_REQ_FINAL_GATE){
+    var _bsmOldReq=window.requestOrRenewSubscription;
+    window.requestOrRenewSubscription=async function(){
+      try{
+        var u=await _bsmGetUser();
+        var anchor=await _bsmFreshAnchor(window._currentGateAnchor);
+        if(u&&anchor&&anchor.id&&await _bsmPending(u.id,anchor.id)){
+          if(typeof window._showToast==='function')window._showToast('⏳ لديك بالفعل طلب قيد المراجعة لهذا الكورس','warning');
+          return;
+        }
+      }catch(e){console.warn('[BSM][pending guard] opener:',e&&e.message);}
+      return _bsmOldReq.apply(this,arguments);
+    };
+    window.__BSM_REQ_FINAL_GATE=true;
+  }
+
+  /* Confirm the two DB-backed fields are used by the existing UI. */
+  window.__bsmConfirmedSchema={
+    chatReplyColumn:'reply_to_message_id',
+    subscriptionRejectColumn:'reject_reason'
+  };
+
+  /* Runtime safety: never leak a block-scoped shorthand `b` from nav handlers. */
+  if(typeof window.apSwitchTab==='function'&&!window.__BSM_AP_SWITCH_SAFE_FINAL){
+    var _bsmBaseSwitch=window.apSwitchTab;
+    window.apSwitchTab=async function(tab){
+      try{return await _bsmBaseSwitch.apply(this,arguments);}
+      catch(e){
+        console.error('[BSM][NAV] apSwitchTab failed:',e);
+        var panel=document.getElementById('ap-panel-'+tab);
+        if(panel)panel.classList.add('active');
+      }
+    };
+    window.__BSM_AP_SWITCH_SAFE_FINAL=true;
+  }
+})();
+</script>
 </body>
 </html>
 
@@ -29204,5 +29376,427 @@ ORDER BY tablename, policyname;
       if (p) p.classList.add('active');
     }
   };
+})();
+</script>
+
+
+<script>
+/* ============================================================
+   BSM TARGETED PATCH — requested fixes 1..7
+   HTML/front-end only. No SQL is executed and no RLS/Service Worker is replaced.
+============================================================ */
+(function(){
+  'use strict';
+  if(window.__BSM_TARGETED_7_FIXES_FINAL_20260829)return;
+  window.__BSM_TARGETED_7_FIXES_FINAL_20260829=true;
+
+  function esc(v){
+    if(typeof window._apEsc==='function')return window._apEsc(v==null?'':String(v));
+    return String(v==null?'':v).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});
+  }
+  function DB(){return window.supabase||null;}
+  function toast(m,t){if(typeof window._showToast==='function')window._showToast(m,t||'info');else console.log(m);}
+
+  /* 1) DM composer: keep the existing DOM, only harden layout/touch behavior. */
+  function dmComposerCSS(){
+    if(document.getElementById('bsm-dm-composer-final-css'))return;
+    var s=document.createElement('style');s.id='bsm-dm-composer-final-css';
+    s.textContent=
+      '#dm2-overlay .dm2-chat-pane{min-height:0;overflow:hidden;}' +
+      '#dm2-overlay .dm2-chat-active-wrap{min-height:0;display:flex;flex-direction:column;}' +
+      '#dm2-overlay #dm-chat-body{flex:1 1 auto;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;}' +
+      '#dm2-overlay .dm2-composer{display:flex!important;flex:0 0 auto;width:100%;box-sizing:border-box;gap:6px;padding-bottom:calc(8px + env(safe-area-inset-bottom,0px));}' +
+      '#dm2-overlay #dm-chat-input{display:block!important;flex:1 1 auto;min-width:0;box-sizing:border-box;max-height:120px;resize:none;}' +
+      '#dm2-overlay #dm-chat-send-btn{display:flex!important;flex:0 0 44px;width:44px;height:44px;align-items:center;justify-content:center;visibility:visible!important;opacity:1!important;pointer-events:auto!important;touch-action:manipulation;}' +
+      '@media(max-width:600px){#dm2-overlay .dm2-composer{padding-left:8px;padding-right:8px;}#dm2-overlay #dm-chat-send-btn{width:46px;height:46px;flex-basis:46px;}#dm2-overlay #dm-chat-input{font-size:16px;min-height:44px;}}';
+    document.head.appendChild(s);
+  }
+  function dmComposerFocus(){
+    var i=document.getElementById('dm-chat-input');
+    if(i&&!i.__bsmAutoGrow){
+      i.__bsmAutoGrow=true;
+      i.addEventListener('input',function(){this.style.height='auto';this.style.height=Math.min(this.scrollHeight,120)+'px';});
+    }
+  }
+
+  /* 2) Google registration: clear only the local Supabase session, not Google cookies. */
+  window.qnRegister=async function(){
+    try{
+      var d=DB();
+      if(!d||!d.auth){toast('⏳ جاري التحميل، حاول مرة أخرى','warning');return;}
+      try{
+        var st=(window.state&&Array.isArray(window.state.navigationStack))?window.state.navigationStack.map(function(x){return {label:x.label};}):[];
+        sessionStorage.setItem('_nav_stack_labels',JSON.stringify(st));
+        if(window._lastOpenSectionId)sessionStorage.setItem('_last_section_id',String(window._lastOpenSectionId));
+      }catch(e){}
+      try{await d.auth.signOut({scope:'local'});}catch(e){console.warn('[REGISTER] local signOut:',e&&e.message);}
+      var redirect=(typeof window.isAndroidApp==='function'&&window.isAndroidApp())?'bsm://auth/callback':'https://fanysehy.github.io/-/';
+      var r=await d.auth.signInWithOAuth({provider:'google',options:{redirectTo:redirect,skipBrowserRedirect:false,queryParams:{access_type:'offline',prompt:'select_account'}}});
+      if(r&&r.error)throw r.error;
+    }catch(e){console.error('[REGISTER] OAuth:',e);toast('❌ تعذر فتح اختيار حساب Google: '+(e.message||'حاول مرة أخرى'),'error');}
+  };
+
+  /* 4) Rejected subscription presentation. */
+  function wrapSubscriptionAccess(){
+    if(typeof window.getDetailedSectionAccess==='function'&&!window.__bsmRejectedDetailed){
+      var old=window.getDetailedSectionAccess;
+      window.getDetailedSectionAccess=async function(sectionId){
+        var r=await old.apply(this,arguments);
+        var row=r&&r.row;
+        if(row&&(row.payment_status==='rejected'||row.payment_status==='cancelled')){
+          r.state='rejected';r.access='rejected';r.reject_reason=row.reject_reason||'';
+        }
+        return r;
+      };
+      window.__bsmRejectedDetailed=true;
+    }
+    if(typeof window.checkSectionAccess==='function'&&!window.__bsmRejectedCheck){
+      var oldC=window.checkSectionAccess;
+      window.checkSectionAccess=async function(sectionId){
+        var r=await oldC.apply(this,arguments);
+        var row=r&&r.row;
+        if(row&&(row.payment_status==='rejected'||row.payment_status==='cancelled')){
+          r.state='rejected';r.access='rejected';r.reject_reason=row.reject_reason||'';
+        }
+        return r;
+      };
+      window.__bsmRejectedCheck=true;
+    }
+    if(typeof window._renderSubscriptionGateHTML==='function'&&!window.__bsmRejectedGate){
+      var oldG=window._renderSubscriptionGateHTML;
+      window._renderSubscriptionGateHTML=function(gate){
+        if(gate&&gate.state==='rejected'){
+          var a=gate.anchor||{},reason=gate.reject_reason||(gate.row&&gate.row.reject_reason)||'';
+          return '<div class="sub-gate-card" style="grid-column:1/-1;max-width:480px;margin:30px auto;background:linear-gradient(180deg,#fff,#f7fbff);border-radius:22px;padding:34px 28px;text-align:center;box-shadow:0 14px 40px rgba(10,61,98,.18);border:1px solid #e3edf7;">'+
+            '<div style="font-size:3rem;margin-bottom:6px;">🚫</div>'+
+            '<div style="font-size:1.12rem;font-weight:900;color:#c0392b;margin-bottom:10px;">تم رفض الاشتراك</div>'+
+            '<p style="font-size:.88rem;color:#5a6b7d;line-height:1.9;margin-bottom:18px;">'+
+              (reason?'سبب الرفض: <b>'+esc(reason)+'</b>':'تم رفض طلب الاشتراك.')+
+            '</p>'+
+            '<button class="chatgpt-login-btn" style="padding:12px 26px;font-size:.95rem;" onclick="requestOrRenewSubscription()">🚀 إعادة طلب الاشتراك</button>'+
+          '</div>';
+        }
+        return oldG.apply(this,arguments);
+      };
+      window.__bsmRejectedGate=true;
+    }
+    if(typeof window._openLockNoticeModal==='function'&&!window.__bsmRejectedLock){
+      var oldL=window._openLockNoticeModal;
+      window._openLockNoticeModal=function(gate){
+        if(gate&&gate.state==='rejected'){
+          var a=gate.anchor||{},reason=gate.reject_reason||(gate.row&&gate.row.reject_reason)||'';
+          var t=document.getElementById('ln-title'),s=document.getElementById('ln-sub'),b=document.getElementById('ln-btn');
+          if(t)t.textContent='🚫 تم رفض الاشتراك';
+          if(s)s.innerHTML=reason?'سبب الرفض: <b>'+esc(reason)+'</b>':'تم رفض طلب الاشتراك.';
+          if(b){b.textContent='🚀 إعادة طلب الاشتراك';b.onclick=function(){closeLockNoticeModal();if(window.requestOrRenewSubscription)window.requestOrRenewSubscription();};}
+          var o=document.getElementById('lock-notice-overlay');if(o)o.classList.add('ln-open');
+          document.body.style.overflow='hidden';return;
+        }
+        return oldL.apply(this,arguments);
+      };
+      window.__bsmRejectedLock=true;
+    }
+  }
+
+  /* 6) Pending duplicate guard. Existing rows are never modified/deleted. */
+  async function pendingExists(uid,sid){
+    var d=DB();if(!d||!uid||!sid)return false;
+    try{
+      var r=await d.from('subscriptions').select('id').eq('user_id',uid).eq('section_id',Number(sid)).eq('payment_status','pending').order('created_at',{ascending:false}).limit(1);
+      if(r.error)throw r.error;
+      return !!(r.data&&r.data.length);
+    }catch(e){console.warn('[PENDING DUP GUARD]',e&&e.message);return false;}
+  }
+  if(typeof window._pmSubmit==='function'&&!window.__bsmPMPendingFinal){
+    var oldPM=window._pmSubmit;
+    window._pmSubmit=async function(){
+      try{
+        var d=DB(),sr=typeof window._getSessionSafe==='function'?await window._getSessionSafe():await d.auth.getSession();
+        var u=sr&&sr.data&&sr.data.session&&sr.data.session.user,a=window._currentGateAnchor;
+        if(u&&a&&await pendingExists(u.id,a.id)){
+          var m=document.getElementById('pm-msg');if(m){m.style.color='#f39c12';m.textContent='⏳ لديك بالفعل طلب اشتراك قيد المراجعة لهذا الكورس. لا يمكن إرسال طلب جديد حتى يتم قبول الطلب الحالي أو رفضه.';}
+          var b=document.getElementById('pm-submit-btn');if(b){b.disabled=false;b.textContent='🚀 إرسال الطلب';}
+          toast('⏳ الطلب الحالي قيد المراجعة بالفعل','warning');return;
+        }
+      }catch(e){console.warn('[PENDING DUP GUARD] preflight:',e&&e.message);}
+      return oldPM.apply(this,arguments);
+    };
+    window.__bsmPMPendingFinal=true;
+  }
+  if(typeof window.requestOrRenewSubscription==='function'&&!window.__bsmPendingOpenFinal){
+    var oldReq=window.requestOrRenewSubscription;
+    window.requestOrRenewSubscription=async function(){
+      var a=window._currentGateAnchor;
+      try{
+        var d=DB(),sr=typeof window._getSessionSafe==='function'?await window._getSessionSafe():await d.auth.getSession(),u=sr&&sr.data&&sr.data.session&&sr.data.session.user;
+        if(u&&a&&await pendingExists(u.id,a.id)){toast('⏳ لديك بالفعل طلب قيد المراجعة لهذا الكورس','warning');return;}
+      }catch(e){}
+      return oldReq.apply(this,arguments);
+    };
+    window.__bsmPendingOpenFinal=true;
+  }
+
+  /* 7) Existing course_admin_phone column: extend its JSON payload with group links. */
+  window._capParseContacts=function(raw){
+    var v=raw==null?'':String(raw).trim();if(!v)return[];
+    if(v.charAt(0)==='['){
+      try{
+        var arr=JSON.parse(v);
+        if(Array.isArray(arr))return arr.map(function(c){
+          c=c||{};
+          var groups=Array.isArray(c.groups)?c.groups.map(function(g){g=g||{};return {name:String(g.name||'').trim(),url:String(g.url||'').trim(),type:String(g.type||'').trim()};}).filter(function(g){return g.url;}):[];
+          return {name:String(c.name||'').trim(),phone:String(c.phone||'').trim(),telegram:String(c.telegram||'').trim().replace(/^@/,''),groups:groups};
+        }).filter(function(c){return c.phone||c.groups.length;});
+      }catch(e){}
+    }
+    return [{name:'',phone:v,telegram:'',groups:[]}];
+  };
+  window._capSerializeContacts=function(arr){
+    return JSON.stringify((arr||[]).map(function(c){
+      c=c||{};
+      return {name:String(c.name||'').trim(),phone:String(c.phone||'').trim(),telegram:String(c.telegram||'').trim().replace(/^@/,''),
+        groups:(Array.isArray(c.groups)?c.groups:[]).map(function(g){g=g||{};return {name:String(g.name||'').trim(),url:String(g.url||'').trim(),type:String(g.type||'').trim()};}).filter(function(g){return g.url;})};
+    }).filter(function(c){return c.phone||c.groups.length;}));
+  };
+  function patchGroupEditor(){
+    var list=document.getElementById('cap-contacts-list');if(!list||list.__bsmGroupEditor)return;
+    list.__bsmGroupEditor=true;
+    function addRow(host,g){
+      var d=document.createElement('div');d.className='bsm-group-row';d.style.cssText='display:grid;grid-template-columns:1fr 2fr auto;gap:6px;margin-bottom:6px;';
+      d.innerHTML='<input class="ap-input bsm-g-name" placeholder="اسم الجروب" value="'+esc(g&&g.name||'')+'"><input class="ap-input bsm-g-url" dir="ltr" placeholder="https://..." value="'+esc(g&&g.url||'')+'"><button type="button" class="ap-btn ap-btn-ghost bsm-g-del">🗑️</button>';
+      d.querySelector('.bsm-g-del').onclick=function(){d.remove();};host.appendChild(d);
+    }
+    function render(){
+      list.querySelectorAll('[data-cap-row]').forEach(function(row,idx){
+        var c=(window._capContacts||[])[idx]||{groups:[]},box=row.querySelector('.bsm-contact-groups');
+        if(!box){
+          box=document.createElement('div');box.className='bsm-contact-groups';box.style.cssText='grid-column:1/-1;border-top:1px dashed #dce6ee;padding-top:6px;';
+          box.innerHTML='<div style="font-size:.7rem;font-weight:800;color:#0a3d62;margin-bottom:5px;">🔗 روابط الجروبات</div><div class="bsm-group-rows"></div><button type="button" class="ap-btn ap-btn-ghost bsm-add-group" style="padding:5px 9px;font-size:.7rem;">➕ إضافة رابط جروب</button>';
+          row.appendChild(box);
+          box.querySelector('.bsm-add-group').onclick=function(){addRow(box.querySelector('.bsm-group-rows'),{name:'',url:'',type:'Group'});};
+        }
+        var rows=box.querySelector('.bsm-group-rows');
+        if(rows&&!rows.children.length&&(c.groups||[]).length)(c.groups||[]).forEach(function(g){addRow(rows,g);});
+      });
+    }
+    var mo=new MutationObserver(render);mo.observe(list,{childList:true,subtree:true});render();
+    var oldRead=window.capReadContactsFromDOM;
+    if(typeof oldRead==='function'&&!window.__bsmCapReadFinal){
+      window.capReadContactsFromDOM=function(){
+        var out=oldRead.apply(this,arguments);
+        out.forEach(function(c,idx){
+          var row=list.querySelector('[data-cap-row="'+idx+'"]');c.groups=[];
+          if(row)row.querySelectorAll('.bsm-group-rows > .bsm-group-row').forEach(function(g){
+            var n=g.querySelector('.bsm-g-name'),u=g.querySelector('.bsm-g-url'),url=u&&u.value.trim();
+            if(url)c.groups.push({name:n?n.value.trim():'',url:url,type:/whatsapp|wa\.me/i.test(url)?'WhatsApp':/telegram|t\.me/i.test(url)?'Telegram':/facebook|fb\.com/i.test(url)?'Facebook':/discord/i.test(url)?'Discord':'Group'});
+          });
+        });
+        return out;
+      };
+      window.__bsmCapReadFinal=true;
+    }
+  }
+  function patchGroupDisplay(){
+    var host=document.getElementById('dynamic-section-admin-phone');if(!host||host.__bsmGroupDisplay)return;
+    host.__bsmGroupDisplay=true;
+    var lastSig='';
+    var draw=function(){
+      var gs=[];(window._courseContactsCurrent||[]).forEach(function(c){(c.groups||[]).forEach(function(g){if(g.url)gs.push(g);});});
+      var sig=JSON.stringify(gs.map(function(g){return [g.name||'',g.url||'',g.type||''];}));
+      if(sig===lastSig)return;
+      lastSig=sig;
+      var old=host.querySelector('.bsm-course-groups');if(old)old.remove();
+      if(!gs.length)return;
+      var wrap=document.createElement('div');wrap.className='bsm-course-groups';wrap.style.cssText='margin-top:10px;padding-top:9px;border-top:1px dashed #cfe1e8;';
+      wrap.innerHTML='<div style="font-size:.8rem;font-weight:900;color:#0a3d62;margin-bottom:7px;">🔗 جروبات الكورس</div><div style="display:flex;flex-wrap:wrap;gap:7px;justify-content:center;">'+gs.map(function(g){return '<a href="'+esc(g.url)+'" target="_blank" rel="noopener noreferrer" style="display:inline-flex;align-items:center;gap:5px;padding:8px 12px;border-radius:12px;background:#fff;border:1px solid #dce8ee;color:#0a3d62;text-decoration:none;font-weight:800;font-size:.76rem;">🔗 '+esc(g.name||g.type||'جروب الكورس')+'</a>';}).join('')+'</div>';
+      host.appendChild(wrap);
+    };
+    new MutationObserver(draw).observe(host,{childList:true,subtree:true});draw();
+  }
+
+  /* Assistant manager: independent side-nav item under Dashboard, same section_admins table. */
+  var aa={courseId:0,editId:null,selected:null,editCourseId:0};
+  function aaCanManage(){return !!(window._isSuperAdmin||window._currentUserRole==='admin'||window._branchAdminActiveRole==='owner'||(window._branchAdminPerms&&window._branchAdminPerms.can_manage_admins===true));}
+  function aaCurrentCourse(){return Number(window._branchAdminCourseId||window._activeSectionId||((window._branchAdminOwnSectionIds||[])[0])||0);}
+  async function aaCourses(){
+    var d=DB();if(!d)return[];
+    if(window._isSuperAdmin||window._currentUserRole==='admin'){
+      var r=await d.from('site_sections').select('id,title,icon').eq('type','course').order('title');if(r.error)throw r.error;return r.data||[];
+    }
+    var id=aaCurrentCourse(),roots=(window._branchAdminRoots||[]).filter(function(x){return Number(x.id)===id;});
+    if(!roots.length&&id){var r2=await d.from('site_sections').select('id,title,icon').eq('id',id).maybeSingle();if(!r2.error&&r2.data)roots=[r2.data];}
+    return roots;
+  }
+  function aaPanel(){
+    return '<div id="bsm-aa-panel" class="ap-tab-panel" role="tabpanel">'+
+      '<div class="ap-section-heading" style="margin:0 0 10px;border:none;padding:0;">🛡️ تعيين أدمن مساعد</div>'+
+      '<div style="font-size:.76rem;color:#888;margin-bottom:14px;">الأدمن المساعد مرتبط بالكورس المحدد فقط. لا توجد له صلاحيات المنصة العامة أو إدارة المستخدمين أو الأدمن الرئيسي.</div>'+
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:end;margin-bottom:12px;"><div style="flex:1;min-width:220px;"><label class="ap-label">📚 الكورس</label><select id="bsm-aa-course" class="ap-select"></select></div><button type="button" class="ap-btn ap-btn-success" id="bsm-aa-add">➕ إضافة أدمن مساعد</button><button type="button" class="ap-btn ap-btn-ghost" id="bsm-aa-refresh">🔄 تحديث</button></div>'+
+      '<div id="bsm-aa-body"><div class="ap-empty">جاري التحميل...</div></div>'+
+      '<div id="bsm-aa-modal" style="display:none;position:fixed;inset:0;z-index:9999999;background:rgba(10,20,40,.75);align-items:center;justify-content:center;padding:16px;"><div style="background:var(--card-bg,#fff);border-radius:16px;max-width:520px;width:100%;max-height:90vh;overflow:auto;padding:20px;">'+
+      '<div style="display:flex;justify-content:space-between;align-items:center;"><div id="bsm-aa-title" style="font-weight:900;font-size:1rem;">➕ إضافة أدمن مساعد</div><button type="button" id="bsm-aa-close" class="dm2-icon-btn">✕</button></div>'+
+      '<div id="bsm-aa-course-note" style="font-size:.75rem;color:#777;margin:8px 0 12px;"></div>'+
+      '<div id="bsm-aa-change-course-wrap" style="display:none;margin-bottom:10px;"><label class="ap-label">🔄 تغيير الكورس</label><select id="bsm-aa-change-course" class="ap-select"></select></div>'+
+      '<label class="ap-label">🔍 حساب المستخدم</label><input id="bsm-aa-search" class="ap-input" autocomplete="off" placeholder="ابحث بالاسم أو البريد الإلكتروني"><div id="bsm-aa-results" style="max-height:190px;overflow:auto;margin:7px 0;"></div><div id="bsm-aa-selected" style="display:none;background:#eefaf3;border:1px solid #b8e6d8;border-radius:10px;padding:9px;font-size:.78rem;margin-bottom:10px;"></div>'+
+      '<div class="ap-field"><label class="ap-label">🔐 الصلاحيات الحالية</label><div id="bsm-aa-perms" style="display:grid;grid-template-columns:1fr 1fr;gap:7px;font-size:.78rem;">'+
+      '<label><input type="checkbox" data-aa-perm="can_view_stats" checked> عرض الإحصائيات</label><label><input type="checkbox" data-aa-perm="can_manage_materials" checked> إدارة المواد</label><label><input type="checkbox" data-aa-perm="can_manage_chapters" checked> إدارة المحتوى</label><label><input type="checkbox" data-aa-perm="can_manage_subscriptions" checked> إدارة الاشتراكات</label><label><input type="checkbox" data-aa-perm="can_manage_payments" checked> إدارة المدفوعات</label><label><input type="checkbox" data-aa-perm="can_manage_section_chat" checked> إدارة محادثة الكورس</label><label><input type="checkbox" data-aa-perm="can_delete_section_messages" checked> حذف رسائل الكورس</label>'+
+      '</div></div><div id="bsm-aa-msg" style="min-height:18px;font-size:.76rem;text-align:center;margin-top:8px;"></div><button type="button" id="bsm-aa-save" class="ap-btn ap-btn-primary" style="width:100%;justify-content:center;margin-top:8px;">💾 حفظ</button></div></div></div>';
+  }
+  function aaEnsureUI(){
+    if(!document.getElementById('ap-panel-dashboard'))return;
+    if(!document.getElementById('bsm-aa-panel')){
+      var h=document.getElementById('ap-panel-branchadmins');
+      if(h&&h.parentNode)h.insertAdjacentHTML('beforebegin',aaPanel());
+      else{var body=document.querySelector('#admin-panel .ap-body');if(body)body.insertAdjacentHTML('beforeend',aaPanel());}
+    }
+    if(!document.getElementById('ap-tab-assistantAdmins')){
+      var d=document.getElementById('ap-tab-dashboard');
+      if(d&&d.parentNode){
+        d.insertAdjacentHTML('afterend','<button class="ap-nav-btn" id="ap-tab-assistantAdmins" type="button" role="tab">🛡️ <span>تعيين أدمن مساعد</span></button>');
+        document.getElementById('ap-tab-assistantAdmins').onclick=function(){window.apSwitchTab('assistantAdmins');};
+      }
+    }
+    aaBind();
+  }
+  function aaBind(){
+    var ids=[['bsm-aa-add',function(){aaOpen(false);} ],['bsm-aa-refresh',aaLoad],['bsm-aa-close',aaClose],['bsm-aa-save',aaSave]];
+    ids.forEach(function(x){var e=document.getElementById(x[0]);if(e&&!e.__aaBound){e.__aaBound=true;e.onclick=x[1];}});
+    var s=document.getElementById('bsm-aa-search');if(s&&!s.__aaBound){s.__aaBound=true;s.oninput=function(){aaSearch(this.value);};}
+    var c=document.getElementById('bsm-aa-course');if(c&&!c.__aaBound){c.__aaBound=true;c.onchange=function(){aa.courseId=Number(this.value||0);aaLoad();};}
+    var cc=document.getElementById('bsm-aa-change-course');if(cc&&!cc.__aaBound){cc.__aaBound=true;cc.onchange=function(){aa.editCourseId=Number(this.value||0);};}
+  }
+  async function aaInit(){
+    aaEnsureUI();if(!aaCanManage())return;
+    var sel=document.getElementById('bsm-aa-course');if(!sel)return;
+    try{
+      var rows=await aaCourses();
+      sel.innerHTML=rows.length?rows.map(function(r){return '<option value="'+r.id+'">'+esc((r.icon||'🎓')+' '+(r.title||('#'+r.id)))+'</option>';}).join(''):'<option value="">لا توجد كورسات متاحة</option>';
+      if(rows.length){aa.courseId=Number(rows[0].id);sel.value=String(aa.courseId);await aaLoad();}
+    }catch(e){var b=document.getElementById('bsm-aa-body');if(b)b.innerHTML='<div class="ap-empty" style="color:#e74c3c;">❌ '+esc(e.message)+'</div>';}
+  }
+  async function aaLoad(){
+    var body=document.getElementById('bsm-aa-body'),cid=aa.courseId||Number((document.getElementById('bsm-aa-course')||{}).value||0),d=DB();if(!body||!d||!cid)return;
+    body.innerHTML='<div class="ap-loading"><div class="spinner"></div> جاري تحميل الأدمن المساعدين...</div>';
+    try{
+      var r=await d.from('section_admins').select('id,user_id,is_active,role,permissions').eq('section_id',cid).eq('is_active',true).eq('role','assistant').order('id');
+      if(r.error)throw r.error;
+      var ids=(r.data||[]).map(function(x){return x.user_id;}).filter(Boolean),pm=typeof window._apGetProfilesMap==='function'?await window._apGetProfilesMap(ids):{};
+      if(!r.data||!r.data.length){body.innerHTML='<div class="ap-empty">لا يوجد أدمن مساعد معين لهذا الكورس حاليًا.</div>';return;}
+      var csel=document.getElementById('bsm-aa-course'),ct=csel&&csel.options[csel.selectedIndex]?csel.options[csel.selectedIndex].textContent:('#'+cid);
+      body.innerHTML='<div class="ap-table-wrap"><table class="ap-table"><thead><tr><th>المساعد</th><th>الكورس</th><th>الصلاحيات الحالية</th><th>الإجراءات</th></tr></thead><tbody>'+r.data.map(function(x){
+        var p=pm[x.user_id]||{},q=x.permissions||{},labels=[];
+        [['can_view_stats','الإحصائيات'],['can_manage_materials','المواد'],['can_manage_chapters','المحتوى'],['can_manage_subscriptions','الاشتراكات'],['can_manage_payments','المدفوعات'],['can_manage_section_chat','محادثة الكورس'],['can_delete_section_messages','حذف الرسائل']].forEach(function(a){if(q[a[0]]===true)labels.push(a[1]);});
+        return '<tr><td><b>'+esc(p.full_name||p.email||x.user_id)+'</b><br><span class="ap-email-cell" style="font-size:.7rem;">'+esc(p.email||'')+'</span></td><td>'+esc(ct)+'</td><td style="line-height:1.8;font-size:.72rem;">'+(labels.length?labels.map(function(z){return '<span class="ap-badge user" style="margin:2px;">'+esc(z)+'</span>';}).join(''):'<span style="color:#999;">لا توجد صلاحيات</span>')+'</td><td style="white-space:nowrap;"><button type="button" class="ap-btn ap-btn-primary" data-aa-edit="'+x.id+'">✏️ تعديل</button> <button type="button" class="ap-btn ap-btn-danger" data-aa-remove="'+x.id+'">🗑️ حذف</button></td></tr>';
+      }).join('')+'</tbody></table></div>';
+      body.querySelectorAll('[data-aa-edit]').forEach(function(b){b.onclick=function(){aaOpen(true,Number(b.getAttribute('data-aa-edit')));};});
+      body.querySelectorAll('[data-aa-remove]').forEach(function(b){b.onclick=function(){aaRemove(Number(b.getAttribute('data-aa-remove')));};});
+    }catch(e){body.innerHTML='<div class="ap-empty" style="color:#e74c3c;">❌ '+esc(e.message)+'</div>';}
+  }
+  async function aaSearch(q){
+    var box=document.getElementById('bsm-aa-results'),d=DB();q=(q||'').trim();if(!box||!d)return;
+    if(q.length<2){box.innerHTML='';return;}
+    box.innerHTML='<div class="ap-loading" style="padding:6px;">⏳ جاري البحث...</div>';
+    try{
+      var safe=q.replace(/[%,]/g,'\\$&'),r=await d.from('profiles').select('id,email,full_name,role').or('email.ilike.%'+safe+'%,full_name.ilike.%'+safe+'%').limit(15);
+      if(r.error)throw r.error;
+      var rows=(r.data||[]).filter(function(p){return p.id!==(window._currentAuthUser&&window._currentAuthUser.id)&&p.role!=='admin'&&p.role!=='branch_admin';});
+      box.innerHTML=rows.length?rows.map(function(p){return '<div data-aa-user="'+esc(p.id)+'" style="display:flex;align-items:center;justify-content:space-between;padding:8px;border:1px solid #e7edf2;border-radius:8px;margin-bottom:5px;cursor:pointer;"><div><b style="font-size:.8rem;">'+esc(p.full_name||p.email||'مستخدم')+'</b><br><span style="font-size:.68rem;color:#888;">'+esc(p.email||'')+'</span></div><span class="ap-btn ap-btn-ghost" style="padding:4px 8px;">اختيار</span></div>';}).join(''):'<div class="ap-empty" style="padding:8px;">لا توجد نتائج.</div>';
+      box.querySelectorAll('[data-aa-user]').forEach(function(e){e.onclick=function(){var p=rows.find(function(x){return String(x.id)===String(e.getAttribute('data-aa-user'));});if(p)aaSelect(p);};});
+    }catch(e){box.innerHTML='<div class="ap-empty" style="color:#e74c3c;">❌ '+esc(e.message)+'</div>';}
+  }
+  function aaSelect(p){aa.selected=p;var b=document.getElementById('bsm-aa-selected');if(b){b.style.display='block';b.innerHTML='✅ <b>'+esc(p.full_name||p.email||'مستخدم')+'</b> — '+esc(p.email||'');}var r=document.getElementById('bsm-aa-results');if(r)r.innerHTML='';var s=document.getElementById('bsm-aa-search');if(s)s.value='';}
+  async function aaOpen(edit,id){
+    if(!aaCanManage())return;
+    var m=document.getElementById('bsm-aa-modal');if(!m)return;
+    aa.editId=edit?id:null;aa.selected=null;aa.editCourseId=aa.courseId;
+    document.getElementById('bsm-aa-title').textContent=edit?'✏️ تعديل الأدمن المساعد':'➕ إضافة أدمن مساعد';
+    var cs=document.getElementById('bsm-aa-course');document.getElementById('bsm-aa-course-note').textContent='الكورس الحالي: '+(cs&&cs.options[cs.selectedIndex]?cs.options[cs.selectedIndex].textContent:'#'+aa.courseId);
+    var cw=document.getElementById('bsm-aa-change-course-wrap'),cc=document.getElementById('bsm-aa-change-course');
+    if(edit&&(window._isSuperAdmin||window._currentUserRole==='admin')){
+      cw.style.display='block';var rows=await aaCourses();cc.innerHTML=rows.map(function(r){return '<option value="'+r.id+'">'+esc(r.title)+'</option>';}).join('');cc.value=String(aa.courseId);
+    }else cw.style.display='none';
+    document.querySelectorAll('#bsm-aa-perms input[data-aa-perm]').forEach(function(x){x.checked=true;});
+    if(edit){
+      var d=DB(),r=await d.from('section_admins').select('id,user_id,section_id,permissions,role,is_active').eq('id',id).maybeSingle();
+      if(r.error)throw r.error;if(!r.data||r.data.role!=='assistant')throw new Error('الأدمن المحدد ليس مساعدًا فعّالًا.');
+      aa.editCourseId=Number(r.data.section_id);aa.selected={id:r.data.user_id};
+      document.querySelectorAll('#bsm-aa-perms input[data-aa-perm]').forEach(function(x){var k=x.getAttribute('data-aa-perm');x.checked=r.data.permissions&&r.data.permissions[k]!==undefined?!!r.data.permissions[k]:true;});
+      if(cc)cc.value=String(r.data.section_id);
+      var pr=await d.from('profiles').select('id,email,full_name,role').eq('id',r.data.user_id).maybeSingle();if(pr.data)aaSelect(pr.data);
+    }
+    m.style.display='flex';document.body.style.overflow='hidden';
+  }
+  function aaClose(){var m=document.getElementById('bsm-aa-modal');if(m)m.style.display='none';document.body.style.overflow='';aa.editId=null;aa.selected=null;}
+  async function aaSave(){
+    var msg=document.getElementById('bsm-aa-msg'),d=DB(),cid=aa.editCourseId||aa.courseId,u=aa.selected;
+    if(!d||!cid){return;}if(!u||!u.id){msg.textContent='⚠️ اختر حساب المستخدم أولاً';return;}
+    if(!aaCanManage())return;
+    var perms={};document.querySelectorAll('#bsm-aa-perms input[data-aa-perm]').forEach(function(x){perms[x.getAttribute('data-aa-perm')]=!!x.checked;});
+    perms.manage_chats=perms.can_manage_section_chat===true;perms.can_manage_admins=false;
+    msg.style.color='#0a3d62';msg.textContent='⏳ جاري الحفظ...';
+    try{
+      var id=aa.editId;
+      if(id){
+        var old=await d.from('section_admins').select('id,user_id,section_id,role').eq('id',id).maybeSingle();if(old.error)throw old.error;if(!old.data||old.data.role!=='assistant')throw new Error('هذا السجل ليس أدمن مساعد.');
+        if(!(window._isSuperAdmin||window._currentUserRole==='admin')&&Number(cid)!==Number(old.data.section_id))throw new Error('تغيير الكورس متاح لمالك المنصة فقط.');
+        var up=await d.from('section_admins').update({user_id:u.id,section_id:cid,role:'assistant',is_active:true,permissions:perms}).eq('id',id);if(up.error)throw up.error;
+      }else{
+        var up2=await d.from('section_admins').upsert({user_id:u.id,section_id:cid,role:'assistant',is_active:true,permissions:perms},{onConflict:'user_id,section_id'});if(up2.error)throw up2.error;
+      }
+      toast('✅ تم حفظ الأدمن المساعد وصلاحياته','success');aaClose();await aaLoad();
+    }catch(e){msg.style.color='#e74c3c';msg.textContent='❌ '+esc(e.message||e);}
+  }
+  async function aaRemove(id){
+    if(!aaCanManage()||!confirm('هل تريد حذف صلاحية الأدمن المساعد من هذا الكورس؟'))return;
+    try{var d=DB(),r=await d.from('section_admins').update({is_active:false}).eq('id',id).eq('role','assistant');if(r.error)throw r.error;toast('✅ تم حذف صلاحية الأدمن المساعد مع حفظ الحساب والبيانات','success');await aaLoad();}catch(e){toast('❌ '+(e.message||e),'error');}
+  }
+
+  var baseSwitch=window.apSwitchTab;
+  window.apSwitchTab=async function(tab){
+    try{
+      aaEnsureUI();
+      if(tab==='assistantAdmins'||tab==='courseAssistants'){
+        if(!aaCanManage()){toast('⛔ لا تملك صلاحية إدارة الأدمن المساعدين','error');return;}
+        document.querySelectorAll('.ap-tab-panel').forEach(function(x){x.classList.remove('active');});
+        var p=document.getElementById('bsm-aa-panel');if(p)p.classList.add('active');
+        document.querySelectorAll('.ap-nav-btn').forEach(function(x){x.classList.remove('active');});
+        var n=document.getElementById('ap-tab-assistantAdmins');if(n)n.classList.add('active');
+        await aaInit();return;
+      }
+      if(typeof baseSwitch==='function')return await baseSwitch.apply(this,arguments);
+    }catch(e){console.error('[ASSISTANT NAV]',e);}
+  };
+  window._renderCourseAssistantDashboardControl=function(){var s=document.getElementById('ap-owner-assistant-slot');if(s){s.style.display='none';s.innerHTML='';}};
+
+  /* 5) Refresh: if the first auth bootstrap never completes, show a real reload action. */
+  function refreshSafety(){
+    if(document.getElementById('bsm-refresh-safety-final'))return;
+    var x=document.createElement('div');x.id='bsm-refresh-safety-final';x.style.cssText='display:none;position:fixed;inset:0;z-index:9999997;background:rgba(7,22,36,.76);align-items:center;justify-content:center;padding:20px;';
+    x.innerHTML='<div style="background:var(--card-bg,#fff);border-radius:18px;padding:22px;max-width:420px;width:100%;text-align:center;box-shadow:0 18px 60px rgba(0,0,0,.3);"><div style="font-size:2rem;">⚠️</div><div style="font-weight:900;color:#0a3d62;margin:8px 0;">تعذّر تحميل الصفحة</div><div style="font-size:.82rem;color:#667;line-height:1.8;">انتهت مهلة التحميل بدون استبدال Authentication أو Service Worker.</div><button type="button" id="bsm-hard-refresh-final" class="ap-btn ap-btn-primary" style="margin-top:12px;">🔄 تحديث الصفحة فعليًا</button></div>';
+    document.body.appendChild(x);document.getElementById('bsm-hard-refresh-final').onclick=function(){window.location.reload();};
+    var start=Date.now(),timer=setInterval(function(){
+      var busy=document.querySelector('.chat-loading,.ap-loading'),page=document.querySelector('.page.active');
+      if(window._authBootstrapped||page){clearInterval(timer);return;}
+      if(Date.now()-start>18000&&busy){x.style.display='flex';clearInterval(timer);}
+    },1000);
+  }
+
+  function gateAssistant(){
+    aaEnsureUI();
+    var n=document.getElementById('ap-tab-assistantAdmins'),p=document.getElementById('bsm-aa-panel');
+    if(n)n.style.display=aaCanManage()?'':'none';
+    if(p&&!aaCanManage())p.classList.remove('active');
+  }
+
+  function boot(){
+    dmComposerCSS();dmComposerFocus();wrapSubscriptionAccess();patchGroupEditor();patchGroupDisplay();gateAssistant();refreshSafety();
+  }
+  document.addEventListener('DOMContentLoaded',boot);window.addEventListener('load',boot);
+  setTimeout(boot,1200);setTimeout(boot,3000);setTimeout(boot,6000);
+  var obs=new MutationObserver(function(){dmComposerCSS();dmComposerFocus();patchGroupEditor();patchGroupDisplay();gateAssistant();});
+  if(document.documentElement)obs.observe(document.documentElement,{childList:true,subtree:true});
+  var gateTimer=setInterval(function(){gateAssistant();},1000);setTimeout(function(){clearInterval(gateTimer);},20000);
+
+  console.log('%c[BSM TARGETED 7 FIXES FINAL] loaded','color:#17a589;font-weight:800');
 })();
 </script>
