@@ -29350,6 +29350,561 @@ ORDER BY tablename, policyname;
   }
 })();
 </script>
+
+<script>
+/* BSM FINAL DATA-ALIGNED CORRECTIONS — 2026-08-29
+   Uses the actual current schema discovered by the user. HTML-only; no SQL is executed.
+*/
+(function(){
+  'use strict';
+  if(window.__BSM_DATA_ALIGNED_FINAL_20260829)return;
+  window.__BSM_DATA_ALIGNED_FINAL_20260829=true;
+
+  function db(){return window.supabase||null;}
+  function esc(v){return typeof window._apEsc==='function'?window._apEsc(v==null?'':String(v)):String(v==null?'':v).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+  function toast(m,t){if(typeof window._showToast==='function')window._showToast(m,t||'info');}
+
+  /* 1) STRICT paid-content gate: subscription_content_access=true on any node
+        makes the chain paid; subscription status is then checked against the
+        nearest course ancestor. This prevents a cancelled/rejected student
+        from getting content merely because site_sections.requires_subscription
+        is false on the visible node. */
+  async function sectionChain(id){
+    var d=db(),cur=Number(id),out=[],seen={};
+    if(!d||!Number.isFinite(cur))return out;
+    for(var i=0;i<25&&cur&&!seen[cur];i++){
+      seen[cur]=true;
+      var r=await d.from('site_sections').select('id,parent_id,type,title,requires_subscription').eq('id',cur).maybeSingle();
+      if(r.error||!r.data)break;
+      out.push(r.data);
+      if(r.data.parent_id==null)break;
+      cur=Number(r.data.parent_id)||0;
+    }
+    return out;
+  }
+  async function resolvePaidAnchor(id){
+    var chain=await sectionChain(id);
+    if(!chain.length)return null;
+    var d=db(),ids=chain.map(function(x){return Number(x.id);});
+    var access=await d.from('subscription_content_access').select('section_id,requires_subscription').in('section_id',ids);
+    var explicitPaid=!!(access.data||[]).some(function(x){return x.requires_subscription===true;});
+    var sectionPaid=chain.some(function(x){return x.requires_subscription===true;});
+    if(!explicitPaid&&!sectionPaid)return null;
+    var course=chain.find(function(x){return String(x.type||'').toLowerCase()==='course';});
+    return course||chain.find(function(x){return x.requires_subscription===true;})||chain[0];
+  }
+  async function strictAccess(id){
+    var anchor=await resolvePaidAnchor(id);
+    if(!anchor)return null;
+    if(window._isSuperAdmin===true)return null;
+    if(window._isBranchAdmin===true){
+      var ids=window._branchAdminSectionIds||window._branchAdminOwnSectionIds||[];
+      if(Array.isArray(ids)&&ids.map(Number).indexOf(Number(anchor.id))!==-1)return null;
+    }
+    if(typeof window._isFreePreviewSection==='function'){
+      try{if(await window._isFreePreviewSection(Number(id)))return null;}catch(e){}
+    }
+    var d=db(),sess=typeof window._getSessionSafe==='function'?await window._getSessionSafe(8000):await d.auth.getSession();
+    var u=sess&&sess.data&&sess.data.session&&sess.data.session.user;
+    if(!u)return {state:'guest',access:'guest',anchor:anchor};
+    var r=await d.from('subscriptions').select('id,payment_status,start_date,end_date,reject_reason,requested_at,created_at,updated_at').eq('user_id',u.id).eq('section_id',Number(anchor.id)).order('requested_at',{ascending:false,nullsFirst:false}).order('created_at',{ascending:false}).order('id',{ascending:false}).limit(1);
+    if(r.error)throw r.error;
+    var row=r.data&&r.data[0]||null;
+    if(row&&row.payment_status==='active'&&(!row.end_date||new Date(row.end_date).getTime()>=Date.now()))return null;
+    var state=row&&row.payment_status==='pending'?'pending':(row&&(['rejected','cancelled'].indexOf(row.payment_status)>=0)?'rejected':(row?'expired':'none'));
+    return {state:state,access:state,anchor:anchor,row:row,user:u,reject_reason:row&&row.reject_reason||''};
+  }
+  window.checkSectionAccess=async function(id){
+    try{return await strictAccess(id);}catch(e){console.error('[FINAL PAID GATE]',e);return {state:'error',access:'error'};}
+  };
+  window.getDetailedSectionAccess=async function(id){
+    try{var r=await strictAccess(id);return r||{state:'free',anchor:null};}catch(e){return {state:'error',access:'error'};}
+  };
+
+  /* 2) Rejected reason: always rendered from subscriptions.reject_reason and
+        never exposed as a generic public field. */
+  function patchRejectedGate(){
+    if(typeof window._openLockNoticeModal!=='function'||window.__BSM_REJECT_GATE_FINAL)return;
+    window.__BSM_REJECT_GATE_FINAL=true;
+    var old=window._openLockNoticeModal;
+    window._openLockNoticeModal=function(g){
+      if(g&&g.state==='rejected'){
+        var reason=g.reject_reason||(g.row&&g.row.reject_reason)||'';
+        var t=document.getElementById('ln-title'),s=document.getElementById('ln-sub'),b=document.getElementById('ln-btn'),o=document.getElementById('lock-notice-overlay');
+        if(t)t.textContent='🚫 تم رفض الاشتراك';
+        if(s)s.innerHTML=reason?'سبب الرفض: <b>'+esc(reason)+'</b>':'تم رفض طلب الاشتراك.';
+        if(b){b.textContent='🚀 إعادة طلب الاشتراك';b.onclick=function(){if(typeof closeLockNoticeModal==='function')closeLockNoticeModal();if(typeof window.requestOrRenewSubscription==='function')window.requestOrRenewSubscription();};}
+        if(o)o.classList.add('ln-open');
+        document.body.style.overflow='hidden';
+        return;
+      }
+      return old.apply(this,arguments);
+    };
+  }
+  patchRejectedGate();
+  setTimeout(patchRejectedGate,500);setTimeout(patchRejectedGate,1500);
+
+  /* 3) Assistant manager aligned with the actual rows supplied by the user:
+        current DB uses section_admins.role='admin' for assignments, while the
+        intended assistant account can still have profiles.role='student'.
+        Therefore list student-profile assignments as assistants, including
+        inactive legacy rows, so the existing assigned row id=24 is visible. */
+  window._bsmAAList=async function(courseId){
+    var d=db(),cid=Number(courseId);
+    if(!d||!cid)return [];
+    var r=await d.from('section_admins').select('id,user_id,section_id,is_active,role,permissions').eq('section_id',cid).in('role',['admin','assistant']).order('id');
+    if(r.error)throw r.error;
+    var rows=r.data||[],ids=rows.map(function(x){return x.user_id;}).filter(Boolean),pm={};
+    if(ids.length){var p=await d.from('profiles').select('id,email,full_name,role').in('id',ids);(p.data||[]).forEach(function(x){pm[x.id]=x;});}
+    return rows.map(function(x){x.profile=pm[x.user_id]||{};x.isAssistant=(String(x.role)==='assistant'||['student','user'].indexOf(String(x.profile.role||'').toLowerCase())>=0);return x;}).filter(function(x){return x.isAssistant;});
+  };
+
+  function assistantRender(){
+    var panel=document.getElementById('bsm-aa-panel');
+    if(!panel)return;
+    var body=document.getElementById('bsm-aa-body');
+    var cid=Number((document.getElementById('bsm-aa-course')||{}).value||window._branchAdminCourseId||window._activeSectionId||0);
+    if(!body||!cid)return;
+    body.innerHTML='<div class="ap-loading"><div class="spinner"></div> جاري تحميل الأدمن المساعدين...</div>';
+    window._bsmAAList(cid).then(function(rows){
+      if(!rows.length){body.innerHTML='<div class="ap-empty">لا يوجد أدمن مساعد مسجل لهذا الكورس حاليًا.</div>';return;}
+      var csel=document.getElementById('bsm-aa-course'),ct=csel&&csel.options[csel.selectedIndex]?csel.options[csel.selectedIndex].textContent:('#'+cid);
+      var labels=[['can_view_stats','الإحصائيات'],['can_manage_materials','المواد'],['can_manage_chapters','المحتوى'],['can_manage_subscriptions','الاشتراكات'],['can_manage_payments','المدفوعات'],['can_manage_section_chat','محادثة الكورس'],['can_delete_section_messages','حذف الرسائل']];
+      body.innerHTML='<div class="ap-table-wrap"><table class="ap-table"><thead><tr><th>المساعد</th><th>الكورس</th><th>الحالة</th><th>الصلاحيات الحالية</th><th>الإجراءات</th></tr></thead><tbody>'+rows.map(function(x){
+        var q=x.permissions||{},ls=labels.filter(function(a){return q[a[0]]===true;}).map(function(a){return '<span class="ap-badge user" style="margin:2px;">'+esc(a[1])+'</span>';}).join('');
+        var nm=x.profile.full_name||x.profile.email||x.user_id;
+        return '<tr><td><b>'+esc(nm)+'</b><br><span class="ap-email-cell" style="font-size:.7rem;">'+esc(x.profile.email||'')+'</span></td><td>'+esc(ct)+'</td><td>'+(x.is_active?'<span class="ap-badge success">✅ نشط</span>':'<span class="ap-badge pending">⏸️ غير مفعل</span>')+'</td><td style="line-height:1.8;font-size:.72rem;">'+(ls||'<span style="color:#999;">لا توجد صلاحيات</span>')+'</td><td style="white-space:nowrap;"><button type="button" class="ap-btn ap-btn-primary" data-aa-edit="'+x.id+'">✏️ تعديل</button> <button type="button" class="ap-btn '+(x.is_active?'ap-btn-danger':'ap-btn-success')+'" data-aa-toggle="'+x.id+'" data-aa-active="'+(x.is_active?'1':'0')+'">'+(x.is_active?'🗑️ تعطيل':'✅ تفعيل')+'</button></td></tr>';
+      }).join('')+'</tbody></table></div>';
+      body.querySelectorAll('[data-aa-edit]').forEach(function(b){b.onclick=function(){window._bsmAAEdit(Number(b.getAttribute('data-aa-edit')));};});
+      body.querySelectorAll('[data-aa-toggle]').forEach(function(b){b.onclick=async function(){var id=Number(b.getAttribute('data-aa-toggle')),active=b.getAttribute('data-aa-active')==='1';try{var rr=await db().from('section_admins').update({is_active:!active}).eq('id',id);if(rr.error)throw rr.error;toast(active?'✅ تم تعطيل المساعد':'✅ تم تفعيل المساعد','success');assistantRender();}catch(e){toast('❌ '+(e.message||e),'error');}};});
+    }).catch(function(e){body.innerHTML='<div class="ap-empty" style="color:#e74c3c;">❌ '+esc(e.message||e)+'</div>';});
+  }
+  window._bsmAAEdit=async function(id){
+    var d=db(),r=await d.from('section_admins').select('id,user_id,section_id,is_active,role,permissions').eq('id',id).maybeSingle();
+    if(r.error)throw r.error;if(!r.data)throw new Error('السجل غير موجود');
+    var p=await d.from('profiles').select('id,email,full_name,role').eq('id',r.data.user_id).maybeSingle();
+    var m=document.getElementById('bsm-aa-modal');if(!m)return;
+    m.style.display='flex';document.body.style.overflow='hidden';
+    var cs=document.getElementById('bsm-aa-course');if(cs)cs.value=String(r.data.section_id);
+    document.getElementById('bsm-aa-title').textContent='✏️ تعديل الأدمن المساعد';
+    var sel=document.getElementById('bsm-aa-selected');if(sel){sel.style.display='block';sel.innerHTML='✅ <b>'+esc((p.data&&p.data.full_name)||r.data.user_id)+'</b> — '+esc((p.data&&p.data.email)||'');}
+    var search=document.getElementById('bsm-aa-search');if(search)search.value='';
+    var perm=r.data.permissions||{};document.querySelectorAll('#bsm-aa-perms input[data-aa-perm]').forEach(function(x){var k=x.getAttribute('data-aa-perm');x.checked=perm[k]!==undefined?!!perm[k]:true;});
+    window.__bsmAAEditId=id;window.__bsmAASelectedUser={id:r.data.user_id};
+  };
+
+  /* Override the private aaSave/aaLoad behavior with a schema-compatible path. */
+  window._bsmAASave=async function(){
+    var d=db(),msg=document.getElementById('bsm-aa-msg'),cid=Number((document.getElementById('bsm-aa-course')||{}).value||window._branchAdminCourseId||window._activeSectionId||0),u=window.__bsmAASelectedUser;
+    if(!d||!cid){return;}
+    if(!u||!u.id){toast('⚠️ اختر حساب المستخدم أولاً','warning');return;}
+    var perms={};document.querySelectorAll('#bsm-aa-perms input[data-aa-perm]').forEach(function(x){perms[x.getAttribute('data-aa-perm')]=!!x.checked;});
+    perms.can_manage_admins=false;perms.manage_chats=perms.can_manage_section_chat===true;perms.assistant_assignment=true;
+    try{
+      if(window.__bsmAAEditId){var up=await d.from('section_admins').update({user_id:u.id,section_id:cid,role:'admin',is_active:true,permissions:perms}).eq('id',window.__bsmAAEditId);if(up.error)throw up.error;}
+      else{var up2=await d.from('section_admins').upsert({user_id:u.id,section_id:cid,role:'admin',is_active:true,permissions:perms},{onConflict:'user_id,section_id'});if(up2.error)throw up2.error;}
+      toast('✅ تم حفظ الأدمن المساعد وصلاحياته','success');
+      var m=document.getElementById('bsm-aa-modal');if(m)m.style.display='none';document.body.style.overflow='';window.__bsmAAEditId=null;window.__bsmAASelectedUser=null;assistantRender();
+    }catch(e){if(msg)msg.textContent='❌ '+(e.message||e);toast('❌ '+(e.message||e),'error');}
+  };
+
+  /* Search after two characters in profiles; include student accounts and never
+     offer platform admins/branch admins as assistants. */
+  window._bsmAASearch=async function(q){
+    var box=document.getElementById('bsm-aa-results'),d=db();q=(q||'').trim();if(!box||!d)return;
+    if(q.length<2){box.innerHTML='';return;}
+    box.innerHTML='<div class="ap-loading" style="padding:6px;">⏳ جاري البحث...</div>';
+    try{
+      var safe=q.replace(/[%,]/g,'\$&'),r=await d.from('profiles').select('id,email,full_name,role').or('email.ilike.%'+safe+'%,full_name.ilike.%'+safe+'%').limit(20);
+      if(r.error)throw r.error;
+      var rows=(r.data||[]).filter(function(p){return p.id!==((window._currentAuthUser&&window._currentAuthUser.id)||'')&&['admin','branch_admin'].indexOf(String(p.role||'').toLowerCase())===-1;});
+      box.innerHTML=rows.length?rows.map(function(p){return '<div data-bsm-aa-user="'+esc(p.id)+'" style="display:flex;align-items:center;justify-content:space-between;padding:8px;border:1px solid #e7edf2;border-radius:8px;margin-bottom:5px;cursor:pointer;"><div><b style="font-size:.8rem;">'+esc(p.full_name||p.email||'مستخدم')+'</b><br><span style="font-size:.68rem;color:#888;">'+esc(p.email||'')+'</span></div><span class="ap-btn ap-btn-ghost" style="padding:4px 8px;">اختيار</span></div>';}).join(''):'<div class="ap-empty" style="padding:8px;">لا توجد نتائج. تأكد أن الحساب سجّل دخول من قبل.</div>';
+      box.querySelectorAll('[data-bsm-aa-user]').forEach(function(el){el.onclick=function(){var p=rows.find(function(x){return String(x.id)===String(el.getAttribute('data-bsm-aa-user'));});if(!p)return;window.__bsmAASelectedUser=p;var s=document.getElementById('bsm-aa-selected');if(s){s.style.display='block';s.innerHTML='✅ <b>'+esc(p.full_name||p.email)+'</b> — '+esc(p.email||'');}box.innerHTML='';var i=document.getElementById('bsm-aa-search');if(i)i.value='';};});
+    }catch(e){box.innerHTML='<div class="ap-empty" style="color:#e74c3c;">❌ '+esc(e.message||e)+'</div>';};
+  };
+
+  function wireAssistantUI(){
+    var s=document.getElementById('bsm-aa-search');if(s&&!s.__bsmFinalBound){s.__bsmFinalBound=true;s.oninput=function(){window._bsmAASearch(this.value);};}
+    var save=document.getElementById('bsm-aa-save');if(save&&!save.__bsmFinalBound){save.__bsmFinalBound=true;save.onclick=window._bsmAASave;}
+    var add=document.getElementById('bsm-aa-add');if(add&&!add.__bsmFinalBound){add.__bsmFinalBound=true;add.onclick=function(){window.__bsmAAEditId=null;window.__bsmAASelectedUser=null;var m=document.getElementById('bsm-aa-modal');if(m){m.style.display='flex';document.body.style.overflow='hidden';}document.getElementById('bsm-aa-title').textContent='➕ إضافة أدمن مساعد';document.getElementById('bsm-aa-selected').style.display='none';document.getElementById('bsm-aa-search').value='';document.getElementById('bsm-aa-results').innerHTML='';document.querySelectorAll('#bsm-aa-perms input[data-aa-perm]').forEach(function(x){x.checked=true;});};}
+    var ref=document.getElementById('bsm-aa-refresh');if(ref&&!ref.__bsmFinalBound){ref.__bsmFinalBound=true;ref.onclick=assistantRender;}
+    var close=document.getElementById('bsm-aa-close');if(close&&!close.__bsmFinalBound){close.__bsmFinalBound=true;close.onclick=function(){var m=document.getElementById('bsm-aa-modal');if(m)m.style.display='none';document.body.style.overflow='';window.__bsmAAEditId=null;window.__bsmAASelectedUser=null;};}
+  }
+
+  /* Final navigation override: the last legacy wrapper previously sent
+     assistantAdmins to baLoadGrades. That is why the new assistant panel
+     looked empty. */
+  var oldNav=window.apSwitchTab;
+  window.apSwitchTab=function(tab){
+    if(tab==='assistantAdmins'||tab==='courseAssistants'){
+      document.querySelectorAll('.ap-tab-panel').forEach(function(x){x.classList.remove('active');});
+      var p=document.getElementById('bsm-aa-panel');if(p)p.classList.add('active');
+      document.querySelectorAll('.ap-nav-btn').forEach(function(x){x.classList.remove('active');});
+      var n=document.getElementById('ap-tab-assistantAdmins');if(n)n.classList.add('active');
+      wireAssistantUI();
+      var sel=document.getElementById('bsm-aa-course');
+      if(sel&&sel.options.length===0&&typeof window._bsmAAInit==='function')window._bsmAAInit().then(assistantRender).catch(function(e){console.error('[AA INIT]',e);});
+      else {if(sel&&sel.value)assistantRender();else if(typeof window._bsmAAInit==='function')window._bsmAAInit().then(assistantRender).catch(function(e){console.error('[AA INIT]',e);});}
+      return Promise.resolve();
+    }
+    return typeof oldNav==='function'?oldNav.apply(this,arguments):undefined;
+  };
+
+  function boot(){wireAssistantUI();patchRejectedGate();}
+  document.addEventListener('DOMContentLoaded',boot);window.addEventListener('load',boot);setTimeout(boot,800);setTimeout(boot,2500);
+})();
+</script>
+
+<script>
+/* BSM FINAL DM PAIR-FIRST + ASSISTANT VISIBILITY — 2026-08-29
+   No database schema/RLS changes. */
+(function(){
+  'use strict';
+  if(window.__BSM_FINAL_DM_PAIR_FIRST_20260829)return;
+  window.__BSM_FINAL_DM_PAIR_FIRST_20260829=true;
+  function db(){return window.supabase||null;}
+  function esc(v){return typeof window._apEsc==='function'?window._apEsc(v==null?'':String(v)):String(v==null?'':v).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+  function toast(m,t){if(typeof window._showToast==='function')window._showToast(m,t||'info');}
+
+  /* If a pair room already exists, open it directly and never call the broken
+     legacy RPC. This preserves old messages and avoids the 409 path entirely. */
+  async function findPairRoom(me,other,sectionId){
+    var d=db();if(!d||!me||!other)return null;
+    try{
+      var a=await d.from('chat_room_participants').select('room_id').eq('user_id',me).limit(500);
+      if(a.error||!a.data||!a.data.length)return null;
+      var ids=a.data.map(function(x){return x.room_id;}).filter(Boolean);if(!ids.length)return null;
+      var b=await d.from('chat_room_participants').select('room_id').in('room_id',ids).eq('user_id',other).limit(100);
+      if(b.error||!b.data||!b.data.length)return null;
+      var pair=b.data.map(function(x){return x.room_id;}).filter(Boolean);if(!pair.length)return null;
+      var r=await d.from('chat_rooms').select('id,room_name,room_type,created_at').in('id',pair).eq('room_type','direct').order('id');
+      if(r.error||!r.data||!r.data.length)return null;
+      var prefix='DM:'+String(sectionId)+':';
+      return r.data.find(function(x){return String(x.room_name||'').indexOf(prefix)===0;})||r.data[0]||null;
+    }catch(e){return null;}
+  }
+  var baseOpen=window.openDirectChat;
+  if(typeof baseOpen==='function'&&!window.__BSM_FINAL_DM_WRAPPED){
+    window.__BSM_FINAL_DM_WRAPPED=true;
+    window.openDirectChat=async function(otherUserId,displayNameHint,knownRoomId,sectionId){
+      if(!knownRoomId&&otherUserId&&sectionId){
+        try{
+          var d=db(),sr=typeof window._getSessionSafe==='function'?await window._getSessionSafe(8000):await d.auth.getSession(),me=sr&&sr.data&&sr.data.session&&sr.data.session.user;
+          if(me){
+            var existing=await findPairRoom(me.id,otherUserId,sectionId);
+            if(existing)return await baseOpen(otherUserId,displayNameHint,existing.id,sectionId);
+          }
+        }catch(e){console.warn('[DM pair-first]',e&&e.message);}
+      }
+      return await baseOpen.apply(this,arguments);
+    };
+  }
+
+  /* Keep the assistant panel aligned with the actual DB rows: a student-profile
+     section_admins row with role=admin is the legacy assignment format used by
+     the current database. Show it (including inactive) so it can be reactivated. */
+  async function refreshAssistantPanel(){
+    if(typeof window._bsmAAList!=='function')return;
+    var cid=Number((document.getElementById('bsm-aa-course')||{}).value||window._branchAdminCourseId||window._activeSectionId||0);
+    if(!cid)return;
+    var body=document.getElementById('bsm-aa-body');if(!body)return;
+    try{
+      var rows=await window._bsmAAList(cid);
+      if(!rows.length){body.innerHTML='<div class="ap-empty">لا يوجد أدمن مساعد مسجل لهذا الكورس حاليًا.</div>';return;}
+      var labels=[['can_view_stats','الإحصائيات'],['can_manage_materials','المواد'],['can_manage_chapters','المحتوى'],['can_manage_subscriptions','الاشتراكات'],['can_manage_payments','المدفوعات'],['can_manage_section_chat','محادثة الكورس'],['can_delete_section_messages','حذف الرسائل']];
+      var c=document.getElementById('bsm-aa-course'),ct=c&&c.options[c.selectedIndex]?c.options[c.selectedIndex].textContent:('#'+cid);
+      body.innerHTML='<div class="ap-table-wrap"><table class="ap-table"><thead><tr><th>المساعد</th><th>الكورس</th><th>الحالة</th><th>الصلاحيات الحالية</th><th>الإجراءات</th></tr></thead><tbody>'+rows.map(function(x){
+        var q=x.permissions||{},p=x.profile||{},ls=labels.filter(function(a){return q[a[0]]===true;}).map(function(a){return '<span class="ap-badge user" style="margin:2px;">'+esc(a[1])+'</span>';}).join('');
+        return '<tr><td><b>'+esc(p.full_name||p.email||x.user_id)+'</b><br><span class="ap-email-cell" style="font-size:.7rem;">'+esc(p.email||'')+'</span></td><td>'+esc(ct)+'</td><td>'+(x.is_active?'<span class="ap-badge success">✅ نشط</span>':'<span class="ap-badge pending">⏸️ غير مفعل</span>')+'</td><td style="line-height:1.8;font-size:.72rem;">'+(ls||'<span style="color:#999;">لا توجد صلاحيات</span>')+'</td><td><button type="button" class="ap-btn ap-btn-primary" data-final-aa-edit="'+x.id+'">✏️ تعديل</button> <button type="button" class="ap-btn '+(x.is_active?'ap-btn-danger':'ap-btn-success')+'" data-final-aa-toggle="'+x.id+'" data-final-aa-active="'+(x.is_active?'1':'0')+'">'+(x.is_active?'🗑️ تعطيل':'✅ تفعيل')+'</button></td></tr>';
+      }).join('')+'</tbody></table></div>';
+      body.querySelectorAll('[data-final-aa-edit]').forEach(function(b){b.onclick=function(){if(typeof window._bsmAAEdit==='function')window._bsmAAEdit(Number(b.getAttribute('data-final-aa-edit')));};});
+      body.querySelectorAll('[data-final-aa-toggle]').forEach(function(b){b.onclick=async function(){var id=Number(b.getAttribute('data-final-aa-toggle')),active=b.getAttribute('data-final-aa-active')==='1';try{var r=await db().from('section_admins').update({is_active:!active}).eq('id',id);if(r.error)throw r.error;toast(active?'✅ تم تعطيل المساعد':'✅ تم تفعيل المساعد','success');refreshAssistantPanel();}catch(e){toast('❌ '+(e.message||e),'error');}};});
+    }catch(e){body.innerHTML='<div class="ap-empty" style="color:#e74c3c;">❌ '+esc(e.message||e)+'</div>';}
+  }
+  window._bsmRefreshAssistantPanel=refreshAssistantPanel;
+})();
+</script>
+<script>
+(function(){
+  'use strict';
+  if(window.__BSM_FINAL_20260829_DB_ALIGNED_V5)return;
+  window.__BSM_FINAL_20260829_DB_ALIGNED_V5=true;
+  var DB=function(){return window.supabase||null;};
+  var esc=function(v){return typeof window._apEsc==='function'?window._apEsc(v==null?'':String(v)):String(v==null?'':v).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});};
+  var toast=function(m,t){if(typeof window._showToast==='function')window._showToast(m,t||'info');};
+
+  /* ============================================================
+     DM: the live DB has UNIQUE(section_id) twice. Direct rooms must
+     therefore remain section_id=NULL. Prefer a pair-specific room and
+     only fall back to the legacy RPC for databases where direct inserts
+     are not allowed by RLS. No existing room/data is deleted.
+  ============================================================ */
+  async function findPairSpecificRoom(db,meId,otherId,sectionId){
+    if(!db||!meId||!otherId)return null;
+    var a=await db.from('chat_room_participants').select('room_id').eq('user_id',meId).limit(500);
+    if(a.error||!a.data||!a.data.length)return null;
+    var ids=a.data.map(function(x){return x.room_id;}).filter(Boolean);
+    if(!ids.length)return null;
+    var rooms=await db.from('chat_rooms').select('id,room_name,room_type,section_id,created_at').in('id',ids).eq('room_type','direct').order('id');
+    if(rooms.error||!rooms.data||!rooms.data.length)return null;
+    var exact='DM:'+String(sectionId)+':';
+    var candidates=rooms.data.filter(function(r){return String(r.room_name||'').indexOf(exact)===0;});
+    for(var i=0;i<candidates.length;i++){
+      var pr=await db.from('chat_room_participants').select('room_id').eq('room_id',candidates[i].id).eq('user_id',otherId).limit(1);
+      if(!pr.error&&pr.data&&pr.data.length)return candidates[i];
+    }
+    return null;
+  }
+  async function createPairSpecificRoom(db,meId,otherId,sectionId){
+    var existing=await findPairSpecificRoom(db,meId,otherId,sectionId);
+    if(existing)return existing;
+    var a=String(meId),b=String(otherId),lo=a<b?a:b,hi=a<b?b:a;
+    var roomName='DM:'+String(sectionId)+':'+lo+':'+hi;
+    var ins=await db.from('chat_rooms').insert([{room_name:roomName,room_type:'direct',section_id:null}]).select('*').single();
+    if(ins.error){
+      var again=await findPairSpecificRoom(db,meId,otherId,sectionId);
+      if(again)return again;
+      throw ins.error;
+    }
+    var room=ins.data;
+    var p1=await db.from('chat_room_participants').insert([{room_id:room.id,user_id:meId},{room_id:room.id,user_id:otherId}]);
+    if(p1.error){
+      /* Never delete the room here: user explicitly asked to preserve data. */
+      throw p1.error;
+    }
+    return room;
+  }
+  async function getDirectRoomWithoutBrokenRPC(otherUserId,sectionId){
+    var db=DB();
+    var sr=typeof window._getSessionSafe==='function'?await window._getSessionSafe(8000):await db.auth.getSession();
+    var me=sr&&sr.data&&sr.data.session&&sr.data.session.user;
+    if(!me)throw new Error('يجب تسجيل الدخول أولاً');
+    var existing=await findPairSpecificRoom(db,me.id,otherUserId,sectionId);
+    if(existing)return existing;
+    try{return await createPairSpecificRoom(db,me.id,otherUserId,sectionId);}
+    catch(e){
+      var msg=String(e&&e.message||'');
+      /* If client RLS blocks direct creation, preserve compatibility for already-authorized users. */
+      if(/row-level security|permission denied|not allowed|violates row-level/i.test(msg)){
+        var rpc=await db.rpc('get_or_create_direct_room',{p_other_user_id:otherUserId,p_section_id:Number(sectionId)});
+        if(!rpc.error&&rpc.data)return rpc.data;
+        throw rpc.error||e;
+      }
+      throw e;
+    }
+  }
+  if(typeof window.openDirectChat==='function'&&!window.__BSM_DM_FINAL_V5){
+    var baseOpen=window.openDirectChat;
+    window.openDirectChat=async function(otherUserId,displayNameHint,knownRoomId,sectionId){
+      if(!knownRoomId&&otherUserId&&sectionId){
+        try{
+          var room=await getDirectRoomWithoutBrokenRPC(otherUserId,sectionId);
+          if(room)return await baseOpen.call(this,otherUserId,displayNameHint,room.id,sectionId);
+        }catch(e){
+          console.error('[DM] direct-room creation failed:',e&&e.message);
+          toast('❌ تعذر فتح المحادثة الخاصة: '+(e&&e.message||'تحقق من صلاحيات المحادثات'),'error');
+          return;
+        }
+      }
+      return baseOpen.apply(this,arguments);
+    };
+    window.__BSM_DM_FINAL_V5=true;
+  }
+
+  /* ============================================================
+     Paid content: verify admin bypass from the DB, not stale frontend
+     state. This specifically prevents an inactive section_admins row
+     from opening paid content. Rejected/cancelled/pending stay locked.
+  ============================================================ */
+  async function activeAdminForCourse(uid,courseId){
+    var db=DB();if(!db||!uid||!courseId)return false;
+    try{
+      var r=await db.from('section_admins').select('id,role,is_active').eq('user_id',uid).eq('section_id',Number(courseId)).eq('is_active',true).in('role',['admin','owner']).limit(1);
+      if(!r.error&&r.data&&r.data.length)return true;
+      var p=await db.from('profiles').select('role').eq('id',uid).maybeSingle();
+      return !p.error&&p.data&&p.data.role==='admin';
+    }catch(e){return false;}
+  }
+  async function strictGateV5(sectionId){
+    var db=DB();if(!db)return null;
+    var id=Number(sectionId);if(!Number.isFinite(id))return null;
+    var chain=[],cur=id,seen={};
+    for(var i=0;i<20&&cur&&!seen[cur];i++){
+      seen[cur]=true;
+      var r=await db.from('site_sections').select('id,title,parent_id,requires_subscription,type').eq('id',cur).maybeSingle();
+      if(r.error||!r.data)break;
+      chain.push(r.data);
+      if(r.data.parent_id==null)break;
+      cur=Number(r.data.parent_id)||0;
+    }
+    var paid=chain.find(function(x){return x.requires_subscription===true;});
+    if(!paid)return null;
+    var sess=typeof window._getSessionSafe==='function'?await window._getSessionSafe(8000):await db.auth.getSession();
+    var u=sess&&sess.data&&sess.data.session&&sess.data.session.user;
+    if(!u)return {state:'guest',access:'guest',anchor:paid};
+    if(await activeAdminForCourse(u.id,paid.id))return null;
+    if(typeof window._isFreePreviewSection==='function'){
+      try{if(await window._isFreePreviewSection(id))return null;}catch(e){}
+    }
+    var rsub=await db.from('subscriptions').select('id,payment_status,start_date,end_date,reject_reason,requested_at,created_at,updated_at').eq('user_id',u.id).eq('section_id',Number(paid.id)).order('requested_at',{ascending:false,nullsFirst:false}).order('created_at',{ascending:false}).order('id',{ascending:false}).limit(1);
+    if(rsub.error)throw rsub.error;
+    var row=rsub.data&&rsub.data[0]||null;
+    if(row&&row.payment_status==='active'&&(!row.end_date||new Date(row.end_date).getTime()>=Date.now()))return null;
+    var state=row&&row.payment_status==='pending'?'pending':(row&&row.payment_status==='rejected'?'rejected':(row&&row.payment_status==='cancelled'?'rejected':(row?'expired':'none')));
+    return {state:state,access:state,anchor:paid,row:row,user:u,reject_reason:row&&row.reject_reason||''};
+  }
+  window.checkSectionAccess=strictGateV5;
+  window.getDetailedSectionAccess=async function(sectionId){var g=await strictGateV5(sectionId);return g||{state:'free',anchor:null};};
+
+  /* ============================================================
+     Assistant manager: actual DB uses role='admin' for assistant rows,
+     and the assistant account can have profiles.role='student'. Show
+     inactive rows too, including existing row 24. Save role='admin'.
+  ============================================================ */
+  function assistantCanManage(){
+    return !!(window._isSuperAdmin||window._currentUserRole==='admin'||window._branchAdminActiveRole==='owner'||(window._branchAdminPerms&&window._branchAdminPerms.can_manage_admins===true));
+  }
+  function currentAssistantCourse(){return Number(window._branchAdminCourseId||window._activeSectionId||((window._branchAdminOwnSectionIds||[])[0])||0);}
+  async function assistantCourses(){
+    var db=DB();if(!db)return[];
+    if(window._isSuperAdmin||window._currentUserRole==='admin'){
+      var all=await db.from('site_sections').select('id,title,icon').eq('type','course').order('title');
+      if(all.error)throw all.error;return all.data||[];
+    }
+    var id=currentAssistantCourse();
+    if(!id)return[];
+    var one=await db.from('site_sections').select('id,title,icon').eq('id',id).maybeSingle();
+    if(one.error)throw one.error;return one.data?[one.data]:[];
+  }
+  async function assistantRows(cid){
+    var db=DB();
+    var r=await db.from('section_admins').select('id,user_id,section_id,is_active,role,permissions').eq('section_id',Number(cid)).in('role',['admin','assistant']).order('id');
+    if(r.error)throw r.error;
+    var rows=r.data||[],ids=rows.map(function(x){return x.user_id;}).filter(Boolean),pm={};
+    if(ids.length){var p=await db.from('profiles').select('id,email,full_name,role').in('id',ids);if(p.error)throw p.error;(p.data||[]).forEach(function(x){pm[x.id]=x;});}
+    return rows.map(function(x){x.profile=pm[x.user_id]||{};x.isAssistant=String(x.role)==='assistant'||['student','user'].indexOf(String(x.profile.role||'').toLowerCase())!==-1;return x;}).filter(function(x){return x.isAssistant;});
+  }
+  function assistantPermLabels(q){
+    var labels=[['can_view_stats','الإحصائيات'],['can_manage_materials','المواد'],['can_manage_chapters','المحتوى'],['can_manage_subscriptions','الاشتراكات'],['can_manage_payments','المدفوعات'],['can_manage_section_chat','محادثة الكورس'],['can_delete_section_messages','حذف رسائل الكورس']];
+    return labels.filter(function(a){return q&&q[a[0]]===true;}).map(function(a){return '<span class="ap-badge user" style="margin:2px;">'+esc(a[1])+'</span>';}).join('');
+  }
+  async function assistantRenderV5(){
+    var body=document.getElementById('bsm-aa-body'),sel=document.getElementById('bsm-aa-course'),cid=Number((sel&&sel.value)||currentAssistantCourse());
+    if(!body||!cid)return;
+    body.innerHTML='<div class="ap-loading"><div class="spinner"></div> جاري تحميل الأدمن المساعدين...</div>';
+    try{
+      var rows=await assistantRows(cid),ct=sel&&sel.options[sel.selectedIndex]?sel.options[sel.selectedIndex].textContent:('#'+cid);
+      if(!rows.length){body.innerHTML='<div class="ap-empty">لا يوجد أدمن مساعد مسجل لهذا الكورس حاليًا.</div>';return;}
+      body.innerHTML='<div class="ap-table-wrap"><table class="ap-table"><thead><tr><th>المساعد</th><th>الكورس</th><th>الحالة</th><th>الصلاحيات الحالية</th><th>الإجراءات</th></tr></thead><tbody>'+rows.map(function(x){
+        var p=x.profile||{},q=x.permissions||{},nm=p.full_name||p.email||x.user_id;
+        return '<tr><td><b>'+esc(nm)+'</b><br><span class="ap-email-cell" style="font-size:.7rem;">'+esc(p.email||'')+'</span></td><td>'+esc(ct)+'</td><td>'+(x.is_active?'<span class="ap-badge success">✅ نشط</span>':'<span class="ap-badge pending">⏸️ غير مفعل</span>')+'</td><td style="line-height:1.8;font-size:.72rem;">'+(assistantPermLabels(q)||'<span style="color:#999;">لا توجد صلاحيات</span>')+'</td><td style="white-space:nowrap;"><button type="button" class="ap-btn ap-btn-primary" data-bsm-v5-edit="'+x.id+'">✏️ تعديل</button> <button type="button" class="ap-btn '+(x.is_active?'ap-btn-danger':'ap-btn-success')+'" data-bsm-v5-toggle="'+x.id+'" data-active="'+(x.is_active?'1':'0')+'">'+(x.is_active?'🗑️ تعطيل':'✅ تفعيل')+'</button></td></tr>';
+      }).join('')+'</tbody></table></div>';
+      body.querySelectorAll('[data-bsm-v5-edit]').forEach(function(b){b.onclick=function(){assistantOpenV5(Number(b.getAttribute('data-bsm-v5-edit')));};});
+      body.querySelectorAll('[data-bsm-v5-toggle]').forEach(function(b){b.onclick=async function(){try{var id=Number(b.getAttribute('data-bsm-v5-toggle')),active=b.getAttribute('data-active')==='1',u=await DB().from('section_admins').update({is_active:!active}).eq('id',id);if(u.error)throw u.error;toast(active?'✅ تم تعطيل المساعد':'✅ تم تفعيل المساعد','success');assistantRenderV5();}catch(e){toast('❌ '+(e.message||e),'error');}};});
+    }catch(e){body.innerHTML='<div class="ap-empty" style="color:#e74c3c;">❌ '+esc(e.message||e)+'</div>';}
+  }
+  function resetPerms(perms){document.querySelectorAll('#bsm-aa-perms input[data-aa-perm]').forEach(function(x){var k=x.getAttribute('data-aa-perm');x.checked=perms&&perms[k]!==undefined?!!perms[k]:true;});}
+  async function assistantOpenV5(id){
+    var db=DB(),m=document.getElementById('bsm-aa-modal');if(!db||!m)return;
+    window.__bsmAAEditId=id||null;window.__bsmAASelectedUser=null;
+    document.getElementById('bsm-aa-title').textContent=id?'✏️ تعديل الأدمن المساعد':'➕ إضافة أدمن مساعد';
+    var courseSel=document.getElementById('bsm-aa-course'),changeWrap=document.getElementById('bsm-aa-change-course-wrap'),changeSel=document.getElementById('bsm-aa-change-course');
+    if(changeWrap)changeWrap.style.display='none';
+    var rows=[];
+    if(id){
+      var r=await db.from('section_admins').select('id,user_id,section_id,is_active,role,permissions').eq('id',id).maybeSingle();
+      if(r.error)throw r.error;if(!r.data)throw new Error('السجل غير موجود');
+      if(!(String(r.data.role)==='admin'||String(r.data.role)==='assistant'))throw new Error('السجل المحدد ليس أدمن مساعدًا');
+      var p=await db.from('profiles').select('id,email,full_name,role').eq('id',r.data.user_id).maybeSingle();if(p.error)throw p.error;
+      window.__bsmAASelectedUser=p.data||{id:r.data.user_id};
+      if(courseSel)courseSel.value=String(r.data.section_id);
+      if(changeWrap&&(window._isSuperAdmin||window._currentUserRole==='admin')){
+        rows=await assistantCourses();changeWrap.style.display='block';changeSel.innerHTML=rows.map(function(x){return '<option value="'+x.id+'">'+esc(x.title)+'</option>';}).join('');changeSel.value=String(r.data.section_id);
+      }
+      var sb=document.getElementById('bsm-aa-selected');if(sb){sb.style.display='block';sb.innerHTML='✅ <b>'+esc((p.data&&p.data.full_name)||r.data.user_id)+'</b> — '+esc((p.data&&p.data.email)||'')+' <span style="color:#777;">('+ (r.data.is_active?'نشط':'غير مفعل') +')</span>';}
+      resetPerms(r.data.permissions||{});
+    }else{
+      if(courseSel)courseSel.value=String(currentAssistantCourse());
+      var sb2=document.getElementById('bsm-aa-selected');if(sb2){sb2.style.display='none';sb2.innerHTML='';}
+      var search=document.getElementById('bsm-aa-search');if(search)search.value='';var res=document.getElementById('bsm-aa-results');if(res)res.innerHTML='';resetPerms({});
+    }
+    var note=document.getElementById('bsm-aa-course-note');if(note)note.textContent='الكورس الحالي: '+(courseSel&&courseSel.options[courseSel.selectedIndex]?courseSel.options[courseSel.selectedIndex].textContent:'#'+(courseSel&&courseSel.value||currentAssistantCourse()));
+    var search2=document.getElementById('bsm-aa-search');if(search2)search2.focus();
+    m.style.display='flex';document.body.style.overflow='hidden';
+  }
+  async function assistantSearchV5(q){
+    var box=document.getElementById('bsm-aa-results'),db=DB();q=(q||'').trim();if(!box||!db)return;
+    if(q.length<2){box.innerHTML='';return;}
+    box.innerHTML='<div class="ap-loading" style="padding:6px;">⏳ جاري البحث...</div>';
+    try{
+      var safe=q.replace(/[%,]/g,'\\$&');
+      var r=await db.from('profiles').select('id,email,full_name,role').or('email.ilike.%'+safe+'%,full_name.ilike.%'+safe+'%').limit(20);
+      if(r.error)throw r.error;
+      var me=(window._currentAuthUser&&window._currentAuthUser.id)||'';
+      var rows=(r.data||[]).filter(function(p){return String(p.id)!==String(me)&&['admin','branch_admin'].indexOf(String(p.role||'').toLowerCase())===-1;});
+      box.innerHTML=rows.length?rows.map(function(p){return '<div data-bsm-v5-user="'+esc(p.id)+'" style="display:flex;align-items:center;justify-content:space-between;padding:8px;border:1px solid #e7edf2;border-radius:8px;margin-bottom:5px;cursor:pointer;"><div><b style="font-size:.8rem;">'+esc(p.full_name||p.email||'مستخدم')+'</b><br><span style="font-size:.68rem;color:#888;">'+esc(p.email||'')+'</span></div><span class="ap-btn ap-btn-ghost" style="padding:4px 8px;">اختيار</span></div>';}).join(''):'<div class="ap-empty" style="padding:8px;">لا توجد نتائج. البحث يعمل في الحسابات الموجودة بجدول المستخدمين.</div>';
+      box.querySelectorAll('[data-bsm-v5-user]').forEach(function(el){el.onclick=function(){var p=rows.find(function(x){return String(x.id)===String(el.getAttribute('data-bsm-v5-user'));});if(!p)return;window.__bsmAASelectedUser=p;var s=document.getElementById('bsm-aa-selected');if(s){s.style.display='block';s.innerHTML='✅ <b>'+esc(p.full_name||p.email||'مستخدم')+'</b> — '+esc(p.email||'');}box.innerHTML='';var inp=document.getElementById('bsm-aa-search');if(inp)inp.value='';};});
+    }catch(e){box.innerHTML='<div class="ap-empty" style="color:#e74c3c;">❌ '+esc(e.message||e)+'</div>';}
+  }
+  async function assistantSaveV5(){
+    var db=DB(),msg=document.getElementById('bsm-aa-msg'),sel=document.getElementById('bsm-aa-course'),cid=Number((document.getElementById('bsm-aa-change-course')||{}).value||((sel&&sel.value)||currentAssistantCourse())),u=window.__bsmAASelectedUser;
+    if(!assistantCanManage())return;
+    if(!u||!u.id){if(msg)msg.textContent='⚠️ اختر حساب المستخدم أولاً';return;}
+    var perms={};document.querySelectorAll('#bsm-aa-perms input[data-aa-perm]').forEach(function(x){perms[x.getAttribute('data-aa-perm')]=!!x.checked;});
+    perms.can_manage_admins=false;perms.manage_chats=perms.can_manage_section_chat===true;perms.assistant_assignment=true;
+    if(!window._isSuperAdmin&&window._currentUserRole!=='admin')cid=currentAssistantCourse();
+    if(!cid){if(msg)msg.textContent='⚠️ تعذر تحديد الكورس';return;}
+    if(msg){msg.style.color='#0a3d62';msg.textContent='⏳ جاري الحفظ...';}
+    try{
+      var id=window.__bsmAAEditId||null;
+      if(id){
+        var old=await db.from('section_admins').select('id,user_id,section_id,role').eq('id',id).maybeSingle();if(old.error)throw old.error;if(!old.data)throw new Error('السجل غير موجود');
+        if(!(String(old.data.role)==='admin'||String(old.data.role)==='assistant'))throw new Error('السجل ليس أدمن مساعدًا');
+        if(!window._isSuperAdmin&&window._currentUserRole!=='admin'&&Number(cid)!==Number(old.data.section_id))throw new Error('تغيير الكورس متاح لأدمن المنصة فقط');
+        var up=await db.from('section_admins').update({user_id:u.id,section_id:cid,role:'admin',is_active:true,permissions:perms}).eq('id',id);if(up.error)throw up.error;
+      }else{
+        var up2=await db.from('section_admins').upsert({user_id:u.id,section_id:cid,role:'admin',is_active:true,permissions:perms},{onConflict:'user_id,section_id'});if(up2.error)throw up2.error;
+      }
+      toast('✅ تم حفظ الأدمن المساعد وصلاحياته','success');
+      var m=document.getElementById('bsm-aa-modal');if(m)m.style.display='none';document.body.style.overflow='';window.__bsmAAEditId=null;window.__bsmAASelectedUser=null;await assistantRenderV5();
+    }catch(e){if(msg){msg.style.color='#e74c3c';msg.textContent='❌ '+esc(e.message||e);}toast('❌ '+(e.message||e),'error');}
+  }
+  function assistantBindV5(){
+    var add=document.getElementById('bsm-aa-add');if(add)add.onclick=function(){assistantOpenV5(null);};
+    var save=document.getElementById('bsm-aa-save');if(save)save.onclick=assistantSaveV5;
+    var ref=document.getElementById('bsm-aa-refresh');if(ref)ref.onclick=assistantRenderV5;
+    var close=document.getElementById('bsm-aa-close');if(close)close.onclick=function(){var m=document.getElementById('bsm-aa-modal');if(m)m.style.display='none';document.body.style.overflow='';window.__bsmAAEditId=null;window.__bsmAASelectedUser=null;};
+    var s=document.getElementById('bsm-aa-search');if(s)s.oninput=function(){assistantSearchV5(this.value);};
+    var c=document.getElementById('bsm-aa-course');if(c)c.onchange=function(){assistantRenderV5();};
+  }
+  window._bsmAAInit=async function(){
+    if(!assistantCanManage())return;
+    var sel=document.getElementById('bsm-aa-course');if(!sel)return;
+    var rows=await assistantCourses();sel.innerHTML=rows.length?rows.map(function(x){return '<option value="'+x.id+'">'+esc((x.icon||'🎓')+' '+(x.title||('#'+x.id)))+'</option>';}).join(''):'<option value="">لا توجد كورسات متاحة</option>';
+    if(rows.length){sel.value=String(currentAssistantCourse()&&rows.some(function(x){return Number(x.id)===currentAssistantCourse();})?currentAssistantCourse():rows[0].id);await assistantRenderV5();}
+  };
+  var prevNav=window.apSwitchTab;
+  window.apSwitchTab=function(tab){
+    if(tab==='assistantAdmins'||tab==='courseAssistants'){
+      if(!assistantCanManage()){toast('⛔ لا تملك صلاحية إدارة الأدمن المساعدين','error');return Promise.resolve();}
+      document.querySelectorAll('.ap-tab-panel').forEach(function(x){x.classList.remove('active');});
+      var p=document.getElementById('bsm-aa-panel');if(p)p.classList.add('active');
+      document.querySelectorAll('.ap-nav-btn').forEach(function(x){x.classList.remove('active');});
+      var n=document.getElementById('ap-tab-assistantAdmins');if(n)n.classList.add('active');
+      assistantBindV5();
+      return window._bsmAAInit().catch(function(e){var b=document.getElementById('bsm-aa-body');if(b)b.innerHTML='<div class="ap-empty" style="color:#e74c3c;">❌ '+esc(e.message||e)+'</div>';});
+    }
+    return typeof prevNav==='function'?prevNav.apply(this,arguments):undefined;
+  };
+  function boot(){
+    assistantBindV5();
+    var s=document.getElementById('bsm-aa-search');if(s)s.placeholder='اكتب أول حرفين من الاسم أو البريد للبحث في الحسابات التي سجلت دخول';
+  }
+  document.addEventListener('DOMContentLoaded',boot);window.addEventListener('load',boot);setTimeout(boot,1000);setTimeout(boot,3000);
+  console.log('%c[BSM FINAL V5] DB-aligned DM + paid gate + assistant manager loaded','color:#17a589;font-weight:800');
+})();
+
+</script>
 </body>
 </html>
 
@@ -29674,6 +30229,7 @@ ORDER BY tablename, policyname;
       if(rows.length){aa.courseId=Number(rows[0].id);sel.value=String(aa.courseId);await aaLoad();}
     }catch(e){var b=document.getElementById('bsm-aa-body');if(b)b.innerHTML='<div class="ap-empty" style="color:#e74c3c;">❌ '+esc(e.message)+'</div>';}
   }
+  window._bsmAAInit=function(){return aaInit();};
   async function aaLoad(){
     var body=document.getElementById('bsm-aa-body'),cid=aa.courseId||Number((document.getElementById('bsm-aa-course')||{}).value||0),d=DB();if(!body||!d||!cid)return;
     body.innerHTML='<div class="ap-loading"><div class="spinner"></div> جاري تحميل الأدمن المساعدين...</div>';
@@ -29798,5 +30354,231 @@ ORDER BY tablename, policyname;
   var gateTimer=setInterval(function(){gateAssistant();},1000);setTimeout(function(){clearInterval(gateTimer);},20000);
 
   console.log('%c[BSM TARGETED 7 FIXES FINAL] loaded','color:#17a589;font-weight:800');
+})();
+</script>
+
+<!-- ============================================================
+     BSM FINAL TARGETED CORRECTIONS — 2026-08-29 v3
+     File-only runtime fixes. No SQL is executed.
+============================================================ -->
+<script>
+(function(){
+  'use strict';
+  if(window.__BSM_FINAL_TARGETED_V3)return;
+  window.__BSM_FINAL_TARGETED_V3=true;
+
+  function DB(){return window.supabase||null;}
+  function esc(v){
+    if(typeof window._apEsc==='function')return window._apEsc(v==null?'':String(v));
+    return String(v==null?'':v).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});
+  }
+  function toast(m,t){if(typeof window._showToast==='function')window._showToast(m,t||'info');}
+
+  /* ============================================================
+     1) DM 409 recovery.
+     The live RPC can hit a unique constraint when another DM already
+     uses the legacy room key. First reuse an existing pair room; if no
+     pair room exists, create a pair-specific direct room from the client.
+     This never deletes or modifies an existing room.
+  ============================================================ */
+  async function _dmFindExistingPairRoom(db,meId,otherId,sectionId){
+    try{
+      var mine=await db.from('chat_room_participants').select('room_id').eq('user_id',meId).limit(200);
+      if(mine.error||!mine.data||!mine.data.length)return null;
+      var ids=mine.data.map(function(x){return x.room_id;}).filter(Boolean);
+      if(!ids.length)return null;
+      var theirs=await db.from('chat_room_participants').select('room_id').in('room_id',ids).eq('user_id',otherId).limit(50);
+      if(theirs.error||!theirs.data||!theirs.data.length)return null;
+      var pairIds=theirs.data.map(function(x){return x.room_id;}).filter(Boolean);
+      if(!pairIds.length)return null;
+      var rooms=await db.from('chat_rooms').select('id,room_name,room_type,created_at').in('id',pairIds).eq('room_type','direct').order('id');
+      if(rooms.error||!rooms.data||!rooms.data.length)return null;
+      var prefix='DM:'+String(sectionId)+':';
+      return rooms.data.find(function(r){return String(r.room_name||'').indexOf(prefix)===0;})||rooms.data[0]||null;
+    }catch(e){return null;}
+  }
+
+  async function _dmCreatePairRoomFallback(db,meId,otherId,sectionId){
+    var existing=await _dmFindExistingPairRoom(db,meId,otherId,sectionId);
+    if(existing)return existing;
+    var a=String(meId),b=String(otherId);
+    var lo=a<b?a:b,hi=a<b?b:a;
+    var roomName='DM:'+String(sectionId)+':'+lo+':'+hi;
+    try{
+      var ins=await db.from('chat_rooms').insert([{room_name:roomName,room_type:'direct'}]).select('*').single();
+      if(ins.error){
+        var again=await _dmFindExistingPairRoom(db,meId,otherId,sectionId);
+        if(again)return again;
+        throw ins.error;
+      }
+      var room=ins.data;
+      var pr=await db.from('chat_room_participants').insert([
+        {room_id:room.id,user_id:meId},
+        {room_id:room.id,user_id:otherId}
+      ]);
+      if(pr.error){
+        try{await db.from('chat_rooms').delete().eq('id',room.id);}catch(e){}
+        throw pr.error;
+      }
+      return room;
+    }catch(e){
+      var finalRoom=await _dmFindExistingPairRoom(db,meId,otherId,sectionId);
+      if(finalRoom)return finalRoom;
+      throw e;
+    }
+  }
+
+  if(typeof window.openDirectChat==='function'&&!window.__BSM_DM_409_PATCH){
+    var oldOpenDirectChat=window.openDirectChat;
+    /* Patch only the failing RPC path by temporarily wrapping rpc. */
+    window.openDirectChat=async function(otherUserId,displayNameHint,knownRoomId,sectionId){
+      var db=DB();
+      if(!db||!otherUserId||knownRoomId||!sectionId)return oldOpenDirectChat.apply(this,arguments);
+      var originalRpc=db.rpc;
+      var self=this;
+      var usedFallback=false;
+      try{
+        db.rpc=function(fn,args){
+          if(fn!=='get_or_create_direct_room')return originalRpc.apply(this,arguments);
+          return originalRpc.apply(this,arguments).then(async function(res){
+            if(!res||!res.error)return res;
+            var msg=String(res.error.message||'');
+            var status=Number(res.error.code||res.status||0);
+            if(status!==409&&!/duplicate key|chat_rooms_one_per_section|unique constraint/i.test(msg))return res;
+            try{
+              var session=typeof window._getSessionSafe==='function'?await window._getSessionSafe(8000):await db.auth.getSession();
+              var me=session&&session.data&&session.data.session&&session.data.session.user;
+              if(!me)return res;
+              var room=await _dmCreatePairRoomFallback(db,me.id,otherUserId,Number(sectionId));
+              if(room){usedFallback=true;return {data:room,error:null};}
+            }catch(fb){
+              console.error('[DM] 409 fallback failed:',fb&&fb.message);
+            }
+            return res;
+          });
+        };
+        return await oldOpenDirectChat.apply(self,arguments);
+      }finally{
+        db.rpc=originalRpc;
+        if(usedFallback)console.log('[DM] recovered 409 by using pair-specific direct room');
+      }
+    };
+    window.__BSM_DM_409_PATCH=true;
+  }
+
+  /* ============================================================
+     2) Subscription gate: cancelled/rejected users must NOT get paid
+        content merely because subscription_content_access contains false.
+        The latest subscription request is authoritative when duplicates exist.
+        Admins keep their existing scoped access; first free preview stays free.
+  ============================================================ */
+  async function _latestSectionRow(id){
+    var d=DB();if(!d)return null;
+    var r=await d.from('site_sections').select('id,title,parent_id,requires_subscription,type').eq('id',Number(id)).maybeSingle();
+    return r.error?null:r.data||null;
+  }
+  async function _findPaidAnchor(id){
+    var cur=Number(id),guard=0;
+    while(Number.isFinite(cur)&&guard++<20){
+      var row=await _latestSectionRow(cur);
+      if(!row)break;
+      if(row.requires_subscription===true)return row;
+      if(row.parent_id==null)break;
+      cur=Number(row.parent_id);
+    }
+    return null;
+  }
+  async function _isFreePreviewFinal(anchorId,sectionId){
+    try{
+      if(typeof window._isFreePreviewSection==='function')return !!(await window._isFreePreviewSection(sectionId));
+    }catch(e){}
+    return false;
+  }
+  async function _latestSubscription(uid,anchorId){
+    var d=DB();if(!d)return null;
+    var r=await d.from('subscriptions')
+      .select('id,payment_status,start_date,end_date,reject_reason,requested_at,created_at,updated_at')
+      .eq('user_id',uid).eq('section_id',Number(anchorId))
+      .order('requested_at',{ascending:false,nullsFirst:false})
+      .order('created_at',{ascending:false})
+      .order('id',{ascending:false})
+      .limit(1);
+    if(r.error)throw r.error;
+    return r.data&&r.data.length?r.data[0]:null;
+  }
+  async function _finalPaidGate(sectionId){
+    var anchor=await _findPaidAnchor(sectionId);
+    if(!anchor)return null;
+    if(window._isSuperAdmin===true)return null;
+    if(window._isBranchAdmin===true&&Array.isArray(window._branchAdminSectionIds)&&window._branchAdminSectionIds.indexOf(Number(anchor.id))!==-1)return null;
+    if(await _isFreePreviewFinal(anchor.id,Number(sectionId)))return null;
+    var sess=typeof window._getSessionSafe==='function'?await window._getSessionSafe(8000):await DB().auth.getSession();
+    var user=sess&&sess.data&&sess.data.session&&sess.data.session.user;
+    if(!user)return {state:'guest',access:'guest',anchor:anchor};
+    var row=await _latestSubscription(user.id,anchor.id);
+    if(row&&row.payment_status==='active'&&(!row.end_date||new Date(row.end_date).getTime()>=Date.now()))return null;
+    var st=row&&row.payment_status==='pending'?'pending':(row&&row.payment_status==='rejected'?'rejected':(row?'expired':'none'));
+    return {state:st,access:st,anchor:anchor,row:row||null,user:user,reject_reason:row&&row.reject_reason||''};
+  }
+  if(!window.__BSM_STRICT_PAID_GATE){
+    window.__BSM_STRICT_PAID_GATE=true;
+    window.checkSectionAccess=async function(sectionId){
+      try{return await _finalPaidGate(sectionId);}catch(e){
+        console.error('[STRICT PAID GATE]',e);
+        /* Paid sections fail closed if the authoritative subscription read fails. */
+        var a=await _findPaidAnchor(sectionId);
+        return a?{state:'error',access:'error',anchor:a}:null;
+      }
+    };
+    window.getDetailedSectionAccess=async function(sectionId){
+      try{
+        var g=await _finalPaidGate(sectionId);
+        if(!g)return {state:'free',anchor:null};
+        return g;
+      }catch(e){return {state:'error',access:'error'};}
+    };
+  }
+
+  /* ============================================================
+     3) Assistant picker/list: search profiles after 2 chars and make
+        the selected account visible. Do not silently treat an existing
+        course admin row as an assistant.
+  ============================================================ */
+  if(typeof window.aaSearch==='function'){
+    /* aaSearch is closure-scoped in the existing patch, so keep the existing
+       behavior; the final UI enhancement below adds a clear hint. */
+  }
+  function aaEnhanceUI(){
+    var s=document.getElementById('bsm-aa-search');
+    if(s){
+      s.placeholder='اكتب أول حرفين من الاسم أو البريد للبحث في حسابات المستخدمين المسجلة';
+      s.setAttribute('autocomplete','off');
+      s.setAttribute('inputmode','text');
+    }
+    var r=document.getElementById('bsm-aa-results');
+    if(r&&!r.__bsmHint){
+      r.__bsmHint=true;
+      var parent=r.parentElement;
+      if(parent&&!document.getElementById('bsm-aa-search-hint')){
+        var h=document.createElement('div');h.id='bsm-aa-search-hint';h.style.cssText='font-size:.68rem;color:#777;margin-top:4px;';h.textContent='بعد كتابة حرفين سيظهر لك الحساب للاختيار.';
+        parent.insertBefore(h,r);
+      }
+    }
+  }
+
+  /* Keep rejection reason private to the owner/admin: the gate only exposes it
+     through the existing rejected UI for the signed-in owner of that request. */
+  window.__bsmFinalChecks={
+    dm409Recovery:true,
+    strictPaidGate:true,
+    latestSubscriptionWins:true,
+    replyColumn:'reply_to_message_id',
+    rejectColumn:'reject_reason'
+  };
+
+  function boot(){aaEnhanceUI();}
+  document.addEventListener('DOMContentLoaded',boot);
+  window.addEventListener('load',boot);
+  setTimeout(boot,800);setTimeout(boot,2500);
 })();
 </script>
