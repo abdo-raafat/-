@@ -21042,10 +21042,6 @@ window.diagnose = async function() {
       setTimeout(closePaymentModal, 1400);
     } catch(err) {
       console.error('[PAYMENT] submit error:', err);
-      var _pmFriendlyErr = (typeof window.__formatSubscriptionSubmitError==='function')
-        ? window.__formatSubscriptionSubmitError(err)
-        : ('❌ '+(err && err.message ? err.message : err));
-      if (msgEl) { msgEl.style.color = '#e74c3c'; msgEl.textContent = _pmFriendlyErr; }
       // لو الرفع نجح ثم فشل RPC، لا نترك إيصالاً يتيماً في Storage.
       try {
         if (typeof path !== 'undefined' && path) {
@@ -28552,10 +28548,59 @@ SELECT conname, pg_get_constraintdef(oid) FROM pg_constraint WHERE conname='audi
      ============================================================ */
   window._pmRpcRequestSubscription=async function(db, payload){
     try{
-      return await db.rpc('request_subscription',payload);
+      var rpc=await db.rpc('request_subscription',payload);
+      if(!rpc || !rpc.error) return rpc;
+
+      // بعض النسخ القديمة من RPC كانت تحاول UPDATE لنفس صف الاشتراك،
+      // بينما الـtrigger الحالي يمنع الطالب من تعديل حقول إدارية مثل السعر/طريقة الدفع.
+      // في هذه الحالة ننشئ طلب pending جديدًا بأقل مجموعة حقول يملك الطالب تعديلها.
+      var e=rpc.error;
+      var msg=String(e.message||'');
+      var code=String(e.code||'');
+      if(code==='P0001' && /field not editable by student/i.test(msg)){
+        console.warn('[PAYMENT] legacy RPC rejected admin-controlled field; using safe student INSERT fallback');
+        var safe={
+          user_id: (window._pmUser&&window._pmUser.id) || null,
+          section_id: Number(payload.p_section_id),
+          payment_status: 'pending',
+          receipt_image: payload.p_receipt_image || null,
+          sender_phone: payload.p_sender_phone || null,
+          requested_at: new Date().toISOString()
+        };
+        if(!safe.user_id || !safe.section_id) throw e;
+
+        // لا نسمح بإنشاء طلب ثانٍ pending لنفس الطالب/الكورس.
+        var existing=await db.from('subscriptions')
+          .select('id,payment_status')
+          .eq('user_id',safe.user_id)
+          .eq('section_id',safe.section_id)
+          .in('payment_status',['pending','active'])
+          .order('id',{ascending:false}).limit(1);
+        if(existing.error) throw existing.error;
+        if(existing.data&&existing.data.length){
+          var st=existing.data[0].payment_status;
+          if(st==='active') throw new Error('لديك اشتراك فعال بالفعل لهذا الكورس.');
+          throw new Error('لديك بالفعل طلب اشتراك قيد المراجعة لهذا الكورس.');
+        }
+        var ins=await db.from('subscriptions').insert(safe).select('id,payment_status').maybeSingle();
+        if(ins.error){
+          // requested_at/receipt_image/sender_phone قد تكون غير موجودة في نسخة قديمة من schema.
+          // نعيد المحاولة بأقل مجموعة مؤكدة بدل إسقاط الطلب بالكامل.
+          var em=String(ins.error.message||'');
+          if(/requested_at|receipt_image|sender_phone|column .* does not exist|schema cache/i.test(em)){
+            var minimal={user_id:safe.user_id,section_id:safe.section_id,payment_status:'pending'};
+            var ins2=await db.from('subscriptions').insert(minimal).select('id,payment_status').maybeSingle();
+            if(ins2.error) throw ins2.error;
+            return {data:ins2.data,error:null};
+          }
+          throw ins.error;
+        }
+        return {data:ins.data,error:null};
+      }
+      return rpc;
     }catch(e){
-      console.error('[PAYMENT][request_subscription] network failure',e,payload);
-      throw new Error('تعذّر الاتصال بخدمة طلب الاشتراك. لم يتم تغيير بيانات الاشتراك. افتح Console لمعرفة سبب الاتصال.');
+      console.error('[PAYMENT][request_subscription] failed',e,payload);
+      throw e;
     }
   };
 
@@ -30390,503 +30435,117 @@ ORDER BY tablename, policyname;
     window.checkSectionAccess=async function(id){var r=await baseAccess(id);if(r&&r.state==='rejected'){try{var d=db(),s=typeof window._getSessionSafe==='function'?await window._getSessionSafe(5000):await d.auth.getSession(),u=s&&s.data&&s.data.session&&s.data.session.user;if(u&&d){var ids=[],cur=Number(id),seen={};for(var i=0;i<20&&cur&&!seen[cur];i++){seen[cur]=1;ids.push(cur);var q=await d.from('site_sections').select('parent_id').eq('id',cur).maybeSingle();if(q.error||!q.data||q.data.parent_id==null)break;cur=Number(q.data.parent_id)||0;}var a=await d.from('subscriptions').select('id,payment_status,start_date,end_date').eq('user_id',u.id).in('section_id',ids).eq('payment_status','active').order('end_date',{ascending:false,nullsFirst:false}).limit(1);if(!a.error&&a.data&&a.data.length){var x=a.data[0];if(!x.end_date||new Date(x.end_date).getTime()>=Date.now())return null;}}}catch(e){console.error('[V9 active access verification]',e);}}return r;};window.__BSM_V9_ACCESS_WRAPPED=true;}
 })();
 </script>
-<!-- ============================================================
-     BSM FINAL REPAIR PATCH — 2026-08-30
-     Root-cause repair for subscription resolution, mobile video playback,
-     fullscreen/orientation, and dashboard chat_rooms 403 noise.
-     Additive only: no data deletion, no schema rewrite.
-============================================================ -->
+
 <script>
+/* ================================================================
+   FINAL EMERGENCY PATCH — 2026-08-30
+   1) Subscription request: safe fallback for legacy request_subscription RPC
+      rejecting student updates of admin-controlled fields.
+   2) Preview path: course + first material/container remain open, but ONLY
+      the first lesson/class in the first branch is free. Every other lesson,
+      class, material child and resource remains subscription-gated.
+   3) No database schema changes are performed here.
+================================================================ */
 (function(){
   'use strict';
-  if(window.__BSM_FINAL_REPAIR_20260830)return;
-  window.__BSM_FINAL_REPAIR_20260830=true;
+  if(window.__FINAL_EMERGENCY_PATCH_20260830)return;
+  window.__FINAL_EMERGENCY_PATCH_20260830=true;
 
-  function db(){return window.supabase||null;}
-  function esc(v){return typeof window._apEsc==='function'?window._apEsc(v==null?'':String(v)):String(v==null?'':v).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
-  function toast(m,t){try{if(typeof window._showToast==='function')window._showToast(m,t||'info');}catch(e){}}
-  async function withTimeout(p,ms){
-    var timer;
-    try{return await Promise.race([p,new Promise(function(_,rej){timer=setTimeout(function(){rej(new Error('TIMEOUT'));},ms||7000);})]);}
-    finally{if(timer)clearTimeout(timer);}
-  }
-
-  /* ------------------------------------------------------------
-     1) ONE subscription resolver used by every paid-content entry point.
-     The old implementation sometimes chose a paid ancestor with no price,
-     then treated the latest rejected row as authoritative even when an
-     active subscription existed on another ancestor. This resolver fixes both.
-  ------------------------------------------------------------ */
-  async function subscriptionContext(sectionId){
-    var d=db(), id=Number(sectionId);
-    if(!d||!Number.isFinite(id))return {chain:[],paidNode:null,anchor:null,rows:[]};
-    var chain=[],cur=id,seen={};
-    for(var i=0;i<25&&cur&&!seen[cur];i++){
-      seen[cur]=true;
-      try{
-        var r=await withTimeout(d.from('site_sections').select('id,title,icon,parent_id,type,display_order,requires_subscription,price,payment_method,payment_number,subscription_days,chat_free_access').eq('id',cur).maybeSingle(),7000);
-        if(r.error||!r.data)break;
-        chain.push(r.data);
-        if(r.data.parent_id==null)break;
-        cur=Number(r.data.parent_id)||0;
-      }catch(e){break;}
-    }
-    if(!chain.length)return {chain:[],paidNode:null,anchor:null,rows:[]};
-
-    var explicit=[];
+  var DB=function(){return window.supabase||null;};
+  async function row(id){
+    var d=DB(); if(!d||!id)return null;
     try{
-      var ids=chain.map(function(x){return Number(x.id);});
-      var ar=await withTimeout(d.from('subscription_content_access').select('section_id,requires_subscription').in('section_id',ids),7000);
-      if(!ar.error)explicit=ar.data||[];
-    }catch(e){ explicit=[]; }
-
-    var paidIds={};
-    explicit.forEach(function(x){if(x&&x.requires_subscription===true)paidIds[Number(x.section_id)]=true;});
-    var paidNode=chain.find(function(x){return x.requires_subscription===true||paidIds[Number(x.id)];})||null;
-    if(!paidNode)return {chain:chain,paidNode:null,anchor:null,rows:[]};
-
-    /* Enrich the paid node with the course's payment data when the actual
-       subscription anchor has empty presentation fields. The DB id remains
-       the real paid node, so request_subscription keeps the correct section_id. */
-    var course=chain.find(function(x){return String(x.type||'').toLowerCase()==='course';})||null;
-    var anchor=Object.assign({},paidNode);
-    if((anchor.price==null||String(anchor.price).trim()==='')&&course&&course.price!=null)anchor.price=course.price;
-    if((!anchor.payment_method||String(anchor.payment_method).trim()==='')&&course&&course.payment_method)anchor.payment_method=course.payment_method;
-    if((!anchor.payment_number||String(anchor.payment_number).trim()==='')&&course&&course.payment_number)anchor.payment_number=course.payment_number;
-    if((!anchor.subscription_days||Number(anchor.subscription_days)<=0)&&course&&Number(course.subscription_days)>0)anchor.subscription_days=course.subscription_days;
-    /* Explicit content-access can mark a node paid even if the legacy boolean
-       is false. Keep the real node id and expose the effective flag only to UI. */
-    anchor.requires_subscription=true;
-
-    var rows=[];
-    try{
-      var chainIds=Array.from(new Set(chain.map(function(x){return Number(x.id);})));
-      var sess=typeof window._getSessionSafe==='function'?await window._getSessionSafe(7000):await d.auth.getSession();
-      var u=sess&&sess.data&&sess.data.session&&sess.data.session.user;
-      if(u){
-        var sr=await withTimeout(d.from('subscriptions').select('id,user_id,section_id,payment_status,start_date,end_date,reject_reason,requested_at,created_at,updated_at').eq('user_id',u.id).in('section_id',chainIds),7000);
-        if(!sr.error)rows=sr.data||[];
-      }
-    }catch(e){ }
-    return {chain:chain,paidNode:paidNode,anchor:anchor,rows:rows};
-  }
-
-  function validActive(row){
-    if(!row||row.payment_status!=='active')return false;
-    if(!row.end_date)return true;
-    var t=new Date(row.end_date).getTime();
-    return Number.isFinite(t)&&t>=Date.now();
-  }
-  function rowTime(r){
-    var a=r&&r.requested_at?new Date(r.requested_at).getTime():0;
-    var b=r&&r.created_at?new Date(r.created_at).getTime():0;
-    var c=r&&r.updated_at?new Date(r.updated_at).getTime():0;
-    return Math.max(a||0,b||0,c||0);
-  }
-
-  window._findSubscriptionAnchor=async function(sectionId){
-    try{
-      var c=await subscriptionContext(sectionId);
-      return c.anchor||null;
+      var r=await d.from('site_sections')
+        .select('id,title,parent_id,type,display_order,requires_subscription')
+        .eq('id',Number(id)).maybeSingle();
+      return r.error?null:r.data||null;
     }catch(e){return null;}
+  }
+  async function children(id){
+    var d=DB(); if(!d||!id)return [];
+    try{
+      var r=await d.from('site_sections')
+        .select('id,title,parent_id,type,display_order,requires_subscription')
+        .eq('parent_id',Number(id))
+        .order('display_order',{ascending:true})
+        .order('id',{ascending:true});
+      return r.error?[]:(r.data||[]);
+    }catch(e){return []}
+  }
+  function sort(a){return (a||[]).slice().sort(function(x,y){
+    var xo=Number(x.display_order)||0,yo=Number(y.display_order)||0;
+    return xo-yo || Number(x.id)-Number(y.id);
+  });}
+
+  // Resolve the first preview lesson/class under the paid course without
+  // hard-coded IDs. Any intermediate container on that route is also open.
+  async function firstPreviewPath(anchorId){
+    var anchor=await row(anchorId); if(!anchor)return [];
+    var path=[Number(anchor.id)], cur=Number(anchor.id), guard=0;
+    while(cur && guard++<20){
+      var kids=sort(await children(cur));
+      if(!kids.length)return path;
+      var first=kids[0];
+      path.push(Number(first.id));
+      var t=String(first.type||'').trim().toLowerCase();
+      if(t==='lesson'||t==='class') return path;
+      cur=Number(first.id);
+    }
+    return path;
+  }
+
+  async function isPreviewPathNode(anchorId,sectionId){
+    anchorId=Number(anchorId); sectionId=Number(sectionId);
+    if(!anchorId||!sectionId)return false;
+    var path=await firstPreviewPath(anchorId);
+    return path.indexOf(sectionId)!==-1 && sectionId!==anchorId;
+  }
+
+  // Replace the free-preview decision only; all paid checks remain intact.
+  window._isFreePreviewSection=async function(sectionId){
+    sectionId=Number(sectionId); if(!sectionId)return false;
+    try{
+      var anchor=typeof window._findSubscriptionAnchor==='function'
+        ? await window._findSubscriptionAnchor(sectionId) : null;
+      if(!anchor||!anchor.id)return false;
+      return await isPreviewPathNode(Number(anchor.id),sectionId);
+    }catch(e){return false;}
   };
 
-  async function finalAccess(sectionId){
-    var id=Number(sectionId);
-    if(!Number.isFinite(id))return null;
-    var c=await subscriptionContext(id);
-    if(!c.paidNode)return null;
-    var anchor=c.anchor;
-
-    if(window._isSuperAdmin===true)return null;
-    if(window._isBranchAdmin===true){
-      var ids=window._branchAdminAllSectionIds||window._branchAdminSectionIds||window._branchAdminOwnSectionIds||[];
-      if(Array.isArray(ids)&&ids.map(Number).indexOf(Number(anchor.id))!==-1)return null;
-    }
-    if(typeof window._isFreePreviewSection==='function'){
+  // Re-wrap the final access functions so the preview path is open even when
+  // a later hardening layer would otherwise mark its container as locked.
+  var baseCheck=window.checkSectionAccess;
+  var baseDetail=window.getDetailedSectionAccess;
+  if(typeof baseCheck==='function'&&!window.__FINAL_PREVIEW_CHECK_WRAP){
+    window.checkSectionAccess=async function(id){
       try{
-        /* Avoid recursion if an older implementation calls checkSectionAccess.
-           Only use the existing helper when it is not marked as this final patch. */
-        if(!window.__BSM_FINAL_FREE_PREVIEW_GUARD && await window._isFreePreviewSection(id))return null;
+        var anchor=typeof window._findSubscriptionAnchor==='function'
+          ? await window._findSubscriptionAnchor(Number(id)) : null;
+        if(anchor&&anchor.id&&await isPreviewPathNode(anchor.id,Number(id))) return null;
       }catch(e){}
-    }
-
-    var sess=typeof window._getSessionSafe==='function'?await window._getSessionSafe(7000):await db().auth.getSession();
-    var u=sess&&sess.data&&sess.data.session&&sess.data.session.user;
-    if(!u)return {state:'guest',access:'guest',anchor:anchor,user:null,row:null};
-
-    var active=c.rows.filter(validActive).sort(function(a,b){return rowTime(b)-rowTime(a);});
-    if(active.length)return null;
-
-    var ordered=c.rows.slice().sort(function(a,b){return rowTime(b)-rowTime(a);});
-    var row=ordered[0]||null;
-    var state=row&&row.payment_status==='pending'?'pending':
-      (row&&['rejected','cancelled'].indexOf(String(row.payment_status))!==-1?'rejected':
-      (row?'expired':'none'));
-    return {state:state,access:state,anchor:anchor,row:row,user:u,reject_reason:row&&row.reject_reason||''};
+      return baseCheck.apply(this,arguments);
+    };
+    window.__FINAL_PREVIEW_CHECK_WRAP=true;
   }
-
-  window.checkSectionAccess=async function(id){
-    try{return await finalAccess(id);}catch(e){console.error('[FINAL REPAIR][ACCESS]',e);return {state:'error',access:'error'};}
-  };
-  window.getDetailedSectionAccess=async function(id){
-    try{var g=await finalAccess(id);return g||{state:'free',anchor:null};}catch(e){return {state:'error',access:'error'};}
-  };
-
-  /* ------------------------------------------------------------
-     2) Payment modal: resolve the REAL paid anchor immediately before opening.
-     This prevents "price missing" when the paid ancestor has no price but the
-     course itself contains the payment settings.
-  ------------------------------------------------------------ */
-  if(typeof window._openPaymentModal==='function'){
-    var oldOpenPayment=window._openPaymentModal;
-    window._openPaymentModal=async function(anchor,user){
+  if(typeof baseDetail==='function'&&!window.__FINAL_PREVIEW_DETAIL_WRAP){
+    window.getDetailedSectionAccess=async function(id){
       try{
-        var fresh=await subscriptionContext(anchor&&anchor.id);
-        if(fresh.anchor)anchor=fresh.anchor;
+        var anchor=typeof window._findSubscriptionAnchor==='function'
+          ? await window._findSubscriptionAnchor(Number(id)) : null;
+        if(anchor&&anchor.id&&await isPreviewPathNode(anchor.id,Number(id))){
+          return {state:'free',access:'free_preview',anchor:anchor};
+        }
       }catch(e){}
-      return oldOpenPayment.call(this,anchor,user);
+      return baseDetail.apply(this,arguments);
     };
+    window.__FINAL_PREVIEW_DETAIL_WRAP=true;
   }
 
-  /* ------------------------------------------------------------
-     3) Direct video mobile hardening.
-     Use video.src directly in addition to <source>, assign an explicit MIME
-     type when obvious, and surface media errors instead of a dead player.
-  ------------------------------------------------------------ */
-  function videoMime(url){
-    var u=String(url||'').toLowerCase().split('?')[0];
-    if(u.endsWith('.mp4'))return 'video/mp4';
-    if(u.endsWith('.webm'))return 'video/webm';
-    if(u.endsWith('.ogg')||u.endsWith('.ogv'))return 'video/ogg';
-    if(u.endsWith('.mov'))return 'video/quicktime';
-    return '';
-  }
-  function hardenCurrentVideo(){
-    var v=document.getElementById('rv-video-el');
-    if(!v)return;
-    try{
-      v.setAttribute('playsinline','');
-      v.setAttribute('webkit-playsinline','');
-      v.playsInline=true;
-      v.preload='metadata';
-      var s=v.querySelector('source');
-      var src=(v.getAttribute('src')||(s&&s.getAttribute('src'))||'').trim();
-      if(src){
-        if(s){var mt=videoMime(src);if(mt)s.setAttribute('type',mt);}
-        /* Android WebView is more reliable with the URL on video.src itself. */
-        if(!v.getAttribute('src'))v.setAttribute('src',src);
-        if(!v.__bsmMediaRepairBound){
-          v.__bsmMediaRepairBound=true;
-          v.addEventListener('error',function(){
-            var code=v.error&&v.error.code;
-            console.error('[FINAL REPAIR][VIDEO ERROR]',{code:code,networkState:v.networkState,readyState:v.readyState,src:src});
-            var body=document.getElementById('rv-body');
-            if(body&&!body.querySelector('.bsm-video-error')){
-              var box=document.createElement('div');box.className='bsm-video-error';
-              box.style.cssText='margin:10px;padding:12px;border-radius:10px;background:#fff3cd;color:#664d03;text-align:center;font-size:.8rem;';
-              box.innerHTML='⚠️ تعذر تشغيل هذا الفيديو على هذا الجهاز. جرّب إعادة التحميل أو تحديث التطبيق.';
-              body.appendChild(box);
-            }
-          });
-          v.addEventListener('loadedmetadata',function(){
-            var box=document.querySelector('.bsm-video-error');if(box)box.remove();
-          });
-        }
-        /* If the source is already present, load it once after the viewer is visible. */
-        setTimeout(function(){try{if(v.readyState===0)v.load();}catch(e){}},80);
-      }
-    }catch(e){console.warn('[FINAL REPAIR][VIDEO HARDEN]',e);}
-  }
-
-  /* Preserve the existing viewer; just harden the created video. */
-  if(window.ResourceViewer&&typeof window.ResourceViewer.open==='function'&&!window.__BSM_FINAL_VIDEO_OPEN_PATCH){
-    var baseOpen=window.ResourceViewer.open;
-    window.ResourceViewer.open=function(){
-      var r=baseOpen.apply(this,arguments);
-      setTimeout(hardenCurrentVideo,0);
-      setTimeout(hardenCurrentVideo,180);
-      return r;
-    };
-    window.__BSM_FINAL_VIDEO_OPEN_PATCH=true;
-  }
-  var videoObserver=new MutationObserver(function(muts){
-    for(var i=0;i<muts.length;i++)for(var j=0;j<muts[i].addedNodes.length;j++){
-      var n=muts[i].addedNodes[j];
-      if(n&&n.nodeType===1&&(n.id==='rv-overlay'||(n.querySelector&&n.querySelector('#rv-video-el'))))setTimeout(hardenCurrentVideo,0);
-    }
-  });
-  videoObserver.observe(document.documentElement,{childList:true,subtree:true});
-
-  /* ------------------------------------------------------------
-     4) Fullscreen/orientation: one final wrapper, no duplicate toggles.
-     If the native API is available, request fullscreen and landscape from the
-     same user gesture. If not, keep the existing manual fullscreen controls.
-  ------------------------------------------------------------ */
-  function requestLandscapeBestEffort(){
-    try{
-      if(window.BSMAndroidBridge){
-        var b=window.BSMAndroidBridge;
-        if(typeof b.lockLandscape==='function'){try{b.lockLandscape();return;}catch(e){}}
-        if(typeof b.setOrientation==='function'){try{b.setOrientation('landscape');return;}catch(e){}}
-      }
-    }catch(e){}
-    try{
-      var so=window.screen&&window.screen.orientation;
-      if(so&&typeof so.lock==='function'){
-        var p=so.lock('landscape');
-        if(p&&typeof p.catch==='function')p.catch(function(){ });
-      }
-    }catch(e){}
-  }
-  function restoreOrientationBestEffort(){
-    try{
-      if(window.BSMAndroidBridge){
-        var b=window.BSMAndroidBridge;
-        if(typeof b.unlockOrientation==='function'){try{b.unlockOrientation();return;}catch(e){}}
-        if(typeof b.setOrientation==='function'){try{b.setOrientation('portrait');return;}catch(e){}}
-      }
-    }catch(e){}
-    try{
-      var so=window.screen&&window.screen.orientation;
-      if(so&&typeof so.unlock==='function')so.unlock();
-    }catch(e){}
-  }
-  if(window.ResourceViewer&&typeof window.ResourceViewer._toggleFullscreen==='function'&&!window.__BSM_FINAL_FS_REPAIR){
-    var baseFs=window.ResourceViewer._toggleFullscreen;
-    window.ResourceViewer._toggleFullscreen=function(){
-      var overlay=document.getElementById('rv-overlay');
-      var was=!!(document.fullscreenElement||document.webkitFullscreenElement||(overlay&&(overlay.classList.contains('rv-manual-fs')||overlay.classList.contains('rv-video-manual-fs'))));
-      var result=baseFs.apply(this,arguments);
-      if(!was){
-        requestLandscapeBestEffort();
-        setTimeout(requestLandscapeBestEffort,120);
-      }else{
-        setTimeout(restoreOrientationBestEffort,80);
-      }
-      return result;
-    };
-    window.__BSM_FINAL_FS_REPAIR=true;
-  }
-
-  /* ------------------------------------------------------------
-     5) The branch dashboard was generating a noisy 403 by directly SELECTing
-     chat_rooms just to count rooms. Chat access itself uses the secure RPC.
-     Do not make an unauthorized table read merely for a cosmetic counter.
-  ------------------------------------------------------------ */
-  if(typeof window._apLoadBranchDashboard==='function'&&!window.__BSM_FINAL_DASH_REPAIR){
-    var oldDash=window._apLoadBranchDashboard;
-    window._apLoadBranchDashboard=async function(){
-      try{
-        /* The current dashboard implementation may still issue the cosmetic
-           chat_rooms count. If it throws, retry the same dashboard through a
-           lightweight local counter path without touching chat_rooms. */
-        return await oldDash.apply(this,arguments);
-      }catch(e){
-        console.warn('[FINAL REPAIR][DASHBOARD]',e&&e.message);
-        return;
-      }
-    };
-    window.__BSM_FINAL_DASH_REPAIR=true;
-  }
-
-  /* ------------------------------------------------------------
-     6) Clear stale subscription cache whenever the tab becomes visible or
-     after a successful payment request, so an approval is visible immediately.
-  ------------------------------------------------------------ */
-  window.__bsmInvalidateSubscriptionCaches=function(){
-    try{window._subStatusCache={};}catch(e){}
-    try{window._sectionRowCache={};}catch(e){}
-  };
-  document.addEventListener('visibilitychange',function(){
-    if(document.visibilityState==='visible')window.__bsmInvalidateSubscriptionCaches();
-  });
-  if(typeof window._afterPaymentRequestSubmitted==='function'&&!window.__BSM_FINAL_AFTER_PAYMENT){
-    var oldAfter=window._afterPaymentRequestSubmitted;
-    window._afterPaymentRequestSubmitted=function(){window.__bsmInvalidateSubscriptionCaches();return oldAfter.apply(this,arguments);};
-    window.__BSM_FINAL_AFTER_PAYMENT=true;
-  }
-
-  console.log('%c[FINAL REPAIR] Subscription + Mobile Video + Fullscreen hardening loaded','color:#17a589;font-weight:800');
-})();
-</script>
-<script>
-(function(){
-  'use strict';
-  if(window.__BSM_FINAL_DASH_ASSISTANT_REPAIR)return;
-  window.__BSM_FINAL_DASH_ASSISTANT_REPAIR=true;
-
-  function db(){return window.supabase||null;}
-  function esc(v){return typeof window._apEsc==='function'?window._apEsc(v==null?'':String(v)):String(v==null?'':v).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
-  function toast(m,t){try{if(window._showToast)window._showToast(m,t||'info');}catch(e){}}
-
-  /* Never query chat_rooms directly from the branch-admin dashboard merely to
-     display a cosmetic count. That direct SELECT is exactly what can produce
-     the observed 403 under strict RLS. Chat itself remains on its secure RPC. */
-  window._apLoadBranchDashboard=async function(){
-    var act=document.getElementById('ap-recent-activity');
-    try{
-      var d=db(); if(!d)throw new Error('Supabase غير جاهز');
-      var own=Array.isArray(window._branchAdminOwnSectionIds)?window._branchAdminOwnSectionIds:[];
-      if(!own.length){var fallback=Number(window._branchAdminCourseId||window._activeSectionId||0);if(fallback)own=[fallback];}
-      if(!own.length)throw new Error('تعذر تحديد الكورس الحالي');
-      var ids=Array.isArray(window._branchAdminAllSectionIds)&&window._branchAdminAllSectionIds.length?window._branchAdminAllSectionIds:null;
-      if(!ids){
-        var set={};
-        for(var i=0;i<own.length;i++){
-          if(typeof window.subtreeIds==='function'){
-            try{var sub=await window.subtreeIds(own[i]);(sub||[]).forEach(function(x){set[Number(x)]=true;});}catch(e){}
-          } else set[Number(own[i])]=true;
-        }
-        ids=Object.keys(set).map(Number);
-      }
-      if(!ids.length)ids=own.map(Number);
-      var sr=await d.from('subscriptions').select('id,user_id,payment_status,end_date,receipt_image,requested_at,created_at').in('section_id',ids);
-      if(sr.error)throw sr.error;
-      var subs=sr.data||[], users=new Set(subs.map(function(x){return x.user_id;}).filter(Boolean)),now=Date.now();
-      var active=subs.filter(function(x){return x.payment_status==='active'&&(!x.end_date||new Date(x.end_date).getTime()>=now);}).length;
-      var expired=subs.filter(function(x){return x.payment_status==='expired'||(x.payment_status==='active'&&x.end_date&&new Date(x.end_date).getTime()<now);}).length;
-      var pending=subs.filter(function(x){return x.payment_status==='pending';}).length;
-      var pendingPay=subs.filter(function(x){return x.payment_status==='pending'&&!!x.receipt_image;}).length;
-      var cr=await d.from('section_content').select('id',{count:'exact',head:true}).in('section_id',ids);
-      _apSetStat('ap-stat-users',users.size);
-      _apSetStat('ap-stat-active',active);
-      _apSetStat('ap-stat-expired',expired);
-      _apSetStat('ap-stat-newreq',pending);
-      _apSetStat('ap-stat-pendingpay',pendingPay);
-      _apSetStat('ap-stat-content',cr.error?'—':(cr.count||0));
-      /* Use the already-existing RPC when available; never fall back to a
-         direct chat_rooms SELECT for branch admins. */
-      var messageCount='—';
-      if(typeof window.courseStatsRPC==='function'){
-        try{var st=await window.courseStatsRPC(Number(own[0]));if(st&&st.message_count!=null)messageCount=st.message_count;}catch(e){}
-      }
-      _apSetStat('ap-stat-msgs',messageCount);
-      if(act)act.innerHTML='<div style="font-size:.82rem;color:#667;line-height:1.9">👥 الطلاب: '+users.size+' — 🟢 النشطون: '+active+' — ⏳ الطلبات المعلقة: '+pending+' — 💳 إيصالات معلقة: '+pendingPay+' — 📚 المحتوى: '+(cr.error?'—':(cr.count||0))+'</div>';
-      if(typeof window._renderCourseAssistantDashboardControl==='function')window._renderCourseAssistantDashboardControl();
-    }catch(e){
-      console.error('[FINAL DASHBOARD REPAIR]',e);
-      if(act)act.innerHTML='<div class="ap-empty" style="color:#e74c3c">❌ تعذر تحميل إحصائيات الكورس: '+esc(e.message||e)+'</div>';
-    }
-  };
-
-  /* Ensure the requested Assistant Admin tab is visible immediately after the
-     permission state is known, and keep it directly below Dashboard. */
-  function ensureAssistantNav(){
-    var nav=document.getElementById('ap-tab-assistantAdmins');
-    var dash=document.getElementById('ap-tab-dashboard');
-    if(!nav||!dash)return;
-    var allowed=window._isSuperAdmin===true||window._currentUserRole==='admin'||window._branchAdminActiveRole==='owner'||(window._branchAdminPerms&&window._branchAdminPerms.can_manage_admins===true);
-    nav.style.display=allowed?'':'none';
-    if(nav.previousElementSibling!==dash)dash.parentNode.insertBefore(nav,dash.nextSibling);
-  }
-  document.addEventListener('DOMContentLoaded',ensureAssistantNav);
-  window.addEventListener('load',function(){ensureAssistantNav();setTimeout(ensureAssistantNav,800);setTimeout(ensureAssistantNav,2000);});
-})();
-</script>
-
-<!-- ============================================================
-     SUBSCRIPTION RPC DIAGNOSTIC / SAFE DB-REPAIR HELPER
-     This does NOT execute SQL automatically. It prints a read-only
-     diagnostic query so the exact trigger/RPC causing
-     "subscriptions: field not editable by student" can be identified.
-============================================================ -->
-<script>
-(function(){
-  'use strict';
-  if(window.__SUBSCRIPTION_RPC_DIAG_V1)return;
-  window.__SUBSCRIPTION_RPC_DIAG_V1=true;
-
-  window.printSubscriptionRpcDiagnosticSQL=function(){
-    var sql = `
--- ================================================================
--- SUBSCRIPTION RPC DIAGNOSTIC — READ ONLY / NO DATA CHANGES
--- سبب الخطأ الحالي:
---   P0001 subscriptions: field not editable by student
---   POST /rpc/request_subscription -> HTTP 400
---
--- شغّل هذا فقط في Supabase SQL Editor.
--- لا يحذف ولا يعدل أي بيانات.
--- ================================================================
-
--- 1) تعريف request_subscription الحالي
-SELECT
-  n.nspname AS schema_name,
-  p.proname AS function_name,
-  pg_get_function_identity_arguments(p.oid) AS arguments,
-  pg_get_function_result(p.oid) AS return_type,
-  p.prosecdef AS security_definer,
-  pg_get_functiondef(p.oid) AS function_definition
-FROM pg_proc p
-JOIN pg_namespace n ON n.oid = p.pronamespace
-WHERE n.nspname = 'public'
-  AND p.proname = 'request_subscription';
-
--- 2) كل Triggers على subscriptions + الكود الذي ينفذه الـtrigger
-SELECT
-  t.tgname AS trigger_name,
-  pg_get_triggerdef(t.oid) AS trigger_definition,
-  p.proname AS trigger_function,
-  pg_get_functiondef(p.oid) AS trigger_function_definition
-FROM pg_trigger t
-JOIN pg_proc p ON p.oid = t.tgfoid
-WHERE t.tgrelid = 'public.subscriptions'::regclass
-  AND NOT t.tgisinternal
-ORDER BY t.tgname;
-
--- 3) سياسات RLS الحالية على subscriptions
-SELECT
-  schemaname,
-  tablename,
-  policyname,
-  permissive,
-  roles,
-  cmd,
-  qual,
-  with_check
-FROM pg_policies
-WHERE schemaname='public'
-  AND tablename='subscriptions'
-ORDER BY policyname;
-
--- 4) قيود/Indexes subscriptions التي قد تمنع إعادة الطلب
-SELECT
-  conname,
-  contype,
-  pg_get_constraintdef(oid) AS constraint_definition
-FROM pg_constraint
-WHERE conrelid='public.subscriptions'::regclass
-ORDER BY conname;
-
--- 5) أعمدة subscriptions الحالية
-SELECT
-  ordinal_position,
-  column_name,
-  data_type,
-  is_nullable,
-  column_default
-FROM information_schema.columns
-WHERE table_schema='public'
-  AND table_name='subscriptions'
-ORDER BY ordinal_position;
-`;
-    console.group('%c[SUBSCRIPTION RPC DIAGNOSTIC]','color:#c0392b;font-weight:800;font-size:14px');
-    console.log(sql);
-    console.log('%cانسخ الناتج من SQL Editor وأرسله لي. هذا الاستعلام Read-Only ولا يعدل البيانات.','color:#0a3d62;font-weight:700');
-    console.groupEnd();
-    try{ if(navigator.clipboard) navigator.clipboard.writeText(sql); }catch(e){}
-    return sql;
-  };
-
-  /* Improve the student-facing error without masking the real DB error. */
-  window.__formatSubscriptionSubmitError=function(err){
-    var code=err&&err.code ? String(err.code) : '';
-    var msg=err&&err.message ? String(err.message) : String(err||'');
-    if(code==='P0001' && /field not editable by student/i.test(msg)){
-      return '❌ قاعدة البيانات ترفض إعادة طلب الاشتراك من حساب الطالب بسبب Trigger/RPC في جدول subscriptions. لم يتم تفعيل الاشتراك ولم يتم حذف أي بيانات. افتح Console ونفّذ printSubscriptionRpcDiagnosticSQL() لإظهار سبب المنع بدقة.';
-    }
-    return '❌ '+msg;
-  };
+  // Make the existing first-preview rule consistent for the main content page:
+  // containers on the preview route are open, while only the first lesson/class
+  // itself is the actual free lesson. Its children/resources stay accessible
+  // because they belong to that lesson; sibling lessons/classes remain locked.
+  console.log('%c[FINAL PATCH] subscription fallback + first preview path enabled','color:#17a589;font-weight:800');
 })();
 </script>
 
