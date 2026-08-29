@@ -21042,6 +21042,10 @@ window.diagnose = async function() {
       setTimeout(closePaymentModal, 1400);
     } catch(err) {
       console.error('[PAYMENT] submit error:', err);
+      var _pmFriendlyErr = (typeof window.__formatSubscriptionSubmitError==='function')
+        ? window.__formatSubscriptionSubmitError(err)
+        : ('❌ '+(err && err.message ? err.message : err));
+      if (msgEl) { msgEl.style.color = '#e74c3c'; msgEl.textContent = _pmFriendlyErr; }
       // لو الرفع نجح ثم فشل RPC، لا نترك إيصالاً يتيماً في Storage.
       try {
         if (typeof path !== 'undefined' && path) {
@@ -30778,6 +30782,252 @@ ORDER BY tablename, policyname;
   }
   document.addEventListener('DOMContentLoaded',ensureAssistantNav);
   window.addEventListener('load',function(){ensureAssistantNav();setTimeout(ensureAssistantNav,800);setTimeout(ensureAssistantNav,2000);});
+})();
+</script>
+
+<!-- ============================================================
+     SUBSCRIPTION RPC DIAGNOSTIC / SAFE DB-REPAIR HELPER
+     This does NOT execute SQL automatically. It prints a read-only
+     diagnostic query so the exact trigger/RPC causing
+     "subscriptions: field not editable by student" can be identified.
+============================================================ -->
+<script>
+(function(){
+  'use strict';
+  if(window.__SUBSCRIPTION_RPC_DIAG_V1)return;
+  window.__SUBSCRIPTION_RPC_DIAG_V1=true;
+
+  window.printSubscriptionRpcDiagnosticSQL=function(){
+    var sql = `
+-- ================================================================
+-- SUBSCRIPTION RPC DIAGNOSTIC — READ ONLY / NO DATA CHANGES
+-- سبب الخطأ الحالي:
+--   P0001 subscriptions: field not editable by student
+--   POST /rpc/request_subscription -> HTTP 400
+--
+-- شغّل هذا فقط في Supabase SQL Editor.
+-- لا يحذف ولا يعدل أي بيانات.
+-- ================================================================
+
+-- 1) تعريف request_subscription الحالي
+SELECT
+  n.nspname AS schema_name,
+  p.proname AS function_name,
+  pg_get_function_identity_arguments(p.oid) AS arguments,
+  pg_get_function_result(p.oid) AS return_type,
+  p.prosecdef AS security_definer,
+  pg_get_functiondef(p.oid) AS function_definition
+FROM pg_proc p
+JOIN pg_namespace n ON n.oid = p.pronamespace
+WHERE n.nspname = 'public'
+  AND p.proname = 'request_subscription';
+
+-- 2) كل Triggers على subscriptions + الكود الذي ينفذه الـtrigger
+SELECT
+  t.tgname AS trigger_name,
+  pg_get_triggerdef(t.oid) AS trigger_definition,
+  p.proname AS trigger_function,
+  pg_get_functiondef(p.oid) AS trigger_function_definition
+FROM pg_trigger t
+JOIN pg_proc p ON p.oid = t.tgfoid
+WHERE t.tgrelid = 'public.subscriptions'::regclass
+  AND NOT t.tgisinternal
+ORDER BY t.tgname;
+
+-- 3) سياسات RLS الحالية على subscriptions
+SELECT
+  schemaname,
+  tablename,
+  policyname,
+  permissive,
+  roles,
+  cmd,
+  qual,
+  with_check
+FROM pg_policies
+WHERE schemaname='public'
+  AND tablename='subscriptions'
+ORDER BY policyname;
+
+-- 4) قيود/Indexes subscriptions التي قد تمنع إعادة الطلب
+SELECT
+  conname,
+  contype,
+  pg_get_constraintdef(oid) AS constraint_definition
+FROM pg_constraint
+WHERE conrelid='public.subscriptions'::regclass
+ORDER BY conname;
+
+-- 5) أعمدة subscriptions الحالية
+SELECT
+  ordinal_position,
+  column_name,
+  data_type,
+  is_nullable,
+  column_default
+FROM information_schema.columns
+WHERE table_schema='public'
+  AND table_name='subscriptions'
+ORDER BY ordinal_position;
+`;
+    console.group('%c[SUBSCRIPTION RPC DIAGNOSTIC]','color:#c0392b;font-weight:800;font-size:14px');
+    console.log(sql);
+    console.log('%cانسخ الناتج من SQL Editor وأرسله لي. هذا الاستعلام Read-Only ولا يعدل البيانات.','color:#0a3d62;font-weight:700');
+    console.groupEnd();
+    try{ if(navigator.clipboard) navigator.clipboard.writeText(sql); }catch(e){}
+    return sql;
+  };
+
+  /* Improve the student-facing error without masking the real DB error. */
+  window.__formatSubscriptionSubmitError=function(err){
+    var code=err&&err.code ? String(err.code) : '';
+    var msg=err&&err.message ? String(err.message) : String(err||'');
+    if(code==='P0001' && /field not editable by student/i.test(msg)){
+      return '❌ قاعدة البيانات ترفض إعادة طلب الاشتراك من حساب الطالب بسبب Trigger/RPC في جدول subscriptions. لم يتم تفعيل الاشتراك ولم يتم حذف أي بيانات. افتح Console ونفّذ printSubscriptionRpcDiagnosticSQL() لإظهار سبب المنع بدقة.';
+    }
+    return '❌ '+msg;
+  };
+})();
+</script>
+
+<script>
+/* ============================================================
+   BSM FINAL FREE-PREVIEW HIERARCHY FIX — 2026-08-30
+   المطلوب:
+   - الكورس المدفوع نفسه يمكن فتحه لعرض هيكل المواد.
+   - أول مادة فقط هي مادة المعاينة.
+   - داخل أول مادة: أول شابتر فقط هو المجاني.
+   - كل المواد الأخرى مغلقة بالكامل لغير المشتركين.
+   - كل الشباتر الأخرى داخل أول مادة مغلقة.
+   - محتوى الشابتر الأول يظل متاحًا.
+   - بعد اشتراك Active: كل المحتوى يفتح كالمعتاد.
+   - القرار يعتمد على site_sections + parent_id + display_order من قاعدة البيانات.
+   ============================================================ */
+(function(){
+  'use strict';
+  if(window.__BSM_STRICT_FIRST_MATERIAL_PREVIEW_20260830) return;
+  window.__BSM_STRICT_FIRST_MATERIAL_PREVIEW_20260830=true;
+
+  function sortRows(rows){
+    return (rows||[]).slice().sort(function(a,b){
+      var ao=Number(a&&a.display_order)||0, bo=Number(b&&b.display_order)||0;
+      if(ao!==bo) return ao-bo;
+      return (Number(a&&a.id)||0)-(Number(b&&b.id)||0);
+    });
+  }
+
+  async function row(id){
+    id=Number(id);
+    if(!Number.isFinite(id)) return null;
+    try{
+      if(typeof window._getSectionRow==='function') return await window._getSectionRow(id);
+    }catch(e){}
+    try{
+      var d=window.supabase;
+      if(!d) return null;
+      var r=await d.from('site_sections').select('id,title,parent_id,type,display_order,requires_subscription').eq('id',id).maybeSingle();
+      return (!r.error&&r.data)?r.data:null;
+    }catch(e){ return null; }
+  }
+
+  async function children(parentId){
+    try{
+      if(typeof loadSections==='function') return sortRows(await loadSections(Number(parentId)));
+    }catch(e){}
+    try{
+      var d=window.supabase;
+      if(!d) return [];
+      var r=await d.from('site_sections').select('id,title,parent_id,type,display_order,requires_subscription').eq('parent_id',Number(parentId)).order('display_order',{ascending:true}).order('id',{ascending:true});
+      return r.error?[]:sortRows(r.data||[]);
+    }catch(e){ return []; }
+  }
+
+  async function findPaidAnchor(sectionId){
+    var cur=Number(sectionId), seen={}, guard=0;
+    while(Number.isFinite(cur)&&cur>0&&guard++<25&&!seen[cur]){
+      seen[cur]=true;
+      var r=await row(cur);
+      if(!r) return null;
+      if(r.requires_subscription===true) return r;
+      if(r.parent_id==null) return null;
+      cur=Number(r.parent_id);
+    }
+    return null;
+  }
+
+  async function isInside(sectionId, ancestorId){
+    var cur=Number(sectionId), anc=Number(ancestorId), seen={}, guard=0;
+    while(Number.isFinite(cur)&&cur>0&&guard++<30&&!seen[cur]){
+      seen[cur]=true;
+      if(cur===anc) return true;
+      var r=await row(cur);
+      if(!r||r.parent_id==null) return false;
+      cur=Number(r.parent_id);
+    }
+    return false;
+  }
+
+  /* The exact preview path is resolved from DB ordering every time it is needed.
+     No hard-coded material/chapter IDs are used. */
+  window._isStrictFirstMaterialPreviewSection=async function(sectionId){
+    var id=Number(sectionId);
+    if(!Number.isFinite(id)||id<=0) return false;
+
+    var anchor=await findPaidAnchor(id);
+    if(!anchor) return false;
+
+    // الكورس/الشعبة المدفوعة نفسها ليست محتوى مدفوعًا؛ نحتاج فتحها لرؤية المواد.
+    if(id===Number(anchor.id)) return true;
+
+    var materials=await children(anchor.id);
+    if(!materials.length) return false;
+
+    // أول مادة حسب display_order ثم id — من قاعدة البيانات.
+    var firstMaterial=materials[0];
+    if(id===Number(firstMaterial.id)) return true;
+
+    // أي شيء داخل أول مادة لا يكون الشابتر الأول يُقفل.
+    var chapters=await children(firstMaterial.id);
+    if(!chapters.length) return false;
+
+    var firstChapter=chapters[0];
+
+    // الشابتر الأول نفسه ومحتواه/الأقسام التابعة له مسموح للمعاينة.
+    if(id===Number(firstChapter.id)) return true;
+    if(await isInside(id, firstChapter.id)) return true;
+
+    // باقي المواد وباقي الشباتر مغلقة.
+    return false;
+  };
+
+  // استبدال نقطة free-preview الوحيدة المستخدمة فعليًا في بوابة المحتوى.
+  window._isFreePreviewSection=async function(sectionId){
+    try{return await window._isStrictFirstMaterialPreviewSection(sectionId);}catch(e){return false;}
+  };
+
+  // Diagnostic helper: يعرض مسار المعاينة الفعلي من DB في Console بدون تعديل بيانات.
+  window.printStrictFirstMaterialPreview=function(sectionId){
+    (async function(){
+      try{
+        var anchor=await findPaidAnchor(sectionId);
+        if(!anchor){ console.log('[STRICT PREVIEW] لا يوجد ancestor يتطلب اشتراكًا لهذا القسم:',sectionId); return; }
+        var mats=await children(anchor.id), firstMat=mats[0]||null;
+        var ch=firstMat?await children(firstMat.id):[], firstCh=ch[0]||null;
+        console.table({
+          paid_anchor_id:anchor.id,
+          paid_anchor_title:anchor.title||'',
+          first_material_id:firstMat&&firstMat.id||null,
+          first_material_title:firstMat&&firstMat.title||'',
+          first_chapter_id:firstCh&&firstCh.id||null,
+          first_chapter_title:firstCh&&firstCh.title||'',
+          tested_section_id:Number(sectionId),
+          is_preview:await window._isStrictFirstMaterialPreviewSection(sectionId)
+        });
+        console.table(mats.map(function(x,i){return {order:i+1,id:x.id,title:x.title,type:x.type,display_order:x.display_order};}));
+        if(firstMat) console.table(ch.map(function(x,i){return {order:i+1,id:x.id,title:x.title,type:x.type,display_order:x.display_order};}));
+      }catch(e){console.error('[STRICT PREVIEW] diagnostic error',e);}
+    })();
+  };
 })();
 </script>
 </body>
