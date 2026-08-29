@@ -1382,6 +1382,58 @@ footer strong { color: var(--accent2); }
    ده. نفس المظهر بالظبط زي وضع الـ:fullscreen الحقيقي فوق، لكن بمحض class
    بيتضاف/بيتشال بـ JS، فمش محتاج أي دعم فعلي من الـ Fullscreen API —
    يشتغل مضمون في Desktop / Mobile Browser / Mobile App WebView. */
+/* FINAL mobile fullscreen controls: controls belong to the fullscreen modal,
+   so they remain available while the video is fullscreen. */
+.rv-overlay.rv-fs-session .rv-modal {
+  width: 100vw !important;
+  max-width: 100vw !important;
+  height: 100dvh !important;
+  max-height: 100dvh !important;
+  border-radius: 0 !important;
+  background: #000 !important;
+}
+.rv-overlay.rv-fs-session .rv-media-tools {
+  position: relative !important;
+  z-index: 20 !important;
+  flex-shrink: 0 !important;
+  max-width: 100% !important;
+  opacity: 1;
+  transition: opacity .18s ease, transform .18s ease;
+  touch-action: manipulation;
+}
+.rv-overlay.rv-fs-session .rv-modal.rv-fs-controls-hidden .rv-media-tools {
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+.rv-overlay.rv-fs-session .rv-video {
+  width: 100% !important;
+  max-width: 100% !important;
+  max-height: none !important;
+  height: auto !important;
+  object-fit: contain !important;
+  background: #000 !important;
+}
+@media (max-width: 768px) {
+  .rv-overlay.rv-fs-session .rv-video-controls {
+    padding: max(8px, env(safe-area-inset-bottom, 8px)) 10px 10px !important;
+  }
+  .rv-overlay.rv-fs-session .rv-controls-row {
+    gap: 6px !important;
+    flex-wrap: wrap !important;
+  }
+  .rv-overlay.rv-fs-session .rv-ctrl-btn {
+    min-width: 42px !important;
+    min-height: 42px !important;
+  }
+  .rv-overlay.rv-fs-session .rv-progress-bar {
+    height: 8px !important;
+    min-height: 28px !important;
+  }
+  .rv-overlay.rv-fs-session .rv-progress-bar::-webkit-slider-thumb {
+    width: 20px !important; height: 20px !important; margin-top: -6px !important;
+  }
+}
+
 .rv-overlay.rv-manual-fs {
   position: fixed !important;
   inset: 0 !important;
@@ -6803,7 +6855,7 @@ const ResourceViewer = (function() {
               <button type="button" class="rv-ctrl-btn" data-media-playpause title="تشغيل" aria-label="تشغيل">▶️</button>
               <button type="button" class="rv-ctrl-btn" data-media-seek="-10" title="ترجيع 10 ثواني" aria-label="ترجيع 10 ثواني">↶10</button>
               <button type="button" class="rv-ctrl-btn" data-media-seek="10" title="تقديم 10 ثواني" aria-label="تقديم 10 ثواني">10↷</button>
-              <span class="rv-speed-group" data-media-speed-group role="group" aria-label="سرعة التشغيل"><button type="button" data-media-speed-btn="0.75">0.75x</button><button type="button" data-media-speed-btn="1" class="active">1x</button><button type="button" data-media-speed-btn="1.25">1.25x</button><button type="button" data-media-speed-btn="1.5">1.5x</button><button type="button" data-media-speed-btn="2">2x</button></span>
+              <span class="rv-speed-group" data-media-speed-group role="group" aria-label="سرعة التشغيل"><button type="button" data-media-speed-btn="0.5">0.5x</button><button type="button" data-media-speed-btn="0.75">0.75x</button><button type="button" data-media-speed-btn="1" class="active">1x</button><button type="button" data-media-speed-btn="1.25">1.25x</button><button type="button" data-media-speed-btn="1.5">1.5x</button><button type="button" data-media-speed-btn="1.75">1.75x</button><button type="button" data-media-speed-btn="2">2x</button></span>
               <span class="rv-volume-group">
                 <button type="button" class="rv-ctrl-btn" data-media-mute title="كتم الصوت" aria-label="كتم الصوت">🔊</button>
                 <input type="range" class="rv-volume-bar" data-media-volume min="0" max="1" step="0.05" value="1" aria-label="مستوى الصوت">
@@ -6874,19 +6926,36 @@ const ResourceViewer = (function() {
           </div>`;
 
       case 'audio':
+        // Custom HTML5 audio controls: no native Download UI and the same
+        // seek/speed/volume experience used by the video player.
         return `
           <div class="rv-audio-wrap">
             <div class="rv-audio-icon">🎵</div>
             <div class="rv-audio-title">${escHtml(title)}</div>
-            <audio controls preload="metadata" id="rv-audio-el" onerror="ResourceViewer._showMediaError('audio')">
+            <audio preload="metadata" id="rv-audio-el"
+              controlsList="nodownload noremoteplayback"
+              disableRemotePlayback
+              oncontextmenu="return false"
+              onerror="ResourceViewer._showMediaError('audio')">
               <source src="${escUrl(url)}">
               متصفحك لا يدعم تشغيل الصوت.
             </audio>
-            <div class="rv-media-tools" data-media-tools="audio">
-              <button type="button" data-media-seek="-10">↶ 10ث</button>
-              <button type="button" data-media-seek="10">10ث ↷</button>
-              <span class="rv-speed-group" data-media-speed-group role="group" aria-label="سرعة التشغيل"><button type="button" data-media-speed-btn="0.75">0.75x</button><button type="button" data-media-speed-btn="1" class="active">1x</button><button type="button" data-media-speed-btn="1.25">1.25x</button><button type="button" data-media-speed-btn="1.5">1.5x</button><button type="button" data-media-speed-btn="2">2x</button></span>
-              <span data-media-time>00:00 / --:--</span>
+            <div class="rv-media-tools rv-audio-controls" data-media-tools="audio">
+              <div class="rv-progress-row">
+                <span class="rv-time-cur" data-media-time-current>00:00</span>
+                <input type="range" class="rv-progress-bar" data-media-progress min="0" max="1000" value="0" step="0.1" aria-label="تقدّم الصوت">
+                <span class="rv-time-dur" data-media-time-duration>--:--</span>
+              </div>
+              <div class="rv-controls-row">
+                <button type="button" class="rv-ctrl-btn" data-media-playpause title="تشغيل" aria-label="تشغيل">▶️</button>
+                <button type="button" class="rv-ctrl-btn" data-media-seek="-10" title="ترجيع 10 ثواني" aria-label="ترجيع 10 ثواني">↶10</button>
+                <button type="button" class="rv-ctrl-btn" data-media-seek="10" title="تقديم 10 ثواني" aria-label="تقديم 10 ثواني">10↷</button>
+                <span class="rv-speed-group" data-media-speed-group role="group" aria-label="سرعة التشغيل"><button type="button" data-media-speed-btn="0.5">0.5x</button><button type="button" data-media-speed-btn="0.75">0.75x</button><button type="button" data-media-speed-btn="1" class="active">1x</button><button type="button" data-media-speed-btn="1.25">1.25x</button><button type="button" data-media-speed-btn="1.5">1.5x</button><button type="button" data-media-speed-btn="1.75">1.75x</button><button type="button" data-media-speed-btn="2">2x</button></span>
+                <span class="rv-volume-group">
+                  <button type="button" class="rv-ctrl-btn" data-media-mute title="كتم الصوت" aria-label="كتم الصوت">🔊</button>
+                  <input type="range" class="rv-volume-bar" data-media-volume min="0" max="1" step="0.05" value="1" aria-label="مستوى الصوت">
+                </span>
+              </div>
             </div>
           </div>`;
 
@@ -7027,7 +7096,6 @@ const ResourceViewer = (function() {
           <span style="font-size:.75rem;color:#999;direction:ltr;word-break:break-all;flex:1;max-width:55%" id="rv-url-display" class="admin-only-el" style="display:none">${escHtml(url.length > 60 ? url.substring(0,57)+'...' : url)}</span>
           <div class="rv-footer-btns">
             ${(type !== 'fallback' && type !== 'invalid') ? `<button class="rv-btn rv-btn-outline" onclick="ResourceViewer._reload()">🔄 إعادة التحميل</button>` : ''}
-            ${(type === 'pdf' || type === 'gdrive_pdf' || type === 'image' || type === 'audio' || type === 'video_direct') ? `<button class="rv-btn rv-btn-primary admin-only-el" onclick="if(window._isAdminUser){var a=document.createElement('a');a.href='${escUrl(url)}';a.setAttribute('download','');document.body.appendChild(a);a.click();document.body.removeChild(a);}" style="display:none">&#11015;&#65039; تحميل (أدمن)</button>` : ''}
           </div>
         </div>
       </div>`;
@@ -7321,85 +7389,197 @@ const ResourceViewer = (function() {
     try { return _toggleFullscreen(); } catch(e) { console.warn('[Fullscreen] toggleVideoFs:', e && e.message); }
   };
 
+  // =====================================================================
+  // FINAL MOBILE FULLSCREEN — native-first, controls stay inside fullscreen.
+  // IMPORTANT: no CSS rotation is used here. Orientation is requested only
+  // through Screen Orientation API; WebView devices that forbid orientation
+  // locking fall back to the real/manual fullscreen layout without changing
+  // currentTime or reloading the media.
+  var _rvFsOrientationState = {
+    previousType: null,
+    lockAttempted: false,
+    controlsTimer: null,
+    controlsBound: false
+  };
+
+  function _rvRememberOrientation() {
+    if (_rvFsOrientationState.previousType) return;
+    try {
+      _rvFsOrientationState.previousType =
+        (screen.orientation && screen.orientation.type) ||
+        (window.innerWidth > window.innerHeight ? 'landscape-primary' : 'portrait-primary');
+    } catch (e) {
+      _rvFsOrientationState.previousType = window.innerWidth > window.innerHeight
+        ? 'landscape-primary' : 'portrait-primary';
+    }
+  }
+
+  function _rvRequestLandscape() {
+    _rvRememberOrientation();
+    _rvFsOrientationState.lockAttempted = true;
+    try {
+      var so = screen && screen.orientation;
+      if (so && typeof so.lock === 'function') {
+        var p = so.lock('landscape');
+        if (p && typeof p.catch === 'function') {
+          p.catch(function(err){
+            console.info('[ResourceViewer] landscape lock unavailable:', err && err.message);
+          });
+        }
+      }
+    } catch (e) {
+      console.info('[ResourceViewer] landscape lock unavailable:', e && e.message);
+    }
+  }
+
+  function _rvRestoreOrientation() {
+    var prev = _rvFsOrientationState.previousType;
+    _rvFsOrientationState.previousType = null;
+    _rvFsOrientationState.lockAttempted = false;
+    if (!prev) return;
+    try {
+      var so = screen && screen.orientation;
+      if (!so) return;
+      if (typeof so.unlock === 'function') {
+        try { so.unlock(); } catch (e) {}
+      }
+      // Best effort only. Some browsers/WebViews intentionally reject a
+      // programmatic return to portrait; in that case the OS keeps its state.
+      if (typeof so.lock === 'function' && /^portrait/i.test(prev)) {
+        var p = so.lock(prev);
+        if (p && typeof p.catch === 'function') p.catch(function(){});
+      }
+    } catch (e) {}
+  }
+
+  function _rvShowFullscreenControls() {
+    var overlay = document.getElementById('rv-overlay');
+    var modal = document.getElementById('rv-modal');
+    if (!overlay || !modal) return;
+    modal.classList.remove('rv-fs-controls-hidden');
+    if (_rvFsOrientationState.controlsTimer) clearTimeout(_rvFsOrientationState.controlsTimer);
+    _rvFsOrientationState.controlsTimer = setTimeout(function(){
+      var ov = document.getElementById('rv-overlay');
+      var md = document.getElementById('rv-modal');
+      var active = !!(document.fullscreenElement || document.webkitFullscreenElement) ||
+        !!(ov && (ov.classList.contains('rv-manual-fs') || ov.classList.contains('rv-video-manual-fs')));
+      if (active && md) md.classList.add('rv-fs-controls-hidden');
+    }, 3500);
+  }
+
+  function _rvBindFullscreenControls() {
+    var overlay = document.getElementById('rv-overlay');
+    var modal = document.getElementById('rv-modal');
+    var media = document.getElementById('rv-video-el');
+    var tools = modal && modal.querySelector('.rv-video-controls');
+    if (!overlay || !modal || !tools || _rvFsOrientationState.controlsBound) return;
+    _rvFsOrientationState.controlsBound = true;
+    var wake = function(){
+      _rvShowFullscreenControls();
+    };
+    // Touch/click anywhere in fullscreen wakes the controls. Controls themselves
+    // stop the hide timer through the same handler without interfering with seek.
+    modal.addEventListener('touchstart', wake, {passive:true});
+    modal.addEventListener('pointerdown', wake, {passive:true});
+    modal.addEventListener('click', function(e){
+      if (e && e.target === media) wake();
+    });
+    tools.addEventListener('pointerdown', wake, {passive:true});
+    tools.addEventListener('touchstart', wake, {passive:true});
+  }
+
+  function _rvEnterFullscreenLayout(overlay) {
+    if (!overlay) return;
+    overlay.classList.add('rv-fs-session');
+    _rvBindFullscreenControls();
+    _rvShowFullscreenControls();
+  }
+
+  function _rvLeaveFullscreenLayout() {
+    var modal = document.getElementById('rv-modal');
+    if (_rvFsOrientationState.controlsTimer) {
+      clearTimeout(_rvFsOrientationState.controlsTimer);
+      _rvFsOrientationState.controlsTimer = null;
+    }
+    if (modal) modal.classList.remove('rv-fs-controls-hidden');
+    var overlay = document.getElementById('rv-overlay');
+    if (overlay) overlay.classList.remove('rv-fs-session');
+    _rvRestoreOrientation();
+  }
+
   function _toggleFullscreen() {
     const overlay = document.getElementById('rv-overlay');
     const modal = document.getElementById('rv-modal');
-    const video = document.getElementById('rv-video-el');
-    const iframe = document.getElementById('rv-embed-iframe');
     if (!modal || !overlay) return;
 
     var nativeActive = !!(document.fullscreenElement || document.webkitFullscreenElement);
     var manualActive = overlay.classList.contains('rv-manual-fs');
     var videoManualActive = overlay.classList.contains('rv-video-manual-fs');
 
-    if (manualActive) { _disableManualFullscreen(); return; }
-    if (videoManualActive) { _disableVideoManualFullscreen(); return; }
-    if (nativeActive) {
-      try {
-        var exit = document.exitFullscreen || document.webkitExitFullscreen;
-        if (exit) Promise.resolve(exit.call(document)).catch(function(err){ console.warn('[Fullscreen]', err && err.message); });
-      } catch(e) { console.warn('[Fullscreen]', e && e.message); }
+    if (manualActive || videoManualActive) {
+      if (manualActive) _disableManualFullscreen();
+      else _disableVideoManualFullscreen();
+      _rvLeaveFullscreenLayout();
+      _onRvFsChange();
       return;
     }
 
-    // الأولوية للميديا نفسها: ده يسمح لـAndroid WebView/iOS أن يتعامل مع
-    // Fullscreen الفيديو الأصلي عندما يكون الدعم متاحًا، بدل محاولة Fullscreen
-    // الـmodal فقط. للـEmbed نطلب Fullscreen من الـiframe نفسه.
-    var target = video || iframe || modal;
-    var attemptedNative = false;
-    var nativeConfirmed = false;
-    var confirmNative = function() {
-      nativeConfirmed = true;
-      cleanupConfirm();
-      _onRvFsChange();
-    };
-    var cleanupConfirm = function() {
-      document.removeEventListener('fullscreenchange', confirmNative);
-      document.removeEventListener('webkitfullscreenchange', confirmNative);
-    };
-    document.addEventListener('fullscreenchange', confirmNative);
-    document.addEventListener('webkitfullscreenchange', confirmNative);
-
-    // ✅ الفallback الصحيح يعتمد على نوع الـtarget: لو الفيديو نفسه (target===video)،
-    // fallback الفيديو فقط هو اللي بيملأ الشاشة (rv-video-manual-fs) — مش الـ
-    // ResourceViewer كله. لأي target تاني (iframe يوتيوب/فيميو أو الـmodal) يفضل
-    // نفس السلوك القديم (rv-manual-fs) زي ما هو بالظبط.
-    var _fallbackFs = function() {
-      if (target === video) _enableVideoManualFullscreen();
-      else _enableManualFullscreen();
-    };
-
-    try {
-      if (video && video.webkitEnterFullscreen && !video.requestFullscreen && !video.webkitRequestFullscreen) {
-        attemptedNative = true;
-        video.webkitEnterFullscreen();
-      } else {
-        var req = target && (target.requestFullscreen || target.webkitRequestFullscreen);
-        if (req) {
-          attemptedNative = true;
-          var result = req.call(target); // MUST stay synchronous inside the click handler
-          if (result && typeof result.catch === 'function') result.catch(function(){
-            _fallbackFs();
-          });
-        } else {
-          _fallbackFs();
+    if (nativeActive) {
+      try {
+        var exit = document.exitFullscreen || document.webkitExitFullscreen;
+        if (exit) {
+          var ep = exit.call(document);
+          if (ep && typeof ep.catch === 'function') ep.catch(function(){});
         }
-      }
-    } catch(e) {
-      console.warn('[Fullscreen] native request failed:', e && e.message);
-      _fallbackFs();
+      } catch(e) { console.warn('[Fullscreen] exit failed:', e && e.message); }
+      return;
     }
 
-    // If native fullscreen is unavailable/no-op, switch to CSS fullscreen quickly.
-    // This is not a second requestFullscreen call, so it works in Android WebView.
-    setTimeout(function(){
-      cleanupConfirm();
-      var stillNoNative = !document.fullscreenElement && !document.webkitFullscreenElement;
-      var alreadyManual = overlay.classList.contains('rv-manual-fs') || overlay.classList.contains('rv-video-manual-fs');
-      if (!nativeConfirmed && stillNoNative && !alreadyManual) {
-        _fallbackFs();
+    // Save the user's real orientation before requesting fullscreen.
+    _rvRememberOrientation();
+    _rvEnterFullscreenLayout(overlay);
+
+    // Fullscreen the MODAL, not the video element. This is the critical fix:
+    // the custom controls are children of the modal, so they remain available
+    // in fullscreen instead of disappearing when the video alone goes native.
+    var req = modal.requestFullscreen || modal.webkitRequestFullscreen;
+    if (req) {
+      try {
+        var result = req.call(modal);
+        if (result && typeof result.then === 'function') {
+          result.then(function(){
+            _rvRequestLandscape();
+            _rvShowFullscreenControls();
+            _onRvFsChange();
+          }).catch(function(err){
+            console.info('[Fullscreen] native fullscreen rejected; using WebView fallback:', err && err.message);
+            _enableManualFullscreen();
+            _rvRequestLandscape();
+            _rvShowFullscreenControls();
+          });
+        } else {
+          // WebKit/WebView implementations may return void.
+          setTimeout(function(){
+            var confirmed = !!(document.fullscreenElement || document.webkitFullscreenElement);
+            if (confirmed) _rvRequestLandscape();
+            else _enableManualFullscreen();
+            _rvShowFullscreenControls();
+            _onRvFsChange();
+          }, 120);
+        }
+      } catch(e) {
+        console.info('[Fullscreen] native request failed; using WebView fallback:', e && e.message);
+        _enableManualFullscreen();
+        _rvRequestLandscape();
+        _rvShowFullscreenControls();
       }
-    }, attemptedNative ? 250 : 0);
+    } else {
+      // Android WebView / older embedded browsers: keep the whole viewer,
+      // including controls, in the manual fullscreen layout.
+      _enableManualFullscreen();
+      _rvRequestLandscape();
+      _rvShowFullscreenControls();
+    }
   }
 
   // ══════════════════════════════════════════════════════════════════
@@ -7479,15 +7659,13 @@ const ResourceViewer = (function() {
     var availH = Math.max(0, body.clientHeight - toolsH);
     if (availW <= 0 || availH <= 0) return;
 
-    if (_rvIsPortraitViewport()) {
-      media.style.width = availH + 'px';
-      media.style.height = availW + 'px';
-      media.style.transform = 'rotate(90deg)';
-    } else {
-      media.style.width = availW + 'px';
-      media.style.height = availH + 'px';
-      media.style.transform = 'none';
-    }
+    // No CSS rotation fallback. Real landscape is requested through the
+    // Screen Orientation API by _toggleFullscreen/_toggleLandscape. If the
+    // WebView refuses orientation locking, keep the media unrotated and let
+    // the OS/browser determine the actual viewport orientation.
+    media.style.width = availW + 'px';
+    media.style.height = availH + 'px';
+    media.style.transform = 'none';
   }
 
   // ✅ إعادة الحساب فقط عبر requestAnimationFrame بعد resize فعلي (مثلاً
@@ -7591,27 +7769,10 @@ const ResourceViewer = (function() {
   // وعن حالة Fullscreen الحقيقية، وعن اتجاه الجهاز الفعلي. نفس المسار
   // لكل الأنواع (فيديو مباشر / يوتيوب / فيميو / دايلي موشن / Fembed).
   function _toggleLandscape() {
-    var overlay = document.getElementById('rv-overlay');
-    var modal = document.getElementById('rv-modal');
-    var video = document.getElementById('rv-video-el');
-    var iframe = document.getElementById('rv-embed-iframe');
-    if (!modal || !overlay) return;
-
-    if (_rvLandscapeState.active) {
-      _rvExitLandscape();
-      return;
-    }
-
-    // ✅ الأولوية القصوى: العرض البصري يحدث فورًا Sync هنا — بغض النظر
-    // تمامًا عن نجاح/فشل أي Fullscreen API لاحقًا.
-    _rvEnableLandscapeVisual();
-
-    // Fembed: ممنوع طلب Fullscreen من الـiframe (Permissions Policy) —
-    // زر الموقع هو المسؤول الوحيد عن العرض الأفقي، مش JWPlayer الداخلي.
-    var isFembed = !!(iframe && iframe.dataset && iframe.dataset.fembedEmbed === '1');
-    if (!isFembed) {
-      _rvTryOpportunisticFullscreen(video || modal);
-    }
+    // The old implementation used a CSS rotate fallback. That is intentionally
+    // retired: the landscape/fullscreen action now uses the same native-first
+    // fullscreen + Screen Orientation flow as the main fullscreen button.
+    return _toggleFullscreen();
   }
 
   // ✅ الخروج: يرجّع كل حاجة للوضع الطبيعي، بدون لمس تشغيل/توقيت الفيديو،
@@ -7684,11 +7845,19 @@ const ResourceViewer = (function() {
   // أيًا كانت البيئة.
   function _onRvFsChange() {
     var btn = document.getElementById('rv-fs-btn');
-    if (!btn) return;
     var overlay = document.getElementById('rv-overlay');
     var inFs = !!(document.fullscreenElement || document.webkitFullscreenElement) ||
                !!(overlay && (overlay.classList.contains('rv-manual-fs') || overlay.classList.contains('rv-video-manual-fs')));
-    btn.textContent = inFs ? '✕ خروج ملء الشاشة' : '⛶';
+    if (btn) btn.textContent = inFs ? '✕ خروج ملء الشاشة' : '⛶';
+
+    if (inFs) {
+      _rvEnterFullscreenLayout(overlay);
+      _rvShowFullscreenControls();
+    } else if (_rvFsOrientationState.previousType) {
+      // Native fullscreen can be exited by ESC/system gesture, not only by our
+      // button. Restore orientation and fullscreen-control state in that case.
+      _rvLeaveFullscreenLayout();
+    }
   }
   document.addEventListener('fullscreenchange', _onRvFsChange);
   document.addEventListener('webkitfullscreenchange', _onRvFsChange);
@@ -7713,19 +7882,12 @@ const ResourceViewer = (function() {
   function _showMediaError(kind) {
     const body = document.getElementById('rv-body');
     if (!body) return;
-    const isAdmin = window._isAdminUser === true;
-    const url = window._rvCurrentUrl || '';
     const icon = kind === 'audio' ? '🎵' : '🎬';
-    const safeUrl = (url || '').replace(/'/g, '%27');
-    const actionsHtml = (isAdmin && url) ? `
-      <div style="display:flex;gap:10px;justify-content:center;margin-top:14px;flex-wrap:wrap">
-        <button class="rv-btn rv-btn-outline" onclick="(function(){var a=document.createElement('a');a.href='${safeUrl}';a.setAttribute('download','');document.body.appendChild(a);a.click();document.body.removeChild(a);})()">⬇️ تحميل الملف</button>
-      </div>` : '';
     body.innerHTML = `
       <div class="rv-fallback-wrap">
         <div class="rv-f-icon">${icon}</div>
         <p>لا يمكن عرض الملف داخل المتصفح — رُبما الرابط منتهي الصلاحية أو الملف غير موجود.</p>
-        ${actionsHtml}
+        
       </div>`;
   }
 
@@ -7750,7 +7912,7 @@ const ResourceViewer = (function() {
         "
       ></iframe>
       <div style="text-align:center;padding:12px;background:#f8fbff;border-top:1px solid #e3eaf5">
-        <p style="font-size:.8rem;color:#666;margin-bottom:8px">لو الملف لا يظهر، جرّب زر التحميل أدناه</p>
+        <p style="font-size:.8rem;color:#666;margin-bottom:8px">لو الملف لا يظهر، قد يكون الرابط غير قابل للعرض داخل المتصفح</p>
       </div>`;
   }
 
@@ -16075,10 +16237,11 @@ window._origWindowOpen = window.open;
       if (type === 'download_only') {
         // تحميل مباشر للأدمن فقط — الطلاب لا يُحمِّلون
         if (window._isAdminUser) {
-          var a = document.createElement('a');
-          a.href = href;
-          a.setAttribute('download', '');
-          a.click();
+          // Never expose a Download action/attribute from the platform UI.
+          // Admin-only external resources keep their existing destination but
+          // open normally instead of forcing a browser download.
+          var adminWin = window._origWindowOpen || window.open;
+          adminWin.call(window, href, '_blank', 'noopener,noreferrer');
         } else {
           openResource(href, title, 'link');
         }
@@ -21211,7 +21374,7 @@ window.diagnose = async function() {
         '<span class="dm2-att-file-name">' + _chatEsc(name) + '</span>' +
         '<span class="dm2-att-file-size">' + sizeLabel + '</span>' +
       '</div>' +
-      '<span class="dm2-att-open-icon">⬇️</span>' +
+      '<span class="dm2-att-open-icon">👁️</span>' +
     '</div>';
   }
 
@@ -22354,7 +22517,7 @@ window.diagnose = async function() {
         '<span class="dm2-att-file-name">' + _dmEsc(name) + '</span>' +
         '<span class="dm2-att-file-size">' + sizeLabel + '</span>' +
       '</div>' +
-      '<span class="dm2-att-open-icon">⬇️</span>' +
+      '<span class="dm2-att-open-icon">👁️</span>' +
     '</div>';
   }
 
@@ -29407,9 +29570,19 @@ ORDER BY tablename, policyname;
     var d=db(),sess=typeof window._getSessionSafe==='function'?await window._getSessionSafe(8000):await d.auth.getSession();
     var u=sess&&sess.data&&sess.data.session&&sess.data.session.user;
     if(!u)return {state:'guest',access:'guest',anchor:anchor};
-    var r=await d.from('subscriptions').select('id,payment_status,start_date,end_date,reject_reason,requested_at,created_at,updated_at').eq('user_id',u.id).eq('section_id',Number(anchor.id)).order('requested_at',{ascending:false,nullsFirst:false}).order('created_at',{ascending:false}).order('id',{ascending:false}).limit(1);
+    // Legacy subscription hierarchy: an ACTIVE subscription on the course
+    // or any ancestor grants access to descendants. Do not require the row to
+    // be on the exact visible chapter/anchor.
+    var chainIds=Array.from(new Set((await sectionChain(Number(id))).map(function(x){return Number(x.id);})));
+    var r=await d.from('subscriptions')
+      .select('id,section_id,payment_status,start_date,end_date,reject_reason,requested_at,created_at,updated_at')
+      .eq('user_id',u.id).in('section_id',chainIds)
+      .order('requested_at',{ascending:false,nullsFirst:false})
+      .order('created_at',{ascending:false})
+      .order('id',{ascending:false});
     if(r.error)throw r.error;
-    var row=r.data&&r.data[0]||null;
+    var rows=r.data||[];
+    var row=rows.find(function(x){return x.payment_status==='active'&&(!x.end_date||new Date(x.end_date).getTime()>=Date.now());})||rows[0]||null;
     if(row&&row.payment_status==='active'&&(!row.end_date||new Date(row.end_date).getTime()>=Date.now()))return null;
     var state=row&&row.payment_status==='pending'?'pending':(row&&(['rejected','cancelled'].indexOf(row.payment_status)>=0)?'rejected':(row?'expired':'none'));
     return {state:state,access:state,anchor:anchor,row:row,user:u,reject_reason:row&&row.reject_reason||''};
@@ -29917,5 +30090,60 @@ ORDER BY tablename, policyname;
   window.__BSM_DM_ALLOW_CLIENT_INSERT=false;
 })();
 </script>
+
+<script>
+/* BSM FINAL ATTACHMENT VIEWER — 2026-08-29
+   All chat attachments use short-lived signed URLs and the in-page viewer.
+   No Download button/attribute is exposed by the attachment UI. */
+(function(){
+  'use strict';
+  if(window.__BSM_FINAL_ATTACHMENT_VIEWER_V7)return;
+  window.__BSM_FINAL_ATTACHMENT_VIEWER_V7=true;
+
+  function kindFrom(path,type){
+    var t=String(type||'').toLowerCase().split(';')[0].trim();
+    if(/^video\//.test(t))return 'video';
+    if(/^audio\//.test(t))return 'audio';
+    if(/^image\//.test(t))return 'image';
+    if(t==='application/pdf')return 'pdf';
+    var e=String(path||'').split('?')[0].split('.').pop().toLowerCase();
+    var map={mp4:'video',mov:'video',webm:'video',mkv:'video',avi:'video','3gp':'video',
+      mp3:'audio',wav:'audio',m4a:'audio',ogg:'audio',aac:'audio',
+      jpg:'image',jpeg:'image',png:'image',webp:'image',gif:'image',svg:'image',bmp:'image',
+      pdf:'pdf'};
+    return map[e]||'file';
+  }
+  async function open(path,type,name,bucket){
+    var db=window.supabase;
+    if(!db||!path)return;
+    try{
+      var r=await db.storage.from(bucket).createSignedUrl(path,120);
+      if(r.error||!r.data||!r.data.signedUrl)throw(r.error||new Error('تعذر إنشاء رابط مؤقت'));
+      var url=r.data.signedUrl, kind=kindFrom(path,type);
+      if(kind==='video'||kind==='audio'||kind==='image'||kind==='pdf'){
+        if(window.ResourceViewer&&typeof window.ResourceViewer.open==='function'){
+          await window.ResourceViewer.open(url,name||'مرفق',kind==='video'?'video_direct':kind);
+          return;
+        }
+      }
+      // Other files: show an in-page informational card; never create a
+      // download link or download attribute.
+      var ov=document.createElement('div');
+      ov.style.cssText='position:fixed;inset:0;z-index:1000000;background:rgba(0,0,0,.72);display:flex;align-items:center;justify-content:center;padding:20px';
+      ov.innerHTML='<div style="max-width:440px;width:100%;background:#fff;border-radius:16px;padding:24px;text-align:center"><div style="font-size:3rem">📎</div><h3 style="margin:10px 0">'+esc(name||'ملف')+'</h3><p style="color:#667085">هذا النوع من الملفات لا يمكن عرضه داخل المتصفح. لا يوجد خيار تنزيل من واجهة المنصة.</p><button type="button" style="padding:10px 18px;border:0;border-radius:10px;cursor:pointer">إغلاق</button></div>';
+      ov.querySelector('button').onclick=function(){ov.remove();};
+      ov.onclick=function(e){if(e.target===ov)ov.remove();};
+      document.body.appendChild(ov);
+    }catch(e){
+      console.error('[AttachmentViewer]',e);
+      if(typeof window._showToast==='function')window._showToast('❌ تعذر فتح المرفق — قد لا تكون لديك صلاحية الوصول','error');
+    }
+  }
+  window._bsmOpenAttachmentInViewer=open;
+  if(typeof window._dmOpenAttachment==='function')window._dmOpenAttachment=function(path,type,name){return open(path,type,name,'chat-attachments');};
+  if(typeof window._chatOpenAttachment==='function')window._chatOpenAttachment=function(path,type,name){return open(path,type,name,'chat-attachments');};
+})();
+</script>
+
 </body>
 </html>
