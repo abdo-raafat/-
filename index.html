@@ -37,13 +37,17 @@ var DEBUG_MODE = true; window.DEBUG_MODE = DEBUG_MODE;
   // تطبيق رسمي = تطبيق أندرويد أو iOS مثبّت كـ Standalone PWA.
   window.isOfficialApp = function () {
     try {
-      // Official app/WebView: use the existing BSMApp/1.0 or bridge detection.
+      // Official Android app/WebView.
       if (_isAndroidAppEarly()) return true;
 
-      // iOS: only the installed standalone PWA is allowed.
+      // Official iOS installed PWA.
       if (window.isIOSDevice() && window.isIOSStandalone()) return true;
 
-      // All normal web browsers, including desktop-installed PWAs, are blocked.
+      // Official desktop app/WebView only.
+      var ua = navigator.userAgent || '';
+      if (ua.indexOf('BSMDesktopApp/1.0') !== -1 || window.BSMDesktopBridge) return true;
+
+      // Direct web browsers remain blocked.
       return false;
     } catch (e) { return false; }
   };
@@ -20687,13 +20691,33 @@ window.diagnose = async function() {
     msgEl.style.color = '#0a3d62'; msgEl.textContent = 'جاري رفع الإيصال وإرسال الطلب...';
 
     try {
-      // 1) رفع صورة الإيصال في bucket خاص
+      // 1) ثبّت الـ anchor من قاعدة البيانات قبل الرفع.
+      //    مهم: بعض الكورسات (مثل الكورسات المتداخلة/المضافة حديثاً) قد يكون
+      //    الزر مفتوحاً من صف قديم في الـcache، بينما RPC الاشتراك يحتاج الـid
+      //    الدقيق للقسم الذي requires_subscription=true.
+      var paymentAnchor = _pmAnchor;
+      try {
+        if (typeof _findSubscriptionAnchor === 'function') {
+          var freshAnchor = await _findSubscriptionAnchor(Number(_pmAnchor.id));
+          if (freshAnchor && freshAnchor.id) paymentAnchor = freshAnchor;
+        }
+      } catch (anchorErr) {
+        console.warn('[PAYMENT] تعذر تحديث subscription anchor، سنستخدم الحالي:', anchorErr && anchorErr.message);
+      }
+      if (!paymentAnchor || !paymentAnchor.id || !paymentAnchor.requires_subscription) {
+        throw new Error('لا يمكن إنشاء طلب اشتراك لهذا القسم حالياً. أعد فتح صفحة الكورس وحاول مرة أخرى.');
+      }
+      _pmAnchor = paymentAnchor;
+
+      // 2) رفع صورة الإيصال باسم فريد دائماً.
+      //    upsert=true كان يجمع INSERT + UPDATE في نفس الطلب، وبالتالي أي اختلاف
+      //    في سياسات Storage كان يحوّل الإرسال إلى خطأ رغم أن اختيار الصورة يعمل.
       var ext = (_pmFile.name.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';
-      var path = _pmUser.id + '/' + _pmAnchor.id + '-' + Date.now() + '.' + ext;
-      var upRes = await db.storage.from('receipts').upload(path, _pmFile, { upsert: true, contentType: _pmFile.type });
+      var path = _pmUser.id + '/' + _pmAnchor.id + '-' + (window.crypto && crypto.randomUUID ? crypto.randomUUID() : (Date.now() + '-' + Math.random().toString(16).slice(2))) + '.' + ext;
+      var upRes = await db.storage.from('receipts').upload(path, _pmFile, { upsert: false, contentType: _pmFile.type });
       if (upRes.error) throw upRes.error;
 
-      // 2) إنشاء/إعادة تعيين طلب الاشتراك كـ pending
+      // 3) إنشاء/إعادة تعيين طلب الاشتراك كـ pending
       //    ✅ FIX (Aug 2026 audit): كان هذا upsert مباشر على جدول subscriptions
       //    (يعتمد فقط على RLS الجدول). الآن نمر عبر RPC request_subscription
       //    (SECURITY DEFINER) اللي بيتحقق فعليًا إن الشعبة محتاجة اشتراك أصلاً
@@ -20733,6 +20757,14 @@ window.diagnose = async function() {
       setTimeout(closePaymentModal, 1400);
     } catch(err) {
       console.error('[PAYMENT] submit error:', err);
+      // لو الرفع نجح ثم فشل RPC، لا نترك إيصالاً يتيماً في Storage.
+      try {
+        if (typeof path !== 'undefined' && path) {
+          await db.storage.from('receipts').remove([path]);
+        }
+      } catch(cleanErr) {
+        console.warn('[PAYMENT] تعذر حذف الإيصال اليتيم:', cleanErr && cleanErr.message);
+      }
       btn.disabled = false; btn.textContent = '🚀 إرسال الطلب';
       msgEl.style.color = '#e74c3c';
       msgEl.textContent = '❌ حدث خطأ: ' + (err.message || 'حاول مجدداً');
@@ -21892,53 +21924,76 @@ window.diagnose = async function() {
   }
 
   window._renderMessageAdminEntry = async function(anchor, containerEl) {
-    if (!containerEl || !anchor || !anchor.id || !window.supabase) return;
-    // ✅ FIX (طلب المستخدم): هذه الدالة كانت تُستدعى مرتين على نفس الحاوية
-    // (من _renderDynamicSectionPage الأصلية، ثم من renderCourseChatButtons —
-    // تصحيح لاحق يُغلّف نفس الدالة) فيظهر زر "راسل أدمن..." مكرراً مرتين.
-    // الحل: لا نضيف الزر إذا كان موجوداً بالفعل داخل نفس الحاوية.
+    if (!containerEl || !anchor || !anchor.id) return;
+    // زر المراسلة ليس ميزة مدفوعة: يظهر لأي مستخدم مسجّل/زائر طالما للكورس
+    // anchor صحيح. لا نطلب الاشتراك هنا؛ التحقق الحقيقي يتم لحظة إنشاء الـDM.
     if (containerEl.querySelector('[data-role="msg-admin-btn"]')) return;
-    try {
-      var dmCourseId = await _dmResolveCourseId(anchor.id);
-      var res = await window.supabase.rpc('get_section_admins_for_messaging', { p_section_id: dmCourseId });
-      if (res.error) {
-        console.warn('[DM] get_section_admins_for_messaging error:', res.error.message);
-        return;
-      }
-      var admins = res.data || [];
-      if (!admins.length) {
-        // لا يوجد أدمن للكورس أو أدمن منصة متاح عبر RPC بعد فحص التسلسل الأبوي.
-        console.warn('[DM] لا يوجد أدمن للكورس أو أدمن منصة متاح عبر RPC بعد فحص التسلسل الأبوي.', {section_id: anchor.id, course_id: dmCourseId});
-        return;
-      }
 
-      var hasCourseAdmin = admins.some(function(a){ return String(a.admin_source || '') === 'course'; });
-      // ✅ FIX (طلب المستخدم): "أدمن المنصة" مربك للطالب هنا لأن هذا الزر
-      // مرتبط بشعبته تحديداً — استبدلناه بـ"أدمن الشعبة" في كل الحالات.
-      var label = hasCourseAdmin ? '✉️ راسل أدمن الكورس' : '✉️ راسل أدمن الشعبة';
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'chat-entry-btn';
+    btn.dataset.role = 'msg-admin-btn';
+    btn.style.background = 'linear-gradient(135deg,#17a589,#0a3d62)';
+    btn.textContent = '✉️ راسل أدمن الشعبة';
 
-      var btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'chat-entry-btn';
-      btn.dataset.role = 'msg-admin-btn';
-      btn.style.background = 'linear-gradient(135deg,#17a589,#0a3d62)';
-      btn.textContent = label;
-      btn.onclick = function() {
+    btn.onclick = async function() {
+      var oldText = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = '⏳ جاري التحميل...';
+      try {
+        // المراسلة تحتاج حساباً فقط، وليس اشتراكاً.
+        var sessionRes = (typeof _getSessionSafe === 'function')
+          ? await _getSessionSafe()
+          : await window.supabase.auth.getSession();
+        var user = sessionRes && sessionRes.data && sessionRes.data.session && sessionRes.data.session.user;
+        if (!user) {
+          btn.disabled = false;
+          btn.textContent = oldText;
+          if (typeof loginWithGoogle === 'function') {
+            loginWithGoogle();
+          } else if (typeof _showToast === 'function') {
+            _showToast('🔐 سجّل الدخول أولاً لمراسلة أدمن الشعبة', 'warning');
+          }
+          return;
+        }
+
+        var dmCourseId = (typeof _dmResolveCourseId === 'function')
+          ? await _dmResolveCourseId(anchor.id)
+          : Number(anchor.id);
+        var res = await window.supabase.rpc('get_section_admins_for_messaging', { p_section_id: dmCourseId });
+        if (res.error) throw res.error;
+
+        var admins = res.data || [];
+        if (!admins.length) {
+          throw new Error('لا يوجد أدمن مُعيّن لهذه الشعبة حالياً.');
+        }
+
+        var hasCourseAdmin = admins.some(function(a){
+          return String(a.admin_source || a.admin_type || '') === 'course';
+        });
+
         if (admins.length === 1) {
           window.openDirectChat(
             admins[0].user_id,
-            admins[0].full_name || admins[0].email || (hasCourseAdmin ? 'أدمن الكورس' : 'أدمن الشعبة'),
+            admins[0].full_name || admins[0].email || 'أدمن الشعبة',
             null,
             dmCourseId
           );
         } else {
           _dmOpenAdminPicker(admins, dmCourseId);
         }
-      };
-      containerEl.appendChild(btn);
-    } catch(e) {
-      console.warn('[DM] _renderMessageAdminEntry exception:', e && e.message);
-    }
+      } catch(e) {
+        console.warn('[DM] open admin chat error:', e && e.message);
+        if (typeof _showToast === 'function') {
+          _showToast('❌ تعذر فتح مراسلة أدمن الشعبة: ' + (e.message || 'حاول مجدداً'), 'error');
+        }
+      } finally {
+        btn.disabled = false;
+        btn.textContent = oldText;
+      }
+    };
+
+    containerEl.appendChild(btn);
   };
 
   // يُستخدم فقط لو الشعبة عندها أكثر من أدمن نشط (مدعوم مستقبلاً، غير مستخدم حاليًا بحسب بياناتك)
@@ -28175,6 +28230,127 @@ SELECT conname, pg_get_constraintdef(oid) FROM pg_constraint WHERE conname='audi
   }
 
   console.log('%c[FINAL CONTINUATION] Subscription hierarchy + schedule hierarchy loaded','color:#17a589;font-weight:700');
+})();
+</script>
+
+<!-- ============================================================
+     DIRECT MESSAGE ACCESS FIX — non-subscribers can contact course admin
+============================================================ -->
+<script>
+(function(){
+  window.printDirectMessagingOpenAccessSQL = function(){
+    var sql = `
+-- ================================================================
+-- DIRECT MESSAGING: أي مستخدم مسجّل يقدر يبدأ محادثة مع أدمن الشعبة
+-- الاشتراك مطلوب للمحادثة الجماعية فقط، وليس لمراسلة الأدمن.
+-- Supabase Dashboard → SQL Editor → New Query → Paste → Run
+-- ================================================================
+
+CREATE OR REPLACE FUNCTION public.get_or_create_direct_room(
+  p_other_user_id UUID,
+  p_section_id BIGINT
+)
+RETURNS public.chat_rooms
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path=public,pg_temp
+AS $$
+DECLARE
+  v_me UUID := auth.uid();
+  v_room public.chat_rooms;
+  v_course_title TEXT;
+  v_room_key TEXT;
+  v_other_allowed BOOLEAN := false;
+BEGIN
+  IF v_me IS NULL OR p_other_user_id IS NULL
+     OR p_other_user_id=v_me OR p_section_id IS NULL THEN
+    RAISE EXCEPTION 'DENY ACCESS';
+  END IF;
+
+  SELECT title INTO v_course_title
+  FROM public.site_sections
+  WHERE id=p_section_id;
+
+  v_room_key := 'DM:' || p_section_id::TEXT || ':' ||
+                COALESCE(v_course_title,'الكورس');
+
+  -- صاحب الطلب: أي مستخدم authenticated مسموح له ببدء DM.
+  -- لا يوجد فحص اشتراك هنا عمداً.
+  -- الطرف الآخر يجب أن يكون أدمن المنصة أو أدمن/Owner/Assistant
+  -- فعلياً مُعيّناً للكورس نفسه.
+  SELECT (
+    EXISTS (
+      SELECT 1 FROM public.profiles p
+      WHERE p.id=p_other_user_id AND p.role='admin'
+    )
+    OR EXISTS (
+      SELECT 1 FROM public.section_admins sa
+      WHERE sa.user_id=p_other_user_id
+        AND sa.section_id=p_section_id
+        AND sa.is_active=true
+        AND sa.role IN ('owner','admin')
+    )
+    OR EXISTS (
+      SELECT 1 FROM public.section_admins sa
+      WHERE sa.user_id=p_other_user_id
+        AND sa.section_id=p_section_id
+        AND sa.is_active=true
+        AND sa.role='assistant'
+        AND COALESCE((sa.permissions->>'manage_chats')::boolean,false)=true
+    )
+  ) INTO v_other_allowed;
+
+  IF NOT v_other_allowed THEN
+    RAISE EXCEPTION 'DENY ACCESS';
+  END IF;
+
+  PERFORM pg_advisory_xact_lock(
+    hashtextextended(
+      LEAST(v_me::TEXT,p_other_user_id::TEXT)||':'||
+      GREATEST(v_me::TEXT,p_other_user_id::TEXT)||':'||
+      p_section_id::TEXT,0
+    )
+  );
+
+  SELECT cr.* INTO v_room
+  FROM public.chat_rooms cr
+  WHERE cr.room_type='direct'
+    AND cr.room_name=v_room_key
+    AND EXISTS (
+      SELECT 1 FROM public.chat_room_participants x
+      WHERE x.room_id=cr.id AND x.user_id=v_me
+    )
+    AND EXISTS (
+      SELECT 1 FROM public.chat_room_participants y
+      WHERE y.room_id=cr.id AND y.user_id=p_other_user_id
+    )
+  ORDER BY cr.id
+  LIMIT 1;
+
+  IF FOUND THEN RETURN v_room; END IF;
+
+  INSERT INTO public.chat_rooms(room_name,room_type)
+  VALUES(v_room_key,'direct')
+  RETURNING * INTO v_room;
+
+  INSERT INTO public.chat_room_participants(room_id,user_id)
+  VALUES(v_room.id,v_me),(v_room.id,p_other_user_id)
+  ON CONFLICT DO NOTHING;
+
+  RETURN v_room;
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.get_or_create_direct_room(UUID,BIGINT)
+TO authenticated;
+
+NOTIFY pgrst, 'reload schema';
+`;
+    console.log(sql);
+    if(navigator.clipboard) navigator.clipboard.writeText(sql).catch(function(){});
+    return sql;
+  };
+  console.log('%c[DM] اكتب printDirectMessagingOpenAccessSQL() لإصلاح مراسلة أدمن الشعبة لغير المشتركين','color:#17a589;font-weight:700');
 })();
 </script>
 
