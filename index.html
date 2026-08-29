@@ -7473,7 +7473,7 @@ const ResourceViewer = (function() {
     // الفعلي من المساحة المتاحة، وإلا الفيديو هياخد كل ارتفاع .rv-body
     // ويدفع الشريط برّه المنطقة الظاهرة (overflow:hidden).
     var tools = body.querySelector('.rv-media-tools');
-    var toolsH = tools ? tools.offsetHeight : 0;
+    var toolsH = 0; // BSM FINAL: toolbar overlays the video in landscape, so it must not reduce media height.
 
     var availW = body.clientWidth;
     var availH = Math.max(0, body.clientHeight - toolsH);
@@ -20812,7 +20812,39 @@ window.diagnose = async function() {
             p_receipt_image: 'receipts/' + path,
             p_sender_phone: senderPhone
           }));
-      if (rpcRes.error) throw rpcRes.error;
+      if (rpcRes.error) {
+        /* Rejected/expired/cancelled re-request fallback: the current RLS design
+           intentionally allows the owner to move only a previous non-active row
+           back to pending while replacing the receipt/request timestamp. This
+           avoids creating duplicate requests when the live request_subscription
+           RPC is still using the old one-row-per-user/course implementation. */
+        var rpcMsg = String(rpcRes.error.message || '');
+        var rpcCode = String(rpcRes.error.code || '');
+        var canRetryRejected = /duplicate key|unique constraint|row-level security|violates row-level|already exists/i.test(rpcMsg) || rpcCode === '409';
+        if (!canRetryRejected) throw rpcRes.error;
+
+        var latest = await db.from('subscriptions')
+          .select('id,payment_status,section_id,user_id')
+          .eq('id', (await db.from('subscriptions')
+            .select('id')
+            .eq('user_id', _pmUser.id)
+            .eq('section_id', Number(_pmAnchor.id))
+            .in('payment_status', ['rejected','cancelled','expired'])
+            .order('requested_at',{ascending:false,nullsFirst:false})
+            .order('created_at',{ascending:false})
+            .order('id',{ascending:false})
+            .limit(1)).data?.[0]?.id || 0)
+          .maybeSingle();
+        if (latest.error || !latest.data) throw rpcRes.error;
+
+        var retryUpdate = await db.from('subscriptions').update({
+          payment_status: 'pending',
+          receipt_image: 'receipts/' + path,
+          requested_at: new Date().toISOString(),
+          sender_phone: senderPhone
+        }).eq('id', latest.data.id).eq('user_id', _pmUser.id);
+        if (retryUpdate.error) throw rpcRes.error;
+      }
 
       msgEl.style.color = '#17a589';
       msgEl.textContent = '✅ تم إرسال طلبك بنجاح — سيتم تفعيل اشتراكك بعد مراجعة الأدمن';
@@ -30580,5 +30612,258 @@ ORDER BY tablename, policyname;
   document.addEventListener('DOMContentLoaded',boot);
   window.addEventListener('load',boot);
   setTimeout(boot,800);setTimeout(boot,2500);
+})();
+</script>
+
+
+<!-- ============================================================
+     BSM FINAL USER-FLOW FIXES — 2026-08-29
+     1) DM: RPC-first; never attempt client INSERT into chat_rooms (avoids RLS 403).
+     2) Paid course navigation: only the single first free chapter is free;
+        containers are navigable only when they contain that free chapter;
+        every other material/chapter is gated by the course subscription.
+     3) Landscape video: controls stay visually INSIDE the video area.
+     4) Rejected subscription: reopening the payment modal always starts clean.
+     ============================================================ -->
+<script>
+(function(){
+  'use strict';
+  if(window.__BSM_FINAL_USER_FLOW_FIX_20260829)return;
+  window.__BSM_FINAL_USER_FLOW_FIX_20260829=true;
+
+  var DB=function(){return window.supabase||null;};
+  var esc=function(v){return typeof window._apEsc==='function'?window._apEsc(v==null?'':String(v)):String(v==null?'':v).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});};
+  var toast=function(m,t){if(typeof window._showToast==='function')window._showToast(m,t||'info');};
+
+  /* ============================================================
+     1) DIRECT MESSAGE — RPC FIRST
+     The old final fallback tried a browser INSERT into chat_rooms. The live
+     RLS correctly rejects that INSERT (403). The authoritative operation is
+     the SECURITY DEFINER RPC. Existing pair rooms are still reused first.
+     ============================================================ */
+  async function dmFindPair(meId,otherId,sectionId){
+    var d=DB(); if(!d||!meId||!otherId)return null;
+    try{
+      var mine=await d.from('chat_room_participants').select('room_id').eq('user_id',meId).limit(500);
+      if(mine.error||!mine.data||!mine.data.length)return null;
+      var ids=mine.data.map(function(x){return x.room_id;}).filter(Boolean);
+      if(!ids.length)return null;
+      var theirs=await d.from('chat_room_participants').select('room_id').in('room_id',ids).eq('user_id',otherId).limit(100);
+      if(theirs.error||!theirs.data||!theirs.data.length)return null;
+      var pairIds=theirs.data.map(function(x){return x.room_id;}).filter(Boolean);
+      if(!pairIds.length)return null;
+      var rooms=await d.from('chat_rooms').select('id,room_name,room_type,section_id,created_at').in('id',pairIds).eq('room_type','direct').order('id');
+      if(rooms.error||!rooms.data||!rooms.data.length)return null;
+      var prefix='DM:'+String(sectionId)+':';
+      return rooms.data.find(function(r){return String(r.room_name||'').indexOf(prefix)===0;})||null;
+    }catch(e){return null;}
+  }
+
+  async function dmRpcRoom(otherId,sectionId){
+    var d=DB(); if(!d)throw new Error('Supabase غير متاح');
+    var r=await d.rpc('get_or_create_direct_room',{p_other_user_id:otherId,p_section_id:Number(sectionId)});
+    if(!r.error&&r.data)return r.data;
+    var msg=String(r&&r.error&&r.error.message||'');
+    var code=String(r&&r.error&&r.error.code||'');
+    /* Race/legacy unique error: a pair room may have been created by another
+       request at the same time. Re-read it before surfacing an error. */
+    if(code==='409'||/duplicate key|chat_rooms_one_per_section|unique constraint/i.test(msg)){
+      var sr=typeof window._getSessionSafe==='function'?await window._getSessionSafe(8000):await d.auth.getSession();
+      var me=sr&&sr.data&&sr.data.session&&sr.data.session.user;
+      if(me){var existing=await dmFindPair(me.id,otherId,sectionId);if(existing)return existing;}
+    }
+    throw (r.error||new Error('تعذر إنشاء المحادثة'));
+  }
+
+  if(typeof window.openDirectChat==='function'&&!window.__BSM_DM_RPC_FIRST_FINAL){
+    var baseOpen=window.openDirectChat;
+    window.openDirectChat=async function(otherUserId,displayNameHint,knownRoomId,sectionId){
+      if(knownRoomId||!otherUserId||!sectionId)return baseOpen.apply(this,arguments);
+      var d=DB();
+      try{
+        var sr=typeof window._getSessionSafe==='function'?await window._getSessionSafe(8000):await d.auth.getSession();
+        var me=sr&&sr.data&&sr.data.session&&sr.data.session.user;
+        if(!me) return baseOpen.apply(this,arguments);
+        var existing=await dmFindPair(me.id,otherUserId,sectionId);
+        var room=existing||await dmRpcRoom(otherUserId,sectionId);
+        if(room&&room.id)return baseOpen.call(this,otherUserId,displayNameHint,room.id,sectionId);
+        throw new Error('تعذر تحديد غرفة المحادثة');
+      }catch(e){
+        console.error('[DM][RPC-FIRST]',e&&e.message);
+        toast('❌ تعذر فتح مراسلة أدمن الكورس. تأكد من تطبيق إصلاح قاعدة البيانات الخاص بالمحادثات.','error');
+        return;
+      }
+    };
+    window.__BSM_DM_RPC_FIRST_FINAL=true;
+  }
+
+  /* ============================================================
+     2) SUBSCRIPTION NAVIGATION
+     A paid course has exactly one free preview chapter: the first real
+     lesson/class reached by following the first-child path from the course.
+     A folder/container is accessible ONLY when it is an ancestor of that
+     free chapter, so the student can reach the preview without opening the
+     other paid materials. All other leaf chapters/content require subscription.
+     ============================================================ */
+  async function sectionRow(id){
+    var d=DB(),n=Number(id);if(!d||!Number.isFinite(n))return null;
+    try{
+      var r=await d.from('site_sections').select('id,title,parent_id,type,display_order,requires_subscription').eq('id',n).maybeSingle();
+      return r.error?null:r.data||null;
+    }catch(e){return null;}
+  }
+  async function childrenRows(id){
+    var d=DB(),n=Number(id);if(!d||!Number.isFinite(n))return [];
+    try{
+      var r=await d.from('site_sections').select('id,title,parent_id,type,display_order,requires_subscription').eq('parent_id',n).order('display_order',{ascending:true}).order('id',{ascending:true});
+      return r.error?[]:(r.data||[]);
+    }catch(e){return [];}
+  }
+  async function firstFreeChapter(courseId){
+    var cur=Number(courseId),guard=0;
+    if(!Number.isFinite(cur))return null;
+    while(guard++<20){
+      var kids=await childrenRows(cur);
+      if(!kids.length)return null;
+      var first=kids[0];
+      var typ=String(first.type||'').trim().toLowerCase();
+      if(typ==='lesson'||typ==='class'||typ==='chapter')return first;
+      cur=Number(first.id);
+    }
+    return null;
+  }
+  async function isAncestorOrSelf(nodeId,targetId){
+    var cur=await sectionRow(targetId),guard=0,n=Number(nodeId);
+    while(cur&&guard++<25){
+      if(Number(cur.id)===n)return true;
+      if(cur.parent_id==null)break;
+      cur=await sectionRow(cur.parent_id);
+    }
+    return false;
+  }
+  async function hasChildren(id){return (await childrenRows(id)).length>0;}
+
+  async function currentPaidAnchor(id){
+    var cur=await sectionRow(id),guard=0;
+    while(cur&&guard++<25){
+      if(cur.requires_subscription===true)return cur;
+      if(cur.parent_id==null)break;
+      cur=await sectionRow(cur.parent_id);
+    }
+    return null;
+  }
+  async function latestSub(uid,anchorId){
+    var d=DB();if(!d)return null;
+    var r=await d.from('subscriptions').select('id,payment_status,start_date,end_date,reject_reason,requested_at,created_at,updated_at').eq('user_id',uid).eq('section_id',Number(anchorId)).order('requested_at',{ascending:false,nullsFirst:false}).order('created_at',{ascending:false}).order('id',{ascending:false}).limit(1);
+    if(r.error)throw r.error;
+    return r.data&&r.data[0]||null;
+  }
+  async function adminForCourse(uid,courseId){
+    var d=DB();if(!d)return false;
+    try{
+      if(window._isSuperAdmin===true||window._currentUserRole==='admin')return true;
+      var scoped=window._branchAdminSectionIds||window._branchAdminOwnSectionIds||[];
+      if(window._isBranchAdmin===true&&Array.isArray(scoped)&&scoped.map(Number).indexOf(Number(courseId))!==-1)return true;
+      if(!uid)return false;
+      var r=await d.from('section_admins').select('id').eq('user_id',uid).eq('section_id',Number(courseId)).eq('is_active',true).in('role',['owner','admin']).limit(1);
+      return !r.error&&!!(r.data&&r.data.length);
+    }catch(e){return false;}
+  }
+
+  async function finalAccess(id){
+    var node=await sectionRow(id); if(!node)return {state:'free',anchor:null};
+    var anchor=await currentPaidAnchor(id); if(!anchor)return {state:'free',anchor:null};
+    if(await adminForCourse(null,anchor.id))return {state:'admin',anchor:anchor};
+    /* If the node itself is a container, it may be opened only when it is on
+       the path to the single free preview chapter. */
+    var free=await firstFreeChapter(anchor.id);
+    if(free && (Number(id)===Number(free.id) || await isAncestorOrSelf(id,free.id)))
+      return {state:'free',anchor:anchor,free_preview:true};
+
+    var sess=typeof window._getSessionSafe==='function'?await window._getSessionSafe(8000):await DB().auth.getSession();
+    var user=sess&&sess.data&&sess.data.session&&sess.data.session.user;
+    if(!user)return {state:'locked',access:'guest',anchor:anchor};
+    if(await adminForCourse(user.id,anchor.id))return {state:'admin',anchor:anchor};
+    var row=await latestSub(user.id,anchor.id);
+    if(row&&row.payment_status==='active'&&(!row.end_date||new Date(row.end_date).getTime()>=Date.now()))return {state:'subscribed',anchor:anchor,row:row};
+    var st=row&&row.payment_status==='pending'?'pending':(row&&(['rejected','cancelled'].indexOf(row.payment_status)>=0)?'rejected':(row?'expired':'none'));
+    return {state:'locked',access:st,anchor:anchor,row:row,user:user,reject_reason:row&&row.reject_reason||''};
+  }
+
+  /* Preserve the existing public contract used throughout the file. */
+  window.getDetailedSectionAccess=async function(id){
+    try{return await finalAccess(Number(id));}
+    catch(e){console.error('[FINAL ACCESS]',e);return {state:'locked',access:'error'};}
+  };
+  window.checkSectionAccess=async function(id){
+    try{
+      var r=await finalAccess(Number(id));
+      /* Containers on the path to the free preview are intentionally allowed.
+         Leaf paid chapters return the gate object. */
+      return (r.state==='free'||r.state==='admin'||r.state==='subscribed')?null:r;
+    }catch(e){return {state:'error',access:'error'};}
+  };
+
+  /* ============================================================
+     3) LANDSCAPE CONTROLS INSIDE VIDEO
+     Only direct <video> has full control over its own playback. Cross-origin
+     YouTube/Vimeo/Fembed iframes cannot be injected with our buttons; their
+     native controls remain intact. For direct video, the existing controls
+     become an overlay over the bottom of the video in landscape mode.
+     ============================================================ */
+  var style=document.createElement('style');
+  style.id='bsm-final-landscape-controls-style';
+  style.textContent=''
+    +'.rv-overlay.rv-landscape-visual .rv-modal .rv-body{position:relative!important;overflow:hidden!important;}\n'
+    +'.rv-overlay.rv-landscape-visual .rv-modal .rv-media-tools{position:absolute!important;left:10px!important;right:10px!important;bottom:10px!important;z-index:50!important;margin:0!important;padding:8px 10px!important;border-radius:14px!important;background:rgba(0,0,0,.72)!important;backdrop-filter:blur(5px)!important;box-sizing:border-box!important;}\n'
+    +'.rv-overlay.rv-landscape-visual .rv-modal .rv-media-tools .rv-controls-row{flex-wrap:wrap!important;justify-content:center!important;gap:5px!important;}\n'
+    +'.rv-overlay.rv-landscape-visual .rv-modal .rv-media-tools .rv-speed-group{display:inline-flex!important;align-items:center!important;gap:3px!important;}\n'
+    +'.rv-overlay.rv-landscape-visual .rv-modal .rv-media-tools .rv-speed-group button{min-height:36px!important;padding:4px 7px!important;border-radius:8px!important;}\n'
+    +'.rv-overlay.rv-landscape-visual .rv-modal .rv-media-tools .rv-ctrl-btn{min-height:36px!important;padding:4px 8px!important;border-radius:8px!important;}\n'
+    +'@media(max-width:600px){.rv-overlay.rv-landscape-visual .rv-modal .rv-media-tools{left:6px!important;right:6px!important;bottom:max(6px,env(safe-area-inset-bottom))!important;padding:6px!important}.rv-overlay.rv-landscape-visual .rv-modal .rv-media-tools .rv-progress-row{margin-bottom:4px!important}.rv-overlay.rv-landscape-visual .rv-modal .rv-media-tools .rv-speed-group button{font-size:.68rem!important;padding:3px 6px!important;min-height:34px!important}.rv-overlay.rv-landscape-visual .rv-modal .rv-media-tools .rv-ctrl-btn{font-size:.72rem!important;min-height:34px!important}}';
+  (document.head||document.documentElement).appendChild(style);
+
+  /* Patch the landscape metric calculation so the overlaid toolbar no longer
+     steals vertical space from the video. */
+  if(typeof window.ResourceViewer==='object' && typeof window.ResourceViewer._toggleLandscape==='function'){
+    /* The actual function is closure-scoped; CSS handles placement. We only
+       force a fresh resize calculation after entering landscape so the media
+       fills the body behind the overlay. */
+    document.addEventListener('click',function(e){
+      if(e.target&&e.target.id==='rv-landscape-btn'){
+        setTimeout(function(){window.dispatchEvent(new Event('resize'));},40);
+      }
+    },true);
+  }
+
+  /* ============================================================
+     4) REJECTED -> RE-REQUEST
+     Always clear the old payment form when the modal opens. The existing
+     _openPaymentModal already does this; this final wrapper guarantees it even
+     if another earlier wrapper calls it later.
+     ============================================================ */
+  if(typeof window._openPaymentModal==='function'&&!window.__BSM_PAYMENT_RESET_FINAL){
+    var oldPayment=window._openPaymentModal;
+    window._openPaymentModal=function(anchor,user){
+      try{
+        var input=document.getElementById('pm-receipt-input');if(input)input.value='';
+        var sender=document.getElementById('pm-sender-phone-input');if(sender)sender.value='';
+        var msg=document.getElementById('pm-msg');if(msg)msg.textContent='';
+        var preview=document.getElementById('pm-preview-wrap');if(preview)preview.style.display='none';
+        var label=document.getElementById('pm-upload-label-text');if(label)label.style.display='block';
+        var submit=document.getElementById('pm-submit-btn');if(submit){submit.disabled=false;submit.textContent='🚀 إرسال الطلب';}
+      }catch(e){}
+      return oldPayment.apply(this,arguments);
+    };
+    window.__BSM_PAYMENT_RESET_FINAL=true;
+  }
+
+  window.__BSM_FINAL_USER_FLOW_STATUS={
+    dmRpcFirst:true,
+    oneFreePreviewChapter:true,
+    containersOnlyOnFreePath:true,
+    landscapeControlsOverlay:true,
+    rejectedRequestResetsForm:true
+  };
 })();
 </script>
