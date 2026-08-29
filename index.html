@@ -37,17 +37,13 @@ var DEBUG_MODE = true; window.DEBUG_MODE = DEBUG_MODE;
   // تطبيق رسمي = تطبيق أندرويد أو iOS مثبّت كـ Standalone PWA.
   window.isOfficialApp = function () {
     try {
-      // Official Android app/WebView.
+      // Official app/WebView: use the existing BSMApp/1.0 or bridge detection.
       if (_isAndroidAppEarly()) return true;
 
-      // Official iOS installed PWA.
+      // iOS: only the installed standalone PWA is allowed.
       if (window.isIOSDevice() && window.isIOSStandalone()) return true;
 
-      // Official desktop app/WebView only.
-      var ua = navigator.userAgent || '';
-      if (ua.indexOf('BSMDesktopApp/1.0') !== -1 || window.BSMDesktopBridge) return true;
-
-      // Direct web browsers remain blocked.
+      // All normal web browsers, including desktop-installed PWAs, are blocked.
       return false;
     } catch (e) { return false; }
   };
@@ -1382,58 +1378,6 @@ footer strong { color: var(--accent2); }
    ده. نفس المظهر بالظبط زي وضع الـ:fullscreen الحقيقي فوق، لكن بمحض class
    بيتضاف/بيتشال بـ JS، فمش محتاج أي دعم فعلي من الـ Fullscreen API —
    يشتغل مضمون في Desktop / Mobile Browser / Mobile App WebView. */
-/* FINAL mobile fullscreen controls: controls belong to the fullscreen modal,
-   so they remain available while the video is fullscreen. */
-.rv-overlay.rv-fs-session .rv-modal {
-  width: 100vw !important;
-  max-width: 100vw !important;
-  height: 100dvh !important;
-  max-height: 100dvh !important;
-  border-radius: 0 !important;
-  background: #000 !important;
-}
-.rv-overlay.rv-fs-session .rv-media-tools {
-  position: relative !important;
-  z-index: 20 !important;
-  flex-shrink: 0 !important;
-  max-width: 100% !important;
-  opacity: 1;
-  transition: opacity .18s ease, transform .18s ease;
-  touch-action: manipulation;
-}
-.rv-overlay.rv-fs-session .rv-modal.rv-fs-controls-hidden .rv-media-tools {
-  opacity: 0 !important;
-  pointer-events: none !important;
-}
-.rv-overlay.rv-fs-session .rv-video {
-  width: 100% !important;
-  max-width: 100% !important;
-  max-height: none !important;
-  height: auto !important;
-  object-fit: contain !important;
-  background: #000 !important;
-}
-@media (max-width: 768px) {
-  .rv-overlay.rv-fs-session .rv-video-controls {
-    padding: max(8px, env(safe-area-inset-bottom, 8px)) 10px 10px !important;
-  }
-  .rv-overlay.rv-fs-session .rv-controls-row {
-    gap: 6px !important;
-    flex-wrap: wrap !important;
-  }
-  .rv-overlay.rv-fs-session .rv-ctrl-btn {
-    min-width: 42px !important;
-    min-height: 42px !important;
-  }
-  .rv-overlay.rv-fs-session .rv-progress-bar {
-    height: 8px !important;
-    min-height: 28px !important;
-  }
-  .rv-overlay.rv-fs-session .rv-progress-bar::-webkit-slider-thumb {
-    width: 20px !important; height: 20px !important; margin-top: -6px !important;
-  }
-}
-
 .rv-overlay.rv-manual-fs {
   position: fixed !important;
   inset: 0 !important;
@@ -2980,8 +2924,8 @@ img, video {
 <div id="bsm-course-ad-modal" class="bsm-video-modal" style="display:none; position:fixed; inset:0; z-index:2147483647; background:rgba(0,0,0,.85); align-items:center; justify-content:center; padding:16px; direction:rtl; font-family:inherit; box-sizing:border-box;">
   <div style="position:relative; width:100%; max-width:560px; margin:0 auto; background:#000; border-radius:14px; overflow:hidden;">
     <button type="button" data-close-video-modal aria-label="إغلاق" style="position:absolute; top:8px; left:8px; z-index:2; background:rgba(0,0,0,.6); color:#fff; border:none; border-radius:50%; width:32px; height:32px; font-size:1.1rem; line-height:1; cursor:pointer; display:flex; align-items:center; justify-content:center;">✕</button>
-    <video id="bsm-course-ad-video" src="https://5hh9k0g78x.ucarecd.net/12879b2f-3f64-4bfb-9885-6520c30cb0da/Record_20260824072212.mp4" controls playsinline webkit-playsinline x5-playsinline preload="auto" style="width:100%; max-height:80vh; display:block; background:#000;" onerror="window._bsmVideoError && window._bsmVideoError(this)">
-      <source src="https://5hh9k0g78x.ucarecd.net/12879b2f-3f64-4bfb-9885-6520c30cb0da/Record_20260824072212.mp4" type="video/mp4">
+    <video id="bsm-course-ad-video" controls playsinline webkit-playsinline x5-playsinline preload="none" style="width:100%; max-height:80vh; display:block; background:#000;">
+      <source src="https://19bey0t9zc.ucarecd.net/665cd2e0-7eb4-4de6-b4fd-860ed9c23f5c/Record_20260824072212.mp4" type="video/mp4">
     </video>
   </div>
 </div>
@@ -2990,44 +2934,11 @@ img, video {
 <div id="bsm-install-app-modal" class="bsm-video-modal" style="display:none; position:fixed; inset:0; z-index:2147483647; background:rgba(0,0,0,.85); align-items:center; justify-content:center; padding:16px; direction:rtl; font-family:inherit; box-sizing:border-box;">
   <div style="position:relative; width:100%; max-width:560px; margin:0 auto; background:#000; border-radius:14px; overflow:hidden;">
     <button type="button" data-close-video-modal aria-label="إغلاق" style="position:absolute; top:8px; left:8px; z-index:2; background:rgba(0,0,0,.6); color:#fff; border:none; border-radius:50%; width:32px; height:32px; font-size:1.1rem; line-height:1; cursor:pointer; display:flex; align-items:center; justify-content:center;">✕</button>
-    <video id="bsm-install-app-video" src="https://res.cloudinary.com/dcuxv356y/video/upload/v1787937963/WhatsApp_Video_2026-08-24_at_8.40.18_AM_k73eqf.mp4" controls playsinline webkit-playsinline x5-playsinline preload="auto" style="width:100%; max-height:80vh; display:block; background:#000;" onerror="window._bsmVideoError && window._bsmVideoError(this)">
-      <source src="https://res.cloudinary.com/dcuxv356y/video/upload/v1787937963/WhatsApp_Video_2026-08-24_at_8.40.18_AM_k73eqf.mp4" type="video/mp4">
+    <video id="bsm-install-app-video" controls playsinline webkit-playsinline x5-playsinline preload="metadata" style="width:100%; max-height:80vh; display:block; background:#000;">
+      <source src="https://19bey0t9zc.ucarecd.net/f7fd79ec-417c-42ae-84cc-7c3607f80ce3/WhatsAppVideo20260824at84018AM.mp4" type="video/mp4">
     </video>
   </div>
 </div>
-
-<script>
-(function () {
-  // لا نترك المستخدم أمام فيديو أسود و0:00 بدون تفسير إذا فشل تحميل الـCDN.
-  window._bsmVideoError = function (video) {
-    try {
-      var box = video.parentElement;
-      if (!box || box.querySelector('.bsm-video-error')) return;
-      var src = video.currentSrc || '';
-      if (!src) {
-        var source = video.querySelector('source');
-        src = source ? (source.src || source.getAttribute('src') || '') : '';
-      }
-      var msg = document.createElement('div');
-      msg.className = 'bsm-video-error';
-      msg.style.cssText = 'padding:12px 14px;background:#111;color:#fff;text-align:center;font-size:.82rem;line-height:1.6;';
-      msg.innerHTML = '⚠️ الفيديو لم يتم تحميله داخل التطبيق.<br><button type="button" style="margin-top:8px;padding:8px 14px;border:0;border-radius:8px;cursor:pointer;font-weight:700;">فتح الفيديو مباشرة</button>';
-      var btn = msg.querySelector('button');
-      btn.onclick = function () {
-        if (src) {
-          try {
-            var opener = window._origWindowOpen || window.open;
-            opener.call(window, src, '_blank', 'noopener,noreferrer');
-          } catch (e) {
-            window.location.href = src;
-          }
-        }
-      };
-      box.appendChild(msg);
-    } catch (e) {}
-  };
-})();
-</script>
 
 <script>
 (function () {
@@ -3039,35 +2950,11 @@ img, video {
   }
   function openModalById(id) {
     var m = document.getElementById(id);
-    if (!m) return;
-
-    m.style.display = 'flex';
-
-    // Android WebView: أعد تحميل الفيديو بعد إظهار الـmodal؛ بعض WebViews
-    // لا تبدأ في جلب source بينما العنصر داخل display:none.
-    var vids = m.querySelectorAll('video');
-    for (var i = 0; i < vids.length; i++) {
-      var v = vids[i];
-      try {
-        var source = v.querySelector('source');
-        var directSrc = v.getAttribute('src') || (source && source.getAttribute('src')) || '';
-        if (directSrc) {
-          v.pause();
-          v.setAttribute('src', directSrc);
-          if (source) source.setAttribute('src', directSrc);
-          v.preload = 'auto';
-          v.load();
-        }
-      } catch (e) {
-        console.warn('[BSM Video] reload failed:', e);
-      }
-    }
+    if (m) m.style.display = 'flex';
   }
   function closeModal(m) {
     if (!m) return;
     pauseAllVideosIn(m);
-    var err = m.querySelector('.bsm-video-error');
-    if (err) err.remove();
     m.style.display = 'none';
   }
 
@@ -6855,7 +6742,7 @@ const ResourceViewer = (function() {
               <button type="button" class="rv-ctrl-btn" data-media-playpause title="تشغيل" aria-label="تشغيل">▶️</button>
               <button type="button" class="rv-ctrl-btn" data-media-seek="-10" title="ترجيع 10 ثواني" aria-label="ترجيع 10 ثواني">↶10</button>
               <button type="button" class="rv-ctrl-btn" data-media-seek="10" title="تقديم 10 ثواني" aria-label="تقديم 10 ثواني">10↷</button>
-              <span class="rv-speed-group" data-media-speed-group role="group" aria-label="سرعة التشغيل"><button type="button" data-media-speed-btn="0.5">0.5x</button><button type="button" data-media-speed-btn="0.75">0.75x</button><button type="button" data-media-speed-btn="1" class="active">1x</button><button type="button" data-media-speed-btn="1.25">1.25x</button><button type="button" data-media-speed-btn="1.5">1.5x</button><button type="button" data-media-speed-btn="1.75">1.75x</button><button type="button" data-media-speed-btn="2">2x</button></span>
+              <span class="rv-speed-group" data-media-speed-group role="group" aria-label="سرعة التشغيل"><button type="button" data-media-speed-btn="0.75">0.75x</button><button type="button" data-media-speed-btn="1" class="active">1x</button><button type="button" data-media-speed-btn="1.25">1.25x</button><button type="button" data-media-speed-btn="1.5">1.5x</button><button type="button" data-media-speed-btn="2">2x</button></span>
               <span class="rv-volume-group">
                 <button type="button" class="rv-ctrl-btn" data-media-mute title="كتم الصوت" aria-label="كتم الصوت">🔊</button>
                 <input type="range" class="rv-volume-bar" data-media-volume min="0" max="1" step="0.05" value="1" aria-label="مستوى الصوت">
@@ -6926,36 +6813,19 @@ const ResourceViewer = (function() {
           </div>`;
 
       case 'audio':
-        // Custom HTML5 audio controls: no native Download UI and the same
-        // seek/speed/volume experience used by the video player.
         return `
           <div class="rv-audio-wrap">
             <div class="rv-audio-icon">🎵</div>
             <div class="rv-audio-title">${escHtml(title)}</div>
-            <audio preload="metadata" id="rv-audio-el"
-              controlsList="nodownload noremoteplayback"
-              disableRemotePlayback
-              oncontextmenu="return false"
-              onerror="ResourceViewer._showMediaError('audio')">
+            <audio controls preload="metadata" id="rv-audio-el" onerror="ResourceViewer._showMediaError('audio')">
               <source src="${escUrl(url)}">
               متصفحك لا يدعم تشغيل الصوت.
             </audio>
-            <div class="rv-media-tools rv-audio-controls" data-media-tools="audio">
-              <div class="rv-progress-row">
-                <span class="rv-time-cur" data-media-time-current>00:00</span>
-                <input type="range" class="rv-progress-bar" data-media-progress min="0" max="1000" value="0" step="0.1" aria-label="تقدّم الصوت">
-                <span class="rv-time-dur" data-media-time-duration>--:--</span>
-              </div>
-              <div class="rv-controls-row">
-                <button type="button" class="rv-ctrl-btn" data-media-playpause title="تشغيل" aria-label="تشغيل">▶️</button>
-                <button type="button" class="rv-ctrl-btn" data-media-seek="-10" title="ترجيع 10 ثواني" aria-label="ترجيع 10 ثواني">↶10</button>
-                <button type="button" class="rv-ctrl-btn" data-media-seek="10" title="تقديم 10 ثواني" aria-label="تقديم 10 ثواني">10↷</button>
-                <span class="rv-speed-group" data-media-speed-group role="group" aria-label="سرعة التشغيل"><button type="button" data-media-speed-btn="0.5">0.5x</button><button type="button" data-media-speed-btn="0.75">0.75x</button><button type="button" data-media-speed-btn="1" class="active">1x</button><button type="button" data-media-speed-btn="1.25">1.25x</button><button type="button" data-media-speed-btn="1.5">1.5x</button><button type="button" data-media-speed-btn="1.75">1.75x</button><button type="button" data-media-speed-btn="2">2x</button></span>
-                <span class="rv-volume-group">
-                  <button type="button" class="rv-ctrl-btn" data-media-mute title="كتم الصوت" aria-label="كتم الصوت">🔊</button>
-                  <input type="range" class="rv-volume-bar" data-media-volume min="0" max="1" step="0.05" value="1" aria-label="مستوى الصوت">
-                </span>
-              </div>
+            <div class="rv-media-tools" data-media-tools="audio">
+              <button type="button" data-media-seek="-10">↶ 10ث</button>
+              <button type="button" data-media-seek="10">10ث ↷</button>
+              <span class="rv-speed-group" data-media-speed-group role="group" aria-label="سرعة التشغيل"><button type="button" data-media-speed-btn="0.75">0.75x</button><button type="button" data-media-speed-btn="1" class="active">1x</button><button type="button" data-media-speed-btn="1.25">1.25x</button><button type="button" data-media-speed-btn="1.5">1.5x</button><button type="button" data-media-speed-btn="2">2x</button></span>
+              <span data-media-time>00:00 / --:--</span>
             </div>
           </div>`;
 
@@ -7096,6 +6966,7 @@ const ResourceViewer = (function() {
           <span style="font-size:.75rem;color:#999;direction:ltr;word-break:break-all;flex:1;max-width:55%" id="rv-url-display" class="admin-only-el" style="display:none">${escHtml(url.length > 60 ? url.substring(0,57)+'...' : url)}</span>
           <div class="rv-footer-btns">
             ${(type !== 'fallback' && type !== 'invalid') ? `<button class="rv-btn rv-btn-outline" onclick="ResourceViewer._reload()">🔄 إعادة التحميل</button>` : ''}
+            ${(type === 'pdf' || type === 'gdrive_pdf' || type === 'image' || type === 'audio' || type === 'video_direct') ? `<button class="rv-btn rv-btn-primary admin-only-el" onclick="if(window._isAdminUser){var a=document.createElement('a');a.href='${escUrl(url)}';a.setAttribute('download','');document.body.appendChild(a);a.click();document.body.removeChild(a);}" style="display:none">&#11015;&#65039; تحميل (أدمن)</button>` : ''}
           </div>
         </div>
       </div>`;
@@ -7389,197 +7260,85 @@ const ResourceViewer = (function() {
     try { return _toggleFullscreen(); } catch(e) { console.warn('[Fullscreen] toggleVideoFs:', e && e.message); }
   };
 
-  // =====================================================================
-  // FINAL MOBILE FULLSCREEN — native-first, controls stay inside fullscreen.
-  // IMPORTANT: no CSS rotation is used here. Orientation is requested only
-  // through Screen Orientation API; WebView devices that forbid orientation
-  // locking fall back to the real/manual fullscreen layout without changing
-  // currentTime or reloading the media.
-  var _rvFsOrientationState = {
-    previousType: null,
-    lockAttempted: false,
-    controlsTimer: null,
-    controlsBound: false
-  };
-
-  function _rvRememberOrientation() {
-    if (_rvFsOrientationState.previousType) return;
-    try {
-      _rvFsOrientationState.previousType =
-        (screen.orientation && screen.orientation.type) ||
-        (window.innerWidth > window.innerHeight ? 'landscape-primary' : 'portrait-primary');
-    } catch (e) {
-      _rvFsOrientationState.previousType = window.innerWidth > window.innerHeight
-        ? 'landscape-primary' : 'portrait-primary';
-    }
-  }
-
-  function _rvRequestLandscape() {
-    _rvRememberOrientation();
-    _rvFsOrientationState.lockAttempted = true;
-    try {
-      var so = screen && screen.orientation;
-      if (so && typeof so.lock === 'function') {
-        var p = so.lock('landscape');
-        if (p && typeof p.catch === 'function') {
-          p.catch(function(err){
-            console.info('[ResourceViewer] landscape lock unavailable:', err && err.message);
-          });
-        }
-      }
-    } catch (e) {
-      console.info('[ResourceViewer] landscape lock unavailable:', e && e.message);
-    }
-  }
-
-  function _rvRestoreOrientation() {
-    var prev = _rvFsOrientationState.previousType;
-    _rvFsOrientationState.previousType = null;
-    _rvFsOrientationState.lockAttempted = false;
-    if (!prev) return;
-    try {
-      var so = screen && screen.orientation;
-      if (!so) return;
-      if (typeof so.unlock === 'function') {
-        try { so.unlock(); } catch (e) {}
-      }
-      // Best effort only. Some browsers/WebViews intentionally reject a
-      // programmatic return to portrait; in that case the OS keeps its state.
-      if (typeof so.lock === 'function' && /^portrait/i.test(prev)) {
-        var p = so.lock(prev);
-        if (p && typeof p.catch === 'function') p.catch(function(){});
-      }
-    } catch (e) {}
-  }
-
-  function _rvShowFullscreenControls() {
-    var overlay = document.getElementById('rv-overlay');
-    var modal = document.getElementById('rv-modal');
-    if (!overlay || !modal) return;
-    modal.classList.remove('rv-fs-controls-hidden');
-    if (_rvFsOrientationState.controlsTimer) clearTimeout(_rvFsOrientationState.controlsTimer);
-    _rvFsOrientationState.controlsTimer = setTimeout(function(){
-      var ov = document.getElementById('rv-overlay');
-      var md = document.getElementById('rv-modal');
-      var active = !!(document.fullscreenElement || document.webkitFullscreenElement) ||
-        !!(ov && (ov.classList.contains('rv-manual-fs') || ov.classList.contains('rv-video-manual-fs')));
-      if (active && md) md.classList.add('rv-fs-controls-hidden');
-    }, 3500);
-  }
-
-  function _rvBindFullscreenControls() {
-    var overlay = document.getElementById('rv-overlay');
-    var modal = document.getElementById('rv-modal');
-    var media = document.getElementById('rv-video-el');
-    var tools = modal && modal.querySelector('.rv-video-controls');
-    if (!overlay || !modal || !tools || _rvFsOrientationState.controlsBound) return;
-    _rvFsOrientationState.controlsBound = true;
-    var wake = function(){
-      _rvShowFullscreenControls();
-    };
-    // Touch/click anywhere in fullscreen wakes the controls. Controls themselves
-    // stop the hide timer through the same handler without interfering with seek.
-    modal.addEventListener('touchstart', wake, {passive:true});
-    modal.addEventListener('pointerdown', wake, {passive:true});
-    modal.addEventListener('click', function(e){
-      if (e && e.target === media) wake();
-    });
-    tools.addEventListener('pointerdown', wake, {passive:true});
-    tools.addEventListener('touchstart', wake, {passive:true});
-  }
-
-  function _rvEnterFullscreenLayout(overlay) {
-    if (!overlay) return;
-    overlay.classList.add('rv-fs-session');
-    _rvBindFullscreenControls();
-    _rvShowFullscreenControls();
-  }
-
-  function _rvLeaveFullscreenLayout() {
-    var modal = document.getElementById('rv-modal');
-    if (_rvFsOrientationState.controlsTimer) {
-      clearTimeout(_rvFsOrientationState.controlsTimer);
-      _rvFsOrientationState.controlsTimer = null;
-    }
-    if (modal) modal.classList.remove('rv-fs-controls-hidden');
-    var overlay = document.getElementById('rv-overlay');
-    if (overlay) overlay.classList.remove('rv-fs-session');
-    _rvRestoreOrientation();
-  }
-
   function _toggleFullscreen() {
     const overlay = document.getElementById('rv-overlay');
     const modal = document.getElementById('rv-modal');
+    const video = document.getElementById('rv-video-el');
+    const iframe = document.getElementById('rv-embed-iframe');
     if (!modal || !overlay) return;
 
     var nativeActive = !!(document.fullscreenElement || document.webkitFullscreenElement);
     var manualActive = overlay.classList.contains('rv-manual-fs');
     var videoManualActive = overlay.classList.contains('rv-video-manual-fs');
 
-    if (manualActive || videoManualActive) {
-      if (manualActive) _disableManualFullscreen();
-      else _disableVideoManualFullscreen();
-      _rvLeaveFullscreenLayout();
-      _onRvFsChange();
-      return;
-    }
-
+    if (manualActive) { _disableManualFullscreen(); return; }
+    if (videoManualActive) { _disableVideoManualFullscreen(); return; }
     if (nativeActive) {
       try {
         var exit = document.exitFullscreen || document.webkitExitFullscreen;
-        if (exit) {
-          var ep = exit.call(document);
-          if (ep && typeof ep.catch === 'function') ep.catch(function(){});
-        }
-      } catch(e) { console.warn('[Fullscreen] exit failed:', e && e.message); }
+        if (exit) Promise.resolve(exit.call(document)).catch(function(err){ console.warn('[Fullscreen]', err && err.message); });
+      } catch(e) { console.warn('[Fullscreen]', e && e.message); }
       return;
     }
 
-    // Save the user's real orientation before requesting fullscreen.
-    _rvRememberOrientation();
-    _rvEnterFullscreenLayout(overlay);
+    // الأولوية للميديا نفسها: ده يسمح لـAndroid WebView/iOS أن يتعامل مع
+    // Fullscreen الفيديو الأصلي عندما يكون الدعم متاحًا، بدل محاولة Fullscreen
+    // الـmodal فقط. للـEmbed نطلب Fullscreen من الـiframe نفسه.
+    var target = video || iframe || modal;
+    var attemptedNative = false;
+    var nativeConfirmed = false;
+    var confirmNative = function() {
+      nativeConfirmed = true;
+      cleanupConfirm();
+      _onRvFsChange();
+    };
+    var cleanupConfirm = function() {
+      document.removeEventListener('fullscreenchange', confirmNative);
+      document.removeEventListener('webkitfullscreenchange', confirmNative);
+    };
+    document.addEventListener('fullscreenchange', confirmNative);
+    document.addEventListener('webkitfullscreenchange', confirmNative);
 
-    // Fullscreen the MODAL, not the video element. This is the critical fix:
-    // the custom controls are children of the modal, so they remain available
-    // in fullscreen instead of disappearing when the video alone goes native.
-    var req = modal.requestFullscreen || modal.webkitRequestFullscreen;
-    if (req) {
-      try {
-        var result = req.call(modal);
-        if (result && typeof result.then === 'function') {
-          result.then(function(){
-            _rvRequestLandscape();
-            _rvShowFullscreenControls();
-            _onRvFsChange();
-          }).catch(function(err){
-            console.info('[Fullscreen] native fullscreen rejected; using WebView fallback:', err && err.message);
-            _enableManualFullscreen();
-            _rvRequestLandscape();
-            _rvShowFullscreenControls();
+    // ✅ الفallback الصحيح يعتمد على نوع الـtarget: لو الفيديو نفسه (target===video)،
+    // fallback الفيديو فقط هو اللي بيملأ الشاشة (rv-video-manual-fs) — مش الـ
+    // ResourceViewer كله. لأي target تاني (iframe يوتيوب/فيميو أو الـmodal) يفضل
+    // نفس السلوك القديم (rv-manual-fs) زي ما هو بالظبط.
+    var _fallbackFs = function() {
+      if (target === video) _enableVideoManualFullscreen();
+      else _enableManualFullscreen();
+    };
+
+    try {
+      if (video && video.webkitEnterFullscreen && !video.requestFullscreen && !video.webkitRequestFullscreen) {
+        attemptedNative = true;
+        video.webkitEnterFullscreen();
+      } else {
+        var req = target && (target.requestFullscreen || target.webkitRequestFullscreen);
+        if (req) {
+          attemptedNative = true;
+          var result = req.call(target); // MUST stay synchronous inside the click handler
+          if (result && typeof result.catch === 'function') result.catch(function(){
+            _fallbackFs();
           });
         } else {
-          // WebKit/WebView implementations may return void.
-          setTimeout(function(){
-            var confirmed = !!(document.fullscreenElement || document.webkitFullscreenElement);
-            if (confirmed) _rvRequestLandscape();
-            else _enableManualFullscreen();
-            _rvShowFullscreenControls();
-            _onRvFsChange();
-          }, 120);
+          _fallbackFs();
         }
-      } catch(e) {
-        console.info('[Fullscreen] native request failed; using WebView fallback:', e && e.message);
-        _enableManualFullscreen();
-        _rvRequestLandscape();
-        _rvShowFullscreenControls();
       }
-    } else {
-      // Android WebView / older embedded browsers: keep the whole viewer,
-      // including controls, in the manual fullscreen layout.
-      _enableManualFullscreen();
-      _rvRequestLandscape();
-      _rvShowFullscreenControls();
+    } catch(e) {
+      console.warn('[Fullscreen] native request failed:', e && e.message);
+      _fallbackFs();
     }
+
+    // If native fullscreen is unavailable/no-op, switch to CSS fullscreen quickly.
+    // This is not a second requestFullscreen call, so it works in Android WebView.
+    setTimeout(function(){
+      cleanupConfirm();
+      var stillNoNative = !document.fullscreenElement && !document.webkitFullscreenElement;
+      var alreadyManual = overlay.classList.contains('rv-manual-fs') || overlay.classList.contains('rv-video-manual-fs');
+      if (!nativeConfirmed && stillNoNative && !alreadyManual) {
+        _fallbackFs();
+      }
+    }, attemptedNative ? 250 : 0);
   }
 
   // ══════════════════════════════════════════════════════════════════
@@ -7659,13 +7418,15 @@ const ResourceViewer = (function() {
     var availH = Math.max(0, body.clientHeight - toolsH);
     if (availW <= 0 || availH <= 0) return;
 
-    // No CSS rotation fallback. Real landscape is requested through the
-    // Screen Orientation API by _toggleFullscreen/_toggleLandscape. If the
-    // WebView refuses orientation locking, keep the media unrotated and let
-    // the OS/browser determine the actual viewport orientation.
-    media.style.width = availW + 'px';
-    media.style.height = availH + 'px';
-    media.style.transform = 'none';
+    if (_rvIsPortraitViewport()) {
+      media.style.width = availH + 'px';
+      media.style.height = availW + 'px';
+      media.style.transform = 'rotate(90deg)';
+    } else {
+      media.style.width = availW + 'px';
+      media.style.height = availH + 'px';
+      media.style.transform = 'none';
+    }
   }
 
   // ✅ إعادة الحساب فقط عبر requestAnimationFrame بعد resize فعلي (مثلاً
@@ -7769,10 +7530,27 @@ const ResourceViewer = (function() {
   // وعن حالة Fullscreen الحقيقية، وعن اتجاه الجهاز الفعلي. نفس المسار
   // لكل الأنواع (فيديو مباشر / يوتيوب / فيميو / دايلي موشن / Fembed).
   function _toggleLandscape() {
-    // The old implementation used a CSS rotate fallback. That is intentionally
-    // retired: the landscape/fullscreen action now uses the same native-first
-    // fullscreen + Screen Orientation flow as the main fullscreen button.
-    return _toggleFullscreen();
+    var overlay = document.getElementById('rv-overlay');
+    var modal = document.getElementById('rv-modal');
+    var video = document.getElementById('rv-video-el');
+    var iframe = document.getElementById('rv-embed-iframe');
+    if (!modal || !overlay) return;
+
+    if (_rvLandscapeState.active) {
+      _rvExitLandscape();
+      return;
+    }
+
+    // ✅ الأولوية القصوى: العرض البصري يحدث فورًا Sync هنا — بغض النظر
+    // تمامًا عن نجاح/فشل أي Fullscreen API لاحقًا.
+    _rvEnableLandscapeVisual();
+
+    // Fembed: ممنوع طلب Fullscreen من الـiframe (Permissions Policy) —
+    // زر الموقع هو المسؤول الوحيد عن العرض الأفقي، مش JWPlayer الداخلي.
+    var isFembed = !!(iframe && iframe.dataset && iframe.dataset.fembedEmbed === '1');
+    if (!isFembed) {
+      _rvTryOpportunisticFullscreen(video || modal);
+    }
   }
 
   // ✅ الخروج: يرجّع كل حاجة للوضع الطبيعي، بدون لمس تشغيل/توقيت الفيديو،
@@ -7845,19 +7623,11 @@ const ResourceViewer = (function() {
   // أيًا كانت البيئة.
   function _onRvFsChange() {
     var btn = document.getElementById('rv-fs-btn');
+    if (!btn) return;
     var overlay = document.getElementById('rv-overlay');
     var inFs = !!(document.fullscreenElement || document.webkitFullscreenElement) ||
                !!(overlay && (overlay.classList.contains('rv-manual-fs') || overlay.classList.contains('rv-video-manual-fs')));
-    if (btn) btn.textContent = inFs ? '✕ خروج ملء الشاشة' : '⛶';
-
-    if (inFs) {
-      _rvEnterFullscreenLayout(overlay);
-      _rvShowFullscreenControls();
-    } else if (_rvFsOrientationState.previousType) {
-      // Native fullscreen can be exited by ESC/system gesture, not only by our
-      // button. Restore orientation and fullscreen-control state in that case.
-      _rvLeaveFullscreenLayout();
-    }
+    btn.textContent = inFs ? '✕ خروج ملء الشاشة' : '⛶';
   }
   document.addEventListener('fullscreenchange', _onRvFsChange);
   document.addEventListener('webkitfullscreenchange', _onRvFsChange);
@@ -7882,12 +7652,19 @@ const ResourceViewer = (function() {
   function _showMediaError(kind) {
     const body = document.getElementById('rv-body');
     if (!body) return;
+    const isAdmin = window._isAdminUser === true;
+    const url = window._rvCurrentUrl || '';
     const icon = kind === 'audio' ? '🎵' : '🎬';
+    const safeUrl = (url || '').replace(/'/g, '%27');
+    const actionsHtml = (isAdmin && url) ? `
+      <div style="display:flex;gap:10px;justify-content:center;margin-top:14px;flex-wrap:wrap">
+        <button class="rv-btn rv-btn-outline" onclick="(function(){var a=document.createElement('a');a.href='${safeUrl}';a.setAttribute('download','');document.body.appendChild(a);a.click();document.body.removeChild(a);})()">⬇️ تحميل الملف</button>
+      </div>` : '';
     body.innerHTML = `
       <div class="rv-fallback-wrap">
         <div class="rv-f-icon">${icon}</div>
         <p>لا يمكن عرض الملف داخل المتصفح — رُبما الرابط منتهي الصلاحية أو الملف غير موجود.</p>
-        
+        ${actionsHtml}
       </div>`;
   }
 
@@ -7912,7 +7689,7 @@ const ResourceViewer = (function() {
         "
       ></iframe>
       <div style="text-align:center;padding:12px;background:#f8fbff;border-top:1px solid #e3eaf5">
-        <p style="font-size:.8rem;color:#666;margin-bottom:8px">لو الملف لا يظهر، قد يكون الرابط غير قابل للعرض داخل المتصفح</p>
+        <p style="font-size:.8rem;color:#666;margin-bottom:8px">لو الملف لا يظهر، جرّب زر التحميل أدناه</p>
       </div>`;
   }
 
@@ -8083,13 +7860,6 @@ const APP_AUTH_REDIRECT = 'bsm://auth/callback';
 // ==================== AUTH FUNCTIONS ====================
 
 window.loginWithGoogle = async function() {
-  // [AUTH v6] كل ضغطة "دخول/حساب جديد" تبدأ باختيار حساب Google صراحةً.
-  // لا نحذف حسابات Google من الجهاز؛ فقط نمسح جلسة المنصة القديمة إن كانت موجودة.
-  try {
-    if (!window._currentAuthUser && localStorage.getItem('benisuef_auth')) {
-      localStorage.removeItem('benisuef_auth');
-    }
-  } catch(e) {}
   var db = window.supabase;
   if (!db) {
     // انتظر لو supabase لسه بيتحمّل
@@ -8115,7 +7885,7 @@ window.loginWithGoogle = async function() {
         skipBrowserRedirect: false,
         // لا تفرض prompt=consent؛ جلسة Supabase محفوظة بالفعل بـ persistSession:true،
          // وإجبار consent كان يعيد شاشة موافقة Google في كل تسجيل دخول يدوي.
-         queryParams: { access_type: 'offline', prompt: 'select_account' }
+         queryParams: { access_type: 'offline' }
       }
     });
     if (error) {
@@ -8211,9 +7981,8 @@ window.logoutUser = async function(btnEl) {
 
     if (outcome.res && outcome.res.error) throw outcome.res.error;
 
-    // ✅ نجاح — امسح مفتاح الجلسة المخصص صراحةً أيضاً، ثم انتظر SIGNED_OUT.
-    // هذا يمنع أي جلسة قديمة من الرجوع عند الضغط على "حساب جديد".
-    try { localStorage.removeItem('benisuef_auth'); } catch(e) {}
+    // ✅ نجاح — onAuthStateChange سيستقبل SIGNED_OUT ويؤكد نفس الحالة لاحقاً،
+    // لكن نحدّث الواجهة فوراً هنا حتى لا ينتظر المستخدم أي شيء
     _finishAsGuest();
     _showToast ? _showToast('✅ تم تسجيل الخروج بنجاح', 'success') : null;
   } catch (err) {
@@ -16237,11 +16006,10 @@ window._origWindowOpen = window.open;
       if (type === 'download_only') {
         // تحميل مباشر للأدمن فقط — الطلاب لا يُحمِّلون
         if (window._isAdminUser) {
-          // Never expose a Download action/attribute from the platform UI.
-          // Admin-only external resources keep their existing destination but
-          // open normally instead of forcing a browser download.
-          var adminWin = window._origWindowOpen || window.open;
-          adminWin.call(window, href, '_blank', 'noopener,noreferrer');
+          var a = document.createElement('a');
+          a.href = href;
+          a.setAttribute('download', '');
+          a.click();
         } else {
           openResource(href, title, 'link');
         }
@@ -20681,9 +20449,6 @@ window.diagnose = async function() {
 .dm2-msg-ticks { font-size: .74rem; }
 .dm2-msg-ticks.read { color: #4fc3f7; }
 .dm2-msg-ticks.sent { color: #b8c6d4; }
-.dm2-reply-preview{display:flex;flex-direction:column;gap:2px;width:100%;box-sizing:border-box;border:0;border-right:3px solid #17a589;background:rgba(23,165,137,.08);padding:6px 8px;margin-bottom:4px;border-radius:8px;cursor:pointer;text-align:right;color:#526575;font-size:.7rem;}
-.dm2-reply-preview span:last-child{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.dm2-reply-action{border:0;background:transparent;cursor:pointer;font-size:.76rem;padding:2px 4px;touch-action:manipulation;}
 
 /* Attachment card / preview inside bubbles */
 .dm2-att-image { max-width: 220px; max-height: 220px; border-radius: 10px; display: block; margin-bottom: 4px; cursor: pointer; object-fit: cover; background: rgba(0,0,0,.06); }
@@ -20922,33 +20687,13 @@ window.diagnose = async function() {
     msgEl.style.color = '#0a3d62'; msgEl.textContent = 'جاري رفع الإيصال وإرسال الطلب...';
 
     try {
-      // 1) ثبّت الـ anchor من قاعدة البيانات قبل الرفع.
-      //    مهم: بعض الكورسات (مثل الكورسات المتداخلة/المضافة حديثاً) قد يكون
-      //    الزر مفتوحاً من صف قديم في الـcache، بينما RPC الاشتراك يحتاج الـid
-      //    الدقيق للقسم الذي requires_subscription=true.
-      var paymentAnchor = _pmAnchor;
-      try {
-        if (typeof _findSubscriptionAnchor === 'function') {
-          var freshAnchor = await _findSubscriptionAnchor(Number(_pmAnchor.id));
-          if (freshAnchor && freshAnchor.id) paymentAnchor = freshAnchor;
-        }
-      } catch (anchorErr) {
-        console.warn('[PAYMENT] تعذر تحديث subscription anchor، سنستخدم الحالي:', anchorErr && anchorErr.message);
-      }
-      if (!paymentAnchor || !paymentAnchor.id || !paymentAnchor.requires_subscription) {
-        throw new Error('لا يمكن إنشاء طلب اشتراك لهذا القسم حالياً. أعد فتح صفحة الكورس وحاول مرة أخرى.');
-      }
-      _pmAnchor = paymentAnchor;
-
-      // 2) رفع صورة الإيصال باسم فريد دائماً.
-      //    upsert=true كان يجمع INSERT + UPDATE في نفس الطلب، وبالتالي أي اختلاف
-      //    في سياسات Storage كان يحوّل الإرسال إلى خطأ رغم أن اختيار الصورة يعمل.
+      // 1) رفع صورة الإيصال في bucket خاص
       var ext = (_pmFile.name.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';
-      var path = _pmUser.id + '/' + _pmAnchor.id + '-' + (window.crypto && crypto.randomUUID ? crypto.randomUUID() : (Date.now() + '-' + Math.random().toString(16).slice(2))) + '.' + ext;
-      var upRes = await db.storage.from('receipts').upload(path, _pmFile, { upsert: false, contentType: _pmFile.type });
+      var path = _pmUser.id + '/' + _pmAnchor.id + '-' + Date.now() + '.' + ext;
+      var upRes = await db.storage.from('receipts').upload(path, _pmFile, { upsert: true, contentType: _pmFile.type });
       if (upRes.error) throw upRes.error;
 
-      // 3) إنشاء/إعادة تعيين طلب الاشتراك كـ pending
+      // 2) إنشاء/إعادة تعيين طلب الاشتراك كـ pending
       //    ✅ FIX (Aug 2026 audit): كان هذا upsert مباشر على جدول subscriptions
       //    (يعتمد فقط على RLS الجدول). الآن نمر عبر RPC request_subscription
       //    (SECURITY DEFINER) اللي بيتحقق فعليًا إن الشعبة محتاجة اشتراك أصلاً
@@ -20988,14 +20733,6 @@ window.diagnose = async function() {
       setTimeout(closePaymentModal, 1400);
     } catch(err) {
       console.error('[PAYMENT] submit error:', err);
-      // لو الرفع نجح ثم فشل RPC، لا نترك إيصالاً يتيماً في Storage.
-      try {
-        if (typeof path !== 'undefined' && path) {
-          await db.storage.from('receipts').remove([path]);
-        }
-      } catch(cleanErr) {
-        console.warn('[PAYMENT] تعذر حذف الإيصال اليتيم:', cleanErr && cleanErr.message);
-      }
       btn.disabled = false; btn.textContent = '🚀 إرسال الطلب';
       msgEl.style.color = '#e74c3c';
       msgEl.textContent = '❌ حدث خطأ: ' + (err.message || 'حاول مجدداً');
@@ -21374,7 +21111,7 @@ window.diagnose = async function() {
         '<span class="dm2-att-file-name">' + _chatEsc(name) + '</span>' +
         '<span class="dm2-att-file-size">' + sizeLabel + '</span>' +
       '</div>' +
-      '<span class="dm2-att-open-icon">👁️</span>' +
+      '<span class="dm2-att-open-icon">⬇️</span>' +
     '</div>';
   }
 
@@ -21771,7 +21508,6 @@ window.diagnose = async function() {
   var _dmPendingFile      = null; // ملف مُختار بانتظار الإرسال
   var _dmPendingFileKind  = null; // 'image' | 'pdf' | 'file'
   var _dmAttMap           = {};   // message_id -> [attachment,...] لكل الرسائل المحمّلة حالياً في المحادثة المفتوحة
-  var _dmReplyToMessage = null; // الرسالة التي يرد عليها المستخدم داخل الـDM
 
   // ==================== Attachments (chat-attachments bucket — PRIVATE) ====================
   // Bucket وStorage Policies موجودة بالفعل (safe_chat_room_id_from_path)، لم يتم إنشاء أو تعديل أي منها هنا.
@@ -22156,76 +21892,53 @@ window.diagnose = async function() {
   }
 
   window._renderMessageAdminEntry = async function(anchor, containerEl) {
-    if (!containerEl || !anchor || !anchor.id) return;
-    // زر المراسلة ليس ميزة مدفوعة: يظهر لأي مستخدم مسجّل/زائر طالما للكورس
-    // anchor صحيح. لا نطلب الاشتراك هنا؛ التحقق الحقيقي يتم لحظة إنشاء الـDM.
+    if (!containerEl || !anchor || !anchor.id || !window.supabase) return;
+    // ✅ FIX (طلب المستخدم): هذه الدالة كانت تُستدعى مرتين على نفس الحاوية
+    // (من _renderDynamicSectionPage الأصلية، ثم من renderCourseChatButtons —
+    // تصحيح لاحق يُغلّف نفس الدالة) فيظهر زر "راسل أدمن..." مكرراً مرتين.
+    // الحل: لا نضيف الزر إذا كان موجوداً بالفعل داخل نفس الحاوية.
     if (containerEl.querySelector('[data-role="msg-admin-btn"]')) return;
+    try {
+      var dmCourseId = await _dmResolveCourseId(anchor.id);
+      var res = await window.supabase.rpc('get_section_admins_for_messaging', { p_section_id: dmCourseId });
+      if (res.error) {
+        console.warn('[DM] get_section_admins_for_messaging error:', res.error.message);
+        return;
+      }
+      var admins = res.data || [];
+      if (!admins.length) {
+        // لا يوجد أدمن للكورس أو أدمن منصة متاح عبر RPC بعد فحص التسلسل الأبوي.
+        console.warn('[DM] لا يوجد أدمن للكورس أو أدمن منصة متاح عبر RPC بعد فحص التسلسل الأبوي.', {section_id: anchor.id, course_id: dmCourseId});
+        return;
+      }
 
-    var btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'chat-entry-btn';
-    btn.dataset.role = 'msg-admin-btn';
-    btn.style.background = 'linear-gradient(135deg,#17a589,#0a3d62)';
-    btn.textContent = '✉️ راسل أدمن الشعبة';
+      var hasCourseAdmin = admins.some(function(a){ return String(a.admin_source || '') === 'course'; });
+      // ✅ FIX (طلب المستخدم): "أدمن المنصة" مربك للطالب هنا لأن هذا الزر
+      // مرتبط بشعبته تحديداً — استبدلناه بـ"أدمن الشعبة" في كل الحالات.
+      var label = hasCourseAdmin ? '✉️ راسل أدمن الكورس' : '✉️ راسل أدمن الشعبة';
 
-    btn.onclick = async function() {
-      var oldText = btn.textContent;
-      btn.disabled = true;
-      btn.textContent = '⏳ جاري التحميل...';
-      try {
-        // المراسلة تحتاج حساباً فقط، وليس اشتراكاً.
-        var sessionRes = (typeof _getSessionSafe === 'function')
-          ? await _getSessionSafe()
-          : await window.supabase.auth.getSession();
-        var user = sessionRes && sessionRes.data && sessionRes.data.session && sessionRes.data.session.user;
-        if (!user) {
-          btn.disabled = false;
-          btn.textContent = oldText;
-          if (typeof loginWithGoogle === 'function') {
-            loginWithGoogle();
-          } else if (typeof _showToast === 'function') {
-            _showToast('🔐 سجّل الدخول أولاً لمراسلة أدمن الشعبة', 'warning');
-          }
-          return;
-        }
-
-        var dmCourseId = (typeof _dmResolveCourseId === 'function')
-          ? await _dmResolveCourseId(anchor.id)
-          : Number(anchor.id);
-        var res = await window.supabase.rpc('get_section_admins_for_messaging', { p_section_id: dmCourseId });
-        if (res.error) throw res.error;
-
-        var admins = res.data || [];
-        if (!admins.length) {
-          throw new Error('لا يوجد أدمن مُعيّن لهذه الشعبة حالياً.');
-        }
-
-        var hasCourseAdmin = admins.some(function(a){
-          return String(a.admin_source || a.admin_type || '') === 'course';
-        });
-
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'chat-entry-btn';
+      btn.dataset.role = 'msg-admin-btn';
+      btn.style.background = 'linear-gradient(135deg,#17a589,#0a3d62)';
+      btn.textContent = label;
+      btn.onclick = function() {
         if (admins.length === 1) {
           window.openDirectChat(
             admins[0].user_id,
-            admins[0].full_name || admins[0].email || 'أدمن الشعبة',
+            admins[0].full_name || admins[0].email || (hasCourseAdmin ? 'أدمن الكورس' : 'أدمن الشعبة'),
             null,
             dmCourseId
           );
         } else {
           _dmOpenAdminPicker(admins, dmCourseId);
         }
-      } catch(e) {
-        console.warn('[DM] open admin chat error:', e && e.message);
-        if (typeof _showToast === 'function') {
-          _showToast('❌ تعذر فتح مراسلة أدمن الشعبة: ' + (e.message || 'حاول مجدداً'), 'error');
-        }
-      } finally {
-        btn.disabled = false;
-        btn.textContent = oldText;
-      }
-    };
-
-    containerEl.appendChild(btn);
+      };
+      containerEl.appendChild(btn);
+    } catch(e) {
+      console.warn('[DM] _renderMessageAdminEntry exception:', e && e.message);
+    }
   };
 
   // يُستخدم فقط لو الشعبة عندها أكثر من أدمن نشط (مدعوم مستقبلاً، غير مستخدم حاليًا بحسب بياناتك)
@@ -22265,8 +21978,6 @@ window.diagnose = async function() {
     _dmOtherUserId = otherUserId || null;
     _dmOtherProfile = null;
     _dmOtherLastRead = null;
-    _dmReplyToMessage = null;
-    var existingReplyBar = document.getElementById('dm2-reply-bar'); if (existingReplyBar) existingReplyBar.remove();
 
     var db = window.supabase;
     if (!db) { bodyEl.innerHTML = '<div class="chat-empty">تعذّر الاتصال بالخادم، حاول مجدداً.</div>'; return; }
@@ -22387,14 +22098,10 @@ window.diagnose = async function() {
     var bodyEl = document.getElementById('dm-chat-body');
     try {
       var msgRes = await db.from('chat_messages')
-        .select('id, room_id, user_id, user_name, message, created_at, reply_to_message_id')
+        .select('id, room_id, user_id, user_name, message, created_at')
         .eq('room_id', _dmRoom.id)
         .order('created_at', { ascending: false })
         .limit(_DM_PAGE_SIZE);
-      if (msgRes.error) { bodyEl.innerHTML = '<div class="chat-empty">' + _dmFriendlyError() + '</div>'; return; }
-      if (msgRes.error && /column .*reply_to_message_id|schema cache|could not find/i.test(msgRes.error.message || '')) {
-        msgRes = await db.from('chat_messages').select('id, room_id, user_id, user_name, message, created_at').eq('room_id', _dmRoom.id).order('created_at', { ascending: false }).limit(_DM_PAGE_SIZE);
-      }
       if (msgRes.error) { bodyEl.innerHTML = '<div class="chat-empty">' + _dmFriendlyError() + '</div>'; return; }
       var rows = (msgRes.data || []).slice().reverse();
       _dmHasMoreOlder = rows.length === _DM_PAGE_SIZE;
@@ -22416,15 +22123,11 @@ window.diagnose = async function() {
     try {
       var oldestCreatedAt = _dmLoadedMessages[0].created_at;
       var res = await db.from('chat_messages')
-        .select('id, room_id, user_id, user_name, message, created_at, reply_to_message_id')
+        .select('id, room_id, user_id, user_name, message, created_at')
         .eq('room_id', _dmRoom.id)
         .lt('created_at', oldestCreatedAt)
         .order('created_at', { ascending: false })
         .limit(_DM_PAGE_SIZE);
-      if (res.error) throw res.error;
-      if (res.error && /column .*reply_to_message_id|schema cache|could not find/i.test(res.error.message || '')) {
-        res = await db.from('chat_messages').select('id, room_id, user_id, user_name, message, created_at').eq('room_id', _dmRoom.id).lt('created_at', oldestCreatedAt).order('created_at', { ascending: false }).limit(_DM_PAGE_SIZE);
-      }
       if (res.error) throw res.error;
       var older = (res.data || []).slice().reverse();
       _dmHasMoreOlder = older.length === _DM_PAGE_SIZE;
@@ -22517,7 +22220,7 @@ window.diagnose = async function() {
         '<span class="dm2-att-file-name">' + _dmEsc(name) + '</span>' +
         '<span class="dm2-att-file-size">' + sizeLabel + '</span>' +
       '</div>' +
-      '<span class="dm2-att-open-icon">👁️</span>' +
+      '<span class="dm2-att-open-icon">⬇️</span>' +
     '</div>';
   }
 
@@ -22597,47 +22300,17 @@ window.diagnose = async function() {
     }
     var atts = _dmAttMap[m.id] || [];
     var attHtml = atts.length ? atts.map(_dmAttachmentHTML).join('') : '';
-    var original = null;
-    if (m.reply_to_message_id) original = (_dmLoadedMessages || []).find(function(x){ return String(x.id) === String(m.reply_to_message_id); }) || null;
-    var replyHtml = m.reply_to_message_id
-      ? '<button type="button" class="dm2-reply-preview" onclick="_dmJumpToMessage(\'' + _dmEsc(m.reply_to_message_id).replace(/'/g, '&#39;') + '\')" title="الانتقال للرسالة الأصلية">' +
-          '<span style="font-weight:900;">↩️ ' + _dmEsc(original ? (original.user_name || 'رسالة أصلية') : 'الرسالة الأصلية') + '</span>' +
-          '<span>' + _dmEsc(original ? (original.message || 'مرفق') : 'اضغط للانتقال') + '</span>' +
-        '</button>'
-      : '';
     var bubbleHtml = m.message ? '<div class="chat-msg-bubble">' + _dmEsc(m.message) + '</div>' : '';
     return '' +
-      '<div class="chat-msg-row ' + (mine ? 'mine' : 'theirs') + '" data-dm-message-id="' + _dmEsc(m.id) + '">' +
-        replyHtml + bubbleHtml + attHtml +
+      '<div class="chat-msg-row ' + (mine ? 'mine' : 'theirs') + '">' +
+        bubbleHtml + attHtml +
         '<div class="chat-msg-meta">' +
           (mine ? '' : '<span>' + _dmEsc(displayName) + '</span>') +
           '<span>' + timeStr + '</span>' + ticks +
-          '<button type="button" class="dm2-reply-action" onclick="_dmSetReply(\'' + _dmEsc(m.id).replace(/'/g, '&#39;') + '\')" title="رد">↩️</button>' +
         '</div>' +
       '</div>';
   }
 
-  window._dmSetReply = function(messageId) {
-    var msg = (_dmLoadedMessages || []).find(function(x){ return String(x.id) === String(messageId); });
-    if (!msg) return;
-    _dmReplyToMessage = msg;
-    var wrap = document.getElementById('dm2-att-pending-wrap');
-    if (!wrap) return;
-    var old = document.getElementById('dm2-reply-bar'); if (old) old.remove();
-    var bar = document.createElement('div');
-    bar.id = 'dm2-reply-bar';
-    bar.style.cssText = 'display:flex;align-items:center;gap:8px;margin:4px 8px 0;padding:8px 10px;border-right:4px solid #17a589;background:#eef8f6;border-radius:10px;box-sizing:border-box;';
-    bar.innerHTML = '<div style="flex:1;min-width:0;"><div style="font-size:.68rem;font-weight:900;color:#0a3d62;">↩️ رد على ' + _dmEsc(msg.user_name || 'رسالة') + '</div><div style="font-size:.74rem;color:#536777;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + _dmEsc(msg.message || 'مرفق') + '</div></div><button type="button" class="dm2-icon-btn" aria-label="إلغاء الرد">✕</button>';
-    bar.querySelector('button').onclick = function(){ _dmReplyToMessage = null; bar.remove(); };
-    wrap.parentNode.insertBefore(bar, wrap);
-    var input = document.getElementById('dm-chat-input'); if (input) input.focus();
-  };
-  window._dmJumpToMessage = function(messageId) {
-    var el = document.querySelector('#dm-chat-body [data-dm-message-id="' + String(messageId).replace(/"/g,'') + '"]');
-    if (el) { el.scrollIntoView({behavior:'smooth',block:'center'}); return; }
-    if (typeof window._dmLoadOlderMessages === 'function') window._dmLoadOlderMessages();
-    if (window._showToast) _showToast('⚠️ الرسالة الأصلية غير موجودة ضمن الرسائل المحمّلة حالياً. حمّل الرسائل الأقدم إذا لزم.', 'warning');
-  };
   window._dmHandleKeydown = function(ev) {
     if (ev.key === 'Enter' && !ev.shiftKey) { ev.preventDefault(); _dmSend(); }
   };
@@ -22730,20 +22403,12 @@ window.diagnose = async function() {
     try {
       // 1) أنشئ الرسالة أولاً بنفس الطريقة الآمنة الحالية (user_id/user_name يُعاد ضبطهما من Trigger)
       //    الرسالة ممكن تكون بنص فارغ لو كانت مرفق فقط بدون تعليق نصي.
-      var messagePayload = {
+      var insRes = await db.from('chat_messages').insert([{
         room_id: _dmRoom.id,
         message: text,
         user_id: _dmMe ? _dmMe.id : null,
         user_name: ''
-      };
-      if (_dmReplyToMessage && _dmReplyToMessage.id) messagePayload.reply_to_message_id = _dmReplyToMessage.id;
-      var insRes = await db.from('chat_messages').insert([messagePayload]).select('id').single();
-      if (insRes.error && messagePayload.reply_to_message_id &&
-          /column .*reply_to_message_id|schema cache|could not find/i.test(insRes.error.message || '')) {
-        delete messagePayload.reply_to_message_id;
-        insRes = await db.from('chat_messages').insert([messagePayload]).select('id').single();
-        console.warn('[DM] reply_to_message_id غير موجود في قاعدة البيانات الحالية؛ تم إرسال الرسالة بدون ربط الرد.');
-      }
+      }]).select('id').single();
       if (insRes.error || !insRes.data) {
         console.error('[DM] send error:', insRes.error && insRes.error.message);
         if (window._showToast) _showToast(_dmFriendlyError(), 'error');
@@ -22762,8 +22427,6 @@ window.diagnose = async function() {
 
       input.value = '';
       _dmRemovePendingFile();
-      _dmReplyToMessage = null;
-      var replyBar = document.getElementById('dm2-reply-bar'); if (replyBar) replyBar.remove();
       await _dmLoadMessages();
     } catch(e) {
       console.error('[DM] send exception:', e && e.message);
@@ -28515,127 +28178,6 @@ SELECT conname, pg_get_constraintdef(oid) FROM pg_constraint WHERE conname='audi
 })();
 </script>
 
-<!-- ============================================================
-     DIRECT MESSAGE ACCESS FIX — non-subscribers can contact course admin
-============================================================ -->
-<script>
-(function(){
-  window.printDirectMessagingOpenAccessSQL = function(){
-    var sql = `
--- ================================================================
--- DIRECT MESSAGING: أي مستخدم مسجّل يقدر يبدأ محادثة مع أدمن الشعبة
--- الاشتراك مطلوب للمحادثة الجماعية فقط، وليس لمراسلة الأدمن.
--- Supabase Dashboard → SQL Editor → New Query → Paste → Run
--- ================================================================
-
-CREATE OR REPLACE FUNCTION public.get_or_create_direct_room(
-  p_other_user_id UUID,
-  p_section_id BIGINT
-)
-RETURNS public.chat_rooms
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path=public,pg_temp
-AS $$
-DECLARE
-  v_me UUID := auth.uid();
-  v_room public.chat_rooms;
-  v_course_title TEXT;
-  v_room_key TEXT;
-  v_other_allowed BOOLEAN := false;
-BEGIN
-  IF v_me IS NULL OR p_other_user_id IS NULL
-     OR p_other_user_id=v_me OR p_section_id IS NULL THEN
-    RAISE EXCEPTION 'DENY ACCESS';
-  END IF;
-
-  SELECT title INTO v_course_title
-  FROM public.site_sections
-  WHERE id=p_section_id;
-
-  v_room_key := 'DM:' || p_section_id::TEXT || ':' ||
-                COALESCE(v_course_title,'الكورس');
-
-  -- صاحب الطلب: أي مستخدم authenticated مسموح له ببدء DM.
-  -- لا يوجد فحص اشتراك هنا عمداً.
-  -- الطرف الآخر يجب أن يكون أدمن المنصة أو أدمن/Owner/Assistant
-  -- فعلياً مُعيّناً للكورس نفسه.
-  SELECT (
-    EXISTS (
-      SELECT 1 FROM public.profiles p
-      WHERE p.id=p_other_user_id AND p.role='admin'
-    )
-    OR EXISTS (
-      SELECT 1 FROM public.section_admins sa
-      WHERE sa.user_id=p_other_user_id
-        AND sa.section_id=p_section_id
-        AND sa.is_active=true
-        AND sa.role IN ('owner','admin')
-    )
-    OR EXISTS (
-      SELECT 1 FROM public.section_admins sa
-      WHERE sa.user_id=p_other_user_id
-        AND sa.section_id=p_section_id
-        AND sa.is_active=true
-        AND sa.role='assistant'
-        AND COALESCE((sa.permissions->>'manage_chats')::boolean,false)=true
-    )
-  ) INTO v_other_allowed;
-
-  IF NOT v_other_allowed THEN
-    RAISE EXCEPTION 'DENY ACCESS';
-  END IF;
-
-  PERFORM pg_advisory_xact_lock(
-    hashtextextended(
-      LEAST(v_me::TEXT,p_other_user_id::TEXT)||':'||
-      GREATEST(v_me::TEXT,p_other_user_id::TEXT)||':'||
-      p_section_id::TEXT,0
-    )
-  );
-
-  SELECT cr.* INTO v_room
-  FROM public.chat_rooms cr
-  WHERE cr.room_type='direct'
-    AND cr.room_name=v_room_key
-    AND EXISTS (
-      SELECT 1 FROM public.chat_room_participants x
-      WHERE x.room_id=cr.id AND x.user_id=v_me
-    )
-    AND EXISTS (
-      SELECT 1 FROM public.chat_room_participants y
-      WHERE y.room_id=cr.id AND y.user_id=p_other_user_id
-    )
-  ORDER BY cr.id
-  LIMIT 1;
-
-  IF FOUND THEN RETURN v_room; END IF;
-
-  INSERT INTO public.chat_rooms(room_name,room_type)
-  VALUES(v_room_key,'direct')
-  RETURNING * INTO v_room;
-
-  INSERT INTO public.chat_room_participants(room_id,user_id)
-  VALUES(v_room.id,v_me),(v_room.id,p_other_user_id)
-  ON CONFLICT DO NOTHING;
-
-  RETURN v_room;
-END;
-$$;
-
-GRANT EXECUTE ON FUNCTION public.get_or_create_direct_room(UUID,BIGINT)
-TO authenticated;
-
-NOTIFY pgrst, 'reload schema';
-`;
-    console.log(sql);
-    if(navigator.clipboard) navigator.clipboard.writeText(sql).catch(function(){});
-    return sql;
-  };
-  console.log('%c[DM] اكتب printDirectMessagingOpenAccessSQL() لإصلاح مراسلة أدمن الشعبة لغير المشتركين','color:#17a589;font-weight:700');
-})();
-</script>
-
 <script>
 (function(){
   'use strict';  if(window.__BSM_CONTENT_ACCESS_WRAPPED)return;
@@ -29125,1025 +28667,31 @@ NOTIFY pgrst, 'reload schema';
   }
 })();
 </script>
-
-<!-- ============================================================
-     DIRECT MESSAGING — FINAL OPEN ACCESS FIX v3
-     الهدف: أي مستخدم authenticated يقدر يراسل أدمن الشعبة/الكورس
-     سواء مشترك أو غير مشترك. الشات الجماعي يظل محميًا بالاشتراك.
-     ملاحظة: هذا SQL لا يُنفّذ تلقائيًا؛ شغّله مرة واحدة في Supabase.
-============================================================ -->
-<script>
-(function(){
-  window.printDirectMessagingFinalFixSQL = function(){
-    var sql = `
--- ================================================================
--- DIRECT MESSAGING FINAL FIX v3
--- المطلوب:
--- 1) أي مستخدم مسجّل الدخول يقدر يضغط "راسل أدمن الشعبة" حتى بدون اشتراك.
--- 2) الطرف الآخر لا يمكن أن يكون مستخدمًا عاديًا؛ لازم يكون أدمن منصة
---    أو أدمن/Owner/Assistant مُعيّن فعليًا على نفس الكورس.
--- 3) الشات الجماعي للكورس لا يتأثر ويظل يتطلب اشتراكًا نشطًا.
--- 4) إصلاح RLS للـDM لأن النسخة السابقة كانت تشترط section_id IS NOT NULL
---    بينما get_or_create_direct_room القديمة تنشئ direct room بدون section_id.
--- ================================================================
-
--- ------------------------------------------------
--- A) قائمة أدمن الشعبة: لا فحص اشتراك للمستخدم الحالي.
--- ------------------------------------------------
-DROP FUNCTION IF EXISTS public.get_section_admins_for_messaging(BIGINT);
-CREATE OR REPLACE FUNCTION public.get_section_admins_for_messaging(p_section_id BIGINT)
-RETURNS TABLE(user_id UUID, full_name TEXT, email TEXT, admin_source TEXT)
-LANGUAGE plpgsql STABLE SECURITY DEFINER
-SET search_path = public, pg_temp
-AS $$
-DECLARE
-  v_course_id BIGINT := p_section_id;
-BEGIN
-  IF auth.uid() IS NULL OR p_section_id IS NULL THEN
-    RAISE EXCEPTION 'DENY ACCESS';
-  END IF;
-
-  -- لو استدعاء الدالة من مادة/شابتر، اصعد لأقرب course ancestor.
-  WITH RECURSIVE ancestors AS (
-    SELECT s.id, s.parent_id, s.type, 0 AS depth
-    FROM public.site_sections s
-    WHERE s.id = p_section_id
-    UNION ALL
-    SELECT p.id, p.parent_id, p.type, a.depth + 1
-    FROM public.site_sections p
-    JOIN ancestors a ON p.id = a.parent_id
-    WHERE a.depth < 20
-  )
-  SELECT a.id INTO v_course_id
-  FROM ancestors a
-  WHERE LOWER(COALESCE(a.type,'')) = 'course'
-  ORDER BY a.depth
-  LIMIT 1;
-
-  v_course_id := COALESCE(v_course_id, p_section_id);
-
-  -- أدمن/Owner الكورس المحدد أولاً.
-  RETURN QUERY
-  SELECT sa.user_id,
-         COALESCE(p.full_name, p.email, 'أدمن الشعبة')::TEXT,
-         p.email::TEXT,
-         'course'::TEXT
-  FROM public.section_admins sa
-  JOIN public.profiles p ON p.id = sa.user_id
-  WHERE sa.section_id = v_course_id
-    AND sa.is_active = true
-    AND sa.role IN ('admin','owner')
-  ORDER BY COALESCE(p.full_name, p.email, '');
-
-  IF FOUND THEN RETURN; END IF;
-
-  -- لو لا يوجد أدمن للكورس، أدمن المنصة هو fallback.
-  RETURN QUERY
-  SELECT p.id,
-         COALESCE(p.full_name, p.email, 'أدمن المنصة')::TEXT,
-         p.email::TEXT,
-         'platform'::TEXT
-  FROM public.profiles p
-  WHERE p.role = 'admin'
-  ORDER BY COALESCE(p.full_name, p.email, '');
-END;
-$$;
-GRANT EXECUTE ON FUNCTION public.get_section_admins_for_messaging(BIGINT) TO authenticated;
-
--- ------------------------------------------------
--- B) إنشاء DM: صاحب الطلب = أي authenticated user.
--- ------------------------------------------------
-DROP FUNCTION IF EXISTS public.get_or_create_direct_room(UUID,BIGINT);
-CREATE OR REPLACE FUNCTION public.get_or_create_direct_room(
-  p_other_user_id UUID,
-  p_section_id BIGINT
-)
-RETURNS public.chat_rooms
-LANGUAGE plpgsql SECURITY DEFINER
-SET search_path = public, pg_temp
-AS $$
-DECLARE
-  v_me UUID := auth.uid();
-  v_room public.chat_rooms;
-  v_course_title TEXT;
-  v_room_key TEXT;
-  v_other_allowed BOOLEAN := false;
-BEGIN
-  IF v_me IS NULL OR p_other_user_id IS NULL
-     OR p_other_user_id = v_me OR p_section_id IS NULL THEN
-    RAISE EXCEPTION 'DENY ACCESS';
-  END IF;
-
-  SELECT title INTO v_course_title
-  FROM public.site_sections
-  WHERE id = p_section_id;
-
-  v_room_key := 'DM:' || p_section_id::TEXT || ':' ||
-                COALESCE(v_course_title,'الكورس');
-
-  -- لا يوجد أي فحص اشتراك على v_me عمدًا.
-  -- الطرف الآخر فقط يجب أن يكون أدمنًا مناسبًا لهذا الكورس.
-  SELECT (
-    EXISTS (
-      SELECT 1 FROM public.profiles p
-      WHERE p.id = p_other_user_id AND p.role = 'admin'
-    )
-    OR EXISTS (
-      SELECT 1 FROM public.section_admins sa
-      WHERE sa.user_id = p_other_user_id
-        AND sa.section_id = p_section_id
-        AND sa.is_active = true
-        AND sa.role IN ('owner','admin')
-    )
-    OR EXISTS (
-      SELECT 1 FROM public.section_admins sa
-      WHERE sa.user_id = p_other_user_id
-        AND sa.section_id = p_section_id
-        AND sa.is_active = true
-        AND sa.role = 'assistant'
-        AND COALESCE((sa.permissions->>'manage_chats')::boolean,false) = true
-    )
-  ) INTO v_other_allowed;
-
-  IF NOT v_other_allowed THEN
-    RAISE EXCEPTION 'DENY ACCESS';
-  END IF;
-
-  PERFORM pg_advisory_xact_lock(
-    hashtextextended(
-      LEAST(v_me::TEXT,p_other_user_id::TEXT)||':'||
-      GREATEST(v_me::TEXT,p_other_user_id::TEXT)||':'||
-      p_section_id::TEXT,0
-    )
-  );
-
-  SELECT cr.* INTO v_room
-  FROM public.chat_rooms cr
-  WHERE cr.room_type = 'direct'
-    AND cr.room_name = v_room_key
-    AND EXISTS (
-      SELECT 1 FROM public.chat_room_participants x
-      WHERE x.room_id = cr.id AND x.user_id = v_me
-    )
-    AND EXISTS (
-      SELECT 1 FROM public.chat_room_participants y
-      WHERE y.room_id = cr.id AND y.user_id = p_other_user_id
-    )
-  ORDER BY cr.id
-  LIMIT 1;
-
-  IF FOUND THEN RETURN v_room; END IF;
-
-  -- نحتفظ بالـschema الحالي: direct room بدون section_id.
-  INSERT INTO public.chat_rooms(room_name, room_type)
-  VALUES(v_room_key, 'direct')
-  RETURNING * INTO v_room;
-
-  INSERT INTO public.chat_room_participants(room_id,user_id)
-  VALUES(v_room.id,v_me),(v_room.id,p_other_user_id)
-  ON CONFLICT DO NOTHING;
-
-  RETURN v_room;
-END;
-$$;
-GRANT EXECUTE ON FUNCTION public.get_or_create_direct_room(UUID,BIGINT) TO authenticated;
-
--- ------------------------------------------------
--- C) RLS للـDM: العضو في الغرفة يرى/يرسل داخلها فقط.
--- لا نعتمد على section_id لأن direct rooms القديمة والحالية قد تكون NULL.
--- ------------------------------------------------
-CREATE OR REPLACE FUNCTION public.can_access_direct_room_member(p_room_id BIGINT)
-RETURNS boolean
-LANGUAGE sql STABLE SECURITY DEFINER
-SET search_path = public, pg_temp
-AS $$
-  SELECT auth.uid() IS NOT NULL
-    AND EXISTS (
-      SELECT 1
-      FROM public.chat_room_participants p
-      WHERE p.room_id = p_room_id
-        AND p.user_id = auth.uid()
-    );
-$$;
-GRANT EXECUTE ON FUNCTION public.can_access_direct_room_member(BIGINT) TO authenticated;
-
-ALTER TABLE public.chat_rooms ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "chatrooms_read_direct_member" ON public.chat_rooms;
-CREATE POLICY "chatrooms_read_direct_member"
-ON public.chat_rooms FOR SELECT TO authenticated
-USING (
-  room_type = 'direct'
-  AND public.can_access_direct_room_member(id)
-);
-
-ALTER TABLE public.chat_messages ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "chatmsg_read_direct_member" ON public.chat_messages;
-DROP POLICY IF EXISTS "chatmsg_insert_direct_member" ON public.chat_messages;
-
-CREATE POLICY "chatmsg_read_direct_member"
-ON public.chat_messages FOR SELECT TO authenticated
-USING (
-  EXISTS (
-    SELECT 1
-    FROM public.chat_rooms cr
-    WHERE cr.id = chat_messages.room_id
-      AND cr.room_type = 'direct'
-      AND public.can_access_direct_room_member(cr.id)
-  )
-);
-
-CREATE POLICY "chatmsg_insert_direct_member"
-ON public.chat_messages FOR INSERT TO authenticated
-WITH CHECK (
-  EXISTS (
-    SELECT 1
-    FROM public.chat_rooms cr
-    WHERE cr.id = chat_messages.room_id
-      AND cr.room_type = 'direct'
-      AND public.can_access_direct_room_member(cr.id)
-  )
-);
-
--- ------------------------------------------------
--- D) تشخيص سريع بعد التشغيل — لا يغيّر بيانات.
--- ------------------------------------------------
-NOTIFY pgrst, 'reload schema';
-
--- 1) هل الدوال موجودة؟
-SELECT p.oid::regprocedure AS function_name
-FROM pg_proc p
-JOIN pg_namespace n ON n.oid = p.pronamespace
-WHERE n.nspname='public'
-  AND p.proname IN ('get_section_admins_for_messaging','get_or_create_direct_room','can_access_direct_room_member')
-ORDER BY 1;
-
--- 2) سياسات الـDM الحالية:
-SELECT tablename, policyname, cmd
-FROM pg_policies
-WHERE schemaname='public'
-  AND tablename IN ('chat_rooms','chat_messages','chat_room_participants')
-  AND policyname ILIKE '%direct%'
-ORDER BY tablename, policyname;
-`;
-    console.group('%c🔐 DIRECT MESSAGING FINAL FIX v3','color:#0a3d62;font-weight:800;font-size:14px');
-    console.log(sql);
-    console.groupEnd();
-    if (navigator.clipboard) navigator.clipboard.writeText(sql).catch(function(){});
-    return sql;
-  };
-  console.log('%c[DM v3] اكتب printDirectMessagingFinalFixSQL() لنسخ إصلاح المراسلة النهائي وتشخيص RLS','color:#17a589;font-weight:700');
-})();
-</script>
-
-
-
-<!-- ============================================================
-     BSM FINAL DB-AWARE FRONTEND HARDENING — 2026-08-29
-     Uses confirmed existing columns: subscriptions.reject_reason
-     and chat_messages.reply_to_message_id. No SQL/RLS changes.
-============================================================ -->
-<script>
-(function(){
-  'use strict';
-  if(window.__BSM_DB_AWARE_HARDENING_20260829)return;
-  window.__BSM_DB_AWARE_HARDENING_20260829=true;
-
-  function _bsmDb(){return window.supabase||null;}
-  function _bsmSessionUser(){
-    return (typeof window._currentAuthUser!=='undefined' && window._currentAuthUser)
-      || null;
-  }
-  async function _bsmGetUser(){
-    try{
-      var d=_bsmDb(); if(!d||!d.auth)return null;
-      var r=typeof window._getSessionSafe==='function'
-        ? await window._getSessionSafe(8000)
-        : await d.auth.getSession();
-      return r&&r.data&&r.data.session&&r.data.session.user||null;
-    }catch(e){return _bsmSessionUser();}
-  }
-  async function _bsmPending(uid,sectionId){
-    var d=_bsmDb();
-    if(!d||!uid||!sectionId)return false;
-    try{
-      var r=await d.from('subscriptions')
-        .select('id,payment_status,created_at,requested_at')
-        .eq('user_id',uid)
-        .eq('section_id',Number(sectionId))
-        .eq('payment_status','pending')
-        .order('created_at',{ascending:false})
-        .limit(1);
-      if(r.error)throw r.error;
-      return !!(r.data&&r.data.length);
-    }catch(e){
-      console.warn('[BSM][pending guard] read failed:',e&&e.message);
-      return false;
-    }
-  }
-  async function _bsmFreshAnchor(anchor){
-    try{
-      if(anchor&&anchor.id&&typeof window._findSubscriptionAnchor==='function'){
-        var a=await window._findSubscriptionAnchor(Number(anchor.id));
-        if(a&&a.id)return a;
-      }
-    }catch(e){console.warn('[BSM][pending guard] anchor refresh:',e&&e.message);}
-    return anchor||null;
-  }
-
-  /* Final pending guard: runs immediately before any receipt upload/RPC. */
-  if(typeof window._pmSubmit==='function'&&!window.__BSM_PM_FINAL_GATE){
-    var _bsmOldSubmit=window._pmSubmit;
-    window._pmSubmit=async function(){
-      var msg=document.getElementById('pm-msg');
-      var btn=document.getElementById('pm-submit-btn');
-      try{
-        var u=await _bsmGetUser();
-        var anchor=await _bsmFreshAnchor(window._currentGateAnchor||window._pmAnchor);
-        if(u&&anchor&&anchor.id){
-          window._currentGateAnchor=anchor;
-          window._pmAnchor=anchor;
-          if(await _bsmPending(u.id,anchor.id)){
-            if(msg){msg.style.color='#f39c12';msg.textContent='⏳ لديك بالفعل طلب اشتراك قيد المراجعة لهذا الكورس. لا يمكن إرسال طلب جديد حتى يتم قبول الطلب الحالي أو رفضه.';}
-            if(btn){btn.disabled=false;btn.textContent='🚀 إرسال الطلب';}
-            if(typeof window._showToast==='function')window._showToast('⏳ الطلب الحالي قيد المراجعة بالفعل','warning');
-            return;
-          }
-        }
-      }catch(e){console.warn('[BSM][pending guard] pre-submit:',e&&e.message);}
-      return _bsmOldSubmit.apply(this,arguments);
-    };
-    window.__BSM_PM_FINAL_GATE=true;
-  }
-
-  /* Keep the modal opener guarded too, including rejected -> re-request. */
-  if(typeof window.requestOrRenewSubscription==='function'&&!window.__BSM_REQ_FINAL_GATE){
-    var _bsmOldReq=window.requestOrRenewSubscription;
-    window.requestOrRenewSubscription=async function(){
-      try{
-        var u=await _bsmGetUser();
-        var anchor=await _bsmFreshAnchor(window._currentGateAnchor);
-        if(u&&anchor&&anchor.id&&await _bsmPending(u.id,anchor.id)){
-          if(typeof window._showToast==='function')window._showToast('⏳ لديك بالفعل طلب قيد المراجعة لهذا الكورس','warning');
-          return;
-        }
-      }catch(e){console.warn('[BSM][pending guard] opener:',e&&e.message);}
-      return _bsmOldReq.apply(this,arguments);
-    };
-    window.__BSM_REQ_FINAL_GATE=true;
-  }
-
-  /* Confirm the two DB-backed fields are used by the existing UI. */
-  window.__bsmConfirmedSchema={
-    chatReplyColumn:'reply_to_message_id',
-    subscriptionRejectColumn:'reject_reason'
-  };
-
-  /* Runtime safety: never leak a block-scoped shorthand `b` from nav handlers. */
-  if(typeof window.apSwitchTab==='function'&&!window.__BSM_AP_SWITCH_SAFE_FINAL){
-    var _bsmBaseSwitch=window.apSwitchTab;
-    window.apSwitchTab=async function(tab){
-      try{return await _bsmBaseSwitch.apply(this,arguments);}
-      catch(e){
-        console.error('[BSM][NAV] apSwitchTab failed:',e);
-        var panel=document.getElementById('ap-panel-'+tab);
-        if(panel)panel.classList.add('active');
-      }
-    };
-    window.__BSM_AP_SWITCH_SAFE_FINAL=true;
-  }
-})();
-</script>
-
-<script>
-/* BSM FINAL DATA-ALIGNED CORRECTIONS — 2026-08-29
-   Uses the actual current schema discovered by the user. HTML-only; no SQL is executed.
-*/
-(function(){
-  'use strict';
-  if(window.__BSM_DATA_ALIGNED_FINAL_20260829)return;
-  window.__BSM_DATA_ALIGNED_FINAL_20260829=true;
-
-  function db(){return window.supabase||null;}
-  function esc(v){return typeof window._apEsc==='function'?window._apEsc(v==null?'':String(v)):String(v==null?'':v).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
-  function toast(m,t){if(typeof window._showToast==='function')window._showToast(m,t||'info');}
-
-  /* 1) STRICT paid-content gate: subscription_content_access=true on any node
-        makes the chain paid; subscription status is then checked against the
-        nearest course ancestor. This prevents a cancelled/rejected student
-        from getting content merely because site_sections.requires_subscription
-        is false on the visible node. */
-  async function sectionChain(id){
-    var d=db(),cur=Number(id),out=[],seen={};
-    if(!d||!Number.isFinite(cur))return out;
-    for(var i=0;i<25&&cur&&!seen[cur];i++){
-      seen[cur]=true;
-      var r=await d.from('site_sections').select('id,parent_id,type,title,requires_subscription').eq('id',cur).maybeSingle();
-      if(r.error||!r.data)break;
-      out.push(r.data);
-      if(r.data.parent_id==null)break;
-      cur=Number(r.data.parent_id)||0;
-    }
-    return out;
-  }
-  async function resolvePaidAnchor(id){
-    var chain=await sectionChain(id);
-    if(!chain.length)return null;
-    var d=db(),ids=chain.map(function(x){return Number(x.id);});
-    var access=await d.from('subscription_content_access').select('section_id,requires_subscription').in('section_id',ids);
-    var explicitPaid=!!(access.data||[]).some(function(x){return x.requires_subscription===true;});
-    var sectionPaid=chain.some(function(x){return x.requires_subscription===true;});
-    if(!explicitPaid&&!sectionPaid)return null;
-    var course=chain.find(function(x){return String(x.type||'').toLowerCase()==='course';});
-    return course||chain.find(function(x){return x.requires_subscription===true;})||chain[0];
-  }
-  async function strictAccess(id){
-    var anchor=await resolvePaidAnchor(id);
-    if(!anchor)return null;
-    if(window._isSuperAdmin===true)return null;
-    if(window._isBranchAdmin===true){
-      var ids=window._branchAdminSectionIds||window._branchAdminOwnSectionIds||[];
-      if(Array.isArray(ids)&&ids.map(Number).indexOf(Number(anchor.id))!==-1)return null;
-    }
-    if(typeof window._isFreePreviewSection==='function'){
-      try{if(await window._isFreePreviewSection(Number(id)))return null;}catch(e){}
-    }
-    var d=db(),sess=typeof window._getSessionSafe==='function'?await window._getSessionSafe(8000):await d.auth.getSession();
-    var u=sess&&sess.data&&sess.data.session&&sess.data.session.user;
-    if(!u)return {state:'guest',access:'guest',anchor:anchor};
-    // Legacy subscription hierarchy: an ACTIVE subscription on the course
-    // or any ancestor grants access to descendants. Do not require the row to
-    // be on the exact visible chapter/anchor.
-    var chainIds=Array.from(new Set((await sectionChain(Number(id))).map(function(x){return Number(x.id);})));
-    var r=await d.from('subscriptions')
-      .select('id,section_id,payment_status,start_date,end_date,reject_reason,requested_at,created_at,updated_at')
-      .eq('user_id',u.id).in('section_id',chainIds)
-      .order('requested_at',{ascending:false,nullsFirst:false})
-      .order('created_at',{ascending:false})
-      .order('id',{ascending:false});
-    if(r.error)throw r.error;
-    var rows=r.data||[];
-    var row=rows.find(function(x){return x.payment_status==='active'&&(!x.end_date||new Date(x.end_date).getTime()>=Date.now());})||rows[0]||null;
-    if(row&&row.payment_status==='active'&&(!row.end_date||new Date(row.end_date).getTime()>=Date.now()))return null;
-    var state=row&&row.payment_status==='pending'?'pending':(row&&(['rejected','cancelled'].indexOf(row.payment_status)>=0)?'rejected':(row?'expired':'none'));
-    return {state:state,access:state,anchor:anchor,row:row,user:u,reject_reason:row&&row.reject_reason||''};
-  }
-  window.checkSectionAccess=async function(id){
-    try{return await strictAccess(id);}catch(e){console.error('[FINAL PAID GATE]',e);return {state:'error',access:'error'};}
-  };
-  window.getDetailedSectionAccess=async function(id){
-    try{var r=await strictAccess(id);return r||{state:'free',anchor:null};}catch(e){return {state:'error',access:'error'};}
-  };
-
-  /* 2) Rejected reason: always rendered from subscriptions.reject_reason and
-        never exposed as a generic public field. */
-  function patchRejectedGate(){
-    if(typeof window._openLockNoticeModal!=='function'||window.__BSM_REJECT_GATE_FINAL)return;
-    window.__BSM_REJECT_GATE_FINAL=true;
-    var old=window._openLockNoticeModal;
-    window._openLockNoticeModal=function(g){
-      if(g&&g.state==='rejected'){
-        var reason=g.reject_reason||(g.row&&g.row.reject_reason)||'';
-        var t=document.getElementById('ln-title'),s=document.getElementById('ln-sub'),b=document.getElementById('ln-btn'),o=document.getElementById('lock-notice-overlay');
-        if(t)t.textContent='🚫 تم رفض الاشتراك';
-        if(s)s.innerHTML=reason?'سبب الرفض: <b>'+esc(reason)+'</b>':'تم رفض طلب الاشتراك.';
-        if(b){b.textContent='🚀 إعادة طلب الاشتراك';b.onclick=function(){if(typeof closeLockNoticeModal==='function')closeLockNoticeModal();if(typeof window.requestOrRenewSubscription==='function')window.requestOrRenewSubscription();};}
-        if(o)o.classList.add('ln-open');
-        document.body.style.overflow='hidden';
-        return;
-      }
-      return old.apply(this,arguments);
-    };
-  }
-  patchRejectedGate();
-  setTimeout(patchRejectedGate,500);setTimeout(patchRejectedGate,1500);
-
-  /* 3) Assistant manager aligned with the actual rows supplied by the user:
-        current DB uses section_admins.role='admin' for assignments, while the
-        intended assistant account can still have profiles.role='student'.
-        Therefore list student-profile assignments as assistants, including
-        inactive legacy rows, so the existing assigned row id=24 is visible. */
-  window._bsmAAList=async function(courseId){
-    var d=db(),cid=Number(courseId);
-    if(!d||!cid)return [];
-    var r=await d.from('section_admins').select('id,user_id,section_id,is_active,role,permissions').eq('section_id',cid).in('role',['admin','assistant']).order('id');
-    if(r.error)throw r.error;
-    var rows=r.data||[],ids=rows.map(function(x){return x.user_id;}).filter(Boolean),pm={};
-    if(ids.length){var p=await d.from('profiles').select('id,email,full_name,role').in('id',ids);(p.data||[]).forEach(function(x){pm[x.id]=x;});}
-    return rows.map(function(x){x.profile=pm[x.user_id]||{};x.isAssistant=(String(x.role)==='assistant'||['student','user'].indexOf(String(x.profile.role||'').toLowerCase())>=0);return x;}).filter(function(x){return x.isAssistant;});
-  };
-
-  function assistantRender(){
-    var panel=document.getElementById('bsm-aa-panel');
-    if(!panel)return;
-    var body=document.getElementById('bsm-aa-body');
-    var cid=Number((document.getElementById('bsm-aa-course')||{}).value||window._branchAdminCourseId||window._activeSectionId||0);
-    if(!body||!cid)return;
-    body.innerHTML='<div class="ap-loading"><div class="spinner"></div> جاري تحميل الأدمن المساعدين...</div>';
-    window._bsmAAList(cid).then(function(rows){
-      if(!rows.length){body.innerHTML='<div class="ap-empty">لا يوجد أدمن مساعد مسجل لهذا الكورس حاليًا.</div>';return;}
-      var csel=document.getElementById('bsm-aa-course'),ct=csel&&csel.options[csel.selectedIndex]?csel.options[csel.selectedIndex].textContent:('#'+cid);
-      var labels=[['can_view_stats','الإحصائيات'],['can_manage_materials','المواد'],['can_manage_chapters','المحتوى'],['can_manage_subscriptions','الاشتراكات'],['can_manage_payments','المدفوعات'],['can_manage_section_chat','محادثة الكورس'],['can_delete_section_messages','حذف الرسائل']];
-      body.innerHTML='<div class="ap-table-wrap"><table class="ap-table"><thead><tr><th>المساعد</th><th>الكورس</th><th>الحالة</th><th>الصلاحيات الحالية</th><th>الإجراءات</th></tr></thead><tbody>'+rows.map(function(x){
-        var q=x.permissions||{},ls=labels.filter(function(a){return q[a[0]]===true;}).map(function(a){return '<span class="ap-badge user" style="margin:2px;">'+esc(a[1])+'</span>';}).join('');
-        var nm=x.profile.full_name||x.profile.email||x.user_id;
-        return '<tr><td><b>'+esc(nm)+'</b><br><span class="ap-email-cell" style="font-size:.7rem;">'+esc(x.profile.email||'')+'</span></td><td>'+esc(ct)+'</td><td>'+(x.is_active?'<span class="ap-badge success">✅ نشط</span>':'<span class="ap-badge pending">⏸️ غير مفعل</span>')+'</td><td style="line-height:1.8;font-size:.72rem;">'+(ls||'<span style="color:#999;">لا توجد صلاحيات</span>')+'</td><td style="white-space:nowrap;"><button type="button" class="ap-btn ap-btn-primary" data-aa-edit="'+x.id+'">✏️ تعديل</button> <button type="button" class="ap-btn '+(x.is_active?'ap-btn-danger':'ap-btn-success')+'" data-aa-toggle="'+x.id+'" data-aa-active="'+(x.is_active?'1':'0')+'">'+(x.is_active?'🗑️ تعطيل':'✅ تفعيل')+'</button></td></tr>';
-      }).join('')+'</tbody></table></div>';
-      body.querySelectorAll('[data-aa-edit]').forEach(function(b){b.onclick=function(){window._bsmAAEdit(Number(b.getAttribute('data-aa-edit')));};});
-      body.querySelectorAll('[data-aa-toggle]').forEach(function(b){b.onclick=async function(){var id=Number(b.getAttribute('data-aa-toggle')),active=b.getAttribute('data-aa-active')==='1';try{var rr=await db().from('section_admins').update({is_active:!active}).eq('id',id);if(rr.error)throw rr.error;toast(active?'✅ تم تعطيل المساعد':'✅ تم تفعيل المساعد','success');assistantRender();}catch(e){toast('❌ '+(e.message||e),'error');}};});
-    }).catch(function(e){body.innerHTML='<div class="ap-empty" style="color:#e74c3c;">❌ '+esc(e.message||e)+'</div>';});
-  }
-  window._bsmAAEdit=async function(id){
-    var d=db(),r=await d.from('section_admins').select('id,user_id,section_id,is_active,role,permissions').eq('id',id).maybeSingle();
-    if(r.error)throw r.error;if(!r.data)throw new Error('السجل غير موجود');
-    var p=await d.from('profiles').select('id,email,full_name,role').eq('id',r.data.user_id).maybeSingle();
-    var m=document.getElementById('bsm-aa-modal');if(!m)return;
-    m.style.display='flex';document.body.style.overflow='hidden';
-    var cs=document.getElementById('bsm-aa-course');if(cs)cs.value=String(r.data.section_id);
-    document.getElementById('bsm-aa-title').textContent='✏️ تعديل الأدمن المساعد';
-    var sel=document.getElementById('bsm-aa-selected');if(sel){sel.style.display='block';sel.innerHTML='✅ <b>'+esc((p.data&&p.data.full_name)||r.data.user_id)+'</b> — '+esc((p.data&&p.data.email)||'');}
-    var search=document.getElementById('bsm-aa-search');if(search)search.value='';
-    var perm=r.data.permissions||{};document.querySelectorAll('#bsm-aa-perms input[data-aa-perm]').forEach(function(x){var k=x.getAttribute('data-aa-perm');x.checked=perm[k]!==undefined?!!perm[k]:true;});
-    window.__bsmAAEditId=id;window.__bsmAASelectedUser={id:r.data.user_id};
-  };
-
-  /* Override the private aaSave/aaLoad behavior with a schema-compatible path. */
-  window._bsmAASave=async function(){
-    var d=db(),msg=document.getElementById('bsm-aa-msg'),cid=Number((document.getElementById('bsm-aa-course')||{}).value||window._branchAdminCourseId||window._activeSectionId||0),u=window.__bsmAASelectedUser;
-    if(!d||!cid){return;}
-    if(!u||!u.id){toast('⚠️ اختر حساب المستخدم أولاً','warning');return;}
-    var perms={};document.querySelectorAll('#bsm-aa-perms input[data-aa-perm]').forEach(function(x){perms[x.getAttribute('data-aa-perm')]=!!x.checked;});
-    perms.can_manage_admins=false;perms.manage_chats=perms.can_manage_section_chat===true;perms.assistant_assignment=true;
-    try{
-      if(window.__bsmAAEditId){var up=await d.from('section_admins').update({user_id:u.id,section_id:cid,role:'admin',is_active:true,permissions:perms}).eq('id',window.__bsmAAEditId);if(up.error)throw up.error;}
-      else{var up2=await d.from('section_admins').upsert({user_id:u.id,section_id:cid,role:'admin',is_active:true,permissions:perms},{onConflict:'user_id,section_id'});if(up2.error)throw up2.error;}
-      toast('✅ تم حفظ الأدمن المساعد وصلاحياته','success');
-      var m=document.getElementById('bsm-aa-modal');if(m)m.style.display='none';document.body.style.overflow='';window.__bsmAAEditId=null;window.__bsmAASelectedUser=null;assistantRender();
-    }catch(e){if(msg)msg.textContent='❌ '+(e.message||e);toast('❌ '+(e.message||e),'error');}
-  };
-
-  /* Search after two characters in profiles; include student accounts and never
-     offer platform admins/branch admins as assistants. */
-  window._bsmAASearch=async function(q){
-    var box=document.getElementById('bsm-aa-results'),d=db();q=(q||'').trim();if(!box||!d)return;
-    if(q.length<2){box.innerHTML='';return;}
-    box.innerHTML='<div class="ap-loading" style="padding:6px;">⏳ جاري البحث...</div>';
-    try{
-      var safe=q.replace(/[%,]/g,'\$&'),r=await d.from('profiles').select('id,email,full_name,role').or('email.ilike.%'+safe+'%,full_name.ilike.%'+safe+'%').limit(20);
-      if(r.error)throw r.error;
-      var rows=(r.data||[]).filter(function(p){return p.id!==((window._currentAuthUser&&window._currentAuthUser.id)||'')&&['admin','branch_admin'].indexOf(String(p.role||'').toLowerCase())===-1;});
-      box.innerHTML=rows.length?rows.map(function(p){return '<div data-bsm-aa-user="'+esc(p.id)+'" style="display:flex;align-items:center;justify-content:space-between;padding:8px;border:1px solid #e7edf2;border-radius:8px;margin-bottom:5px;cursor:pointer;"><div><b style="font-size:.8rem;">'+esc(p.full_name||p.email||'مستخدم')+'</b><br><span style="font-size:.68rem;color:#888;">'+esc(p.email||'')+'</span></div><span class="ap-btn ap-btn-ghost" style="padding:4px 8px;">اختيار</span></div>';}).join(''):'<div class="ap-empty" style="padding:8px;">لا توجد نتائج. تأكد أن الحساب سجّل دخول من قبل.</div>';
-      box.querySelectorAll('[data-bsm-aa-user]').forEach(function(el){el.onclick=function(){var p=rows.find(function(x){return String(x.id)===String(el.getAttribute('data-bsm-aa-user'));});if(!p)return;window.__bsmAASelectedUser=p;var s=document.getElementById('bsm-aa-selected');if(s){s.style.display='block';s.innerHTML='✅ <b>'+esc(p.full_name||p.email)+'</b> — '+esc(p.email||'');}box.innerHTML='';var i=document.getElementById('bsm-aa-search');if(i)i.value='';};});
-    }catch(e){box.innerHTML='<div class="ap-empty" style="color:#e74c3c;">❌ '+esc(e.message||e)+'</div>';};
-  };
-
-  function wireAssistantUI(){
-    var s=document.getElementById('bsm-aa-search');if(s&&!s.__bsmFinalBound){s.__bsmFinalBound=true;s.oninput=function(){window._bsmAASearch(this.value);};}
-    var save=document.getElementById('bsm-aa-save');if(save&&!save.__bsmFinalBound){save.__bsmFinalBound=true;save.onclick=window._bsmAASave;}
-    var add=document.getElementById('bsm-aa-add');if(add&&!add.__bsmFinalBound){add.__bsmFinalBound=true;add.onclick=function(){window.__bsmAAEditId=null;window.__bsmAASelectedUser=null;var m=document.getElementById('bsm-aa-modal');if(m){m.style.display='flex';document.body.style.overflow='hidden';}document.getElementById('bsm-aa-title').textContent='➕ إضافة أدمن مساعد';document.getElementById('bsm-aa-selected').style.display='none';document.getElementById('bsm-aa-search').value='';document.getElementById('bsm-aa-results').innerHTML='';document.querySelectorAll('#bsm-aa-perms input[data-aa-perm]').forEach(function(x){x.checked=true;});};}
-    var ref=document.getElementById('bsm-aa-refresh');if(ref&&!ref.__bsmFinalBound){ref.__bsmFinalBound=true;ref.onclick=assistantRender;}
-    var close=document.getElementById('bsm-aa-close');if(close&&!close.__bsmFinalBound){close.__bsmFinalBound=true;close.onclick=function(){var m=document.getElementById('bsm-aa-modal');if(m)m.style.display='none';document.body.style.overflow='';window.__bsmAAEditId=null;window.__bsmAASelectedUser=null;};}
-  }
-
-  /* Final navigation override: the last legacy wrapper previously sent
-     assistantAdmins to baLoadGrades. That is why the new assistant panel
-     looked empty. */
-  var oldNav=window.apSwitchTab;
-  window.apSwitchTab=function(tab){
-    if(tab==='assistantAdmins'||tab==='courseAssistants'){
-      document.querySelectorAll('.ap-tab-panel').forEach(function(x){x.classList.remove('active');});
-      var p=document.getElementById('bsm-aa-panel');if(p)p.classList.add('active');
-      document.querySelectorAll('.ap-nav-btn').forEach(function(x){x.classList.remove('active');});
-      var n=document.getElementById('ap-tab-assistantAdmins');if(n)n.classList.add('active');
-      wireAssistantUI();
-      var sel=document.getElementById('bsm-aa-course');
-      if(sel&&sel.options.length===0&&typeof window._bsmAAInit==='function')window._bsmAAInit().then(assistantRender).catch(function(e){console.error('[AA INIT]',e);});
-      else {if(sel&&sel.value)assistantRender();else if(typeof window._bsmAAInit==='function')window._bsmAAInit().then(assistantRender).catch(function(e){console.error('[AA INIT]',e);});}
-      return Promise.resolve();
-    }
-    return typeof oldNav==='function'?oldNav.apply(this,arguments):undefined;
-  };
-
-  function boot(){wireAssistantUI();patchRejectedGate();}
-  document.addEventListener('DOMContentLoaded',boot);window.addEventListener('load',boot);setTimeout(boot,800);setTimeout(boot,2500);
-})();
-</script>
-
-<script>
-/* BSM FINAL DM PAIR-FIRST + ASSISTANT VISIBILITY — 2026-08-29
-   No database schema/RLS changes. */
-(function(){
-  'use strict';
-  if(window.__BSM_FINAL_DM_PAIR_FIRST_20260829)return;
-  window.__BSM_FINAL_DM_PAIR_FIRST_20260829=true;
-  function db(){return window.supabase||null;}
-  function esc(v){return typeof window._apEsc==='function'?window._apEsc(v==null?'':String(v)):String(v==null?'':v).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
-  function toast(m,t){if(typeof window._showToast==='function')window._showToast(m,t||'info');}
-
-  /* If a pair room already exists, open it directly and never call the broken
-     legacy RPC. This preserves old messages and avoids the 409 path entirely. */
-  async function findPairRoom(me,other,sectionId){
-    var d=db();if(!d||!me||!other)return null;
-    try{
-      var a=await d.from('chat_room_participants').select('room_id').eq('user_id',me).limit(500);
-      if(a.error||!a.data||!a.data.length)return null;
-      var ids=a.data.map(function(x){return x.room_id;}).filter(Boolean);if(!ids.length)return null;
-      var b=await d.from('chat_room_participants').select('room_id').in('room_id',ids).eq('user_id',other).limit(100);
-      if(b.error||!b.data||!b.data.length)return null;
-      var pair=b.data.map(function(x){return x.room_id;}).filter(Boolean);if(!pair.length)return null;
-      var r=await d.from('chat_rooms').select('id,room_name,room_type,created_at').in('id',pair).eq('room_type','direct').order('id');
-      if(r.error||!r.data||!r.data.length)return null;
-      var prefix='DM:'+String(sectionId)+':';
-      return r.data.find(function(x){return String(x.room_name||'').indexOf(prefix)===0;})||r.data[0]||null;
-    }catch(e){return null;}
-  }
-  var baseOpen=window.openDirectChat;
-  if(typeof baseOpen==='function'&&!window.__BSM_FINAL_DM_WRAPPED){
-    window.__BSM_FINAL_DM_WRAPPED=true;
-    window.openDirectChat=async function(otherUserId,displayNameHint,knownRoomId,sectionId){
-      if(!knownRoomId&&otherUserId&&sectionId){
-        try{
-          var d=db(),sr=typeof window._getSessionSafe==='function'?await window._getSessionSafe(8000):await d.auth.getSession(),me=sr&&sr.data&&sr.data.session&&sr.data.session.user;
-          if(me){
-            var existing=await findPairRoom(me.id,otherUserId,sectionId);
-            if(existing)return await baseOpen(otherUserId,displayNameHint,existing.id,sectionId);
-          }
-        }catch(e){console.warn('[DM pair-first]',e&&e.message);}
-      }
-      return await baseOpen.apply(this,arguments);
-    };
-  }
-
-  /* Keep the assistant panel aligned with the actual DB rows: a student-profile
-     section_admins row with role=admin is the legacy assignment format used by
-     the current database. Show it (including inactive) so it can be reactivated. */
-  async function refreshAssistantPanel(){
-    if(typeof window._bsmAAList!=='function')return;
-    var cid=Number((document.getElementById('bsm-aa-course')||{}).value||window._branchAdminCourseId||window._activeSectionId||0);
-    if(!cid)return;
-    var body=document.getElementById('bsm-aa-body');if(!body)return;
-    try{
-      var rows=await window._bsmAAList(cid);
-      if(!rows.length){body.innerHTML='<div class="ap-empty">لا يوجد أدمن مساعد مسجل لهذا الكورس حاليًا.</div>';return;}
-      var labels=[['can_view_stats','الإحصائيات'],['can_manage_materials','المواد'],['can_manage_chapters','المحتوى'],['can_manage_subscriptions','الاشتراكات'],['can_manage_payments','المدفوعات'],['can_manage_section_chat','محادثة الكورس'],['can_delete_section_messages','حذف الرسائل']];
-      var c=document.getElementById('bsm-aa-course'),ct=c&&c.options[c.selectedIndex]?c.options[c.selectedIndex].textContent:('#'+cid);
-      body.innerHTML='<div class="ap-table-wrap"><table class="ap-table"><thead><tr><th>المساعد</th><th>الكورس</th><th>الحالة</th><th>الصلاحيات الحالية</th><th>الإجراءات</th></tr></thead><tbody>'+rows.map(function(x){
-        var q=x.permissions||{},p=x.profile||{},ls=labels.filter(function(a){return q[a[0]]===true;}).map(function(a){return '<span class="ap-badge user" style="margin:2px;">'+esc(a[1])+'</span>';}).join('');
-        return '<tr><td><b>'+esc(p.full_name||p.email||x.user_id)+'</b><br><span class="ap-email-cell" style="font-size:.7rem;">'+esc(p.email||'')+'</span></td><td>'+esc(ct)+'</td><td>'+(x.is_active?'<span class="ap-badge success">✅ نشط</span>':'<span class="ap-badge pending">⏸️ غير مفعل</span>')+'</td><td style="line-height:1.8;font-size:.72rem;">'+(ls||'<span style="color:#999;">لا توجد صلاحيات</span>')+'</td><td><button type="button" class="ap-btn ap-btn-primary" data-final-aa-edit="'+x.id+'">✏️ تعديل</button> <button type="button" class="ap-btn '+(x.is_active?'ap-btn-danger':'ap-btn-success')+'" data-final-aa-toggle="'+x.id+'" data-final-aa-active="'+(x.is_active?'1':'0')+'">'+(x.is_active?'🗑️ تعطيل':'✅ تفعيل')+'</button></td></tr>';
-      }).join('')+'</tbody></table></div>';
-      body.querySelectorAll('[data-final-aa-edit]').forEach(function(b){b.onclick=function(){if(typeof window._bsmAAEdit==='function')window._bsmAAEdit(Number(b.getAttribute('data-final-aa-edit')));};});
-      body.querySelectorAll('[data-final-aa-toggle]').forEach(function(b){b.onclick=async function(){var id=Number(b.getAttribute('data-final-aa-toggle')),active=b.getAttribute('data-final-aa-active')==='1';try{var r=await db().from('section_admins').update({is_active:!active}).eq('id',id);if(r.error)throw r.error;toast(active?'✅ تم تعطيل المساعد':'✅ تم تفعيل المساعد','success');refreshAssistantPanel();}catch(e){toast('❌ '+(e.message||e),'error');}};});
-    }catch(e){body.innerHTML='<div class="ap-empty" style="color:#e74c3c;">❌ '+esc(e.message||e)+'</div>';}
-  }
-  window._bsmRefreshAssistantPanel=refreshAssistantPanel;
-})();
-</script>
-<script>
-(function(){
-  'use strict';
-  if(window.__BSM_FINAL_20260829_DB_ALIGNED_V5)return;
-  window.__BSM_FINAL_20260829_DB_ALIGNED_V5=true;
-  var DB=function(){return window.supabase||null;};
-  var esc=function(v){return typeof window._apEsc==='function'?window._apEsc(v==null?'':String(v)):String(v==null?'':v).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});};
-  var toast=function(m,t){if(typeof window._showToast==='function')window._showToast(m,t||'info');};
-
-  /* ============================================================
-     DM: the live DB has UNIQUE(section_id) twice. Direct rooms must
-     therefore remain section_id=NULL. Prefer a pair-specific room and
-     only fall back to the legacy RPC for databases where direct inserts
-     are not allowed by RLS. No existing room/data is deleted.
-  ============================================================ */
-  async function findPairSpecificRoom(db,meId,otherId,sectionId){
-    if(!db||!meId||!otherId)return null;
-    var a=await db.from('chat_room_participants').select('room_id').eq('user_id',meId).limit(500);
-    if(a.error||!a.data||!a.data.length)return null;
-    var ids=a.data.map(function(x){return x.room_id;}).filter(Boolean);
-    if(!ids.length)return null;
-    var rooms=await db.from('chat_rooms').select('id,room_name,room_type,section_id,created_at').in('id',ids).eq('room_type','direct').order('id');
-    if(rooms.error||!rooms.data||!rooms.data.length)return null;
-    var exact='DM:'+String(sectionId)+':';
-    var candidates=rooms.data.filter(function(r){return String(r.room_name||'').indexOf(exact)===0;});
-    for(var i=0;i<candidates.length;i++){
-      var pr=await db.from('chat_room_participants').select('room_id').eq('room_id',candidates[i].id).eq('user_id',otherId).limit(1);
-      if(!pr.error&&pr.data&&pr.data.length)return candidates[i];
-    }
-    return null;
-  }
-  async function createPairSpecificRoom(db,meId,otherId,sectionId){
-    var existing=await findPairSpecificRoom(db,meId,otherId,sectionId);
-    if(existing)return existing;
-    var a=String(meId),b=String(otherId),lo=a<b?a:b,hi=a<b?b:a;
-    var roomName='DM:'+String(sectionId)+':'+lo+':'+hi;
-    var ins=await db.from('chat_rooms').insert([{room_name:roomName,room_type:'direct',section_id:null}]).select('*').single();
-    if(ins.error){
-      var again=await findPairSpecificRoom(db,meId,otherId,sectionId);
-      if(again)return again;
-      throw ins.error;
-    }
-    var room=ins.data;
-    var p1=await db.from('chat_room_participants').insert([{room_id:room.id,user_id:meId},{room_id:room.id,user_id:otherId}]);
-    if(p1.error){
-      /* Never delete the room here: user explicitly asked to preserve data. */
-      throw p1.error;
-    }
-    return room;
-  }
-  async function getDirectRoomWithoutBrokenRPC(otherUserId,sectionId){
-    var db=DB();
-    var sr=typeof window._getSessionSafe==='function'?await window._getSessionSafe(8000):await db.auth.getSession();
-    var me=sr&&sr.data&&sr.data.session&&sr.data.session.user;
-    if(!me)throw new Error('يجب تسجيل الدخول أولاً');
-    var existing=await findPairSpecificRoom(db,me.id,otherUserId,sectionId);
-    if(existing)return existing;
-    try{return await createPairSpecificRoom(db,me.id,otherUserId,sectionId);}
-    catch(e){
-      var msg=String(e&&e.message||'');
-      /* If client RLS blocks direct creation, preserve compatibility for already-authorized users. */
-      if(/row-level security|permission denied|not allowed|violates row-level/i.test(msg)){
-        var rpc=await db.rpc('get_or_create_direct_room',{p_other_user_id:otherUserId,p_section_id:Number(sectionId)});
-        if(!rpc.error&&rpc.data)return rpc.data;
-        throw rpc.error||e;
-      }
-      throw e;
-    }
-  }
-  if(typeof window.openDirectChat==='function'&&!window.__BSM_DM_FINAL_V5){
-    var baseOpen=window.openDirectChat;
-    window.openDirectChat=async function(otherUserId,displayNameHint,knownRoomId,sectionId){
-      if(!knownRoomId&&otherUserId&&sectionId){
-        try{
-          var room=await getDirectRoomWithoutBrokenRPC(otherUserId,sectionId);
-          if(room)return await baseOpen.call(this,otherUserId,displayNameHint,room.id,sectionId);
-        }catch(e){
-          console.error('[DM] direct-room creation failed:',e&&e.message);
-          toast('❌ تعذر فتح المحادثة الخاصة: '+(e&&e.message||'تحقق من صلاحيات المحادثات'),'error');
-          return;
-        }
-      }
-      return baseOpen.apply(this,arguments);
-    };
-    window.__BSM_DM_FINAL_V5=true;
-  }
-
-  /* ============================================================
-     Paid content: verify admin bypass from the DB, not stale frontend
-     state. This specifically prevents an inactive section_admins row
-     from opening paid content. Rejected/cancelled/pending stay locked.
-  ============================================================ */
-  async function activeAdminForCourse(uid,courseId){
-    var db=DB();if(!db||!uid||!courseId)return false;
-    try{
-      var r=await db.from('section_admins').select('id,role,is_active').eq('user_id',uid).eq('section_id',Number(courseId)).eq('is_active',true).in('role',['admin','owner']).limit(1);
-      if(!r.error&&r.data&&r.data.length)return true;
-      var p=await db.from('profiles').select('role').eq('id',uid).maybeSingle();
-      return !p.error&&p.data&&p.data.role==='admin';
-    }catch(e){return false;}
-  }
-  async function strictGateV5(sectionId){
-    var db=DB();if(!db)return null;
-    var id=Number(sectionId);if(!Number.isFinite(id))return null;
-    var chain=[],cur=id,seen={};
-    for(var i=0;i<20&&cur&&!seen[cur];i++){
-      seen[cur]=true;
-      var r=await db.from('site_sections').select('id,title,parent_id,requires_subscription,type').eq('id',cur).maybeSingle();
-      if(r.error||!r.data)break;
-      chain.push(r.data);
-      if(r.data.parent_id==null)break;
-      cur=Number(r.data.parent_id)||0;
-    }
-    var paid=chain.find(function(x){return x.requires_subscription===true;});
-    if(!paid)return null;
-    var sess=typeof window._getSessionSafe==='function'?await window._getSessionSafe(8000):await db.auth.getSession();
-    var u=sess&&sess.data&&sess.data.session&&sess.data.session.user;
-    if(!u)return {state:'guest',access:'guest',anchor:paid};
-    if(await activeAdminForCourse(u.id,paid.id))return null;
-    if(typeof window._isFreePreviewSection==='function'){
-      try{if(await window._isFreePreviewSection(id))return null;}catch(e){}
-    }
-    var rsub=await db.from('subscriptions').select('id,payment_status,start_date,end_date,reject_reason,requested_at,created_at,updated_at').eq('user_id',u.id).eq('section_id',Number(paid.id)).order('requested_at',{ascending:false,nullsFirst:false}).order('created_at',{ascending:false}).order('id',{ascending:false}).limit(1);
-    if(rsub.error)throw rsub.error;
-    var row=rsub.data&&rsub.data[0]||null;
-    if(row&&row.payment_status==='active'&&(!row.end_date||new Date(row.end_date).getTime()>=Date.now()))return null;
-    var state=row&&row.payment_status==='pending'?'pending':(row&&row.payment_status==='rejected'?'rejected':(row&&row.payment_status==='cancelled'?'rejected':(row?'expired':'none')));
-    return {state:state,access:state,anchor:paid,row:row,user:u,reject_reason:row&&row.reject_reason||''};
-  }
-  window.checkSectionAccess=strictGateV5;
-  window.getDetailedSectionAccess=async function(sectionId){var g=await strictGateV5(sectionId);return g||{state:'free',anchor:null};};
-
-  /* ============================================================
-     Assistant manager: actual DB uses role='admin' for assistant rows,
-     and the assistant account can have profiles.role='student'. Show
-     inactive rows too, including existing row 24. Save role='admin'.
-  ============================================================ */
-  function assistantCanManage(){
-    return !!(window._isSuperAdmin||window._currentUserRole==='admin'||window._branchAdminActiveRole==='owner'||(window._branchAdminPerms&&window._branchAdminPerms.can_manage_admins===true));
-  }
-  function currentAssistantCourse(){return Number(window._branchAdminCourseId||window._activeSectionId||((window._branchAdminOwnSectionIds||[])[0])||0);}
-  async function assistantCourses(){
-    var db=DB();if(!db)return[];
-    if(window._isSuperAdmin||window._currentUserRole==='admin'){
-      var all=await db.from('site_sections').select('id,title,icon').eq('type','course').order('title');
-      if(all.error)throw all.error;return all.data||[];
-    }
-    var id=currentAssistantCourse();
-    if(!id)return[];
-    var one=await db.from('site_sections').select('id,title,icon').eq('id',id).maybeSingle();
-    if(one.error)throw one.error;return one.data?[one.data]:[];
-  }
-  async function assistantRows(cid){
-    var db=DB();
-    var r=await db.from('section_admins').select('id,user_id,section_id,is_active,role,permissions').eq('section_id',Number(cid)).in('role',['admin','assistant']).order('id');
-    if(r.error)throw r.error;
-    var rows=r.data||[],ids=rows.map(function(x){return x.user_id;}).filter(Boolean),pm={};
-    if(ids.length){var p=await db.from('profiles').select('id,email,full_name,role').in('id',ids);if(p.error)throw p.error;(p.data||[]).forEach(function(x){pm[x.id]=x;});}
-    return rows.map(function(x){x.profile=pm[x.user_id]||{};x.isAssistant=String(x.role)==='assistant'||['student','user'].indexOf(String(x.profile.role||'').toLowerCase())!==-1;return x;}).filter(function(x){return x.isAssistant;});
-  }
-  function assistantPermLabels(q){
-    var labels=[['can_view_stats','الإحصائيات'],['can_manage_materials','المواد'],['can_manage_chapters','المحتوى'],['can_manage_subscriptions','الاشتراكات'],['can_manage_payments','المدفوعات'],['can_manage_section_chat','محادثة الكورس'],['can_delete_section_messages','حذف رسائل الكورس']];
-    return labels.filter(function(a){return q&&q[a[0]]===true;}).map(function(a){return '<span class="ap-badge user" style="margin:2px;">'+esc(a[1])+'</span>';}).join('');
-  }
-  async function assistantRenderV5(){
-    var body=document.getElementById('bsm-aa-body'),sel=document.getElementById('bsm-aa-course'),cid=Number((sel&&sel.value)||currentAssistantCourse());
-    if(!body||!cid)return;
-    body.innerHTML='<div class="ap-loading"><div class="spinner"></div> جاري تحميل الأدمن المساعدين...</div>';
-    try{
-      var rows=await assistantRows(cid),ct=sel&&sel.options[sel.selectedIndex]?sel.options[sel.selectedIndex].textContent:('#'+cid);
-      if(!rows.length){body.innerHTML='<div class="ap-empty">لا يوجد أدمن مساعد مسجل لهذا الكورس حاليًا.</div>';return;}
-      body.innerHTML='<div class="ap-table-wrap"><table class="ap-table"><thead><tr><th>المساعد</th><th>الكورس</th><th>الحالة</th><th>الصلاحيات الحالية</th><th>الإجراءات</th></tr></thead><tbody>'+rows.map(function(x){
-        var p=x.profile||{},q=x.permissions||{},nm=p.full_name||p.email||x.user_id;
-        return '<tr><td><b>'+esc(nm)+'</b><br><span class="ap-email-cell" style="font-size:.7rem;">'+esc(p.email||'')+'</span></td><td>'+esc(ct)+'</td><td>'+(x.is_active?'<span class="ap-badge success">✅ نشط</span>':'<span class="ap-badge pending">⏸️ غير مفعل</span>')+'</td><td style="line-height:1.8;font-size:.72rem;">'+(assistantPermLabels(q)||'<span style="color:#999;">لا توجد صلاحيات</span>')+'</td><td style="white-space:nowrap;"><button type="button" class="ap-btn ap-btn-primary" data-bsm-v5-edit="'+x.id+'">✏️ تعديل</button> <button type="button" class="ap-btn '+(x.is_active?'ap-btn-danger':'ap-btn-success')+'" data-bsm-v5-toggle="'+x.id+'" data-active="'+(x.is_active?'1':'0')+'">'+(x.is_active?'🗑️ تعطيل':'✅ تفعيل')+'</button></td></tr>';
-      }).join('')+'</tbody></table></div>';
-      body.querySelectorAll('[data-bsm-v5-edit]').forEach(function(b){b.onclick=function(){assistantOpenV5(Number(b.getAttribute('data-bsm-v5-edit')));};});
-      body.querySelectorAll('[data-bsm-v5-toggle]').forEach(function(b){b.onclick=async function(){try{var id=Number(b.getAttribute('data-bsm-v5-toggle')),active=b.getAttribute('data-active')==='1',u=await DB().from('section_admins').update({is_active:!active}).eq('id',id);if(u.error)throw u.error;toast(active?'✅ تم تعطيل المساعد':'✅ تم تفعيل المساعد','success');assistantRenderV5();}catch(e){toast('❌ '+(e.message||e),'error');}};});
-    }catch(e){body.innerHTML='<div class="ap-empty" style="color:#e74c3c;">❌ '+esc(e.message||e)+'</div>';}
-  }
-  function resetPerms(perms){document.querySelectorAll('#bsm-aa-perms input[data-aa-perm]').forEach(function(x){var k=x.getAttribute('data-aa-perm');x.checked=perms&&perms[k]!==undefined?!!perms[k]:true;});}
-  async function assistantOpenV5(id){
-    var db=DB(),m=document.getElementById('bsm-aa-modal');if(!db||!m)return;
-    window.__bsmAAEditId=id||null;window.__bsmAASelectedUser=null;
-    document.getElementById('bsm-aa-title').textContent=id?'✏️ تعديل الأدمن المساعد':'➕ إضافة أدمن مساعد';
-    var courseSel=document.getElementById('bsm-aa-course'),changeWrap=document.getElementById('bsm-aa-change-course-wrap'),changeSel=document.getElementById('bsm-aa-change-course');
-    if(changeWrap)changeWrap.style.display='none';
-    var rows=[];
-    if(id){
-      var r=await db.from('section_admins').select('id,user_id,section_id,is_active,role,permissions').eq('id',id).maybeSingle();
-      if(r.error)throw r.error;if(!r.data)throw new Error('السجل غير موجود');
-      if(!(String(r.data.role)==='admin'||String(r.data.role)==='assistant'))throw new Error('السجل المحدد ليس أدمن مساعدًا');
-      var p=await db.from('profiles').select('id,email,full_name,role').eq('id',r.data.user_id).maybeSingle();if(p.error)throw p.error;
-      window.__bsmAASelectedUser=p.data||{id:r.data.user_id};
-      if(courseSel)courseSel.value=String(r.data.section_id);
-      if(changeWrap&&(window._isSuperAdmin||window._currentUserRole==='admin')){
-        rows=await assistantCourses();changeWrap.style.display='block';changeSel.innerHTML=rows.map(function(x){return '<option value="'+x.id+'">'+esc(x.title)+'</option>';}).join('');changeSel.value=String(r.data.section_id);
-      }
-      var sb=document.getElementById('bsm-aa-selected');if(sb){sb.style.display='block';sb.innerHTML='✅ <b>'+esc((p.data&&p.data.full_name)||r.data.user_id)+'</b> — '+esc((p.data&&p.data.email)||'')+' <span style="color:#777;">('+ (r.data.is_active?'نشط':'غير مفعل') +')</span>';}
-      resetPerms(r.data.permissions||{});
-    }else{
-      if(courseSel)courseSel.value=String(currentAssistantCourse());
-      var sb2=document.getElementById('bsm-aa-selected');if(sb2){sb2.style.display='none';sb2.innerHTML='';}
-      var search=document.getElementById('bsm-aa-search');if(search)search.value='';var res=document.getElementById('bsm-aa-results');if(res)res.innerHTML='';resetPerms({});
-    }
-    var note=document.getElementById('bsm-aa-course-note');if(note)note.textContent='الكورس الحالي: '+(courseSel&&courseSel.options[courseSel.selectedIndex]?courseSel.options[courseSel.selectedIndex].textContent:'#'+(courseSel&&courseSel.value||currentAssistantCourse()));
-    var search2=document.getElementById('bsm-aa-search');if(search2)search2.focus();
-    m.style.display='flex';document.body.style.overflow='hidden';
-  }
-  async function assistantSearchV5(q){
-    var box=document.getElementById('bsm-aa-results'),db=DB();q=(q||'').trim();if(!box||!db)return;
-    if(q.length<2){box.innerHTML='';return;}
-    box.innerHTML='<div class="ap-loading" style="padding:6px;">⏳ جاري البحث...</div>';
-    try{
-      var safe=q.replace(/[%,]/g,'\\$&');
-      var r=await db.from('profiles').select('id,email,full_name,role').or('email.ilike.%'+safe+'%,full_name.ilike.%'+safe+'%').limit(20);
-      if(r.error)throw r.error;
-      var me=(window._currentAuthUser&&window._currentAuthUser.id)||'';
-      var rows=(r.data||[]).filter(function(p){return String(p.id)!==String(me)&&['admin','branch_admin'].indexOf(String(p.role||'').toLowerCase())===-1;});
-      box.innerHTML=rows.length?rows.map(function(p){return '<div data-bsm-v5-user="'+esc(p.id)+'" style="display:flex;align-items:center;justify-content:space-between;padding:8px;border:1px solid #e7edf2;border-radius:8px;margin-bottom:5px;cursor:pointer;"><div><b style="font-size:.8rem;">'+esc(p.full_name||p.email||'مستخدم')+'</b><br><span style="font-size:.68rem;color:#888;">'+esc(p.email||'')+'</span></div><span class="ap-btn ap-btn-ghost" style="padding:4px 8px;">اختيار</span></div>';}).join(''):'<div class="ap-empty" style="padding:8px;">لا توجد نتائج. البحث يعمل في الحسابات الموجودة بجدول المستخدمين.</div>';
-      box.querySelectorAll('[data-bsm-v5-user]').forEach(function(el){el.onclick=function(){var p=rows.find(function(x){return String(x.id)===String(el.getAttribute('data-bsm-v5-user'));});if(!p)return;window.__bsmAASelectedUser=p;var s=document.getElementById('bsm-aa-selected');if(s){s.style.display='block';s.innerHTML='✅ <b>'+esc(p.full_name||p.email||'مستخدم')+'</b> — '+esc(p.email||'');}box.innerHTML='';var inp=document.getElementById('bsm-aa-search');if(inp)inp.value='';};});
-    }catch(e){box.innerHTML='<div class="ap-empty" style="color:#e74c3c;">❌ '+esc(e.message||e)+'</div>';}
-  }
-  async function assistantSaveV5(){
-    var db=DB(),msg=document.getElementById('bsm-aa-msg'),sel=document.getElementById('bsm-aa-course'),cid=Number((document.getElementById('bsm-aa-change-course')||{}).value||((sel&&sel.value)||currentAssistantCourse())),u=window.__bsmAASelectedUser;
-    if(!assistantCanManage())return;
-    if(!u||!u.id){if(msg)msg.textContent='⚠️ اختر حساب المستخدم أولاً';return;}
-    var perms={};document.querySelectorAll('#bsm-aa-perms input[data-aa-perm]').forEach(function(x){perms[x.getAttribute('data-aa-perm')]=!!x.checked;});
-    perms.can_manage_admins=false;perms.manage_chats=perms.can_manage_section_chat===true;perms.assistant_assignment=true;
-    if(!window._isSuperAdmin&&window._currentUserRole!=='admin')cid=currentAssistantCourse();
-    if(!cid){if(msg)msg.textContent='⚠️ تعذر تحديد الكورس';return;}
-    if(msg){msg.style.color='#0a3d62';msg.textContent='⏳ جاري الحفظ...';}
-    try{
-      var id=window.__bsmAAEditId||null;
-      if(id){
-        var old=await db.from('section_admins').select('id,user_id,section_id,role').eq('id',id).maybeSingle();if(old.error)throw old.error;if(!old.data)throw new Error('السجل غير موجود');
-        if(!(String(old.data.role)==='admin'||String(old.data.role)==='assistant'))throw new Error('السجل ليس أدمن مساعدًا');
-        if(!window._isSuperAdmin&&window._currentUserRole!=='admin'&&Number(cid)!==Number(old.data.section_id))throw new Error('تغيير الكورس متاح لأدمن المنصة فقط');
-        var up=await db.from('section_admins').update({user_id:u.id,section_id:cid,role:'admin',is_active:true,permissions:perms}).eq('id',id);if(up.error)throw up.error;
-      }else{
-        var up2=await db.from('section_admins').upsert({user_id:u.id,section_id:cid,role:'admin',is_active:true,permissions:perms},{onConflict:'user_id,section_id'});if(up2.error)throw up2.error;
-      }
-      toast('✅ تم حفظ الأدمن المساعد وصلاحياته','success');
-      var m=document.getElementById('bsm-aa-modal');if(m)m.style.display='none';document.body.style.overflow='';window.__bsmAAEditId=null;window.__bsmAASelectedUser=null;await assistantRenderV5();
-    }catch(e){if(msg){msg.style.color='#e74c3c';msg.textContent='❌ '+esc(e.message||e);}toast('❌ '+(e.message||e),'error');}
-  }
-  function assistantBindV5(){
-    var add=document.getElementById('bsm-aa-add');if(add)add.onclick=function(){assistantOpenV5(null);};
-    var save=document.getElementById('bsm-aa-save');if(save)save.onclick=assistantSaveV5;
-    var ref=document.getElementById('bsm-aa-refresh');if(ref)ref.onclick=assistantRenderV5;
-    var close=document.getElementById('bsm-aa-close');if(close)close.onclick=function(){var m=document.getElementById('bsm-aa-modal');if(m)m.style.display='none';document.body.style.overflow='';window.__bsmAAEditId=null;window.__bsmAASelectedUser=null;};
-    var s=document.getElementById('bsm-aa-search');if(s)s.oninput=function(){assistantSearchV5(this.value);};
-    var c=document.getElementById('bsm-aa-course');if(c)c.onchange=function(){assistantRenderV5();};
-  }
-  window._bsmAAInit=async function(){
-    if(!assistantCanManage())return;
-    var sel=document.getElementById('bsm-aa-course');if(!sel)return;
-    var rows=await assistantCourses();sel.innerHTML=rows.length?rows.map(function(x){return '<option value="'+x.id+'">'+esc((x.icon||'🎓')+' '+(x.title||('#'+x.id)))+'</option>';}).join(''):'<option value="">لا توجد كورسات متاحة</option>';
-    if(rows.length){sel.value=String(currentAssistantCourse()&&rows.some(function(x){return Number(x.id)===currentAssistantCourse();})?currentAssistantCourse():rows[0].id);await assistantRenderV5();}
-  };
-  var prevNav=window.apSwitchTab;
-  window.apSwitchTab=function(tab){
-    if(tab==='assistantAdmins'||tab==='courseAssistants'){
-      if(!assistantCanManage()){toast('⛔ لا تملك صلاحية إدارة الأدمن المساعدين','error');return Promise.resolve();}
-      document.querySelectorAll('.ap-tab-panel').forEach(function(x){x.classList.remove('active');});
-      var p=document.getElementById('bsm-aa-panel');if(p)p.classList.add('active');
-      document.querySelectorAll('.ap-nav-btn').forEach(function(x){x.classList.remove('active');});
-      var n=document.getElementById('ap-tab-assistantAdmins');if(n)n.classList.add('active');
-      assistantBindV5();
-      return window._bsmAAInit().catch(function(e){var b=document.getElementById('bsm-aa-body');if(b)b.innerHTML='<div class="ap-empty" style="color:#e74c3c;">❌ '+esc(e.message||e)+'</div>';});
-    }
-    return typeof prevNav==='function'?prevNav.apply(this,arguments):undefined;
-  };
-  function boot(){
-    assistantBindV5();
-    var s=document.getElementById('bsm-aa-search');if(s)s.placeholder='اكتب أول حرفين من الاسم أو البريد للبحث في الحسابات التي سجلت دخول';
-  }
-  document.addEventListener('DOMContentLoaded',boot);window.addEventListener('load',boot);setTimeout(boot,1000);setTimeout(boot,3000);
-  console.log('%c[BSM FINAL V5] DB-aligned DM + paid gate + assistant manager loaded','color:#17a589;font-weight:800');
-})();
-
-</script>
-<script>
-/* BSM V6 — DM: never bypass the server RPC with a direct client INSERT.
-   The live RLS intentionally rejects direct chat_rooms INSERT from students. */
-(function(){
-  'use strict';
-  if(window.__BSM_V6_DM_SAFE)return;
-  window.__BSM_V6_DM_SAFE=true;
-  /* Keep the original openDirectChat/RPC path untouched.  This marker exists
-     so later duplicate fallback patches cannot be attached by this file. */
-  window.__BSM_DM_ALLOW_CLIENT_INSERT=false;
-})();
-</script>
-
-<script>
-/* BSM FINAL ATTACHMENT VIEWER — 2026-08-29
-   All chat attachments use short-lived signed URLs and the in-page viewer.
-   No Download button/attribute is exposed by the attachment UI. */
-(function(){
-  'use strict';
-  if(window.__BSM_FINAL_ATTACHMENT_VIEWER_V7)return;
-  window.__BSM_FINAL_ATTACHMENT_VIEWER_V7=true;
-
-  function kindFrom(path,type){
-    var t=String(type||'').toLowerCase().split(';')[0].trim();
-    if(/^video\//.test(t))return 'video';
-    if(/^audio\//.test(t))return 'audio';
-    if(/^image\//.test(t))return 'image';
-    if(t==='application/pdf')return 'pdf';
-    var e=String(path||'').split('?')[0].split('.').pop().toLowerCase();
-    var map={mp4:'video',mov:'video',webm:'video',mkv:'video',avi:'video','3gp':'video',
-      mp3:'audio',wav:'audio',m4a:'audio',ogg:'audio',aac:'audio',
-      jpg:'image',jpeg:'image',png:'image',webp:'image',gif:'image',svg:'image',bmp:'image',
-      pdf:'pdf'};
-    return map[e]||'file';
-  }
-  async function open(path,type,name,bucket){
-    var db=window.supabase;
-    if(!db||!path)return;
-    try{
-      var r=await db.storage.from(bucket).createSignedUrl(path,120);
-      if(r.error||!r.data||!r.data.signedUrl)throw(r.error||new Error('تعذر إنشاء رابط مؤقت'));
-      var url=r.data.signedUrl, kind=kindFrom(path,type);
-      if(kind==='video'||kind==='audio'||kind==='image'||kind==='pdf'){
-        if(window.ResourceViewer&&typeof window.ResourceViewer.open==='function'){
-          await window.ResourceViewer.open(url,name||'مرفق',kind==='video'?'video_direct':kind);
-          return;
-        }
-      }
-      // Other files: show an in-page informational card; never create a
-      // download link or download attribute.
-      var ov=document.createElement('div');
-      ov.style.cssText='position:fixed;inset:0;z-index:1000000;background:rgba(0,0,0,.72);display:flex;align-items:center;justify-content:center;padding:20px';
-      ov.innerHTML='<div style="max-width:440px;width:100%;background:#fff;border-radius:16px;padding:24px;text-align:center"><div style="font-size:3rem">📎</div><h3 style="margin:10px 0">'+esc(name||'ملف')+'</h3><p style="color:#667085">هذا النوع من الملفات لا يمكن عرضه داخل المتصفح. لا يوجد خيار تنزيل من واجهة المنصة.</p><button type="button" style="padding:10px 18px;border:0;border-radius:10px;cursor:pointer">إغلاق</button></div>';
-      ov.querySelector('button').onclick=function(){ov.remove();};
-      ov.onclick=function(e){if(e.target===ov)ov.remove();};
-      document.body.appendChild(ov);
-    }catch(e){
-      console.error('[AttachmentViewer]',e);
-      if(typeof window._showToast==='function')window._showToast('❌ تعذر فتح المرفق — قد لا تكون لديك صلاحية الوصول','error');
-    }
-  }
-  window._bsmOpenAttachmentInViewer=open;
-  if(typeof window._dmOpenAttachment==='function')window._dmOpenAttachment=function(path,type,name){return open(path,type,name,'chat-attachments');};
-  if(typeof window._chatOpenAttachment==='function')window._chatOpenAttachment=function(path,type,name){return open(path,type,name,'chat-attachments');};
-})();
-</script>
-
 </body>
 </html>
+
+<script>
+/* FINAL NAV SAFETY — لا يعتمد على متغيرات مختصرة مثل b خارج نطاقها. */
+(function(){
+  var _baseApSwitch = window.apSwitchTab;
+  window.apSwitchTab = async function(tab){
+    try {
+      if (tab === 'assistantAdmins' || tab === 'courseAssistants' || tab === 'branchadmins') {
+        document.querySelectorAll('.ap-tab-panel').forEach(function(x){x.classList.remove('active');});
+        var panel = document.getElementById('ap-panel-' + tab) || document.getElementById('ap-panel-branchadmins');
+        if (panel) panel.classList.add('active');
+        document.querySelectorAll('.ap-nav-btn').forEach(function(x){x.classList.remove('active');});
+        var nav = document.getElementById('ap-tab-' + tab) || document.getElementById('ap-tab-branchadmins');
+        if (nav) nav.classList.add('active');
+        if (typeof baLoadGrades === 'function') await baLoadGrades();
+        return;
+      }
+      if (typeof _baseApSwitch === 'function') return await _baseApSwitch.apply(this, arguments);
+    } catch (e) {
+      console.error('[NAV] apSwitchTab failed:', e);
+      var p = document.getElementById('ap-panel-' + tab);
+      if (p) p.classList.add('active');
+    }
+  };
+})();
+</script>
