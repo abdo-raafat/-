@@ -9,11 +9,6 @@
 <script>
 // GLOBAL DEBUG_MODE FIX: make the flag visible to later script blocks.
 var DEBUG_MODE = true; window.DEBUG_MODE = DEBUG_MODE;
-
-// Official desktop Electron token. DEBUG_MODE never bypasses App Gate.
-var BSM_DESKTOP_UA_TOKEN = 'BSMDesktopApp/1.0';
-window.BSM_DESKTOP_UA_TOKEN = BSM_DESKTOP_UA_TOKEN;
-
 (function () {
   const DEBUG_MODE = true;
   window.__BSM_DEBUG_MODE = DEBUG_MODE;
@@ -39,7 +34,7 @@ window.BSM_DESKTOP_UA_TOKEN = BSM_DESKTOP_UA_TOKEN;
       return false;
     } catch (e) { return false; }
   }
-  // تطبيق رسمي = Android App أو iOS Standalone PWA أو Electron Desktop App الرسمي.
+  // تطبيق رسمي = تطبيق أندرويد أو iOS مثبّت كـ Standalone PWA.
   window.isOfficialApp = function () {
     try {
       // Official Android app/WebView.
@@ -50,7 +45,7 @@ window.BSM_DESKTOP_UA_TOKEN = BSM_DESKTOP_UA_TOKEN;
 
       // Official desktop app/WebView only.
       var ua = navigator.userAgent || '';
-      if (ua.indexOf(window.BSM_DESKTOP_UA_TOKEN) !== -1 || window.BSMDesktopBridge) return true;
+      if (ua.indexOf('BSMDesktopApp/1.0') !== -1 || window.BSMDesktopBridge) return true;
 
       // Direct web browsers remain blocked.
       return false;
@@ -2933,7 +2928,7 @@ img, video {
 <div id="bsm-course-ad-modal" class="bsm-video-modal" style="display:none; position:fixed; inset:0; z-index:2147483647; background:rgba(0,0,0,.85); align-items:center; justify-content:center; padding:16px; direction:rtl; font-family:inherit; box-sizing:border-box;">
   <div style="position:relative; width:100%; max-width:560px; margin:0 auto; background:#000; border-radius:14px; overflow:hidden;">
     <button type="button" data-close-video-modal aria-label="إغلاق" style="position:absolute; top:8px; left:8px; z-index:2; background:rgba(0,0,0,.6); color:#fff; border:none; border-radius:50%; width:32px; height:32px; font-size:1.1rem; line-height:1; cursor:pointer; display:flex; align-items:center; justify-content:center;">✕</button>
-    <video id="bsm-course-ad-video" controls playsinline webkit-playsinline x5-playsinline preload="none" style="width:100%; max-height:80vh; display:block; background:#000;">
+    <video id="bsm-course-ad-video" controls playsinline webkit-playsinline x5-playsinline preload="auto" style="width:100%; max-height:80vh; display:block; background:#000;" onerror="window._bsmVideoError && window._bsmVideoError(this)">
       <source src="https://19bey0t9zc.ucarecd.net/665cd2e0-7eb4-4de6-b4fd-860ed9c23f5c/Record_20260824072212.mp4" type="video/mp4">
     </video>
   </div>
@@ -2943,11 +2938,44 @@ img, video {
 <div id="bsm-install-app-modal" class="bsm-video-modal" style="display:none; position:fixed; inset:0; z-index:2147483647; background:rgba(0,0,0,.85); align-items:center; justify-content:center; padding:16px; direction:rtl; font-family:inherit; box-sizing:border-box;">
   <div style="position:relative; width:100%; max-width:560px; margin:0 auto; background:#000; border-radius:14px; overflow:hidden;">
     <button type="button" data-close-video-modal aria-label="إغلاق" style="position:absolute; top:8px; left:8px; z-index:2; background:rgba(0,0,0,.6); color:#fff; border:none; border-radius:50%; width:32px; height:32px; font-size:1.1rem; line-height:1; cursor:pointer; display:flex; align-items:center; justify-content:center;">✕</button>
-    <video id="bsm-install-app-video" controls playsinline webkit-playsinline x5-playsinline preload="metadata" style="width:100%; max-height:80vh; display:block; background:#000;">
+    <video id="bsm-install-app-video" controls playsinline webkit-playsinline x5-playsinline preload="auto" style="width:100%; max-height:80vh; display:block; background:#000;" onerror="window._bsmVideoError && window._bsmVideoError(this)">
       <source src="https://19bey0t9zc.ucarecd.net/f7fd79ec-417c-42ae-84cc-7c3607f80ce3/WhatsAppVideo20260824at84018AM.mp4" type="video/mp4">
     </video>
   </div>
 </div>
+
+<script>
+(function () {
+  // لا نترك المستخدم أمام فيديو أسود و0:00 بدون تفسير إذا فشل تحميل الـCDN.
+  window._bsmVideoError = function (video) {
+    try {
+      var box = video.parentElement;
+      if (!box || box.querySelector('.bsm-video-error')) return;
+      var src = video.currentSrc || '';
+      if (!src) {
+        var source = video.querySelector('source');
+        src = source ? (source.src || source.getAttribute('src') || '') : '';
+      }
+      var msg = document.createElement('div');
+      msg.className = 'bsm-video-error';
+      msg.style.cssText = 'padding:12px 14px;background:#111;color:#fff;text-align:center;font-size:.82rem;line-height:1.6;';
+      msg.innerHTML = '⚠️ الفيديو لم يتم تحميله داخل التطبيق.<br><button type="button" style="margin-top:8px;padding:8px 14px;border:0;border-radius:8px;cursor:pointer;font-weight:700;">فتح الفيديو مباشرة</button>';
+      var btn = msg.querySelector('button');
+      btn.onclick = function () {
+        if (src) {
+          try {
+            var opener = window._origWindowOpen || window.open;
+            opener.call(window, src, '_blank', 'noopener,noreferrer');
+          } catch (e) {
+            window.location.href = src;
+          }
+        }
+      };
+      box.appendChild(msg);
+    } catch (e) {}
+  };
+})();
+</script>
 
 <script>
 (function () {
@@ -2959,7 +2987,26 @@ img, video {
   }
   function openModalById(id) {
     var m = document.getElementById(id);
-    if (m) m.style.display = 'flex';
+    if (!m) return;
+
+    m.style.display = 'flex';
+
+    // Android WebView: أعد تحميل الفيديو بعد إظهار الـmodal؛ بعض WebViews
+    // لا تبدأ في جلب source بينما العنصر داخل display:none.
+    var vids = m.querySelectorAll('video');
+    for (var i = 0; i < vids.length; i++) {
+      var v = vids[i];
+      try {
+        var source = v.querySelector('source');
+        if (source && source.getAttribute('src') && !v.getAttribute('src')) {
+          v.setAttribute('src', source.getAttribute('src'));
+        }
+        v.preload = 'auto';
+        v.load();
+      } catch (e) {
+        console.warn('[BSM Video] reload failed:', e);
+      }
+    }
   }
   function closeModal(m) {
     if (!m) return;
@@ -3062,11 +3109,6 @@ img, video {
       } catch (e2) {}
     });
   } catch (e) {
-    // Fail closed: an App Gate error must never expose the web app in a browser.
-    try {
-      var gateFailClosed = document.getElementById('bsm-app-gate');
-      if (gateFailClosed) gateFailClosed.style.display = 'flex';
-    } catch (ignore) {}
     document.documentElement.style.visibility = 'visible';
   }
 })();
@@ -20701,13 +20743,33 @@ window.diagnose = async function() {
     msgEl.style.color = '#0a3d62'; msgEl.textContent = 'جاري رفع الإيصال وإرسال الطلب...';
 
     try {
-      // 1) رفع صورة الإيصال في bucket خاص
+      // 1) ثبّت الـ anchor من قاعدة البيانات قبل الرفع.
+      //    مهم: بعض الكورسات (مثل الكورسات المتداخلة/المضافة حديثاً) قد يكون
+      //    الزر مفتوحاً من صف قديم في الـcache، بينما RPC الاشتراك يحتاج الـid
+      //    الدقيق للقسم الذي requires_subscription=true.
+      var paymentAnchor = _pmAnchor;
+      try {
+        if (typeof _findSubscriptionAnchor === 'function') {
+          var freshAnchor = await _findSubscriptionAnchor(Number(_pmAnchor.id));
+          if (freshAnchor && freshAnchor.id) paymentAnchor = freshAnchor;
+        }
+      } catch (anchorErr) {
+        console.warn('[PAYMENT] تعذر تحديث subscription anchor، سنستخدم الحالي:', anchorErr && anchorErr.message);
+      }
+      if (!paymentAnchor || !paymentAnchor.id || !paymentAnchor.requires_subscription) {
+        throw new Error('لا يمكن إنشاء طلب اشتراك لهذا القسم حالياً. أعد فتح صفحة الكورس وحاول مرة أخرى.');
+      }
+      _pmAnchor = paymentAnchor;
+
+      // 2) رفع صورة الإيصال باسم فريد دائماً.
+      //    upsert=true كان يجمع INSERT + UPDATE في نفس الطلب، وبالتالي أي اختلاف
+      //    في سياسات Storage كان يحوّل الإرسال إلى خطأ رغم أن اختيار الصورة يعمل.
       var ext = (_pmFile.name.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';
-      var path = _pmUser.id + '/' + _pmAnchor.id + '-' + Date.now() + '.' + ext;
-      var upRes = await db.storage.from('receipts').upload(path, _pmFile, { upsert: true, contentType: _pmFile.type });
+      var path = _pmUser.id + '/' + _pmAnchor.id + '-' + (window.crypto && crypto.randomUUID ? crypto.randomUUID() : (Date.now() + '-' + Math.random().toString(16).slice(2))) + '.' + ext;
+      var upRes = await db.storage.from('receipts').upload(path, _pmFile, { upsert: false, contentType: _pmFile.type });
       if (upRes.error) throw upRes.error;
 
-      // 2) إنشاء/إعادة تعيين طلب الاشتراك كـ pending
+      // 3) إنشاء/إعادة تعيين طلب الاشتراك كـ pending
       //    ✅ FIX (Aug 2026 audit): كان هذا upsert مباشر على جدول subscriptions
       //    (يعتمد فقط على RLS الجدول). الآن نمر عبر RPC request_subscription
       //    (SECURITY DEFINER) اللي بيتحقق فعليًا إن الشعبة محتاجة اشتراك أصلاً
@@ -20747,6 +20809,14 @@ window.diagnose = async function() {
       setTimeout(closePaymentModal, 1400);
     } catch(err) {
       console.error('[PAYMENT] submit error:', err);
+      // لو الرفع نجح ثم فشل RPC، لا نترك إيصالاً يتيماً في Storage.
+      try {
+        if (typeof path !== 'undefined' && path) {
+          await db.storage.from('receipts').remove([path]);
+        }
+      } catch(cleanErr) {
+        console.warn('[PAYMENT] تعذر حذف الإيصال اليتيم:', cleanErr && cleanErr.message);
+      }
       btn.disabled = false; btn.textContent = '🚀 إرسال الطلب';
       msgEl.style.color = '#e74c3c';
       msgEl.textContent = '❌ حدث خطأ: ' + (err.message || 'حاول مجدداً');
@@ -21906,53 +21976,76 @@ window.diagnose = async function() {
   }
 
   window._renderMessageAdminEntry = async function(anchor, containerEl) {
-    if (!containerEl || !anchor || !anchor.id || !window.supabase) return;
-    // ✅ FIX (طلب المستخدم): هذه الدالة كانت تُستدعى مرتين على نفس الحاوية
-    // (من _renderDynamicSectionPage الأصلية، ثم من renderCourseChatButtons —
-    // تصحيح لاحق يُغلّف نفس الدالة) فيظهر زر "راسل أدمن..." مكرراً مرتين.
-    // الحل: لا نضيف الزر إذا كان موجوداً بالفعل داخل نفس الحاوية.
+    if (!containerEl || !anchor || !anchor.id) return;
+    // زر المراسلة ليس ميزة مدفوعة: يظهر لأي مستخدم مسجّل/زائر طالما للكورس
+    // anchor صحيح. لا نطلب الاشتراك هنا؛ التحقق الحقيقي يتم لحظة إنشاء الـDM.
     if (containerEl.querySelector('[data-role="msg-admin-btn"]')) return;
-    try {
-      var dmCourseId = await _dmResolveCourseId(anchor.id);
-      var res = await window.supabase.rpc('get_section_admins_for_messaging', { p_section_id: dmCourseId });
-      if (res.error) {
-        console.warn('[DM] get_section_admins_for_messaging error:', res.error.message);
-        return;
-      }
-      var admins = res.data || [];
-      if (!admins.length) {
-        // لا يوجد أدمن للكورس أو أدمن منصة متاح عبر RPC بعد فحص التسلسل الأبوي.
-        console.warn('[DM] لا يوجد أدمن للكورس أو أدمن منصة متاح عبر RPC بعد فحص التسلسل الأبوي.', {section_id: anchor.id, course_id: dmCourseId});
-        return;
-      }
 
-      var hasCourseAdmin = admins.some(function(a){ return String(a.admin_source || '') === 'course'; });
-      // ✅ FIX (طلب المستخدم): "أدمن المنصة" مربك للطالب هنا لأن هذا الزر
-      // مرتبط بشعبته تحديداً — استبدلناه بـ"أدمن الشعبة" في كل الحالات.
-      var label = hasCourseAdmin ? '✉️ راسل أدمن الكورس' : '✉️ راسل أدمن الشعبة';
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'chat-entry-btn';
+    btn.dataset.role = 'msg-admin-btn';
+    btn.style.background = 'linear-gradient(135deg,#17a589,#0a3d62)';
+    btn.textContent = '✉️ راسل أدمن الشعبة';
 
-      var btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'chat-entry-btn';
-      btn.dataset.role = 'msg-admin-btn';
-      btn.style.background = 'linear-gradient(135deg,#17a589,#0a3d62)';
-      btn.textContent = label;
-      btn.onclick = function() {
+    btn.onclick = async function() {
+      var oldText = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = '⏳ جاري التحميل...';
+      try {
+        // المراسلة تحتاج حساباً فقط، وليس اشتراكاً.
+        var sessionRes = (typeof _getSessionSafe === 'function')
+          ? await _getSessionSafe()
+          : await window.supabase.auth.getSession();
+        var user = sessionRes && sessionRes.data && sessionRes.data.session && sessionRes.data.session.user;
+        if (!user) {
+          btn.disabled = false;
+          btn.textContent = oldText;
+          if (typeof loginWithGoogle === 'function') {
+            loginWithGoogle();
+          } else if (typeof _showToast === 'function') {
+            _showToast('🔐 سجّل الدخول أولاً لمراسلة أدمن الشعبة', 'warning');
+          }
+          return;
+        }
+
+        var dmCourseId = (typeof _dmResolveCourseId === 'function')
+          ? await _dmResolveCourseId(anchor.id)
+          : Number(anchor.id);
+        var res = await window.supabase.rpc('get_section_admins_for_messaging', { p_section_id: dmCourseId });
+        if (res.error) throw res.error;
+
+        var admins = res.data || [];
+        if (!admins.length) {
+          throw new Error('لا يوجد أدمن مُعيّن لهذه الشعبة حالياً.');
+        }
+
+        var hasCourseAdmin = admins.some(function(a){
+          return String(a.admin_source || a.admin_type || '') === 'course';
+        });
+
         if (admins.length === 1) {
           window.openDirectChat(
             admins[0].user_id,
-            admins[0].full_name || admins[0].email || (hasCourseAdmin ? 'أدمن الكورس' : 'أدمن الشعبة'),
+            admins[0].full_name || admins[0].email || 'أدمن الشعبة',
             null,
             dmCourseId
           );
         } else {
           _dmOpenAdminPicker(admins, dmCourseId);
         }
-      };
-      containerEl.appendChild(btn);
-    } catch(e) {
-      console.warn('[DM] _renderMessageAdminEntry exception:', e && e.message);
-    }
+      } catch(e) {
+        console.warn('[DM] open admin chat error:', e && e.message);
+        if (typeof _showToast === 'function') {
+          _showToast('❌ تعذر فتح مراسلة أدمن الشعبة: ' + (e.message || 'حاول مجدداً'), 'error');
+        }
+      } finally {
+        btn.disabled = false;
+        btn.textContent = oldText;
+      }
+    };
+
+    containerEl.appendChild(btn);
   };
 
   // يُستخدم فقط لو الشعبة عندها أكثر من أدمن نشط (مدعوم مستقبلاً، غير مستخدم حاليًا بحسب بياناتك)
@@ -28189,6 +28282,127 @@ SELECT conname, pg_get_constraintdef(oid) FROM pg_constraint WHERE conname='audi
   }
 
   console.log('%c[FINAL CONTINUATION] Subscription hierarchy + schedule hierarchy loaded','color:#17a589;font-weight:700');
+})();
+</script>
+
+<!-- ============================================================
+     DIRECT MESSAGE ACCESS FIX — non-subscribers can contact course admin
+============================================================ -->
+<script>
+(function(){
+  window.printDirectMessagingOpenAccessSQL = function(){
+    var sql = `
+-- ================================================================
+-- DIRECT MESSAGING: أي مستخدم مسجّل يقدر يبدأ محادثة مع أدمن الشعبة
+-- الاشتراك مطلوب للمحادثة الجماعية فقط، وليس لمراسلة الأدمن.
+-- Supabase Dashboard → SQL Editor → New Query → Paste → Run
+-- ================================================================
+
+CREATE OR REPLACE FUNCTION public.get_or_create_direct_room(
+  p_other_user_id UUID,
+  p_section_id BIGINT
+)
+RETURNS public.chat_rooms
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path=public,pg_temp
+AS $$
+DECLARE
+  v_me UUID := auth.uid();
+  v_room public.chat_rooms;
+  v_course_title TEXT;
+  v_room_key TEXT;
+  v_other_allowed BOOLEAN := false;
+BEGIN
+  IF v_me IS NULL OR p_other_user_id IS NULL
+     OR p_other_user_id=v_me OR p_section_id IS NULL THEN
+    RAISE EXCEPTION 'DENY ACCESS';
+  END IF;
+
+  SELECT title INTO v_course_title
+  FROM public.site_sections
+  WHERE id=p_section_id;
+
+  v_room_key := 'DM:' || p_section_id::TEXT || ':' ||
+                COALESCE(v_course_title,'الكورس');
+
+  -- صاحب الطلب: أي مستخدم authenticated مسموح له ببدء DM.
+  -- لا يوجد فحص اشتراك هنا عمداً.
+  -- الطرف الآخر يجب أن يكون أدمن المنصة أو أدمن/Owner/Assistant
+  -- فعلياً مُعيّناً للكورس نفسه.
+  SELECT (
+    EXISTS (
+      SELECT 1 FROM public.profiles p
+      WHERE p.id=p_other_user_id AND p.role='admin'
+    )
+    OR EXISTS (
+      SELECT 1 FROM public.section_admins sa
+      WHERE sa.user_id=p_other_user_id
+        AND sa.section_id=p_section_id
+        AND sa.is_active=true
+        AND sa.role IN ('owner','admin')
+    )
+    OR EXISTS (
+      SELECT 1 FROM public.section_admins sa
+      WHERE sa.user_id=p_other_user_id
+        AND sa.section_id=p_section_id
+        AND sa.is_active=true
+        AND sa.role='assistant'
+        AND COALESCE((sa.permissions->>'manage_chats')::boolean,false)=true
+    )
+  ) INTO v_other_allowed;
+
+  IF NOT v_other_allowed THEN
+    RAISE EXCEPTION 'DENY ACCESS';
+  END IF;
+
+  PERFORM pg_advisory_xact_lock(
+    hashtextextended(
+      LEAST(v_me::TEXT,p_other_user_id::TEXT)||':'||
+      GREATEST(v_me::TEXT,p_other_user_id::TEXT)||':'||
+      p_section_id::TEXT,0
+    )
+  );
+
+  SELECT cr.* INTO v_room
+  FROM public.chat_rooms cr
+  WHERE cr.room_type='direct'
+    AND cr.room_name=v_room_key
+    AND EXISTS (
+      SELECT 1 FROM public.chat_room_participants x
+      WHERE x.room_id=cr.id AND x.user_id=v_me
+    )
+    AND EXISTS (
+      SELECT 1 FROM public.chat_room_participants y
+      WHERE y.room_id=cr.id AND y.user_id=p_other_user_id
+    )
+  ORDER BY cr.id
+  LIMIT 1;
+
+  IF FOUND THEN RETURN v_room; END IF;
+
+  INSERT INTO public.chat_rooms(room_name,room_type)
+  VALUES(v_room_key,'direct')
+  RETURNING * INTO v_room;
+
+  INSERT INTO public.chat_room_participants(room_id,user_id)
+  VALUES(v_room.id,v_me),(v_room.id,p_other_user_id)
+  ON CONFLICT DO NOTHING;
+
+  RETURN v_room;
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.get_or_create_direct_room(UUID,BIGINT)
+TO authenticated;
+
+NOTIFY pgrst, 'reload schema';
+`;
+    console.log(sql);
+    if(navigator.clipboard) navigator.clipboard.writeText(sql).catch(function(){});
+    return sql;
+  };
+  console.log('%c[DM] اكتب printDirectMessagingOpenAccessSQL() لإصلاح مراسلة أدمن الشعبة لغير المشتركين','color:#17a589;font-weight:700');
 })();
 </script>
 
