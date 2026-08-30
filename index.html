@@ -30893,290 +30893,315 @@ ORDER BY ordinal_position;
 </script>
 
 <script>
-/* ============================================================
-   BSM FINAL FREE-PREVIEW HIERARCHY FIX — 2026-08-30
-   المطلوب:
-   - الكورس المدفوع نفسه يمكن فتحه لعرض هيكل المواد.
-   - أول مادة فقط هي مادة المعاينة.
-   - داخل أول مادة: أول شابتر فقط هو المجاني.
-   - كل المواد الأخرى مغلقة بالكامل لغير المشتركين.
-   - كل الشباتر الأخرى داخل أول مادة مغلقة.
-   - محتوى الشابتر الأول يظل متاحًا.
-   - بعد اشتراك Active: كل المحتوى يفتح كالمعتاد.
-   - القرار يعتمد على site_sections + parent_id + display_order من قاعدة البيانات.
-   ============================================================ */
+/* ========================================================================
+   BSM FINAL FREE-PREVIEW REPAIR — 2026-08-30
+   Dynamic tree traversal: Course -> first child -> first child -> ...
+   until the first lesson/class that actually owns content/resources.
+
+   IMPORTANT:
+   - No hard-coded section IDs.
+   - No fixed Course -> Material -> Chapter depth.
+   - Ordering is display_order, then id.
+   - Only the first-child path is the preview path.
+   - The first lesson/class with Content OR Resources is the actual
+     free-content leaf. Ancestor containers on that path stay navigable.
+   - Subscription, admin and existing RLS logic are preserved.
+   ======================================================================== */
 (function(){
   'use strict';
-  if(window.__BSM_STRICT_FIRST_MATERIAL_PREVIEW_20260830) return;
-  window.__BSM_STRICT_FIRST_MATERIAL_PREVIEW_20260830=true;
+  if(window.__BSM_FINAL_FREE_PREVIEW_REPAIR_20260830) return;
+  window.__BSM_FINAL_FREE_PREVIEW_REPAIR_20260830 = true;
 
+  function db(){ return window.supabase || null; }
+  function toId(v){
+    var n=Number(v);
+    return Number.isFinite(n) && n>0 ? n : null;
+  }
+  function typeOf(row){ return String(row&&row.type||'').trim().toLowerCase(); }
+  function isLesson(row){
+    var t=typeOf(row);
+    return t==='lesson' || t==='class';
+  }
   function sortRows(rows){
     return (rows||[]).slice().sort(function(a,b){
-      var ao=Number(a&&a.display_order)||0, bo=Number(b&&b.display_order)||0;
-      if(ao!==bo) return ao-bo;
-      return (Number(a&&a.id)||0)-(Number(b&&b.id)||0);
+      var ao=Number(a&&a.display_order), bo=Number(b&&b.display_order);
+      ao=Number.isFinite(ao)?ao:999999;
+      bo=Number.isFinite(bo)?bo:999999;
+      return ao-bo || Number(a&&a.id||0)-Number(b&&b.id||0);
     });
   }
 
   async function row(id){
-    id=Number(id);
-    if(!Number.isFinite(id)) return null;
-    try{
-      if(typeof window._getSectionRow==='function') return await window._getSectionRow(id);
-    }catch(e){}
-    try{
-      var d=window.supabase;
-      if(!d) return null;
-      var r=await d.from('site_sections').select('id,title,parent_id,type,display_order,requires_subscription').eq('id',id).maybeSingle();
-      return (!r.error&&r.data)?r.data:null;
-    }catch(e){ return null; }
+    id=toId(id); if(!id) return null;
+    if(typeof window._getSectionRow==='function'){
+      try{
+        var cached=await window._getSectionRow(id);
+        if(cached) return cached;
+      }catch(e){}
+    }
+    var d=db(); if(!d) throw new Error('Supabase unavailable');
+    var r=await d.from('site_sections')
+      .select('id,title,icon,parent_id,type,display_order,requires_subscription')
+      .eq('id',id).maybeSingle();
+    if(r.error) throw r.error;
+    return r.data||null;
   }
 
   async function children(parentId){
-    try{
-      if(typeof loadSections==='function') return sortRows(await loadSections(Number(parentId)));
-    }catch(e){}
-    try{
-      var d=window.supabase;
-      if(!d) return [];
-      var r=await d.from('site_sections').select('id,title,parent_id,type,display_order,requires_subscription').eq('parent_id',Number(parentId)).order('display_order',{ascending:true}).order('id',{ascending:true});
-      return r.error?[]:sortRows(r.data||[]);
-    }catch(e){ return []; }
+    parentId=toId(parentId); if(!parentId) return [];
+    var d=db(); if(!d) throw new Error('Supabase unavailable');
+    var r=await d.from('site_sections')
+      .select('id,title,icon,parent_id,type,display_order,requires_subscription')
+      .eq('parent_id',parentId)
+      .order('display_order',{ascending:true})
+      .order('id',{ascending:true});
+    if(r.error) throw r.error;
+    return sortRows(r.data||[]);
   }
 
-  async function findPaidAnchor(sectionId){
-    var cur=Number(sectionId), seen={}, guard=0;
-    while(Number.isFinite(cur)&&cur>0&&guard++<25&&!seen[cur]){
+  async function paidAnchor(sectionId){
+    if(typeof window._findSubscriptionAnchor==='function'){
+      try{
+        var a=await window._findSubscriptionAnchor(Number(sectionId));
+        if(a) return a;
+      }catch(e){}
+    }
+    var cur=toId(sectionId), seen={}, guard=0;
+    while(cur && guard++<30 && !seen[cur]){
       seen[cur]=true;
       var r=await row(cur);
       if(!r) return null;
       if(r.requires_subscription===true) return r;
       if(r.parent_id==null) return null;
-      cur=Number(r.parent_id);
+      cur=toId(r.parent_id);
     }
     return null;
   }
 
-  async function isInside(sectionId, ancestorId){
-    var cur=Number(sectionId), anc=Number(ancestorId), seen={}, guard=0;
-    while(Number.isFinite(cur)&&cur>0&&guard++<30&&!seen[cur]){
-      seen[cur]=true;
-      if(cur===anc) return true;
-      var r=await row(cur);
-      if(!r||r.parent_id==null) return false;
-      cur=Number(r.parent_id);
-    }
-    return false;
+  /* Check whether the candidate lesson/class really owns at least one
+     section_content or section_resources row. We deliberately query only
+     the existence of a row; no content is exposed by this helper. */
+  async function hasPayload(sectionId){
+    var d=db(); if(!d) throw new Error('Supabase unavailable');
+    var id=toId(sectionId); if(!id) return false;
+    var results=await Promise.all([
+      d.from('section_content').select('id').eq('section_id',id).limit(1),
+      d.from('section_resources').select('id').eq('section_id',id).limit(1)
+    ]);
+    if(results[0].error) throw results[0].error;
+    if(results[1].error) throw results[1].error;
+    return !!((results[0].data&&results[0].data.length) || (results[1].data&&results[1].data.length));
   }
 
-  /* The exact preview path is resolved from DB ordering every time it is needed.
-     No hard-coded material/chapter IDs are used. */
-  window._isStrictFirstMaterialPreviewSection=async function(sectionId){
-    var id=Number(sectionId);
-    if(!Number.isFinite(id)||id<=0) return false;
+  /*
+     Returns:
+       path      = anchor + every first-child container + preview leaf
+       leaf      = first lesson/class on that path that owns Content/Resources
+       fullLeaf  = leaf and all descendants are free-content territory
+  */
+  async function resolvePreviewPath(anchorId){
+    var aid=toId(anchorId); if(!aid) return {path:[],leaf:null};
+    window.__bsmPreviewPathCache=window.__bsmPreviewPathCache||{};
+    var cacheKey=String(aid);
+    var cached=window.__bsmPreviewPathCache[cacheKey];
+    if(cached && Array.isArray(cached.path)) return cached;
 
-    var anchor=await findPaidAnchor(id);
-    if(!anchor) return false;
+    var path=[];
+    var current=await row(aid);
+    var seen={};
+    var leaf=null;
 
-    // الكورس/الشعبة المدفوعة نفسها ليست محتوى مدفوعًا؛ نحتاج فتحها لرؤية المواد.
-    if(id===Number(anchor.id)) return true;
+    for(var depth=0; current && depth<30; depth++){
+      var cid=toId(current.id);
+      if(!cid || seen[cid]) break;
+      seen[cid]=true;
+      path.push(current);
 
-    var materials=await children(anchor.id);
-    if(!materials.length) return false;
+      var kids=await children(cid);
+      if(!kids.length) break;
 
-    // أول مادة حسب display_order ثم id — من قاعدة البيانات.
-    var firstMaterial=materials[0];
-    if(id===Number(firstMaterial.id)) return true;
+      /* ALWAYS descend through the first child by display_order.
+         We never search a later sibling as a replacement path. */
+      var first=kids[0];
 
-    // أي شيء داخل أول مادة لا يكون الشابتر الأول يُقفل.
-    var chapters=await children(firstMaterial.id);
-    if(!chapters.length) return false;
-
-    var firstChapter=chapters[0];
-
-    // الشابتر الأول نفسه ومحتواه/الأقسام التابعة له مسموح للمعاينة.
-    if(id===Number(firstChapter.id)) return true;
-    if(await isInside(id, firstChapter.id)) return true;
-
-    // باقي المواد وباقي الشباتر مغلقة.
-    return false;
-  };
-
-  // استبدال نقطة free-preview الوحيدة المستخدمة فعليًا في بوابة المحتوى.
-  window._isFreePreviewSection=async function(sectionId){
-    try{return await window._isStrictFirstMaterialPreviewSection(sectionId);}catch(e){return false;}
-  };
-
-  // Diagnostic helper: يعرض مسار المعاينة الفعلي من DB في Console بدون تعديل بيانات.
-  window.printStrictFirstMaterialPreview=function(sectionId){
-    (async function(){
-      try{
-        var anchor=await findPaidAnchor(sectionId);
-        if(!anchor){ console.log('[STRICT PREVIEW] لا يوجد ancestor يتطلب اشتراكًا لهذا القسم:',sectionId); return; }
-        var mats=await children(anchor.id), firstMat=mats[0]||null;
-        var ch=firstMat?await children(firstMat.id):[], firstCh=ch[0]||null;
-        console.table({
-          paid_anchor_id:anchor.id,
-          paid_anchor_title:anchor.title||'',
-          first_material_id:firstMat&&firstMat.id||null,
-          first_material_title:firstMat&&firstMat.title||'',
-          first_chapter_id:firstCh&&firstCh.id||null,
-          first_chapter_title:firstCh&&firstCh.title||'',
-          tested_section_id:Number(sectionId),
-          is_preview:await window._isStrictFirstMaterialPreviewSection(sectionId)
-        });
-        console.table(mats.map(function(x,i){return {order:i+1,id:x.id,title:x.title,type:x.type,display_order:x.display_order};}));
-        if(firstMat) console.table(ch.map(function(x,i){return {order:i+1,id:x.id,title:x.title,type:x.type,display_order:x.display_order};}));
-      }catch(e){console.error('[STRICT PREVIEW] diagnostic error',e);}
-    })();
-  };
-})();
-</script>
-<script>
-/* ========================================================================
-   BSM SECURITY PATCH — STRICT FIRST CHAPTER PREVIEW
-   Rule for paid courses:
-   - First direct child of the course = first material.
-   - Inside that material, ONLY display_order=1 AND type=lesson/class is free.
-   - Everything else is locked unless the student has an active subscription.
-   - Fail closed: any lookup error locks paid content.
-   ======================================================================== */
-(function(){
-  'use strict';
-  if(window.__BSM_STRICT_FIRST_CHAPTER_PATCH__) return;
-  window.__BSM_STRICT_FIRST_CHAPTER_PATCH__ = true;
-
-  function _sort(a){
-    return (a||[]).slice().sort(function(x,y){
-      var ax=Number(x&&x.display_order), ay=Number(y&&y.display_order);
-      ax=Number.isFinite(ax)?ax:999999; ay=Number.isFinite(ay)?ay:999999;
-      return ax-ay || Number(x&&x.id||0)-Number(y&&y.id||0);
-    });
-  }
-  async function _row(id){
-    if(typeof window._getSectionRow==='function') return await window._getSectionRow(Number(id));
-    var d=window.supabase;
-    if(!d) throw new Error('Supabase unavailable');
-    var r=await d.from('site_sections').select('id,parent_id,type,title,display_order,requires_subscription').eq('id',Number(id)).maybeSingle();
-    if(r.error) throw r.error;
-    return r.data||null;
-  }
-  async function _children(id){
-    if(typeof window.loadSections==='function') return _sort(await window.loadSections(Number(id)));
-    var d=window.supabase;
-    if(!d) throw new Error('Supabase unavailable');
-    var r=await d.from('site_sections').select('id,parent_id,type,title,display_order,requires_subscription').eq('parent_id',Number(id)).order('display_order',{ascending:true}).order('id',{ascending:true});
-    if(r.error) throw r.error;
-    return _sort(r.data||[]);
-  }
-
-  /* Resolve the paid course anchor using the existing resolver when possible. */
-  async function _anchor(id){
-    if(typeof window._findSubscriptionAnchor==='function'){
-      var a=await window._findSubscriptionAnchor(Number(id));
-      if(a) return a;
-    }
-    var cur=await _row(id), guard=0;
-    while(cur && guard++<25){
-      if(cur.requires_subscription===true || String(cur.type||'').toLowerCase()==='course'){
-        if(cur.requires_subscription===true) return cur;
+      if(isLesson(first)){
+        /* The first lesson/class is the candidate. It becomes the actual
+           free leaf only when it has real content or resources. */
+        path.push(first);
+        if(await hasPayload(first.id)) leaf=first;
+        break;
       }
-      if(cur.parent_id==null) break;
-      cur=await _row(cur.parent_id);
+      current=first;
     }
-    return null;
+
+    var result={path:path,leaf:leaf};
+    window.__bsmPreviewPathCache[cacheKey]=result;
+    return result;
   }
 
-  /* EXACT free-preview rule requested by the user. */
-  async function strictFree(sectionId){
-    var sid=Number(sectionId);
-    if(!Number.isFinite(sid)) return false;
-    var anchor=await _anchor(sid);
-    if(!anchor) return false;
-
-    // The course itself is never the free preview.
-    if(sid===Number(anchor.id)) return false;
-
-    // First material = first direct child of the paid course by display_order.
-    var materials=await _children(anchor.id);
-    if(!materials.length) return false;
-    var firstMaterial=materials[0];
-    if(Number(firstMaterial.id)===sid) return false;
-
-    // First chapter = display_order 1, and ONLY lesson/class are eligible.
-    var chapterRows=await _children(firstMaterial.id);
-    var chapter=chapterRows.find(function(x){
-      return Number(x.display_order)===1 && ['lesson','class'].indexOf(String(x.type||'').trim().toLowerCase())!==-1;
-    });
-    if(!chapter) return false;
-
-    // The chapter itself and anything nested underneath it are free.
-    var cur=await _row(chapter.id), guard=0;
-    while(cur && guard++<25){
-      if(Number(cur.id)===sid) return true;
-      if(cur.parent_id==null) break;
-      if(Number(cur.id)===Number(firstMaterial.id)||Number(cur.id)===Number(anchor.id)) break;
-      cur=await _row(cur.parent_id);
+  async function isDescendantOfLeaf(sectionId,leafId){
+    var sid=toId(sectionId), leaf=toId(leafId);
+    if(!sid||!leaf) return false;
+    var cur=sid, seen={}, guard=0;
+    while(cur && guard++<30 && !seen[cur]){
+      seen[cur]=true;
+      if(cur===leaf) return true;
+      var r=await row(cur);
+      if(!r||r.parent_id==null) break;
+      cur=toId(r.parent_id);
     }
     return false;
   }
 
-  window._isFreePreviewSection = async function(sectionId){
-    try{return await strictFree(sectionId);}catch(e){
-      console.error('[STRICT FREE PREVIEW]',e);
+  async function previewInfo(sectionId){
+    var sid=toId(sectionId); if(!sid) return {isPreview:false,isPath:false,leaf:null,anchor:null,path:[]};
+    var anchor=await paidAnchor(sid);
+    if(!anchor) return {isPreview:false,isPath:false,leaf:null,anchor:null,path:[]};
+
+    var resolved=await resolvePreviewPath(anchor.id);
+    var path=resolved.path||[], leaf=resolved.leaf||null;
+    var onPath=path.some(function(x){return toId(x.id)===sid;});
+    var underLeaf=leaf ? await isDescendantOfLeaf(sid,leaf.id) : false;
+    return {
+      isPreview: !!(leaf && underLeaf),
+      isPath: !!onPath,
+      leaf:leaf,
+      anchor:anchor,
+      path:path
+    };
+  }
+
+  /* Public helper used by every existing navigation/path gate. It returns
+     true for the navigable first-child path and for the preview leaf's
+     descendants. This is intentional: containers must be reachable so the
+     visitor can reach the actual free lesson/class. */
+  window._isFreePreviewSection=async function(sectionId){
+    try{
+      var info=await previewInfo(sectionId);
+      return !!(info.isPath || info.isPreview);
+    }catch(e){
+      console.error('[BSM FREE PREVIEW] resolve failed:',e&&e.message);
       return false;
     }
   };
 
-  async function strictAccess(sectionId){
-    var sid=Number(sectionId);
-    if(!Number.isFinite(sid)) return {state:'error',access:'error'};
+  /* Diagnostic helper — no writes, no IDs hard-coded. */
+  window.printStrictFirstMaterialPreview=async function(sectionId){
+    try{
+      var info=await previewInfo(sectionId);
+      console.table({
+        tested_section_id:Number(sectionId),
+        paid_anchor_id:info.anchor&&info.anchor.id||null,
+        paid_anchor_title:info.anchor&&info.anchor.title||'',
+        preview_leaf_id:info.leaf&&info.leaf.id||null,
+        preview_leaf_title:info.leaf&&info.leaf.title||'',
+        preview_leaf_type:info.leaf&&info.leaf.type||'',
+        tested_is_preview:info.isPreview,
+        tested_is_first_path_container:info.isPath
+      });
+      console.table((info.path||[]).map(function(x,i){
+        return {order:i+1,id:x.id,title:x.title,type:x.type,display_order:x.display_order,parent_id:x.parent_id};
+      }));
+    }catch(e){ console.error('[BSM FREE PREVIEW] diagnostic error:',e); }
+  };
+
+  /* Main access gate. Preserve admin/subscriber behavior. A first-path
+     container is navigable, while only the actual lesson/class leaf (and its
+     descendants) receives completely free content access. */
+  async function finalAccess(sectionId){
+    var sid=toId(sectionId);
+    if(!sid) return {state:'error',access:'error'};
     if(window._isSuperAdmin===true) return null;
 
-    var anchor=await _anchor(sid);
+    var anchor=await paidAnchor(sid);
     if(!anchor) return null;
 
-    // Course admin access remains scoped to the assigned paid course.
     if(window._isBranchAdmin===true){
       var ids=window._branchAdminAllSectionIds||window._branchAdminSectionIds||window._branchAdminOwnSectionIds||[];
       if(Array.isArray(ids) && ids.map(Number).indexOf(Number(anchor.id))!==-1) return null;
     }
 
-    // ONLY the exact first chapter preview is free.
-    if(await strictFree(sid)) return null;
+    var info=await previewInfo(sid);
+    if(info.isPreview) return null;
 
-    var d=window.supabase;
+    /* Keep the first-child containers reachable, but do not accidentally
+       expose direct Content/Resources attached to a container. Existing
+       renderers treat a truthy gate as locked content while still rendering
+       child cards, which is exactly what we need here. */
+    if(info.isPath){
+      return {
+        state:'preview_container',
+        access:'preview_container',
+        anchor:anchor,
+        previewContainer:true,
+        previewLeaf:info.leaf||null,
+        user:null,
+        row:null
+      };
+    }
+
+    var d=db();
     if(!d) return {state:'error',access:'error',anchor:anchor};
-    var sess=typeof window._getSessionSafe==='function' ? await window._getSessionSafe(8000) : await d.auth.getSession();
+    var sess=typeof window._getSessionSafe==='function'
+      ? await window._getSessionSafe(8000)
+      : await d.auth.getSession();
     var u=sess&&sess.data&&sess.data.session&&sess.data.session.user;
-    if(!u) return {state:'guest',access:'guest',anchor:anchor};
+    if(!u) return {state:'guest',access:'guest',anchor:anchor,user:null,row:null};
 
     var status=null;
-    if(typeof window._getSectionSubStatus==='function') status=await window._getSectionSubStatus(u.id,Number(anchor.id));
-    else {
-      var q=await d.from('subscriptions').select('id,section_id,payment_status,start_date,end_date,reject_reason,requested_at,created_at,updated_at').eq('user_id',u.id).eq('section_id',Number(anchor.id)).order('requested_at',{ascending:false,nullsFirst:false}).order('created_at',{ascending:false}).limit(1);
+    if(typeof window._getSectionSubStatus==='function'){
+      status=await window._getSectionSubStatus(u.id,Number(anchor.id));
+    }else{
+      var q=await d.from('subscriptions')
+        .select('id,section_id,payment_status,start_date,end_date,reject_reason,requested_at,created_at,updated_at')
+        .eq('user_id',u.id).eq('section_id',Number(anchor.id))
+        .order('requested_at',{ascending:false,nullsFirst:false})
+        .order('created_at',{ascending:false}).limit(1);
       if(q.error) throw q.error;
       var r=q.data&&q.data[0];
-      status={state:r&&r.payment_status==='active'&&(!r.end_date||new Date(r.end_date).getTime()>=Date.now())?'active':(r&&r.payment_status==='pending'?'pending':(r?'expired':'none')),row:r||null};
+      status={
+        state:r&&r.payment_status==='active'&&(!r.end_date||new Date(r.end_date).getTime()>=Date.now())?'active':
+          (r&&r.payment_status==='pending'?'pending':(r?'expired':'none')),
+        row:r||null
+      };
     }
     if(status && status.state==='active') return null;
-    return {state:(status&&status.state)||'none',access:(status&&status.state)||'none',anchor:anchor,row:status&&status.row||null,user:u};
+    return {
+      state:(status&&status.state)||'none',
+      access:(status&&status.state)||'none',
+      anchor:anchor,
+      row:status&&status.row||null,
+      user:u,
+      reject_reason:status&&status.row&&status.row.reject_reason||''
+    };
   }
 
   window.checkSectionAccess=async function(id){
-    try{return await strictAccess(id);}catch(e){
-      console.error('[STRICT PAID GATE]',e);
-      // SECURITY: unknown paid-access state is locked, never free.
-      try{var a=await _anchor(id); if(a) return {state:'error',access:'error',anchor:a};}catch(_e){}
+    try{return await finalAccess(id);}
+    catch(e){
+      console.error('[BSM FREE PREVIEW][ACCESS]',e);
+      try{
+        var a=await paidAnchor(id);
+        if(a) return {state:'error',access:'error',anchor:a};
+      }catch(_e){}
       return {state:'error',access:'error'};
     }
   };
+
   window.getDetailedSectionAccess=async function(id){
     try{
-      var r=await strictAccess(id);
-      return r||{state:'free',anchor:null};
+      var r=await finalAccess(id);
+      if(!r) return {state:'free',anchor:null};
+      if(r.state==='preview_container') return {state:'free',anchor:r.anchor,previewContainer:true,previewLeaf:r.previewLeaf};
+      return r;
     }catch(e){return {state:'error',access:'error'};}
   };
+
+  /* Clear only this resolver's cache when the tab becomes visible. */
+  window.__bsmInvalidateFreePreviewCache=function(){window.__bsmPreviewPathCache={};};
+  document.addEventListener('visibilitychange',function(){
+    if(document.visibilityState==='visible') window.__bsmInvalidateFreePreviewCache();
+  });
 })();
 </script>
 </body>
