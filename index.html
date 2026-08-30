@@ -59,13 +59,13 @@ var DEBUG_MODE = true; window.DEBUG_MODE = DEBUG_MODE;
 <script>
 (function () {
   try {
-    window.__APP_BUILD_VERSION = '2026-08-30-dynamic-preview-attachments-landscape-v10';
+    window.__APP_BUILD_VERSION = '2026-08-29-final-safe-subscription-chat-assistant-mobile-video-v9';
   } catch (e) {}
 })();
 </script>
 <meta name="google-site-verification" content="my6dMoAsuc_97Jks_OQF75GK_f1PGWqz2Kng2obkIgE" />
 <meta charset="UTF-8">
-<meta name="app-build" content="2026-08-30-dynamic-preview-attachments-landscape-v10">
+<meta name="app-build" content="2026-08-29-final-safe-subscription-chat-assistant-mobile-video-v9">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <!-- ==================== PWA: manifest + platform metadata ==================== -->
 <link rel="manifest" href="./manifest.json">
@@ -4264,8 +4264,11 @@ async function loadSectionContent(sectionId) {
       if (error) {
         console.error('[DEBUG loadSectionContent] ❌ خطأ Supabase:', error.message, '| code:', error.code, '| hint:', error.hint);
         if (error.code === '42501' || (error.message||'').includes('permission') || (error.message||'').includes('policy')) {
-          console.error('[DEBUG loadSectionContent] 🔐 مشكلة RLS — لا تفتح section_content بـ USING(true). ' +
-            'تحقق من سياسة الـPreview الديناميكي في قاعدة البيانات.');
+          console.error('[DEBUG loadSectionContent] 🔐 مشكلة RLS — شغّل في Supabase SQL Editor:\n' +
+            'ALTER TABLE section_content ENABLE ROW LEVEL SECURITY;\n' +
+            'DROP POLICY IF EXISTS "content_read_authenticated" ON section_content;\n' +
+            'DROP POLICY IF EXISTS "content_read_all" ON section_content;\n' +
+            'CREATE POLICY "content_read_all" ON section_content FOR SELECT USING (true);');
         }
         delete window._dataCache.content[key];
         throw error;
@@ -4349,8 +4352,11 @@ async function loadSectionResources(sectionId) {
       if (error) {
         console.error('[DEBUG loadSectionResources] ❌ خطأ Supabase:', error.message, '| code:', error.code);
         if (error.code === '42501' || (error.message||'').includes('permission') || (error.message||'').includes('policy')) {
-          console.error('[DEBUG loadSectionResources] 🔐 مشكلة RLS — لا تفتح section_resources بـ USING(true). ' +
-            'تحقق من سياسة الـPreview الديناميكي في قاعدة البيانات.');
+          console.error('[DEBUG loadSectionResources] 🔐 مشكلة RLS — شغّل في Supabase SQL Editor:\n' +
+            'ALTER TABLE section_resources ENABLE ROW LEVEL SECURITY;\n' +
+            'DROP POLICY IF EXISTS "resources_read_auth" ON section_resources;\n' +
+            'DROP POLICY IF EXISTS "resources_read_all" ON section_resources;\n' +
+            'CREATE POLICY "resources_read_all" ON section_resources FOR SELECT USING (true);');
         }
         // لا نُحوّل فشل الاستعلام إلى نتيجة فارغة؛ النتيجة الفارغة الحقيقية فقط
         // هي التي تسمح بعرض "لا يوجد محتوى". الخطأ يذهب لمسار الخطأ الظاهر للمستخدم.
@@ -4756,12 +4762,10 @@ async function _renderDynamicSectionPage(sec) {
     if (!contact) return;
     var international = window._coursePhoneToInternational(contact.phone);
     var digits = window._coursePhoneDigits(contact.phone);
-    var safeLink = (typeof window._capSafeContactUrl === 'function')
-      ? window._capSafeContactUrl(contact.link) : '';
-    if (!safeLink && (!international || !digits)) return;
+    if (!international || !digits) return;
     var telegramHref = contact.telegram
       ? 'https://t.me/' + contact.telegram.replace(/^@/, '')
-      : (digits ? 'https://t.me/+' + digits : '');
+      : 'https://t.me/+' + digits;
 
     window._closeCourseContactActions();
 
@@ -4775,12 +4779,11 @@ async function _renderDynamicSectionPage(sec) {
     card.style.cssText = 'width:min(420px,100%);background:#fff;border-radius:20px;padding:20px;box-shadow:0 22px 70px rgba(0,0,0,.28);text-align:center;font-family:inherit;';
     card.innerHTML =
       '<div style="font-size:1.05rem;font-weight:900;color:#0a3d62;margin-bottom:6px;">📱 اختر طريقة التواصل' + (contact.name ? ' — ' + _apEsc(contact.name) : '') + '</div>' +
-      '<div style="font-size:.82rem;color:#667;margin-bottom:16px;direction:ltr;">' + _apEsc(international || (safeLink ? 'رابط الكورس' : '')) + '</div>' +
+      '<div style="font-size:.82rem;color:#667;margin-bottom:16px;direction:ltr;">' + _apEsc(international) + '</div>' +
       '<div style="display:grid;gap:10px;">' +
-        (digits ? '<a href="https://wa.me/' + digits + '" target="_blank" rel="noopener noreferrer" style="display:block;padding:12px 14px;border-radius:12px;background:#16a34a;color:#fff;text-decoration:none;font-weight:900;">🟢 WhatsApp</a>' : '') +
-        (telegramHref ? '<a href="' + telegramHref + '" target="_blank" rel="noopener noreferrer" style="display:block;padding:12px 14px;border-radius:12px;background:#229ed9;color:#fff;text-decoration:none;font-weight:900;">🔵 Telegram</a>' : '') +
-        (international ? '<a href="tel:' + _apEsc(international) + '" style="display:block;padding:12px 14px;border-radius:12px;background:#0a3d62;color:#fff;text-decoration:none;font-weight:900;">📞 اتصال هاتفي</a>' : '') +
-        (safeLink ? '<a href="' + _apEsc(safeLink) + '" target="_blank" rel="noopener noreferrer" style="display:block;padding:12px 14px;border-radius:12px;background:#7c3aed;color:#fff;text-decoration:none;font-weight:900;">🔗 فتح الرابط</a>' : '') +
+        '<a href="https://wa.me/' + digits + '" target="_blank" rel="noopener noreferrer" style="display:block;padding:12px 14px;border-radius:12px;background:#16a34a;color:#fff;text-decoration:none;font-weight:900;">🟢 WhatsApp</a>' +
+        '<a href="' + telegramHref + '" target="_blank" rel="noopener noreferrer" style="display:block;padding:12px 14px;border-radius:12px;background:#229ed9;color:#fff;text-decoration:none;font-weight:900;">🔵 Telegram</a>' +
+        '<a href="tel:' + international + '" style="display:block;padding:12px 14px;border-radius:12px;background:#0a3d62;color:#fff;text-decoration:none;font-weight:900;">📞 اتصال هاتفي</a>' +
       '</div>' +
       '<button type="button" onclick="window._closeCourseContactActions()" style="margin-top:12px;width:100%;padding:10px 14px;border:0;border-radius:12px;background:#eef3f7;color:#345;font-weight:800;cursor:pointer;">إغلاق</button>';
 
@@ -4819,14 +4822,11 @@ async function _renderDynamicSectionPage(sec) {
       if (!contacts.length) { adminPhoneEl.innerHTML = ''; return; }
       var cardsHTML = contacts.map(function(c, idx){
         var normalized = window._coursePhoneToInternational(c.phone);
-        var safeLink = (typeof window._capSafeContactUrl === 'function')
-          ? window._capSafeContactUrl(c.link) : '';
-        if (!normalized && !safeLink) return '';
+        if (!normalized) return '';
         return '<button type="button" class="course-contact-card" onclick="window._openCourseContactActions(' + idx + ')" '
           + 'style="display:inline-flex;flex-direction:column;align-items:center;gap:2px;border:0;cursor:pointer;background:linear-gradient(135deg,#0a3d62,#17a589);color:#fff;padding:9px 18px;border-radius:16px;font-weight:800;font-size:.86rem;min-width:150px;max-width:100%;">'
           + (c.name ? '<span style="font-size:.72rem;opacity:.9;">' + _apEsc(c.name) + '</span>' : '')
-          + (normalized ? '<span style="direction:ltr;">📞 ' + _apEsc(normalized) + '</span>' : '')
-          + (safeLink ? '<span style="direction:ltr;">🔗 رابط الكورس</span>' : '')
+          + '<span style="direction:ltr;">📞 ' + _apEsc(normalized) + '</span>'
           + '</button>';
       }).join('');
       adminPhoneEl.innerHTML = cardsHTML
@@ -4879,19 +4879,6 @@ async function _renderDynamicSectionPage(sec) {
     try {
       gate = await window.checkSectionAccess(sec.id);
       if (gate) { window._lastGateSec = sec; window.__currentChapterGate = gate; }
-
-      // FINAL FREE-PREVIEW UI GUARD:
-      // لو هذا هو أول Section فعلي عليه Content/Resources، لا نعرض عليه
-      // قفل الاشتراك في الواجهة حتى لو رجع gate بسبب اختلاف حالة الـUI.
-      // الحماية الحقيقية تظل من RLS في قاعدة البيانات.
-      if (gate && typeof window._isFreePreviewSection === 'function') {
-        try {
-          if (await window._isFreePreviewSection(sec.id)) {
-            gate = null;
-            window.__currentChapterGate = null;
-          }
-        } catch (_previewUiErr) {}
-      }
     } catch(gateErr) {
       console.error('[DB LOAD ERROR][_renderDynamicSectionPage:checkSectionAccess]', gateErr && gateErr.message, gateErr);
       // SECURITY: أي فشل في فحص الاشتراك لا يفتح المحتوى المحمي.
@@ -5378,19 +5365,6 @@ async function _openContentPage(sec, _preloadedContent, _preloadedResources) {
     try {
       gate = await window.checkSectionAccess(sec.id);
       if (gate) { window._lastGateSec = sec; window.__currentChapterGate = gate; }
-
-      // FINAL FREE-PREVIEW UI GUARD:
-      // لو هذا هو أول Section فعلي عليه Content/Resources، لا نعرض عليه
-      // قفل الاشتراك في الواجهة حتى لو رجع gate بسبب اختلاف حالة الـUI.
-      // الحماية الحقيقية تظل من RLS في قاعدة البيانات.
-      if (gate && typeof window._isFreePreviewSection === 'function') {
-        try {
-          if (await window._isFreePreviewSection(sec.id)) {
-            gate = null;
-            window.__currentChapterGate = null;
-          }
-        } catch (_previewUiErr) {}
-      }
     } catch(gateErr) {
       console.error('[DB LOAD ERROR][_openContentPage:checkSectionAccess]', gateErr && gateErr.message, gateErr);
       // SECURITY: لا نعرض أي محتوى مدفوع عند فشل التحقق.
@@ -7634,7 +7608,7 @@ const ResourceViewer = (function() {
   // نوع زي الكود القديم.
   // ══════════════════════════════════════════════════════════════════
 
-  var _rvLandscapeState = { active: false, rafId: null, resizeBound: false, orientationBound: false, viewportBound: false };
+  var _rvLandscapeState = { active: false, rafId: null, resizeBound: false };
 
   // ✅ يعتمد فقط على window.innerWidth/innerHeight (مش matchMedia ولا
   // screen.orientation) زي ما مطلوب بالظبط.
@@ -7687,24 +7661,13 @@ const ResourceViewer = (function() {
     var availH = Math.max(0, body.clientHeight - toolsH);
     if (availW <= 0 || availH <= 0) return;
 
-    // Native landscape is preferred. If the browser/WebView refuses to rotate
-    // the physical viewport, use a contained visual fallback so the video itself
-    // still appears landscape and fills the available screen area.
-    if (_rvIsPortraitViewport()) {
-      // Swap layout dimensions, then rotate the media around its center.
-      // After rotation its visual bounding box is availW × availH.
-      media.style.width = availH + 'px';
-      media.style.height = availW + 'px';
-      media.style.transform = 'rotate(90deg)';
-      media.style.transformOrigin = 'center center';
-      media.style.margin = '0 auto';
-    } else {
-      media.style.width = availW + 'px';
-      media.style.height = availH + 'px';
-      media.style.transform = 'none';
-      media.style.transformOrigin = 'center center';
-      media.style.margin = '0 auto';
-    }
+    // No CSS rotation fallback. Real landscape is requested through the
+    // Screen Orientation API by _toggleFullscreen/_toggleLandscape. If the
+    // WebView refuses orientation locking, keep the media unrotated and let
+    // the OS/browser determine the actual viewport orientation.
+    media.style.width = availW + 'px';
+    media.style.height = availH + 'px';
+    media.style.transform = 'none';
   }
 
   // ✅ إعادة الحساب فقط عبر requestAnimationFrame بعد resize فعلي (مثلاً
@@ -7740,14 +7703,6 @@ const ResourceViewer = (function() {
       window.addEventListener('resize', _rvOnLandscapeResize, { passive: true });
       _rvLandscapeState.resizeBound = true;
     }
-    if (!_rvLandscapeState.orientationBound) {
-      window.addEventListener('orientationchange', _rvOnLandscapeResize, { passive: true });
-      _rvLandscapeState.orientationBound = true;
-    }
-    if (window.visualViewport && !_rvLandscapeState.viewportBound) {
-      window.visualViewport.addEventListener('resize', _rvOnLandscapeResize, { passive: true });
-      _rvLandscapeState.viewportBound = true;
-    }
     _rvUpdateLandscapeBtnLabel();
   }
 
@@ -7764,14 +7719,6 @@ const ResourceViewer = (function() {
     if (_rvLandscapeState.resizeBound) {
       window.removeEventListener('resize', _rvOnLandscapeResize);
       _rvLandscapeState.resizeBound = false;
-    }
-    if (_rvLandscapeState.orientationBound) {
-      window.removeEventListener('orientationchange', _rvOnLandscapeResize);
-      _rvLandscapeState.orientationBound = false;
-    }
-    if (window.visualViewport && _rvLandscapeState.viewportBound) {
-      window.visualViewport.removeEventListener('resize', _rvOnLandscapeResize);
-      _rvLandscapeState.viewportBound = false;
     }
     if (_rvLandscapeState.rafId) {
       cancelAnimationFrame(_rvLandscapeState.rafId);
@@ -7795,7 +7742,6 @@ const ResourceViewer = (function() {
       media.style.height = '';
       media.style.transform = '';
       media.style.transformOrigin = '';
-      media.style.margin = '';
     }
     _rvUpdateLandscapeBtnLabel();
   }
@@ -7825,80 +7771,10 @@ const ResourceViewer = (function() {
   // وعن حالة Fullscreen الحقيقية، وعن اتجاه الجهاز الفعلي. نفس المسار
   // لكل الأنواع (فيديو مباشر / يوتيوب / فيميو / دايلي موشن / Fembed).
   function _toggleLandscape() {
-    var overlay = document.getElementById('rv-overlay');
-    var modal = document.getElementById('rv-modal');
-    if (!overlay || !modal) return;
-
-    var landscapeActive = !!overlay.classList.contains('rv-landscape-visual');
-    var nativeActive = !!(document.fullscreenElement || document.webkitFullscreenElement);
-    var manualActive = overlay.classList.contains('rv-manual-fs');
-
-    if (landscapeActive || nativeActive || manualActive) {
-      // خروج كامل من وضع عرضي/ملء الشاشة.
-      try {
-        if (document.fullscreenElement || document.webkitFullscreenElement) {
-          var exit = document.exitFullscreen || document.webkitExitFullscreen;
-          if (exit) {
-            var ep = exit.call(document);
-            if (ep && typeof ep.catch === 'function') ep.catch(function(){});
-          }
-        }
-      } catch(e) {}
-      if (overlay.classList.contains('rv-manual-fs')) _disableManualFullscreen();
-      _rvExitLandscape();
-      _rvLeaveFullscreenLayout();
-      _onRvFsChange();
-      return;
-    }
-
-    // دخول فوري: لا ننتظر Orientation API قبل عرض الـUI.
-    _rvRememberOrientation();
-    _rvEnableLandscapeVisual();
-    _rvEnterFullscreenLayout(overlay);
-    _rvRequestLandscape();
-    _rvShowFullscreenControls();
-
-    // Fullscreen حقيقي إن كان متاحاً. لو رفضه المتصفح/WebView، يظل
-    // fallback اليدوي فعالاً، وبالتالي لا يختفي الفيديو على الموبايل.
-    var req = modal.requestFullscreen || modal.webkitRequestFullscreen;
-    if (req) {
-      try {
-        var result = req.call(modal);
-        if (result && typeof result.then === 'function') {
-          result.then(function(){
-            _rvRequestLandscape();
-            _rvOnLandscapeResize();
-            _rvShowFullscreenControls();
-            _onRvFsChange();
-          }).catch(function(err){
-            console.info('[Landscape] native fullscreen rejected; manual fallback remains active:', err && err.message);
-            _enableManualFullscreen();
-            _rvRequestLandscape();
-            _rvOnLandscapeResize();
-            _rvShowFullscreenControls();
-          });
-        } else {
-          setTimeout(function(){
-            var confirmed = !!(document.fullscreenElement || document.webkitFullscreenElement);
-            if (!confirmed) _enableManualFullscreen();
-            _rvRequestLandscape();
-            _rvOnLandscapeResize();
-            _rvShowFullscreenControls();
-            _onRvFsChange();
-          }, 120);
-        }
-      } catch(e) {
-        _enableManualFullscreen();
-        _rvRequestLandscape();
-        _rvOnLandscapeResize();
-        _rvShowFullscreenControls();
-      }
-    } else {
-      _enableManualFullscreen();
-      _rvRequestLandscape();
-      _rvOnLandscapeResize();
-      _rvShowFullscreenControls();
-    }
+    // The old implementation used a CSS rotate fallback. That is intentionally
+    // retired: the landscape/fullscreen action now uses the same native-first
+    // fullscreen + Screen Orientation flow as the main fullscreen button.
+    return _toggleFullscreen();
   }
 
   // ✅ الخروج: يرجّع كل حاجة للوضع الطبيعي، بدون لمس تشغيل/توقيت الفيديو،
@@ -9882,7 +9758,7 @@ window.checkBanStatus = async function(email) {
         <div class="ap-section-heading">📱 رقم أدمن / دكتور الكورس</div>
         <div class="ap-card" style="padding:18px;max-width:760px;">
           <div style="font-size:.82rem;color:#667;line-height:1.8;margin-bottom:14px;">
-            اختر الكورس ثم سجّل رقم أدمن/دكتور هذا الكورس. البيانات تُحفظ على الكورس نفسه وتظهر للطلاب داخل الكورس المحدد فقط. يمكنك إضافة رقم أو رابط مباشر للكورس، أو الاثنين معًا.
+            اختر الكورس ثم سجّل رقم أدمن/دكتور هذا الكورس. الرقم يُحفظ على الكورس نفسه ويظهر للطلاب داخل الكورس المحدد فقط.
           </div>
           <div>
             <label class="ap-label">📚 الكورس</label>
@@ -9891,7 +9767,7 @@ window.checkBanStatus = async function(email) {
             </select>
           </div>
           <div style="margin-top:14px;">
-            <label class="ap-label">📱 جهات اتصال الكورس (رقم + Telegram + رابط اختياري)</label>
+            <label class="ap-label">📱 جهات اتصال الكورس (يقبل أكثر من رقم)</label>
             <div id="cap-contacts-list"></div>
             <button type="button" class="ap-btn ap-btn-ghost" style="margin-top:6px;" onclick="capAddContactRow()">➕ إضافة رقم آخر</button>
           </div>
@@ -12226,24 +12102,11 @@ window._capCourses = [];
 window._capContacts = [];
 
 // ────────────────────────────────────────────────────────────────
-// 📱 تخزين عدة جهات اتصال (اسم + رقم + Telegram + رابط اختياري)
+// 📱 تخزين عدة جهات اتصال (اسم اختياري + رقم + Telegram Username اختياري)
 // داخل نفس عمود course_admin_phone الموجود بالفعل (كنص JSON)، بدون إنشاء
-// أي جدول جديد. متوافق تمامًا مع القيمة القديمة (رقم هاتف كنص عادي فقط).
-// الرابط يُسمح له فقط بـ http/https، ويمكن أن يكون موجودًا وحده بدون رقم.
+// أي جدول جديد. متوافق تمامًا مع القيمة القديمة (رقم هاتف كنص عادي فقط) —
+// أي رقم قديم يُقرأ تلقائيًا كجهة اتصال واحدة بلا اسم/Telegram.
 // ────────────────────────────────────────────────────────────────
-window._capSafeContactUrl = window._capSafeContactUrl || function(raw){
-  var v = (raw === null || raw === undefined) ? '' : String(raw).trim();
-  if (!v) return '';
-  if (!/^https?:\/\//i.test(v)) v = 'https://' + v;
-  try {
-    var u = new URL(v);
-    if (u.protocol !== 'http:' && u.protocol !== 'https:') return '';
-    return u.href;
-  } catch(e) {
-    return '';
-  }
-};
-
 window._capParseContacts = window._capParseContacts || function(raw){
   var value = (raw === null || raw === undefined) ? '' : String(raw).trim();
   if (!value) return [];
@@ -12255,27 +12118,24 @@ window._capParseContacts = window._capParseContacts || function(raw){
           return {
             name: (c && c.name) ? String(c.name).trim() : '',
             phone: (c && c.phone) ? String(c.phone).trim() : '',
-            telegram: (c && c.telegram) ? String(c.telegram).trim().replace(/^@/, '') : '',
-            link: window._capSafeContactUrl(c && c.link)
+            telegram: (c && c.telegram) ? String(c.telegram).trim().replace(/^@/, '') : ''
           };
-        }).filter(function(c){ return c.phone || c.link; });
+        }).filter(function(c){ return c.phone; });
       }
     } catch (e) { /* ليست JSON صحيحة — نتعامل معها كرقم قديم بالأسفل */ }
   }
   // قيمة قديمة: رقم هاتف نصي عادي واحد فقط.
-  return [{ name: '', phone: value, telegram: '', link: '' }];
+  return [{ name: '', phone: value, telegram: '' }];
 };
 
 window._capSerializeContacts = window._capSerializeContacts || function(contacts){
   var clean = (contacts || []).map(function(c){
-    var link = window._capSafeContactUrl(c && c.link);
     return {
-      name: (c && c.name || '').trim(),
-      phone: (c && c.phone || '').trim(),
-      telegram: (c && c.telegram || '').trim().replace(/^@/, ''),
-      link: link
+      name: (c.name || '').trim(),
+      phone: (c.phone || '').trim(),
+      telegram: (c.telegram || '').trim().replace(/^@/, '')
     };
-  }).filter(function(c){ return c.phone || c.link; });
+  }).filter(function(c){ return c.phone; });
   if (!clean.length) return null;
   return JSON.stringify(clean);
 };
@@ -12324,7 +12184,7 @@ window.capLoadCourse = async function(){
   if(!id){capRenderContacts([]);return;}
   var row=(window._capCourses||[]).find(function(x){return Number(x.id)===id;});
   window._capContacts = window._capParseContacts(row && row.course_admin_phone);
-  if(!window._capContacts.length) window._capContacts=[{name:'',phone:'',telegram:'',link:''}];
+  if(!window._capContacts.length) window._capContacts=[{name:'',phone:'',telegram:''}];
   capRenderContacts(window._capContacts);
   if(msg)msg.textContent='';
 };
@@ -12333,18 +12193,16 @@ window.capLoadCourse = async function(){
 function capRenderContacts(contacts){
   var wrap=document.getElementById('cap-contacts-list');
   if(!wrap) return;
-  if(!contacts || !contacts.length) contacts=[{name:'',phone:'',telegram:'',link:''}];
+  if(!contacts || !contacts.length) contacts=[{name:'',phone:'',telegram:''}];
   wrap.innerHTML = contacts.map(function(c, idx){
-    return '<div class="ap-card" data-cap-row="'+idx+'" style="padding:10px;margin-bottom:8px;display:grid;grid-template-columns:1fr 1fr 1fr 1.25fr auto;gap:8px;align-items:end;">'+
+    return '<div class="ap-card" data-cap-row="'+idx+'" style="padding:10px;margin-bottom:8px;display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:8px;align-items:end;">'+
       '<div><label class="ap-label" style="font-size:.7rem;">👤 الاسم (اختياري)</label>'+
         '<input class="ap-input cap-c-name" type="text" value="'+_apEsc(c.name||'')+'" placeholder="اسم الأدمن/الدكتور"></div>'+
-      '<div><label class="ap-label" style="font-size:.7rem;">📱 رقم الهاتف (اختياري)</label>'+
+      '<div><label class="ap-label" style="font-size:.7rem;">📱 رقم الهاتف</label>'+
         '<input class="ap-input cap-c-phone" type="text" inputmode="tel" dir="ltr" style="text-align:right;" value="'+_apEsc(c.phone||'')+'" placeholder="01xxxxxxxxx"></div>'+
       '<div><label class="ap-label" style="font-size:.7rem;">🔵 Telegram Username (اختياري)</label>'+
         '<input class="ap-input cap-c-telegram" type="text" dir="ltr" value="'+_apEsc(c.telegram||'')+'" placeholder="username بدون @"></div>'+
-      '<div><label class="ap-label" style="font-size:.7rem;">🔗 رابط الكورس (اختياري)</label>'+
-        '<input class="ap-input cap-c-link" type="url" dir="ltr" value="'+_apEsc(c.link||'')+'" placeholder="https://example.com"></div>'+
-      '<button type="button" class="ap-btn ap-btn-ghost" style="padding:9px 10px;" title="حذف جهة الاتصال" onclick="capRemoveContactRow('+idx+')">🗑️</button>'+
+      '<button type="button" class="ap-btn ap-btn-ghost" style="padding:9px 10px;" title="حذف هذا الرقم" onclick="capRemoveContactRow('+idx+')">🗑️</button>'+
     '</div>';
   }).join('');
 }
@@ -12358,8 +12216,7 @@ function capReadContactsFromDOM(){
     var name=(row.querySelector('.cap-c-name')||{}).value||'';
     var phone=(row.querySelector('.cap-c-phone')||{}).value||'';
     var telegram=(row.querySelector('.cap-c-telegram')||{}).value||'';
-    var link=(row.querySelector('.cap-c-link')||{}).value||'';
-    out.push({name:name, phone:phone, telegram:telegram, link:link});
+    out.push({name:name, phone:phone, telegram:telegram});
   });
   return out;
 }
@@ -20147,62 +20004,17 @@ window.diagnose = async function() {
     delete window._subStatusCache[userId + ':' + sectionId];
   }
 
-  // ── Dynamic Free Preview — لا نفترض أي أسماء أو عدد مستويات ─────────────
-  // قاعدة الـPreview:
-  // 1) نبدأ من الـsubscription anchor.
-  // 2) نفحص العقدة نفسها: لو عليها section_content أو section_resources فهي
-  //    أول نقطة محتوى، وبالتالي هي الـFree Preview.
-  // 3) لو لا يوجد محتوى/موارد، ننزل إلى أول ابن فقط حسب:
-  //       display_order ASC ثم id ASC
-  // 4) نكرر نفس القاعدة مهما كان عدد المستويات أو اسم type:
-  //       Course → Material → Lesson → Chapter → ... إلخ
-  //    ولا نعتمد إطلاقاً على lesson/class أو subject/department أو أي type آخر.
-  // 5) نقطة التوقف الوحيدة هي أول section فعلي عليه Content/Resources.
-  //
-  // الـRPC هو مصدر الحقيقة نفسه الموجود في RLS، حتى لا يحدث اختلاف بين
-  // الواجهة وقاعدة البيانات عندما تكون section_content/resources محمية.
-  async function _getFirstFreeChapterId(anchorId) {
-    anchorId = Number(anchorId);
-    if (!Number.isFinite(anchorId) || !window.supabase) return null;
-
-    try {
-      var res = await window.supabase.rpc('get_first_free_content_section_id', {
-        p_anchor_id: anchorId
-      });
-      if (res && !res.error && res.data != null) {
-        return Number(res.data) || null;
-      }
-      if (res && res.error) {
-        console.warn('[Free Preview] RPC get_first_free_content_section_id:', res.error.message);
-      }
-    } catch (e) {
-      console.warn('[Free Preview] RPC exception:', e && e.message);
-    }
-
-    // Fallback للواجهة: نفس الخوارزمية، بدون الاعتماد على type.
-    // يُستخدم فقط لو الـRPC غير موجود/غير متاح؛ الأمان النهائي يظل من RLS.
-    var currentId = anchorId;
-    var guard = 0;
-
-    while (guard++ < 50) {
-      var currentContent = await loadSectionContent(currentId);
-      var currentResources = await loadSectionResources(currentId);
-
-      if ((currentContent && currentContent.length) ||
-          (currentResources && currentResources.length)) {
-        return currentId;
-      }
-
-      var children = _sortByOrderThenId(await loadSections(currentId));
-      if (!children.length) return null;
-
-      currentId = Number(children[0].id);
-      if (!Number.isFinite(currentId)) return null;
-    }
-
-    return null;
-  }
-
+  // ── يحدد الفصل المجاني الأول بدون hardcoded section IDs، وبدون افتراض
+  // عدد مستويات ثابت بين الشعبة/الكورس (anchor) والشابتر الفعلي.
+  // ✅ FIX (Aug 2026 — يطابق حرفيًا public.get_first_free_chapter_id في الـDB):
+  // هيكل غير ثابت العمق (فرقة→ترم→شعبة→Course→Chapter، أو فرقة→Course→Chapter،
+  // أو Course→Chapter مباشرة). النزول من anchor (الـCourse) يكون دائمًا عبر
+  // أول ابن حسب display_order (ثم id كحسم تعادل)، لكن التوقف الآن يعتمد على
+  // "type" الفعلي للعقدة وليس على كونها leaf (بلا أبناء):
+  //   - أول عقدة نوعها 'lesson' أو 'class' فقط = First Free Chapter.
+  //   - أي نوع آخر (subject/department/level/year/أي حاوية وسيطة) يُتخطّى
+  //     بالنزول لأول ابن له، ولا يُعتبر شابتراً مجانياً أبداً حتى لو لم يكن
+  //     له أبناء (يُرجع null في هذه الحالة بدل اعتباره الشابتر خطأً).
   function _sortByOrderThenId(rows){
     return (rows||[]).slice().sort(function(a,b){
       var ao=Number(a.display_order)||0, bo=Number(b.display_order)||0;
@@ -20210,20 +20022,40 @@ window.diagnose = async function() {
       return Number(a.id)-Number(b.id);
     });
   }
+  async function _getFirstFreeChapterId(anchorId) {
+    anchorId=Number(anchorId);
+    if(!Number.isFinite(anchorId)) return null;
+
+    var currentId = anchorId;
+    var guard = 0; // حماية من حلقة لا نهائية بسبب بيانات parent_id تالفة/دائرية
+    while (guard++ < 12) {
+      var children = _sortByOrderThenId(await loadSections(currentId));
+      if (!children.length) {
+        // وصلنا لعقدة بلا أبناء ولم نجد lesson/class على الطريق — لا يوجد
+        // شابتر مجاني صالح تحت هذا الـanchor (لا نعتبر أي نوع آخر شابتراً).
+        return null;
+      }
+      var first = children[0];
+      var t = String(first.type || '').trim().toLowerCase();
+      if (t === 'lesson' || t === 'class') {
+        return first.id;
+      }
+      // نوع وسيط (subject/department/level/year/إلخ) — نزول أعمق بدون اعتباره شابتراً.
+      currentId = first.id;
+    }
+    return null;
+  }
 
   async function _isWithinFreeChapter(anchorId, sectionId) {
     anchorId=Number(anchorId); sectionId=Number(sectionId);
-    if(!Number.isFinite(anchorId)||!Number.isFinite(sectionId)) return false;
+    if(!Number.isFinite(anchorId)||!Number.isFinite(sectionId)||sectionId===anchorId) return false;
 
     var firstChapterId=await _getFirstFreeChapterId(anchorId);
     if(!firstChapterId) return false;
 
-    // إذا كان الـanchor نفسه هو أول نقطة محتوى، فهو الـleaf المجاني نفسه.
-    if(Number(firstChapterId)===sectionId) return true;
-
     var current=await _getSectionRow(firstChapterId);
     var depth=0;
-    while(current && depth++<50){
+    while(current && depth++<20){
       if(Number(current.id)===sectionId) return true;
       if(Number(current.id)===anchorId) break;
       if(current.parent_id===null||current.parent_id===undefined) break;
@@ -20276,9 +20108,10 @@ window.diagnose = async function() {
         return null;
       }
 
-      // ── ✅ (تحديث): Preview ديناميكي لمسار واحد فقط: أول عقدة لها Content/Resources عند النزول
-      // من الـanchor عبر أول ابن حسب display_order ثم id. كل ما عدا هذا المسار
-      // يظل محميًا بالاشتراك.
+      // ── ✅ (تحديث): فصل واحد فقط مجاني لكل شعبة بالكامل — الفصل الأول من أول
+      // مادة في الشعبة فقط (كل section_content و section_resources والفيديوهات
+      // وملفات الـ PDF التابعة له تحديداً). باقي مواد الشعبة، وباقي فصول المادة
+      // الأولى نفسها، تظل كلها محمية بالاشتراك كالمعتاد.
       var isFreePreview = await _isWithinFreeChapter(anchor.id, sectionId);
       if (isFreePreview) return null;
 
@@ -29105,7 +28938,7 @@ NOTIFY pgrst, 'reload schema';
       var row=r.data;
       window._capCourses=(window._capCourses||[]).map(function(x){return Number(x.id)===id?Object.assign({},x,row):x;});
       window._capContacts=window._capParseContacts(row.course_admin_phone);
-      if(!window._capContacts.length) window._capContacts=[{name:'',phone:'',telegram:'',link:''}];
+      if(!window._capContacts.length) window._capContacts=[{name:'',phone:'',telegram:''}];
       capRenderContacts(window._capContacts); if(msg) msg.textContent='';
     }catch(e){
       console.error('[CourseAdminPhone] load:',e);
@@ -30376,11 +30209,6 @@ ORDER BY tablename, policyname;
 /* BSM V9 — FINAL SAFE INTEGRATION — 2026-08-29
    Frontend-only integration for the already-existing subscription/chat/admin schema.
    No table/column/function/RLS changes are performed here.
-
-   FINAL ASSISTANT VISIBILITY FIX:
-   A branch_admin assigned to a child course through section_admins is treated as
-   a course assistant in this panel, while the direct managed_section_id row
-   remains the Branch Admin assignment and is not duplicated here.
 */
 (function(){
   'use strict';
@@ -30408,42 +30236,9 @@ ORDER BY tablename, policyname;
     var d=db(); if(!d||!cid)return [];
     var r=await d.from('section_admins').select('id,user_id,section_id,role,is_active,created_at,permissions').eq('section_id',Number(cid)).in('role',['admin','assistant']).order('id');
     if(r.error)throw r.error;
-
-    var rows=r.data||[],
-        ids=Array.from(new Set(rows.map(function(x){return x.user_id;}).filter(Boolean))),
-        pm={};
-
-    if(ids.length){
-      // managed_section_id مهم هنا للتمييز بين:
-      // 1) سجل الـBranch Admin الخاص بالشعبة نفسها — لا نعرضه كـAssistant.
-      // 2) سجل نفس الـBranch Admin المعيّن على كورس فرعي — نعرضه في لوحة
-      //    الكورس حتى يستطيع Owner/Admin تعديله أو تعطيله.
-      var p=await d.from('profiles')
-        .select('id,email,full_name,role,managed_section_id')
-        .in('id',ids);
-      if(p.error)throw p.error;
-      (p.data||[]).forEach(function(x){pm[x.id]=x;});
-    }
-
-    return rows.map(function(x){
-      x.profile=pm[x.user_id]||{};
-      var pr=String(x.profile.role||'').toLowerCase();
-      var isExplicitAssistant = String(x.role)==='assistant' ||
-        ['student','user'].indexOf(pr)!==-1 ||
-        (x.permissions && x.permissions.assistant_assignment===true);
-
-      // Branch Admin يمكن أن يكون له أكثر من سجل في section_admins.
-      // السجل على الشعبة التي يديرها مباشرةً هو Branch Admin وليس Assistant.
-      // أما السجل على كورس آخر تابع/مختلف عن managed_section_id فهو تعيين
-      // على مستوى الكورس، ولذلك يجب أن يظهر في "الأدمن المساعد".
-      var isBranchAdminCourseAssignment =
-        pr==='branch_admin' &&
-        Number(x.profile.managed_section_id||0)>0 &&
-        Number(x.section_id)!==Number(x.profile.managed_section_id);
-
-      x.isAssistant = isExplicitAssistant || isBranchAdminCourseAssignment;
-      return x;
-    }).filter(function(x){return x.isAssistant;});
+    var rows=r.data||[],ids=Array.from(new Set(rows.map(function(x){return x.user_id;}).filter(Boolean))),pm={};
+    if(ids.length){var p=await d.from('profiles').select('id,email,full_name,role').in('id',ids);if(p.error)throw p.error;(p.data||[]).forEach(function(x){pm[x.id]=x;});}
+    return rows.map(function(x){x.profile=pm[x.user_id]||{};x.isAssistant=String(x.role)==='assistant'||['student','user'].indexOf(String(x.profile.role||'').toLowerCase())>=0;return x;}).filter(function(x){return x.isAssistant;});
   }
   function renderRows(rows,cid){
     var body=document.getElementById('bsm-aa-body'),sel=document.getElementById('bsm-aa-course'); if(!body)return;
