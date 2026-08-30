@@ -31204,5 +31204,75 @@ ORDER BY ordinal_position;
   });
 })();
 </script>
+
+<style id="root-video-player-fix">
+.root-video-shell{position:relative;width:100%;max-width:1100px;margin:0 auto;background:#000;border-radius:14px;overflow:hidden;aspect-ratio:16/9;display:flex;align-items:center;justify-content:center}
+.root-video-shell video{width:100%;height:100%;display:block;background:#000;object-fit:contain}
+.root-video-shell:fullscreen,.root-video-shell:-webkit-full-screen{width:100vw;height:100vh;max-width:none;border-radius:0;background:#000;aspect-ratio:auto}
+.root-video-shell:fullscreen video,.root-video-shell:-webkit-full-screen video{width:100vw;height:100vh;object-fit:contain}
+@media(max-width:700px){.root-video-shell{border-radius:0;width:100%;max-width:none}}
+</style>
+<script id="root-video-player-fix-js">
+(function(){
+'use strict';
+if(window.__ROOT_VIDEO_PLAYER_FIX_V2)return;
+window.__ROOT_VIDEO_PLAYER_FIX_V2=true;
+
+async function goFullscreen(video){
+  if(!video)return;
+  var shell=video.closest('.root-video-shell')||video;
+  try{
+    if(document.fullscreenElement!==shell){
+      if(shell.requestFullscreen) await shell.requestFullscreen();
+      else if(shell.webkitRequestFullscreen) shell.webkitRequestFullscreen();
+      else if(video.webkitEnterFullscreen){video.webkitEnterFullscreen();return;}
+    }
+  }catch(e){console.warn('[VIDEO UX] fullscreen',e);}
+  try{
+    if(screen.orientation&&screen.orientation.lock) await screen.orientation.lock('landscape');
+  }catch(e){}
+}
+
+function enhance(video){
+  if(!video||video.tagName!=='VIDEO'||video.dataset.rootVideoEnhanced==='1')return;
+  video.dataset.rootVideoEnhanced='1';
+  video.setAttribute('controls','');
+  video.setAttribute('playsinline','');
+  video.setAttribute('webkit-playsinline','');
+
+  // On mobile, the first actual playback request enters landscape fullscreen.
+  video.addEventListener('play',function(){
+    if(window.innerWidth<=700) goFullscreen(video);
+  },{once:true});
+
+  // Covers players that start through an existing "عرض" handler.
+  video.addEventListener('playing',function(){
+    if(window.innerWidth<=700&&!document.fullscreenElement) goFullscreen(video);
+  },{once:true});
+}
+
+function scan(){
+  document.querySelectorAll('video').forEach(enhance);
+}
+
+document.addEventListener('click',function(e){
+  var el=e.target.closest&&e.target.closest('button,[role="button"],.btn-enter,.btn-view,.view-btn,.resource-item,.link-card');
+  if(!el)return;
+  setTimeout(scan,100);
+},true);
+
+document.addEventListener('fullscreenchange',function(){
+  if(!document.fullscreenElement){
+    try{if(screen.orientation&&screen.orientation.unlock)screen.orientation.unlock();}catch(e){}
+  }
+});
+
+new MutationObserver(scan).observe(document.documentElement,{subtree:true,childList:true});
+scan();
+
+window.__rootEnterVideoFullscreen=goFullscreen;
+})();
+</script>
+
 </body>
 </html>
