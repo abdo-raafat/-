@@ -4886,6 +4886,31 @@ async function _renderDynamicSectionPage(sec) {
     }
   }
 
+
+    // 🔒 HARD ENTRY GATE: لو القسم نفسه مدفوع ومقفول، لا نرسم أي أبناء داخله.
+    // الاستثناء الوحيد هو الـanchor (الكورس/الشعبة المدفوعة نفسها) لأنه بوابة
+    // الوصول التي يجب أن يدخلها الزائر ليصل إلى مسار الـFree Preview.
+    if (gate && gate.anchor && Number(sec.id) !== Number(gate.anchor.id)) {
+      window._currentContentSec = sec;
+      var lockedGate = { anchor: gate.anchor, state: gate.state || gate.access || 'guest', row: gate.row };
+      window.__currentChapterGate = lockedGate;
+      var grid = document.getElementById('dynamic-section-grid');
+      if (grid) {
+        grid.innerHTML = '<div class="sub-gate-card" style="grid-column:1/-1;max-width:520px;margin:35px auto;background:linear-gradient(180deg,#fff,#f7fbff);border-radius:22px;padding:36px 28px;text-align:center;box-shadow:0 14px 40px rgba(10,61,98,.18);border:1px solid #e3edf7;">' +
+          '<div style="font-size:3.2rem;margin-bottom:8px;">🔒</div>' +
+          '<div style="font-size:1.2rem;font-weight:900;color:var(--primary);margin-bottom:10px;">هذا القسم مغلق</div>' +
+          '<p style="font-size:.9rem;color:#5a6b7d;line-height:1.9;margin:0 0 18px;">لا يمكنك الدخول إلى هذا القسم قبل تفعيل الاشتراك.</p>' +
+          '<button type="button" onclick="window._openLockNoticeModal(window.__currentChapterGate)" style="border:0;border-radius:12px;padding:11px 20px;background:linear-gradient(135deg,var(--primary),var(--teal));color:#fff;font-weight:800;cursor:pointer;">🔐 تفاصيل الوصول</button>' +
+        '</div>';
+      }
+      document.querySelectorAll('.page').forEach(function(p){p.classList.remove('active');});
+      var dynPage=document.getElementById('page-dynamic-section');
+      if (dynPage) dynPage.classList.add('active');
+      window.scrollTo(0,0);
+      if (typeof updateBreadcrumb==='function') updateBreadcrumb();
+      return;
+    }
+
   // ── زر دخول محادثة الكورس — يظهر فقط على صفحة الشعبة نفسها ولمن يملك صلاحية ──
   var chatEntryEl = document.getElementById('dynamic-section-chat-entry');
   if (chatEntryEl) chatEntryEl.innerHTML = '';
@@ -5268,6 +5293,20 @@ async function openDynamicSubSection(sec) {
   window._apNavBusyIds[sec.id] = true;
   window._apNavLoaderShow();
   try {
+    // 🔒 HARD ENTRY GATE: لا تسمح بفتح قسم مدفوع مقفول حتى لو تم استدعاء
+    // الدالة مباشرة من رابط/restore/URL بدل الضغط على الكارت المقفول.
+    if (window.getDetailedSectionAccess) {
+      var entryAccess = await window.getDetailedSectionAccess(sec.id);
+      var isLockedEntry = entryAccess && entryAccess.state === 'locked';
+      var isAnchorEntry = entryAccess && entryAccess.anchor && Number(entryAccess.anchor.id) === Number(sec.id);
+      if (isLockedEntry && !isAnchorEntry) {
+        var entryGate = { anchor: entryAccess.anchor, state: entryAccess.access || 'guest', row: entryAccess.row };
+        window.__currentChapterGate = entryGate;
+        if (typeof window._openLockNoticeModal === 'function') window._openLockNoticeModal(entryGate);
+        return;
+      }
+    }
+
     // نجلب الـ children من الـ cache (أو نحمّلها مرة واحدة فقط)
     const children = await loadSections(sec.id);
 
@@ -5370,6 +5409,16 @@ async function _openContentPage(sec, _preloadedContent, _preloadedResources) {
       // SECURITY: لا نعرض أي محتوى مدفوع عند فشل التحقق.
       gate = (sec && sec.requires_subscription) ? { state: 'error', access: 'error', anchor: window._lastGateSec || sec } : null;
     }
+  }
+
+
+  // 🔒 HARD CONTENT ENTRY: الفصل/الدرس المقفول لا يُفتح ولا نحمّل أسماء
+  // محتواه أو موارده أصلًا. الـanchor وحده مسموح كحاوية دخول للـFree Preview.
+  if (gate && gate.anchor && Number(sec.id) !== Number(gate.anchor.id)) {
+    var contentLockedGate = { anchor: gate.anchor, state: gate.state || gate.access || 'guest', row: gate.row };
+    window.__currentChapterGate = contentLockedGate;
+    if (typeof window._openLockNoticeModal === 'function') window._openLockNoticeModal(contentLockedGate);
+    return;
   }
 
   // ✅ Phase 3 — PATH GATE: قفل تسلسلي إضافي مستقل عن الاشتراك. لو هذه المحاضرة
@@ -7140,6 +7189,24 @@ const ResourceViewer = (function() {
     });
 
     _setupMediaControls(overlay);
+
+    // 📱 ROOT VIDEO UX: عند ضغط المستخدم على "عرض" لفيديو، لا ننتظر منه
+    // ضغط زر Fullscreen مرة ثانية. ندخل مباشرةً إلى وضع ملء الشاشة ونطلب
+    // Landscape. لو المتصفح رفض Fullscreen API، _toggleFullscreen نفسه عنده
+    // fallback يدوي داخل المنصة، مع إبقاء شريط التقديم/التأخير/السرعة/الصوت.
+    var isVideoResource = (type === 'video_direct' || type === 'youtube' || type === 'vimeo' || type === 'dailymotion' || type === 'fembed');
+    if (isVideoResource && window.innerWidth <= 768) {
+      setTimeout(function(){
+        try {
+          var ov = document.getElementById('rv-overlay');
+          var md = document.getElementById('rv-modal');
+          if (ov && md && !document.fullscreenElement && !document.webkitFullscreenElement &&
+              !ov.classList.contains('rv-manual-fs') && !ov.classList.contains('rv-video-manual-fs')) {
+            _toggleFullscreen();
+          }
+        } catch(e) { console.warn('[VIDEO UX] auto landscape fullscreen:', e); }
+      }, 0);
+    }
 
     // Swipe لأسفل للإغلاق على الموبايل
     var touchStartY = 0;
