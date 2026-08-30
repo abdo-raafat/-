@@ -7154,6 +7154,47 @@ const ResourceViewer = (function() {
       }, { passive: true });
     }
 
+    // ✅ FIX (User Gesture + Landscape من نفس ضغطة "عرض"): لأنواع الفيديو فقط
+    // (video_direct / youtube / vimeo / dailymotion / fembed)، ولموبايل فقط
+    // (Android/iOS، Chrome أو WebView) — نطلب Fullscreen + Landscape فورًا هنا
+    // Sync، من نفس الـcall stack بتاع ضغطة زر "عرض" نفسها (openResource →
+    // ResourceViewer.open → هنا)، بدون await أو setTimeout أو انتظار أي حدث
+    // لاحق زي play/playing. ده أهم شرط: أي تأجيل (حتى microtask بعد عملية I/O
+    // حقيقية، أو حدث media منفصل) ممكن يخلي المتصفح يعتبر إن الـUser Gesture
+    // (Transient Activation) انتهت ويرفض طلب requestFullscreen و/أو
+    // screen.orientation.lock بصمت.
+    //
+    // Desktop مُستبعد عمدًا: مفيش مفهوم "Landscape" أصلاً على شاشة كمبيوتر،
+    // ومستخدم الديسكتوب بيتوقع إنه يشوف الفيديو جوه الـmodal الحالي ويدخل
+    // Fullscreen بنفسه من زر ⛶ لو حب، زي ما كان يحصل بالظبط قبل هذا الإصلاح.
+    // بنعتمد على نفس أسلوب كشف الجهاز المستخدم بالفعل في باقي الملف
+    // (window.isIOSDevice() + فحص Android عبر User-Agent، زي السطر ~3129)
+    // بدل ما نخترع نظام كشف جهاز جديد.
+    var _rvIsMobileDevice = (function() {
+      try {
+        if (typeof window.isIOSDevice === 'function' && window.isIOSDevice()) return true;
+      } catch (e) {}
+      try {
+        return /Android|Mobi|iPhone|iPad|iPod/i.test(navigator.userAgent || '');
+      } catch (e) { return false; }
+    })();
+    // _toggleFullscreen() نفسها فيها fallback كامل بالفعل (نفس زر ⛶ اليدوي):
+    //   - لو الـFullscreen API الحقيقية شغّالة (Android Chrome / معظم WebViews
+    //     الحديثة) → modal.requestFullscreen() ثم screen.orientation.lock().
+    //   - لو مش موجودة/اترفضت (بعض WebViews القديمة، iPhone Safari اللي
+    //     مبيدعمش requestFullscreen على عنصر عادي) → _enableManualFullscreen()
+    //     (CSS ملء شاشة فعلي) + محاولة أفضل جهد لـscreen.orientation.lock (لو
+    //     مرفوضة/غير مدعومة على iOS بيتم تجاهلها بهدوء والفيديو يفضل يملأ
+    //     الشاشة المتاحة زي ما هي، بدون كسر أي تشغيل/توقيت).
+    // نفس المسار ده بيغطي: Android Chrome, Android WebView, iPhone Safari,
+    // iOS WebView — بدون أي نظام فيديو تالت أو Patch إضافي؛ استخدام مباشر
+    // لنفس _toggleFullscreen() اللي زر ⛶ بيستخدمه أصلاً.
+    var _rvAutoFsVideoTypes = { video_direct: 1, youtube: 1, vimeo: 1, dailymotion: 1, fembed: 1 };
+    if (_rvIsMobileDevice && _rvAutoFsVideoTypes[type]) {
+      try { _toggleFullscreen(); }
+      catch (e) { console.warn('[ResourceViewer] تعذر طلب Fullscreen/Landscape من ضغطة عرض:', e && e.message); }
+    }
+
     // حفظ state للـ PDF fallback
     window._rvCurrentUrl = url;
     window._rvCurrentTitle = title;
@@ -8312,6 +8353,47 @@ function _teardownOwnAdminStatusRealtime() {
   window._ownAdminRealtimeUserId  = null;
 }
 
+// ════════════════════════════════════════════════════════════════
+// 🔔 NOTIFICATIONS REALTIME — يستخدم جدول notifications الموجود بالفعل
+// فقط (لا نظام جديد). الهدف: ظهور الإشعار فورًا (عدّاد الجرس + Toast
+// اختياري) دون الحاجة لإعادة تحميل الصفحة أو فتح مركز الإشعارات يدويًا.
+// نفس نمط own-admin-status realtime بالضبط (channel لكل مستخدم، teardown
+// عند تسجيل الخروج/تبديل الجلسة).
+// ════════════════════════════════════════════════════════════════
+window._notifRealtimeChannel = null;
+window._notifRealtimeUserId  = null;
+
+function _setupNotificationsRealtime(userId) {
+  if (!window.supabase || !userId) return;
+  if (window._notifRealtimeChannel && window._notifRealtimeUserId === userId) return; // شغّالة بالفعل لنفس المستخدم
+  _teardownNotificationsRealtime();
+  try {
+    window._notifRealtimeChannel = window.supabase
+      .channel('notifications-' + userId)
+      .on('postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'notifications', filter: 'user_id=eq.' + userId },
+        function(payload) {
+          if (typeof window._refreshNotifBadge === 'function') window._refreshNotifBadge();
+          var row = payload && payload.new;
+          if (row && window._showToast) {
+            _showToast('🔔 ' + (row.title || 'إشعار جديد'), 'info');
+          }
+          // لو مركز الإشعارات مفتوح بالفعل، حدّثه فورًا بدل ما يفضل عارض قائمة قديمة
+          if (document.getElementById('notifications-center-overlay') && typeof window.openNotificationsCenter === 'function') {
+            window.openNotificationsCenter();
+          }
+        })
+      .subscribe(function(status) { });
+    window._notifRealtimeUserId = userId;
+  } catch(e) { console.warn('[NOTIF] realtime subscribe failed:', e && e.message); }
+}
+
+function _teardownNotificationsRealtime() {
+  try { if (window._notifRealtimeChannel && window.supabase) window.supabase.removeChannel(window._notifRealtimeChannel); } catch(e) {}
+  window._notifRealtimeChannel = null;
+  window._notifRealtimeUserId  = null;
+}
+
 async function _reresolveOwnAdminStatus(userId, source) {
   if (!window._currentAuthUser || window._currentAuthUser.id !== userId) return; // المستخدم بدّل جلسة بالفعل — تجاهل
   var mySeq = ++window._authRenderSeq;
@@ -8352,6 +8434,7 @@ async function _renderUserBox(user, role, mySeq) {
     window._branchAdminActiveRole = null;
     window._currentAuthUser = null;
     _teardownOwnAdminStatusRealtime();
+    _teardownNotificationsRealtime();
     document.body.classList.remove('is-admin');
     document.body.classList.remove('content-protected'); // المحتوى مجاني للجميع
     box.innerHTML = '<button class="chatgpt-login-btn" onclick="loginWithGoogle()">🔐 دخول</button>';
@@ -8360,6 +8443,7 @@ async function _renderUserBox(user, role, mySeq) {
   }
   window._currentAuthUser = user;
   _setupOwnAdminStatusRealtime(user.id); // ✅ يستقبل تغييرات section_admins/profiles.role لهذا المستخدم بدون Logout/Login
+  _setupNotificationsRealtime(user.id); // 🔔 إشعارات فورية (رسائل جديدة...الخ) بدون Refresh
   if (typeof window._refreshNotifBadge === 'function') window._refreshNotifBadge(); // ✅ عدّاد الإشعارات غير المقروءة عند تسجيل الدخول
   // role يأتي من profiles.role في Supabase — ليس من HTML
   // ✅ (Aug 2026): بنستخدم _resolveAdminStatus بدل الاعتماد على role وحده، عشان
@@ -8473,9 +8557,13 @@ async function _resolveAdminStatus(userId) {
       hasSectionAdminRows = !saCheck.error && (saCheck.count || 0) > 0;
     } catch(e) { console.warn('[section_admins] check failed:', e && e.message); }
   }
-  // المصدر الرسمي للدور: profiles.role فقط.
-  // section_admins يُستخدم لتحديد الكورس المعيّن، وليس لمنح دور جديد لمستخدم student.
-  var isBranchAdmin = isLegacyBranchAdmin;
+  // ✅ FIX (2026-08-30 — "الأدمن المساعد مش بيظهر عنده لوحة تحكم"): hasSectionAdminRows
+  // كانت بتتحسب فوق لكن متستخدمش خالص هنا، فأي أدمن مساعد مُعيّن فقط عن طريق
+  // section_admins (بدون profiles.role='branch_admin') كان يُعامل كمستخدم عادي
+  // تمامًا ولا يشوف زرار "⚙️ تحكم" أصلاً — ده اللي كان يمنع لوحة التحكم من الظهور
+  // له، مش مشكلة صلاحيات جوه اللوحة. الآن: أي مصدر من الاثنين (الدور القديم في
+  // profiles، أو صف نشط في section_admins) كافٍ لاعتباره Section/Branch Admin.
+  var isBranchAdmin = isLegacyBranchAdmin || hasSectionAdminRows;
   // isSectionAdmin: اسم بديل مطابق تمامًا لـ isBranchAdmin — نفس القيمة، فقط للتوافق
   // مع أي كود جديد يتوقع هذا الاسم تحديدًا (المصطلح الرسمي الآن هو "Section Admin")
   return {
@@ -12056,8 +12144,13 @@ window.openNotificationsCenter=async function(){
     if(!rows.length){body.innerHTML='<div class="ap-empty">🔔 لا توجد إشعارات جديدة.</div>';return;}
     body.innerHTML=rows.map(function(n){
       var unread=n.is_read===false;
-      return '<div style="padding:12px;border:1px solid '+(unread?'#b9ddf0':'#e7edf2')+';background:'+(unread?'#f2faff':'#fff')+';border-radius:13px;margin-bottom:8px;">'+
-        '<div style="font-weight:900;color:#0a3d62;">'+_notifEsc(n.title||'إشعار')+'</div>'+
+      // 💬 إشعار "رسالة جديدة" (room_id موجود) → قابل للضغط لفتح نفس المحادثة مباشرة.
+      var isChatNotif = n.type==='chat_message' && n.room_id;
+      var clickAttr = isChatNotif
+        ? ' onclick="_notifOpenChatRoom('+JSON.stringify(n.room_id)+','+JSON.stringify(n.related_user_id||null)+','+JSON.stringify(n.title||'محادثة')+')" style="cursor:pointer;"'
+        : '';
+      return '<div'+clickAttr+' style="padding:12px;border:1px solid '+(unread?'#b9ddf0':'#e7edf2')+';background:'+(unread?'#f2faff':'#fff')+';border-radius:13px;margin-bottom:8px;">'+
+        '<div style="font-weight:900;color:#0a3d62;">'+(isChatNotif?'💬 ':'')+_notifEsc(n.title||'إشعار')+'</div>'+
         '<div style="font-size:.8rem;line-height:1.8;color:#425466;margin-top:4px;">'+_notifEsc(n.message||'')+'</div>'+
         '<div style="font-size:.66rem;color:#8a9bab;margin-top:6px;">'+_notifEsc(n.created_at||'')+(unread?' · 🔵 جديد':'')+'</div>'+
       '</div>';
@@ -12071,6 +12164,17 @@ window.openNotificationsCenter=async function(){
   }catch(e){
     var body=document.getElementById('notifications-center-body');
     if(body)body.innerHTML='<div class="ap-empty" style="color:#c0392b">❌ تعذر تحميل الإشعارات.</div>';
+  }
+};
+// 💬 الضغط على إشعار "رسالة جديدة" → يفتح نفس المحادثة (chat_room) مباشرة،
+// بالاعتماد على openDirectChat(otherUserId, name, knownRoomId) الموجودة
+// بالفعل في نظام DM — بدون أي منطق فتح محادثة موازٍ.
+window._notifOpenChatRoom = function(roomId, otherUserId, titleHint) {
+  if (!roomId) return;
+  var ov = document.getElementById('notifications-center-overlay');
+  if (ov) ov.remove();
+  if (typeof window.openDirectChat === 'function') {
+    window.openDirectChat(otherUserId || null, titleHint || 'محادثة', roomId);
   }
 };
 window.msNotificationsPlaceholder=window.openNotificationsCenter;
@@ -16354,8 +16458,13 @@ window._origWindowOpen = window.open;
       if (!window.ResourceViewer) return;
       _origRVOpen = ResourceViewer.open;
       ResourceViewer.open = function(url, title, resourceType) {
-        // Fullscreen لا يُطلب عند فتح الملف حتى لا نفقد user activation داخل WebView.
-        // المستخدم يفعّله فقط من زر ⛶ داخل الـviewer، مع fallback CSS للموبايل.
+        // ✅ تحديث (User Gesture fix): الـFullscreen/Landscape التلقائي لأنواع
+        // الفيديو بقى بيتطلب Sync جوه الدالة الأصلية open() نفسها (نفس
+        // الـcall stack بتاع ضغطة "عرض")، مش هنا. الـwrapper ده مجرد تمرير
+        // بدون أي تعديل على التوقيت — سيبناه كده عمدًا عشان لا نضيف أي تأخير
+        // (setTimeout/await) قبل الوصول لـ_toggleFullscreen()، لأن أي تأخير
+        // زي ده هو بالظبط اللي بيفقّد الـUser Gesture. زر ⛶ اليدوي لسه شغال
+        // بعد كده لتبديل الدخول/الخروج من Fullscreen يدويًا.
         return _origRVOpen.call(ResourceViewer, url, title, resourceType);
       };
     }, 0);
@@ -22779,6 +22888,54 @@ window.diagnose = async function() {
     }
   }
 
+  // ==================== إشعار "رسالة جديدة" للطرف الآخر فقط ====================
+  // يُستدعى مرة واحدة فقط بعد نجاح إدراج الرسالة الفعلي (وليس من realtime أو
+  // من _dmLoadMessages) — فلا يمكن أن يتكرر بسبب Refresh أو استقبال الرسالة
+  // نفسها عبر القناة اللحظية. الحماية النهائية من التكرار على مستوى القاعدة
+  // نفسها عبر UNIQUE index على notifications.message_id (راجع
+  // printChatNotificationsMigration). فشل إرسال الإشعار لا يوقف/يفشل عملية
+  // إرسال الرسالة نفسها أبداً — الرسالة أساسية والإشعار ثانوي.
+  async function _dmInsertChatNotification(newMsgId, messageText) {
+    try {
+      if (!_dmOtherUserId || !_dmMe || !_dmRoom || !window.supabase) return;
+      var db = window.supabase;
+      var isSenderAdmin = window._isAdminUser === true || window._isBranchAdmin === true;
+      var senderName = 'مستخدم';
+      try {
+        var pMap = await _apGetProfilesMap([_dmMe.id]);
+        var me = pMap && pMap[_dmMe.id];
+        if (me && (me.full_name || me.email)) senderName = me.full_name || me.email;
+      } catch(e) {}
+      var preview = (messageText || '').trim();
+      if (!preview) preview = '📎 مرفق';
+      if (preview.length > 120) preview = preview.slice(0, 120) + '…';
+      var title = isSenderAdmin ? ('🛡️ أدمن الشعبة رد على رسالتك') : ('رسالة جديدة من ' + senderName);
+      var row = {
+        user_id: _dmOtherUserId,
+        title: title,
+        message: preview,
+        type: 'chat_message',
+        is_read: false,
+        created_at: new Date().toISOString(),
+        room_id: _dmRoom.id,
+        related_user_id: _dmMe.id,
+        message_id: newMsgId
+      };
+      var res = await db.from('notifications').insert([row]);
+      if (res.error) {
+        var em = String(res.error.message || '').toLowerCase();
+        var benign = em.indexOf('column') !== -1 || em.indexOf('schema cache') !== -1 ||
+          em.indexOf('could not find') !== -1 || em.indexOf('duplicate') !== -1 || em.indexOf('unique') !== -1;
+        if (!benign) console.warn('[DM] notification insert error:', res.error.message);
+        else if (em.indexOf('column') !== -1 || em.indexOf('schema cache') !== -1 || em.indexOf('could not find') !== -1) {
+          console.warn('[DM] جدول notifications يحتاج Migration الأعمدة الجديدة — شغّل printChatNotificationsMigration() في الـConsole.');
+        }
+      }
+    } catch(e) {
+      console.warn('[DM] notification exception:', e && e.message);
+    }
+  }
+
   window._dmSend = async function() {
     var input = document.getElementById('dm-chat-input');
     var text = (input.value || '').trim();
@@ -22810,6 +22967,9 @@ window.diagnose = async function() {
         return;
       }
       var newMsgId = insRes.data.id;
+
+      // 🔔 إشعار فوري للطرف الآخر فقط (وليس للمرسل) — لا يوقف إرسال الرسالة لو فشل
+      _dmInsertChatNotification(newMsgId, text);
 
       // 2) لو فيه مرفق، ارفعه وسجّله بعد نجاح إنشاء الرسالة
       if (pendingFile) {
@@ -23396,6 +23556,81 @@ USING (auth.uid() = user_id OR is_admin())
 WITH CHECK (auth.uid() = user_id OR is_admin());
 `;
   console.group('🔔 Notifications Migration');
+  console.log(sql);
+  console.groupEnd();
+  try{navigator.clipboard.writeText(sql);console.log('✅ تم نسخ SQL إلى Clipboard');}catch(e){}
+  return sql;
+};
+
+// ════════════════════════════════════════════════════════════════
+// 🔔💬 CHAT MESSAGE NOTIFICATIONS — ADDITIVE MIGRATION
+// يعيد استخدام جدول notifications الموجود بالفعل (نفس الجدول أعلاه)، ولا
+// ينشئ أي جدول/نظام إشعارات موازٍ. الهدف فقط: تنبيه الطرف الآخر (طالب أو
+// أدمن الشعبة) عند استلام رسالة مباشرة جديدة في chat_rooms/chat_messages
+// الحاليين — بدون أي تعديل على نظام الشات نفسه.
+// شغّل printChatNotificationsMigration() في الـConsole وانسخ الناتج SQL
+// لتنفيذه مرة واحدة في Supabase SQL editor.
+// ════════════════════════════════════════════════════════════════
+window.printChatNotificationsMigration = function(){
+  var sql = `
+-- CHAT MESSAGE NOTIFICATIONS — ADDITIVE MIGRATION (بدون حذف/تعديل بيانات
+-- موجودة، وبدون DROP TABLE، وبدون لمس RLS الحالية على chat_rooms/chat_messages)
+
+-- 1) أعمدة إضافية على notifications (nullable — لا تكسر أي Insert قديم):
+--    room_id: تربط الإشعار بغرفة المحادثة نفسها لفتحها مباشرة عند الضغط.
+--    related_user_id: هوية الطرف الآخر (المُرسل) لعرض اسمه/صورته عند الفتح.
+--    message_id: تربط الإشعار بالرسالة نفسها بالضبط (لمنع التكرار).
+ALTER TABLE notifications ADD COLUMN IF NOT EXISTS room_id bigint REFERENCES chat_rooms(id) ON DELETE SET NULL;
+ALTER TABLE notifications ADD COLUMN IF NOT EXISTS related_user_id uuid;
+ALTER TABLE notifications ADD COLUMN IF NOT EXISTS message_id bigint REFERENCES chat_messages(id) ON DELETE SET NULL;
+
+NOTIFY pgrst, 'reload schema';
+
+-- 2) منع إشعار مكرر لنفس الرسالة بشكل نهائي على مستوى القاعدة (وليس فقط
+--    منطق الواجهة) — حتى لو حاول Realtime أو Reload الصفحة إدراج نفس
+--    الإشعار مرتين:
+CREATE UNIQUE INDEX IF NOT EXISTS notifications_message_id_unique
+  ON notifications(message_id) WHERE message_id IS NOT NULL;
+
+-- 3) تأكيد إن RLS مفعّلة (idempotent — no-op لو مفعّلة بالفعل، لا تغيّر أي
+--    سياسة موجودة):
+ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
+
+-- 4) سياسة INSERT إضافية (Additive — لا تحذف/تستبدل أي سياسة موجودة أعلاه
+--    مثل notif_admin_all أو notif_branch_insert؛ الأمر الوحيد اللي بيتحذف
+--    هنا هو نسخة سابقة من نفس هذه السياسة الجديدة نفسها، لإعادة التنفيذ
+--    الآمنة فقط). تسمح فقط لمستخدم مشارك فعليًا في غرفة محادثة مباشرة
+--    (chat_room_participants) بإنشاء إشعار "رسالة جديدة" (type='chat_message')
+--    للطرف الآخر في نفس الغرفة تحديدًا — لا لأي مستخدم آخر خارج الغرفة،
+--    ولا USING(true) بأي شكل:
+DROP POLICY IF EXISTS "notif_chat_message_insert" ON notifications;
+CREATE POLICY "notif_chat_message_insert"
+ON notifications FOR INSERT
+WITH CHECK (
+  type = 'chat_message'
+  AND room_id IS NOT NULL
+  AND auth.uid() IS NOT NULL
+  AND auth.uid() <> user_id
+  AND EXISTS (
+    SELECT 1 FROM chat_room_participants me
+    WHERE me.room_id = notifications.room_id AND me.user_id = auth.uid()
+  )
+  AND EXISTS (
+    SELECT 1 FROM chat_room_participants recipient
+    WHERE recipient.room_id = notifications.room_id AND recipient.user_id = notifications.user_id
+  )
+);
+
+-- ملاحظة: سياسات SELECT/UPDATE الحالية (notif_own / notif_own_update) وكل
+-- سياسات chat_rooms/chat_messages/chat_room_participants لم تُغيَّر إطلاقًا.
+-- كل مستخدم يظل يرى إشعاراته فقط (auth.uid() = user_id) أو أدمن المنصة
+-- (is_admin())، بالضبط كما كانت قبل هذه الإضافة.
+
+-- 5) تحقّق اختياري بعد التنفيذ (Read-only، مش جزء من الـMigration نفسها):
+-- SELECT column_name FROM information_schema.columns WHERE table_name='notifications' ORDER BY column_name;
+-- SELECT policyname, cmd FROM pg_policies WHERE tablename='notifications' ORDER BY cmd, policyname;
+`;
+  console.group('🔔💬 Chat Notifications Migration');
   console.log(sql);
   console.groupEnd();
   try{navigator.clipboard.writeText(sql);console.log('✅ تم نسخ SQL إلى Clipboard');}catch(e){}
@@ -31204,6 +31439,7 @@ ORDER BY ordinal_position;
   });
 })();
 </script>
+
 <!-- ============================================================
      BSM FINAL RELEASE PATCH — DB SOURCE OF TRUTH + STRICT PREVIEW
      2026-08-30
@@ -31214,13 +31450,6 @@ ORDER BY ordinal_position;
      - Mobile video viewer: landscape + fullscreen attempt from user gesture.
      ============================================================ -->
 <style id="bsm-release-video-style">
-#rv-modal.bsm-video-mobile-fs,
-#rv-overlay.bsm-video-mobile-fs{background:#000!important}
-#rv-modal.bsm-video-mobile-fs{width:100vw!important;height:100vh!important;max-width:none!important;max-height:none!important;border-radius:0!important;margin:0!important;padding:0!important}
-#rv-modal.bsm-video-mobile-fs #rv-body{width:100%!important;height:100%!important;display:flex!important;align-items:center!important;justify-content:center!important;background:#000!important}
-#rv-modal.bsm-video-mobile-fs #rv-video-el,
-#rv-modal.bsm-video-mobile-fs .rv-embed-frame,
-#rv-modal.bsm-video-mobile-fs iframe[data-fembed-embed="1"]{width:100%!important;height:100%!important;max-width:none!important;max-height:none!important;object-fit:contain!important;border:0!important}
 @media(max-width:700px){
   #rv-modal .rv-embed-frame,#rv-modal iframe[data-fembed-embed="1"]{max-width:100vw!important}
 }
@@ -31400,521 +31629,104 @@ if(typeof window.openDynamicSection==='function'&&!window.__BSM_RELEASE_OPEN_GAT
   window.__BSM_RELEASE_OPEN_GATE=true;
 }
 
-/* Mobile video: keep the existing custom controls and make the whole viewer
-   fullscreen/landscape. Cross-origin iframe controls remain vendor-owned. */
-function mobile(){return window.matchMedia&&window.matchMedia('(max-width:700px)').matches;}
-function landscape(){
-  try{
-    var b=window.BSMAndroidBridge;
-    if(b){if(typeof b.lockLandscape==='function'){b.lockLandscape();return;}if(typeof b.setOrientation==='function'){b.setOrientation('landscape');return;}}
-  }catch(e){}
-  try{if(screen.orientation&&screen.orientation.lock){var p=screen.orientation.lock('landscape');if(p&&p.catch)p.catch(function(){});}}catch(e){}
-}
-function unLandscape(){
-  try{var b=window.BSMAndroidBridge;if(b){if(typeof b.unlockOrientation==='function'){b.unlockOrientation();}else if(typeof b.setOrientation==='function')b.setOrientation('portrait');}}catch(e){}
-  try{if(screen.orientation&&screen.orientation.unlock)screen.orientation.unlock();}catch(e){}
-}
-function isVideoViewer(){var ov=document.getElementById('rv-overlay');return !!(ov&&(ov.querySelector('#rv-video-el')||ov.querySelector('iframe.rv-embed-frame')||ov.querySelector('iframe[data-fembed-embed="1"]')));}
+/* Cross-origin iframe players (YouTube/Vimeo/Fembed/...) need explicit
+   fullscreen permission on the <iframe> tag itself, or the browser blocks
+   fullscreen requests coming from inside them. This just guarantees that
+   attribute is present — it does not touch fullscreen state, orientation,
+   or the video's own controls, so it can never race with
+   ResourceViewer._toggleFullscreen() (the single source of truth for
+   entering/exiting fullscreen, bound to the "⛶" button). */
 function iframePerms(){var ov=document.getElementById('rv-overlay');if(!ov)return;ov.querySelectorAll('iframe').forEach(function(f){try{f.setAttribute('allow','autoplay; fullscreen; picture-in-picture; encrypted-media; gyroscope; accelerometer');f.setAttribute('allowfullscreen','');f.setAttribute('webkitallowfullscreen','');}catch(e){}});}
-function mobileVideoFullscreen(){
-  var modal=document.getElementById('rv-modal'),ov=document.getElementById('rv-overlay');if(!modal||!ov||!isVideoViewer())return;
-  ov.classList.add('bsm-video-mobile-fs');modal.classList.add('bsm-video-mobile-fs');iframePerms();
-  var req=modal.requestFullscreen||modal.webkitRequestFullscreen;
-  try{
-    if(!document.fullscreenElement&&!document.webkitFullscreenElement&&req){var p=req.call(modal);if(p&&p.catch)p.catch(function(){});}
-  }catch(e){}
-  landscape();
-}
-function mobileVideoExit(){var m=document.getElementById('rv-modal'),o=document.getElementById('rv-overlay');if(m)m.classList.remove('bsm-video-mobile-fs');if(o)o.classList.remove('bsm-video-mobile-fs');unLandscape();}
 
-/* Do not wait for a timeout before the fullscreen request. This keeps the
-   request as close as possible to the trusted "عرض" click. */
 if(window.ResourceViewer&&typeof window.ResourceViewer.open==='function'&&!window.__BSM_RELEASE_RV_OPEN){
   var rvOpen=window.ResourceViewer.open;
   window.ResourceViewer.open=function(){
     var r=rvOpen.apply(this,arguments);
-    if(mobile()){mobileVideoFullscreen();}else iframePerms();
+    iframePerms();
     return r;
   };
   window.__BSM_RELEASE_RV_OPEN=true;
 }
 var observer=new MutationObserver(function(){iframePerms();});
 if(document.documentElement)observer.observe(document.documentElement,{childList:true,subtree:true});
-document.addEventListener('fullscreenchange',function(){if(!document.fullscreenElement)mobileVideoExit();});
-document.addEventListener('webkitfullscreenchange',function(){if(!document.webkitFullscreenElement)mobileVideoExit();});
 
 /* Expose diagnostics; no writes. */
 window.printReleaseAccess=async function(id){try{var x=await previewInfo(id),g=await DBAccess(id);console.table((x.path||[]).map(function(r,i){return{order:i+1,id:r.id,title:r.title,type:r.type,display_order:r.display_order,parent_id:r.parent_id};}));console.log({anchor:x.anchor&&x.anchor.id,preview:x.leaf&&x.leaf.id,previewType:x.leaf&&x.leaf.type,onPath:x.onPath,isPreview:x.isPreview,access:g});}catch(e){console.error(e);}};
 })();
 </script>
 
-
-<!-- FINAL UNIVERSAL VIDEO VIEWER / FULLSCREEN SYSTEM -->
-<style id="universal-video-fullscreen-final">
-  /* Native fullscreen and the WebView fallback share exactly the same layout. */
-  #rv-overlay.rv-universal-fs,
-  #rv-overlay:fullscreen,
-  #rv-overlay:-webkit-full-screen {
-    position: fixed !important;
-    inset: 0 !important;
-    width: 100vw !important;
-    height: 100vh !important;
-    height: 100dvh !important;
-    max-width: none !important;
-    max-height: none !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    background: #000 !important;
-    backdrop-filter: none !important;
-    display: block !important;
-    overflow: hidden !important;
-    z-index: 2147483647 !important;
-  }
-
-  #rv-overlay.rv-universal-fs .rv-modal,
-  #rv-overlay:fullscreen .rv-modal,
-  #rv-overlay:-webkit-full-screen .rv-modal {
-    position: fixed !important;
-    inset: 0 !important;
-    width: 100vw !important;
-    height: 100vh !important;
-    height: 100dvh !important;
-    max-width: none !important;
-    max-height: none !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    border: 0 !important;
-    border-radius: 0 !important;
-    background: #000 !important;
-    box-shadow: none !important;
-    overflow: hidden !important;
-    transform: none !important;
-    animation: none !important;
-    display: flex !important;
-    flex-direction: column !important;
-  }
-
-  /* In true fullscreen the platform page must disappear; only the player
-     remains. The header/footer are hidden, while the player controls remain. */
-  #rv-overlay.rv-universal-fs .rv-header,
-  #rv-overlay:fullscreen .rv-header,
-  #rv-overlay:-webkit-full-screen .rv-header,
-  #rv-overlay.rv-universal-fs .rv-footer,
-  #rv-overlay:fullscreen .rv-footer,
-  #rv-overlay:-webkit-full-screen .rv-footer {
-    display: none !important;
-  }
-
-  #rv-overlay.rv-universal-fs .rv-body,
-  #rv-overlay:fullscreen .rv-body,
-  #rv-overlay:-webkit-full-screen .rv-body {
-    position: relative !important;
-    flex: 1 1 auto !important;
-    width: 100vw !important;
-    height: 100% !important;
-    min-height: 0 !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    overflow: hidden !important;
-    background: #000 !important;
-    display: flex !important;
-    flex-direction: column !important;
-    align-items: stretch !important;
-    justify-content: center !important;
-  }
-
-  /* Direct MP4/HTML5 video: maximize its real display area without cropping. */
-  #rv-overlay.rv-universal-fs #rv-video-el,
-  #rv-overlay:fullscreen #rv-video-el,
-  #rv-overlay:-webkit-full-screen #rv-video-el {
-    display: block !important;
-    position: relative !important;
-    width: 100% !important;
-    height: 100% !important;
-    max-width: none !important;
-    max-height: none !important;
-    min-width: 0 !important;
-    min-height: 0 !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    background: #000 !important;
-    object-fit: contain !important;
-    flex: 1 1 auto !important;
-  }
-
-  /* External players: the iframe itself fills the player viewport. */
-  #rv-overlay.rv-universal-fs .rv-embed-frame,
-  #rv-overlay:fullscreen .rv-embed-frame,
-  #rv-overlay:-webkit-full-screen .rv-embed-frame,
-  #rv-overlay.rv-universal-fs iframe,
-  #rv-overlay:fullscreen iframe,
-  #rv-overlay:-webkit-full-screen iframe {
-    display: block !important;
-    position: absolute !important;
-    inset: 0 !important;
-    width: 100% !important;
-    height: 100% !important;
-    max-width: none !important;
-    max-height: none !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    border: 0 !important;
-    background: #000 !important;
-  }
-
-  /* Custom controls stay on top of a direct video, like a professional player. */
-  #rv-overlay.rv-universal-fs .rv-video-controls,
-  #rv-overlay:fullscreen .rv-video-controls,
-  #rv-overlay:-webkit-full-screen .rv-video-controls {
-    position: absolute !important;
-    left: 0 !important;
-    right: 0 !important;
-    bottom: 0 !important;
-    width: 100% !important;
-    box-sizing: border-box !important;
-    z-index: 20 !important;
-    padding:
-      8px
-      max(10px, env(safe-area-inset-right))
-      max(10px, env(safe-area-inset-bottom))
-      max(10px, env(safe-area-inset-left)) !important;
-    background: linear-gradient(to top, rgba(0,0,0,.92), rgba(0,0,0,.55), transparent) !important;
-    border: 0 !important;
-  }
-
-  /* Safe areas for fullscreen phones with a notch/home indicator. */
-  #rv-overlay.rv-universal-fs .rv-video-controls {
-    padding-bottom: max(10px, env(safe-area-inset-bottom)) !important;
-  }
-
-  /* Prevent page scrolling behind the fullscreen viewer. */
-  html.rv-universal-fs-active,
-  html.rv-universal-fs-active body {
-    overflow: hidden !important;
-    width: 100% !important;
-    height: 100% !important;
-    overscroll-behavior: none !important;
-  }
-
-  /* Fallback for WebViews that expose no usable Fullscreen API. */
-  #rv-overlay.rv-universal-fs-fallback {
-    position: fixed !important;
-    inset: 0 !important;
-    width: 100vw !important;
-    height: 100vh !important;
-    height: 100dvh !important;
-    padding: 0 !important;
-    margin: 0 !important;
-    background: #000 !important;
-    backdrop-filter: none !important;
-    display: block !important;
-    overflow: hidden !important;
-    z-index: 2147483647 !important;
-  }
-
-  #rv-overlay.rv-universal-fs-fallback .rv-modal {
-    position: fixed !important;
-    inset: 0 !important;
-    width: 100vw !important;
-    height: 100vh !important;
-    height: 100dvh !important;
-    max-width: none !important;
-    max-height: none !important;
-    margin: 0 !important;
-    border-radius: 0 !important;
-    background: #000 !important;
-    box-shadow: none !important;
-    transform: none !important;
-    animation: none !important;
-  }
-
-  #rv-overlay.rv-universal-fs-fallback .rv-header,
-  #rv-overlay.rv-universal-fs-fallback .rv-footer {
-    display: none !important;
-  }
-
-  #rv-overlay.rv-universal-fs-fallback .rv-body {
-    width: 100vw !important;
-    height: 100dvh !important;
-    min-height: 0 !important;
-    overflow: hidden !important;
-    background: #000 !important;
-  }
-
-  #rv-overlay.rv-universal-fs-fallback #rv-video-el {
-    width: 100% !important;
-    height: 100% !important;
-    max-width: none !important;
-    max-height: none !important;
-    object-fit: contain !important;
-  }
-
-  /* iPhone landscape viewport correction. */
-  @supports (height: 100svh) {
-    #rv-overlay.rv-universal-fs,
-    #rv-overlay:fullscreen,
-    #rv-overlay:-webkit-full-screen,
-    #rv-overlay.rv-universal-fs-fallback {
-      height: 100svh !important;
-    }
-    #rv-overlay.rv-universal-fs .rv-modal,
-    #rv-overlay:fullscreen .rv-modal,
-    #rv-overlay:-webkit-full-screen .rv-modal,
-    #rv-overlay.rv-universal-fs-fallback .rv-modal {
-      height: 100svh !important;
-    }
-  }
-</style>
-
-<script id="universal-video-fullscreen-final-js">
+<script>
+/* BSM AA-PERMS FULL-ACCESS PATCH — 2026-08-30
+   Fixes: opening "تعديل" على أدمن مساعد بلا صلاحيات محفوظة كان يعرض كل
+   الـcheckboxes فارغة (يبدو للمستخدم وكأنه "مفيش حاجة"). هذا الباتش:
+   1) يضيف تشيك بوكس "تحديد كل الصلاحيات (مثل مالك الكورس)" فوق قائمة
+      الصلاحيات — بدون حذف أو تعديل أي عنصر موجود.
+   2) عند فتح المودال (إضافة جديد، أو تعديل أدمن مساعد كل صلاحياته false/فارغة)
+      يفعّل كل الصلاحيات المتاحة تلقائيًا كنقطة بداية منطقية، مع ترك الاختيار
+      النهائي والحفظ بيد المستخدم زي ما هو.
+   ملحوظة: can_manage_admins تُستثنى دايمًا عمدًا (المنطق الحالي في saveAA
+   يفرض false عليها) — دي صلاحية حساسة مقصورة على مالك الكورس/أدمن المنصة،
+   فـ"كل صلاحيات المالك" هنا تعني كل الصلاحيات المتاحة فعليًا للأدمن المساعد. */
 (function(){
   'use strict';
-  if(window.__UNIVERSAL_VIDEO_FULLSCREEN_FINAL__) return;
-  window.__UNIVERSAL_VIDEO_FULLSCREEN_FINAL__ = true;
+  if (window.__BSM_AA_FULL_ACCESS_PATCH) return;
+  window.__BSM_AA_FULL_ACCESS_PATCH = true;
 
-  var FALLBACK_CLASS = 'rv-universal-fs-fallback';
-  var ACTIVE_CLASS = 'rv-universal-fs';
-  var ROOT_CLASS = 'rv-universal-fs-active';
-  var state = { active:false, native:false, locked:false };
-
-  function overlay(){ return document.getElementById('rv-overlay'); }
-  function modal(){ return document.getElementById('rv-modal'); }
-
-  function isVideoViewer(){
-    var ov = overlay();
-    if(!ov) return false;
-    return !!ov.querySelector(
-      '#rv-video-el, iframe.rv-embed-frame, iframe[data-fembed-embed="1"]'
-    );
+  function ensureSelectAllToggle() {
+    var wrap = document.getElementById('bsm-aa-perms');
+    if (!wrap || document.getElementById('bsm-aa-perms-select-all')) return;
+    var row = document.createElement('label');
+    row.style.cssText = 'display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:700;margin-bottom:8px;grid-column:1/-1;';
+    row.innerHTML = '<input type="checkbox" id="bsm-aa-perms-select-all"> ✅ تحديد كل الصلاحيات (مثل مالك الكورس)';
+    wrap.parentNode.insertBefore(row, wrap);
+    document.getElementById('bsm-aa-perms-select-all').addEventListener('change', function(){
+      var checked = this.checked;
+      wrap.querySelectorAll('input[data-aa-perm]').forEach(function(cb){ cb.checked = checked; });
+    });
   }
 
-  function nativeFullscreenElement(){
-    return document.fullscreenElement ||
-           document.webkitFullscreenElement ||
-           null;
+  function syncSelectAllState() {
+    var master = document.getElementById('bsm-aa-perms-select-all');
+    var wrap = document.getElementById('bsm-aa-perms');
+    if (!master || !wrap) return;
+    var boxes = wrap.querySelectorAll('input[data-aa-perm]');
+    var allChecked = boxes.length > 0 && Array.prototype.every.call(boxes, function(cb){ return cb.checked; });
+    master.checked = allChecked;
   }
 
-  async function lockLandscape(){
-    if(state.locked) return;
-    try{
-      if(screen.orientation && typeof screen.orientation.lock === 'function'){
-        await screen.orientation.lock('landscape');
-        state.locked = true;
+  function applyFullDefaultIfEmpty() {
+    var wrap = document.getElementById('bsm-aa-perms');
+    if (!wrap) return;
+    var boxes = wrap.querySelectorAll('input[data-aa-perm]');
+    var anyChecked = Array.prototype.some.call(boxes, function(cb){ return cb.checked; });
+    if (!anyChecked) {
+      // لا صلاحيات محفوظة أصلاً لهذا الأدمن المساعد (أو أدمن جديد) — نبدأ بكل
+      // الصلاحيات المتاحة مفعّلة، والمستخدم حر يشيل أي واحدة قبل الحفظ.
+      boxes.forEach(function(cb){ cb.checked = true; });
+    }
+    syncSelectAllState();
+  }
+
+  var modal = document.getElementById('bsm-aa-modal');
+  if (modal) {
+    var mo = new MutationObserver(function(){
+      if (modal.style.display === 'flex' || modal.style.display === 'block') {
+        ensureSelectAllToggle();
+        applyFullDefaultIfEmpty();
       }
-    }catch(e){
-      /* iOS/Safari and several WebViews reject orientation.lock by design. */
+    });
+    mo.observe(modal, { attributes: true, attributeFilter: ['style'] });
+  }
+
+  // أي تعديل يدوي على أي checkbox يحدّث حالة "تحديد الكل" فورًا
+  document.addEventListener('change', function(e){
+    if (e.target && e.target.matches && e.target.matches('#bsm-aa-perms input[data-aa-perm]')) {
+      syncSelectAllState();
     }
-  }
-
-  function unlockOrientation(){
-    try{
-      if(screen.orientation && typeof screen.orientation.unlock === 'function'){
-        screen.orientation.unlock();
-      }
-    }catch(e){}
-    state.locked = false;
-  }
-
-  function markActive(){
-    var ov = overlay();
-    if(!ov) return;
-    ov.classList.add(ACTIVE_CLASS);
-    ov.classList.remove(FALLBACK_CLASS);
-    document.documentElement.classList.add(ROOT_CLASS);
-    document.body.classList.add('rv-open');
-    state.active = true;
-  }
-
-  function markFallback(){
-    var ov = overlay();
-    if(!ov) return;
-    ov.classList.add(FALLBACK_CLASS);
-    ov.classList.remove(ACTIVE_CLASS);
-    document.documentElement.classList.add(ROOT_CLASS);
-    document.body.classList.add('rv-open');
-    state.active = true;
-    state.native = false;
-  }
-
-  function clearState(){
-    var ov = overlay();
-    if(ov){
-      ov.classList.remove(ACTIVE_CLASS, FALLBACK_CLASS);
-    }
-    document.documentElement.classList.remove(ROOT_CLASS);
-    state.active = false;
-    state.native = false;
-    unlockOrientation();
-    updateButton();
-  }
-
-  function updateButton(){
-    var btn = document.getElementById('rv-fs-btn');
-    var active = !!nativeFullscreenElement() || !!(overlay() &&
-      (overlay().classList.contains(ACTIVE_CLASS) ||
-       overlay().classList.contains(FALLBACK_CLASS)));
-    if(btn){
-      btn.textContent = active ? '✕' : '⛶';
-      btn.title = active ? 'خروج من ملء الشاشة' : 'ملء الشاشة';
-      btn.setAttribute('aria-label', btn.title);
-    }
-  }
-
-  async function enterFullscreen(){
-    var ov = overlay(), md = modal();
-    if(!ov || !md || !isVideoViewer()) return false;
-
-    markActive();
-
-    /* The modal is the correct fullscreen host: it contains the custom controls
-       and the external iframe, while CSS makes the actual video area viewport-sized. */
-    var req = ov.requestFullscreen ||
-              ov.webkitRequestFullscreen ||
-              md.requestFullscreen ||
-              md.webkitRequestFullscreen;
-
-    if(req){
-      try{
-        var result = req.call(ov.requestFullscreen || ov.webkitRequestFullscreen ? ov : md);
-        if(result && typeof result.then === 'function'){
-          await result;
-        }
-        state.native = !!nativeFullscreenElement();
-        if(state.native){
-          markActive();
-          await lockLandscape();
-          updateButton();
-          return true;
-        }
-      }catch(e){
-        console.info('[Universal Video FS] native fullscreen unavailable:', e && e.message);
-      }
-    }
-
-    /* WebView fallback: still removes the entire platform UI and makes the
-       player itself viewport-sized when native fullscreen is unavailable. */
-    markFallback();
-    await lockLandscape();
-    updateButton();
-    return true;
-  }
-
-  async function exitFullscreen(){
-    var activeNative = !!nativeFullscreenElement();
-
-    if(activeNative){
-      try{
-        var exit = document.exitFullscreen || document.webkitExitFullscreen;
-        if(exit){
-          var result = exit.call(document);
-          if(result && typeof result.then === 'function') await result;
-        }
-      }catch(e){}
-    }
-
-    clearState();
-    return true;
-  }
-
-  function toggle(){
-    if(state.active || nativeFullscreenElement() ||
-       (overlay() && (overlay().classList.contains(ACTIVE_CLASS) ||
-                      overlay().classList.contains(FALLBACK_CLASS)))){
-      return exitFullscreen();
-    }
-    return enterFullscreen();
-  }
-
-  /* Replace the public method used by the header button and any future code. */
-  function installPublicAPI(){
-    if(!window.ResourceViewer) return false;
-    window.ResourceViewer._toggleFullscreen = toggle;
-    window.ResourceViewer._toggleLandscape = toggle;
-    return true;
-  }
-
-  /* Capture-phase interception prevents old inline handlers/legacy listeners
-     from toggling the viewer twice. */
-  document.addEventListener('click', function(e){
-    var t = e.target && e.target.closest ? e.target.closest(
-      '#rv-fs-btn,#rv-landscape-btn,[data-media-fs]'
-    ) : null;
-    if(!t) return;
-    if(!isVideoViewer()) return;
-
-    e.preventDefault();
-    e.stopPropagation();
-    if(e.stopImmediatePropagation) e.stopImmediatePropagation();
-
-    toggle();
-  }, true);
-
-  document.addEventListener('fullscreenchange', function(){
-    var nativeNow = !!nativeFullscreenElement();
-    if(nativeNow){
-      state.native = true;
-      markActive();
-      lockLandscape();
-    }else if(state.active && !overlay()?.classList.contains(FALLBACK_CLASS)){
-      clearState();
-    }
-    updateButton();
   });
 
-  document.addEventListener('webkitfullscreenchange', function(){
-    var nativeNow = !!nativeFullscreenElement();
-    if(nativeNow){
-      state.native = true;
-      markActive();
-      lockLandscape();
-    }else if(state.active && !overlay()?.classList.contains(FALLBACK_CLASS)){
-      clearState();
-    }
-    updateButton();
-  });
-
-  window.addEventListener('orientationchange', function(){
-    if(state.active) updateButton();
-  }, {passive:true});
-
-  window.addEventListener('resize', function(){
-    if(state.active) updateButton();
-  }, {passive:true});
-
-  document.addEventListener('keydown', function(e){
-    if(e.key !== 'Escape') return;
-    if(nativeFullscreenElement()) return; /* browser exits native fullscreen */
-    var ov = overlay();
-    if(ov && ov.classList.contains(FALLBACK_CLASS)){
-      e.preventDefault();
-      exitFullscreen();
-    }
-  }, true);
-
-  document.addEventListener('backbutton', function(e){
-    var ov = overlay();
-    if(ov && (ov.classList.contains(ACTIVE_CLASS) ||
-              ov.classList.contains(FALLBACK_CLASS))){
-      if(e && e.preventDefault) e.preventDefault();
-      exitFullscreen();
-    }
-  }, false);
-
-  /* Re-install after ResourceViewer exists because this script is appended at
-     the end of the document and remains safe if the viewer is re-created. */
-  installPublicAPI();
-  setTimeout(installPublicAPI, 0);
-  setTimeout(installPublicAPI, 500);
-  setTimeout(installPublicAPI, 1500);
-
-  window.__UniversalVideoFullscreen = {
-    enter: enterFullscreen,
-    exit: exitFullscreen,
-    toggle: toggle,
-    install: installPublicAPI
-  };
+  console.log('%c[BSM AA-PERMS FULL-ACCESS PATCH] loaded', 'color:#17a589;font-weight:800');
 })();
 </script>
-
 </body>
 </html>
