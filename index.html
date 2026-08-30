@@ -4886,31 +4886,6 @@ async function _renderDynamicSectionPage(sec) {
     }
   }
 
-
-    // 🔒 HARD ENTRY GATE: لو القسم نفسه مدفوع ومقفول، لا نرسم أي أبناء داخله.
-    // الاستثناء الوحيد هو الـanchor (الكورس/الشعبة المدفوعة نفسها) لأنه بوابة
-    // الوصول التي يجب أن يدخلها الزائر ليصل إلى مسار الـFree Preview.
-    if (gate && gate.anchor && Number(sec.id) !== Number(gate.anchor.id)) {
-      window._currentContentSec = sec;
-      var lockedGate = { anchor: gate.anchor, state: gate.state || gate.access || 'guest', row: gate.row };
-      window.__currentChapterGate = lockedGate;
-      var grid = document.getElementById('dynamic-section-grid');
-      if (grid) {
-        grid.innerHTML = '<div class="sub-gate-card" style="grid-column:1/-1;max-width:520px;margin:35px auto;background:linear-gradient(180deg,#fff,#f7fbff);border-radius:22px;padding:36px 28px;text-align:center;box-shadow:0 14px 40px rgba(10,61,98,.18);border:1px solid #e3edf7;">' +
-          '<div style="font-size:3.2rem;margin-bottom:8px;">🔒</div>' +
-          '<div style="font-size:1.2rem;font-weight:900;color:var(--primary);margin-bottom:10px;">هذا القسم مغلق</div>' +
-          '<p style="font-size:.9rem;color:#5a6b7d;line-height:1.9;margin:0 0 18px;">لا يمكنك الدخول إلى هذا القسم قبل تفعيل الاشتراك.</p>' +
-          '<button type="button" onclick="window._openLockNoticeModal(window.__currentChapterGate)" style="border:0;border-radius:12px;padding:11px 20px;background:linear-gradient(135deg,var(--primary),var(--teal));color:#fff;font-weight:800;cursor:pointer;">🔐 تفاصيل الوصول</button>' +
-        '</div>';
-      }
-      document.querySelectorAll('.page').forEach(function(p){p.classList.remove('active');});
-      var dynPage=document.getElementById('page-dynamic-section');
-      if (dynPage) dynPage.classList.add('active');
-      window.scrollTo(0,0);
-      if (typeof updateBreadcrumb==='function') updateBreadcrumb();
-      return;
-    }
-
   // ── زر دخول محادثة الكورس — يظهر فقط على صفحة الشعبة نفسها ولمن يملك صلاحية ──
   var chatEntryEl = document.getElementById('dynamic-section-chat-entry');
   if (chatEntryEl) chatEntryEl.innerHTML = '';
@@ -5293,20 +5268,6 @@ async function openDynamicSubSection(sec) {
   window._apNavBusyIds[sec.id] = true;
   window._apNavLoaderShow();
   try {
-    // 🔒 HARD ENTRY GATE: لا تسمح بفتح قسم مدفوع مقفول حتى لو تم استدعاء
-    // الدالة مباشرة من رابط/restore/URL بدل الضغط على الكارت المقفول.
-    if (window.getDetailedSectionAccess) {
-      var entryAccess = await window.getDetailedSectionAccess(sec.id);
-      var isLockedEntry = entryAccess && entryAccess.state === 'locked';
-      var isAnchorEntry = entryAccess && entryAccess.anchor && Number(entryAccess.anchor.id) === Number(sec.id);
-      if (isLockedEntry && !isAnchorEntry) {
-        var entryGate = { anchor: entryAccess.anchor, state: entryAccess.access || 'guest', row: entryAccess.row };
-        window.__currentChapterGate = entryGate;
-        if (typeof window._openLockNoticeModal === 'function') window._openLockNoticeModal(entryGate);
-        return;
-      }
-    }
-
     // نجلب الـ children من الـ cache (أو نحمّلها مرة واحدة فقط)
     const children = await loadSections(sec.id);
 
@@ -5409,16 +5370,6 @@ async function _openContentPage(sec, _preloadedContent, _preloadedResources) {
       // SECURITY: لا نعرض أي محتوى مدفوع عند فشل التحقق.
       gate = (sec && sec.requires_subscription) ? { state: 'error', access: 'error', anchor: window._lastGateSec || sec } : null;
     }
-  }
-
-
-  // 🔒 HARD CONTENT ENTRY: الفصل/الدرس المقفول لا يُفتح ولا نحمّل أسماء
-  // محتواه أو موارده أصلًا. الـanchor وحده مسموح كحاوية دخول للـFree Preview.
-  if (gate && gate.anchor && Number(sec.id) !== Number(gate.anchor.id)) {
-    var contentLockedGate = { anchor: gate.anchor, state: gate.state || gate.access || 'guest', row: gate.row };
-    window.__currentChapterGate = contentLockedGate;
-    if (typeof window._openLockNoticeModal === 'function') window._openLockNoticeModal(contentLockedGate);
-    return;
   }
 
   // ✅ Phase 3 — PATH GATE: قفل تسلسلي إضافي مستقل عن الاشتراك. لو هذه المحاضرة
@@ -7189,24 +7140,6 @@ const ResourceViewer = (function() {
     });
 
     _setupMediaControls(overlay);
-
-    // 📱 ROOT VIDEO UX: عند ضغط المستخدم على "عرض" لفيديو، لا ننتظر منه
-    // ضغط زر Fullscreen مرة ثانية. ندخل مباشرةً إلى وضع ملء الشاشة ونطلب
-    // Landscape. لو المتصفح رفض Fullscreen API، _toggleFullscreen نفسه عنده
-    // fallback يدوي داخل المنصة، مع إبقاء شريط التقديم/التأخير/السرعة/الصوت.
-    var isVideoResource = (type === 'video_direct' || type === 'youtube' || type === 'vimeo' || type === 'dailymotion' || type === 'fembed');
-    if (isVideoResource && window.innerWidth <= 768) {
-      setTimeout(function(){
-        try {
-          var ov = document.getElementById('rv-overlay');
-          var md = document.getElementById('rv-modal');
-          if (ov && md && !document.fullscreenElement && !document.webkitFullscreenElement &&
-              !ov.classList.contains('rv-manual-fs') && !ov.classList.contains('rv-video-manual-fs')) {
-            _toggleFullscreen();
-          }
-        } catch(e) { console.warn('[VIDEO UX] auto landscape fullscreen:', e); }
-      }, 0);
-    }
 
     // Swipe لأسفل للإغلاق على الموبايل
     var touchStartY = 0;
@@ -31271,73 +31204,715 @@ ORDER BY ordinal_position;
   });
 })();
 </script>
-
-<style id="root-video-player-fix">
-.root-video-shell{position:relative;width:100%;max-width:1100px;margin:0 auto;background:#000;border-radius:14px;overflow:hidden;aspect-ratio:16/9;display:flex;align-items:center;justify-content:center}
-.root-video-shell video{width:100%;height:100%;display:block;background:#000;object-fit:contain}
-.root-video-shell:fullscreen,.root-video-shell:-webkit-full-screen{width:100vw;height:100vh;max-width:none;border-radius:0;background:#000;aspect-ratio:auto}
-.root-video-shell:fullscreen video,.root-video-shell:-webkit-full-screen video{width:100vw;height:100vh;object-fit:contain}
-@media(max-width:700px){.root-video-shell{border-radius:0;width:100%;max-width:none}}
+<!-- ============================================================
+     BSM FINAL RELEASE PATCH — DB SOURCE OF TRUTH + STRICT PREVIEW
+     2026-08-30
+     - DB is authoritative for paid/free + subscriptions.
+     - Free preview type is ONLY lesson/class.
+     - First-child path is navigable only to reach that preview leaf.
+     - Paid containers outside that path are blocked at their own card.
+     - Mobile video viewer: landscape + fullscreen attempt from user gesture.
+     ============================================================ -->
+<style id="bsm-release-video-style">
+#rv-modal.bsm-video-mobile-fs,
+#rv-overlay.bsm-video-mobile-fs{background:#000!important}
+#rv-modal.bsm-video-mobile-fs{width:100vw!important;height:100vh!important;max-width:none!important;max-height:none!important;border-radius:0!important;margin:0!important;padding:0!important}
+#rv-modal.bsm-video-mobile-fs #rv-body{width:100%!important;height:100%!important;display:flex!important;align-items:center!important;justify-content:center!important;background:#000!important}
+#rv-modal.bsm-video-mobile-fs #rv-video-el,
+#rv-modal.bsm-video-mobile-fs .rv-embed-frame,
+#rv-modal.bsm-video-mobile-fs iframe[data-fembed-embed="1"]{width:100%!important;height:100%!important;max-width:none!important;max-height:none!important;object-fit:contain!important;border:0!important}
+@media(max-width:700px){
+  #rv-modal .rv-embed-frame,#rv-modal iframe[data-fembed-embed="1"]{max-width:100vw!important}
+}
 </style>
-<script id="root-video-player-fix-js">
+<script id="bsm-release-final-js">
 (function(){
 'use strict';
-if(window.__ROOT_VIDEO_PLAYER_FIX_V2)return;
-window.__ROOT_VIDEO_PLAYER_FIX_V2=true;
+if(window.__BSM_RELEASE_FINAL_20260830)return;
+window.__BSM_RELEASE_FINAL_20260830=true;
 
-async function goFullscreen(video){
-  if(!video)return;
-  var shell=video.closest('.root-video-shell')||video;
-  try{
-    if(document.fullscreenElement!==shell){
-      if(shell.requestFullscreen) await shell.requestFullscreen();
-      else if(shell.webkitRequestFullscreen) shell.webkitRequestFullscreen();
-      else if(video.webkitEnterFullscreen){video.webkitEnterFullscreen();return;}
-    }
-  }catch(e){console.warn('[VIDEO UX] fullscreen',e);}
-  try{
-    if(screen.orientation&&screen.orientation.lock) await screen.orientation.lock('landscape');
-  }catch(e){}
+function DB(){return window.supabase||null;}
+function ID(v){var n=Number(v);return Number.isFinite(n)&&n>0?n:null;}
+function T(r){return String(r&&r.type||'').trim().toLowerCase();}
+function isPreviewType(r){var t=T(r);return t==='lesson'||t==='class';}
+function esc(v){return typeof window._apEsc==='function'?window._apEsc(v==null?'':String(v)):String(v==null?'':v).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+function sortRows(a){return (a||[]).slice().sort(function(x,y){var xo=Number(x.display_order),yo=Number(y.display_order);xo=Number.isFinite(xo)?xo:999999;yo=Number.isFinite(yo)?yo:999999;return xo-yo||Number(x.id)-Number(y.id);});}
+
+var rowCache={},childrenCache={},previewCache={};
+async function getRow(id){
+  id=ID(id);if(!id)throw new Error('Invalid section id');
+  if(rowCache[id])return rowCache[id];
+  var d=DB();if(!d)throw new Error('Supabase unavailable');
+  var r=await d.from('site_sections').select('id,title,icon,parent_id,type,display_order,requires_subscription').eq('id',id).maybeSingle();
+  if(r.error)throw r.error;rowCache[id]=r.data||null;return rowCache[id];
+}
+async function getChildren(id){
+  id=ID(id);if(!id)return [];
+  if(childrenCache[id])return childrenCache[id];
+  var d=DB();if(!d)throw new Error('Supabase unavailable');
+  var r=await d.from('site_sections').select('id,title,icon,parent_id,type,display_order,requires_subscription').eq('parent_id',id).order('display_order',{ascending:true}).order('id',{ascending:true});
+  if(r.error)throw r.error;childrenCache[id]=sortRows(r.data||[]);return childrenCache[id];
 }
 
-function enhance(video){
-  if(!video||video.tagName!=='VIDEO'||video.dataset.rootVideoEnhanced==='1')return;
-  video.dataset.rootVideoEnhanced='1';
-  video.setAttribute('controls','');
-  video.setAttribute('playsinline','');
-  video.setAttribute('webkit-playsinline','');
-
-  // On mobile, the first actual playback request enters landscape fullscreen.
-  video.addEventListener('play',function(){
-    if(window.innerWidth<=700) goFullscreen(video);
-  },{once:true});
-
-  // Covers players that start through an existing "عرض" handler.
-  video.addEventListener('playing',function(){
-    if(window.innerWidth<=700&&!document.fullscreenElement) goFullscreen(video);
-  },{once:true});
-}
-
-function scan(){
-  document.querySelectorAll('video').forEach(enhance);
-}
-
-document.addEventListener('click',function(e){
-  var el=e.target.closest&&e.target.closest('button,[role="button"],.btn-enter,.btn-view,.view-btn,.resource-item,.link-card');
-  if(!el)return;
-  setTimeout(scan,100);
-},true);
-
-document.addEventListener('fullscreenchange',function(){
-  if(!document.fullscreenElement){
-    try{if(screen.orientation&&screen.orientation.unlock)screen.orientation.unlock();}catch(e){}
+/* DB decides whether any node in the current ancestor chain is paid. */
+async function paidAnchorFromDB(sectionId){
+  var sid=ID(sectionId);if(!sid)return null;
+  var chain=[],cur=sid,seen={};
+  for(var i=0;i<30&&cur&&!seen[cur];i++){
+    seen[cur]=true;var r=await getRow(cur);if(!r)break;chain.push(r);
+    if(r.parent_id==null)break;cur=ID(r.parent_id);
   }
-});
+  var d=DB();if(!d)return null;
+  var ids=chain.map(function(x){return Number(x.id);});
+  /* subscription_content_access is authoritative when a row explicitly marks
+     the node as requiring subscription. */
+  var ar=await d.from('subscription_content_access').select('section_id,requires_subscription').in('section_id',ids);
+  if(ar.error)throw ar.error;
+  var explicit=(ar.data||[]).filter(function(x){return x.requires_subscription===true;}).map(function(x){return Number(x.section_id);});
+  for(var j=0;j<chain.length;j++){
+    if(chain[j].requires_subscription===true||explicit.indexOf(Number(chain[j].id))!==-1)return chain[j];
+  }
+  return null;
+}
 
-new MutationObserver(scan).observe(document.documentElement,{subtree:true,childList:true});
-scan();
+async function hasPayload(id){
+  var d=DB();if(!d)throw new Error('Supabase unavailable');
+  var n=ID(id);if(!n)return false;
+  var a=await d.from('section_content').select('id').eq('section_id',n).limit(1);
+  if(a.error)throw a.error;
+  if(a.data&&a.data.length)return true;
+  var b=await d.from('section_resources').select('id').eq('section_id',n).limit(1);
+  if(b.error)throw b.error;
+  return !!(b.data&&b.data.length);
+}
 
-window.__rootEnterVideoFullscreen=goFullscreen;
+/* First preview is ONLY the first lesson/class encountered by repeatedly
+   following the first child by display_order. No chapter/custom type fallback. */
+async function resolvePreview(anchorId){
+  var aid=ID(anchorId);if(!aid)return {path:[],leaf:null};
+  if(previewCache[aid])return previewCache[aid];
+  var path=[],cur=await getRow(aid),seen={},leaf=null;
+  for(var depth=0;cur&&depth<30;depth++){
+    var cid=ID(cur.id);if(!cid||seen[cid])break;seen[cid]=true;path.push(cur);
+    var kids=await getChildren(cid);if(!kids.length)break;
+    var first=kids[0];
+    if(isPreviewType(first)){
+      path.push(first);
+      if(await hasPayload(first.id))leaf=first;
+      break;
+    }
+    cur=first;
+  }
+  previewCache[aid]={path:path,leaf:leaf};return previewCache[aid];
+}
+async function isDescendant(id,leafId){
+  var sid=ID(id),lid=ID(leafId);if(!sid||!lid)return false;
+  var cur=sid,seen={},guard=0;
+  while(cur&&guard++<30&&!seen[cur]){
+    seen[cur]=true;if(cur===lid)return true;
+    var r=await getRow(cur);if(!r||r.parent_id==null)break;cur=ID(r.parent_id);
+  }
+  return false;
+}
+async function previewInfo(id){
+  var sid=ID(id);if(!sid)return {anchor:null,path:[],leaf:null,onPath:false,isPreview:false};
+  var a=await paidAnchorFromDB(sid);if(!a)return {anchor:null,path:[],leaf:null,onPath:false,isPreview:false};
+  var p=await resolvePreview(a.id),path=p.path||[],leaf=p.leaf||null;
+  var onPath=path.some(function(x){return Number(x.id)===sid;});
+  var isPreview=!!(leaf&&await isDescendant(sid,leaf.id));
+  return {anchor:a,path:path,leaf:leaf,onPath:onPath,isPreview:isPreview};
+}
+
+window._isFreePreviewSection=async function(id){
+  try{var x=await previewInfo(id);return !!(x.isPath||x.onPath||x.isPreview);}catch(e){console.error('[RELEASE PREVIEW]',e);return false;}
+};
+window.__bsmReleasePreviewInfo=previewInfo;
+window.__bsmReleaseInvalidate=function(){rowCache={};childrenCache={};previewCache={};};
+
+function validActive(r){return !!(r&&r.payment_status==='active'&&(!r.end_date||new Date(r.end_date).getTime()>=Date.now()));}
+async function hasActiveSubscription(userId,anchorId){
+  var d=DB();if(!d)return false;
+  /* Prefer a subscription on the paid anchor, but also accept an active
+     subscription on an ancestor of that anchor (legacy-compatible). */
+  var chain=[],cur=ID(anchorId),seen={};
+  for(var i=0;cur&&i<30&&!seen[cur];i++){
+    seen[cur]=true;var rr=await getRow(cur);if(!rr)break;chain.push(Number(rr.id));if(rr.parent_id==null)break;cur=ID(rr.parent_id);
+  }
+  var q=await d.from('subscriptions').select('id,section_id,payment_status,start_date,end_date,requested_at,created_at,updated_at,reject_reason').eq('user_id',userId).in('section_id',chain);
+  if(q.error)throw q.error;
+  return (q.data||[]).some(validActive);
+}
+
+async function DBAccess(id){
+  var sid=ID(id);if(!sid)return {state:'error',access:'error'};
+  if(window._isSuperAdmin===true)return null;
+  var a=await paidAnchorFromDB(sid);if(!a)return null;
+  if(window._isBranchAdmin===true){
+    var own=window._branchAdminAllSectionIds||window._branchAdminSectionIds||window._branchAdminOwnSectionIds||[];
+    if(Array.isArray(own)&&own.map(Number).indexOf(Number(a.id))!==-1)return null;
+  }
+  var x=await previewInfo(sid);
+  /* The path is intentionally reachable, but only the lesson/class leaf and
+     its descendants are free-content territory. */
+  if(x.isPreview)return null;
+  if(x.onPath)return {state:'preview_container',access:'preview_container',anchor:a,previewContainer:true,previewLeaf:x.leaf||null};
+
+  var d=DB();if(!d)return {state:'error',access:'error',anchor:a};
+  var sess=typeof window._getSessionSafe==='function'?await window._getSessionSafe(8000):await d.auth.getSession();
+  var u=sess&&sess.data&&sess.data.session&&sess.data.session.user;
+  if(!u)return {state:'guest',access:'guest',anchor:a,user:null,row:null};
+  if(await hasActiveSubscription(u.id,a.id))return null;
+
+  var chain=[],cur=ID(a.id),seen={};
+  for(var i=0;cur&&i<30&&!seen[cur];i++){
+    seen[cur]=true;chain.push(cur);var rr=await getRow(cur);if(!rr||rr.parent_id==null)break;cur=ID(rr.parent_id);
+  }
+  var q=await d.from('subscriptions').select('id,section_id,payment_status,start_date,end_date,reject_reason,requested_at,created_at,updated_at').eq('user_id',u.id).in('section_id',chain).order('requested_at',{ascending:false,nullsFirst:false}).order('created_at',{ascending:false}).order('id',{ascending:false});
+  if(q.error)throw q.error;
+  var rows=q.data||[],row=rows[0]||null;
+  var state=row&&row.payment_status==='pending'?'pending':(row&&['rejected','cancelled'].indexOf(String(row.payment_status))!==-1?'rejected':(row?'expired':'none'));
+  return {state:state,access:state,anchor:a,row:row,user:u,reject_reason:row&&row.reject_reason||''};
+}
+
+window.checkSectionAccess=async function(id){try{return await DBAccess(id);}catch(e){console.error('[RELEASE DB ACCESS]',e);return {state:'error',access:'error'};}};
+window.getDetailedSectionAccess=async function(id){try{var r=await DBAccess(id);return r||{state:'free',anchor:null};}catch(e){return {state:'error',access:'error'};}};
+
+/* HARD navigation gate: a paid material/subject/chapter cannot be entered at
+   all unless it is the preview path or the user has an active DB subscription. */
+if(typeof window.openDynamicSection==='function'&&!window.__BSM_RELEASE_OPEN_GATE){
+  var originalOpen=window.openDynamicSection;
+  window.openDynamicSection=async function(sec){
+    if(!sec||!sec.id)return originalOpen.apply(this,arguments);
+    try{
+      var g=await window.checkSectionAccess(sec.id);
+      if(g&&g.state&&g.state!=='free'&&g.state!=='preview_container'){
+        if(typeof window._openLockNoticeModal==='function')window._openLockNoticeModal(g);
+        else if(typeof window._showToast==='function')window._showToast('🔒 هذا القسم مغلق ويتطلب اشتراكًا','warning');
+        return;
+      }
+    }catch(e){
+      console.error('[RELEASE NAV GATE]',e);
+      if(typeof window._showToast==='function')window._showToast('⚠️ تعذر التحقق من صلاحية الدخول من قاعدة البيانات','error');
+      return;
+    }
+    return originalOpen.apply(this,arguments);
+  };
+  window.__BSM_RELEASE_OPEN_GATE=true;
+}
+
+/* Mobile video: keep the existing custom controls and make the whole viewer
+   fullscreen/landscape. Cross-origin iframe controls remain vendor-owned. */
+function mobile(){return window.matchMedia&&window.matchMedia('(max-width:700px)').matches;}
+function landscape(){
+  try{
+    var b=window.BSMAndroidBridge;
+    if(b){if(typeof b.lockLandscape==='function'){b.lockLandscape();return;}if(typeof b.setOrientation==='function'){b.setOrientation('landscape');return;}}
+  }catch(e){}
+  try{if(screen.orientation&&screen.orientation.lock){var p=screen.orientation.lock('landscape');if(p&&p.catch)p.catch(function(){});}}catch(e){}
+}
+function unLandscape(){
+  try{var b=window.BSMAndroidBridge;if(b){if(typeof b.unlockOrientation==='function'){b.unlockOrientation();}else if(typeof b.setOrientation==='function')b.setOrientation('portrait');}}catch(e){}
+  try{if(screen.orientation&&screen.orientation.unlock)screen.orientation.unlock();}catch(e){}
+}
+function isVideoViewer(){var ov=document.getElementById('rv-overlay');return !!(ov&&(ov.querySelector('#rv-video-el')||ov.querySelector('iframe.rv-embed-frame')||ov.querySelector('iframe[data-fembed-embed="1"]')));}
+function iframePerms(){var ov=document.getElementById('rv-overlay');if(!ov)return;ov.querySelectorAll('iframe').forEach(function(f){try{f.setAttribute('allow','autoplay; fullscreen; picture-in-picture; encrypted-media; gyroscope; accelerometer');f.setAttribute('allowfullscreen','');f.setAttribute('webkitallowfullscreen','');}catch(e){}});}
+function mobileVideoFullscreen(){
+  var modal=document.getElementById('rv-modal'),ov=document.getElementById('rv-overlay');if(!modal||!ov||!isVideoViewer())return;
+  ov.classList.add('bsm-video-mobile-fs');modal.classList.add('bsm-video-mobile-fs');iframePerms();
+  var req=modal.requestFullscreen||modal.webkitRequestFullscreen;
+  try{
+    if(!document.fullscreenElement&&!document.webkitFullscreenElement&&req){var p=req.call(modal);if(p&&p.catch)p.catch(function(){});}
+  }catch(e){}
+  landscape();
+}
+function mobileVideoExit(){var m=document.getElementById('rv-modal'),o=document.getElementById('rv-overlay');if(m)m.classList.remove('bsm-video-mobile-fs');if(o)o.classList.remove('bsm-video-mobile-fs');unLandscape();}
+
+/* Do not wait for a timeout before the fullscreen request. This keeps the
+   request as close as possible to the trusted "عرض" click. */
+if(window.ResourceViewer&&typeof window.ResourceViewer.open==='function'&&!window.__BSM_RELEASE_RV_OPEN){
+  var rvOpen=window.ResourceViewer.open;
+  window.ResourceViewer.open=function(){
+    var r=rvOpen.apply(this,arguments);
+    if(mobile()){mobileVideoFullscreen();}else iframePerms();
+    return r;
+  };
+  window.__BSM_RELEASE_RV_OPEN=true;
+}
+var observer=new MutationObserver(function(){iframePerms();});
+if(document.documentElement)observer.observe(document.documentElement,{childList:true,subtree:true});
+document.addEventListener('fullscreenchange',function(){if(!document.fullscreenElement)mobileVideoExit();});
+document.addEventListener('webkitfullscreenchange',function(){if(!document.webkitFullscreenElement)mobileVideoExit();});
+
+/* Expose diagnostics; no writes. */
+window.printReleaseAccess=async function(id){try{var x=await previewInfo(id),g=await DBAccess(id);console.table((x.path||[]).map(function(r,i){return{order:i+1,id:r.id,title:r.title,type:r.type,display_order:r.display_order,parent_id:r.parent_id};}));console.log({anchor:x.anchor&&x.anchor.id,preview:x.leaf&&x.leaf.id,previewType:x.leaf&&x.leaf.type,onPath:x.onPath,isPreview:x.isPreview,access:g});}catch(e){console.error(e);}};
+})();
+</script>
+
+
+<!-- FINAL UNIVERSAL VIDEO VIEWER / FULLSCREEN SYSTEM -->
+<style id="universal-video-fullscreen-final">
+  /* Native fullscreen and the WebView fallback share exactly the same layout. */
+  #rv-overlay.rv-universal-fs,
+  #rv-overlay:fullscreen,
+  #rv-overlay:-webkit-full-screen {
+    position: fixed !important;
+    inset: 0 !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    height: 100dvh !important;
+    max-width: none !important;
+    max-height: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #000 !important;
+    backdrop-filter: none !important;
+    display: block !important;
+    overflow: hidden !important;
+    z-index: 2147483647 !important;
+  }
+
+  #rv-overlay.rv-universal-fs .rv-modal,
+  #rv-overlay:fullscreen .rv-modal,
+  #rv-overlay:-webkit-full-screen .rv-modal {
+    position: fixed !important;
+    inset: 0 !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    height: 100dvh !important;
+    max-width: none !important;
+    max-height: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: #000 !important;
+    box-shadow: none !important;
+    overflow: hidden !important;
+    transform: none !important;
+    animation: none !important;
+    display: flex !important;
+    flex-direction: column !important;
+  }
+
+  /* In true fullscreen the platform page must disappear; only the player
+     remains. The header/footer are hidden, while the player controls remain. */
+  #rv-overlay.rv-universal-fs .rv-header,
+  #rv-overlay:fullscreen .rv-header,
+  #rv-overlay:-webkit-full-screen .rv-header,
+  #rv-overlay.rv-universal-fs .rv-footer,
+  #rv-overlay:fullscreen .rv-footer,
+  #rv-overlay:-webkit-full-screen .rv-footer {
+    display: none !important;
+  }
+
+  #rv-overlay.rv-universal-fs .rv-body,
+  #rv-overlay:fullscreen .rv-body,
+  #rv-overlay:-webkit-full-screen .rv-body {
+    position: relative !important;
+    flex: 1 1 auto !important;
+    width: 100vw !important;
+    height: 100% !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+    background: #000 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    justify-content: center !important;
+  }
+
+  /* Direct MP4/HTML5 video: maximize its real display area without cropping. */
+  #rv-overlay.rv-universal-fs #rv-video-el,
+  #rv-overlay:fullscreen #rv-video-el,
+  #rv-overlay:-webkit-full-screen #rv-video-el {
+    display: block !important;
+    position: relative !important;
+    width: 100% !important;
+    height: 100% !important;
+    max-width: none !important;
+    max-height: none !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #000 !important;
+    object-fit: contain !important;
+    flex: 1 1 auto !important;
+  }
+
+  /* External players: the iframe itself fills the player viewport. */
+  #rv-overlay.rv-universal-fs .rv-embed-frame,
+  #rv-overlay:fullscreen .rv-embed-frame,
+  #rv-overlay:-webkit-full-screen .rv-embed-frame,
+  #rv-overlay.rv-universal-fs iframe,
+  #rv-overlay:fullscreen iframe,
+  #rv-overlay:-webkit-full-screen iframe {
+    display: block !important;
+    position: absolute !important;
+    inset: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    max-width: none !important;
+    max-height: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    background: #000 !important;
+  }
+
+  /* Custom controls stay on top of a direct video, like a professional player. */
+  #rv-overlay.rv-universal-fs .rv-video-controls,
+  #rv-overlay:fullscreen .rv-video-controls,
+  #rv-overlay:-webkit-full-screen .rv-video-controls {
+    position: absolute !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+    z-index: 20 !important;
+    padding:
+      8px
+      max(10px, env(safe-area-inset-right))
+      max(10px, env(safe-area-inset-bottom))
+      max(10px, env(safe-area-inset-left)) !important;
+    background: linear-gradient(to top, rgba(0,0,0,.92), rgba(0,0,0,.55), transparent) !important;
+    border: 0 !important;
+  }
+
+  /* Safe areas for fullscreen phones with a notch/home indicator. */
+  #rv-overlay.rv-universal-fs .rv-video-controls {
+    padding-bottom: max(10px, env(safe-area-inset-bottom)) !important;
+  }
+
+  /* Prevent page scrolling behind the fullscreen viewer. */
+  html.rv-universal-fs-active,
+  html.rv-universal-fs-active body {
+    overflow: hidden !important;
+    width: 100% !important;
+    height: 100% !important;
+    overscroll-behavior: none !important;
+  }
+
+  /* Fallback for WebViews that expose no usable Fullscreen API. */
+  #rv-overlay.rv-universal-fs-fallback {
+    position: fixed !important;
+    inset: 0 !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    height: 100dvh !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    background: #000 !important;
+    backdrop-filter: none !important;
+    display: block !important;
+    overflow: hidden !important;
+    z-index: 2147483647 !important;
+  }
+
+  #rv-overlay.rv-universal-fs-fallback .rv-modal {
+    position: fixed !important;
+    inset: 0 !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    height: 100dvh !important;
+    max-width: none !important;
+    max-height: none !important;
+    margin: 0 !important;
+    border-radius: 0 !important;
+    background: #000 !important;
+    box-shadow: none !important;
+    transform: none !important;
+    animation: none !important;
+  }
+
+  #rv-overlay.rv-universal-fs-fallback .rv-header,
+  #rv-overlay.rv-universal-fs-fallback .rv-footer {
+    display: none !important;
+  }
+
+  #rv-overlay.rv-universal-fs-fallback .rv-body {
+    width: 100vw !important;
+    height: 100dvh !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
+    background: #000 !important;
+  }
+
+  #rv-overlay.rv-universal-fs-fallback #rv-video-el {
+    width: 100% !important;
+    height: 100% !important;
+    max-width: none !important;
+    max-height: none !important;
+    object-fit: contain !important;
+  }
+
+  /* iPhone landscape viewport correction. */
+  @supports (height: 100svh) {
+    #rv-overlay.rv-universal-fs,
+    #rv-overlay:fullscreen,
+    #rv-overlay:-webkit-full-screen,
+    #rv-overlay.rv-universal-fs-fallback {
+      height: 100svh !important;
+    }
+    #rv-overlay.rv-universal-fs .rv-modal,
+    #rv-overlay:fullscreen .rv-modal,
+    #rv-overlay:-webkit-full-screen .rv-modal,
+    #rv-overlay.rv-universal-fs-fallback .rv-modal {
+      height: 100svh !important;
+    }
+  }
+</style>
+
+<script id="universal-video-fullscreen-final-js">
+(function(){
+  'use strict';
+  if(window.__UNIVERSAL_VIDEO_FULLSCREEN_FINAL__) return;
+  window.__UNIVERSAL_VIDEO_FULLSCREEN_FINAL__ = true;
+
+  var FALLBACK_CLASS = 'rv-universal-fs-fallback';
+  var ACTIVE_CLASS = 'rv-universal-fs';
+  var ROOT_CLASS = 'rv-universal-fs-active';
+  var state = { active:false, native:false, locked:false };
+
+  function overlay(){ return document.getElementById('rv-overlay'); }
+  function modal(){ return document.getElementById('rv-modal'); }
+
+  function isVideoViewer(){
+    var ov = overlay();
+    if(!ov) return false;
+    return !!ov.querySelector(
+      '#rv-video-el, iframe.rv-embed-frame, iframe[data-fembed-embed="1"]'
+    );
+  }
+
+  function nativeFullscreenElement(){
+    return document.fullscreenElement ||
+           document.webkitFullscreenElement ||
+           null;
+  }
+
+  async function lockLandscape(){
+    if(state.locked) return;
+    try{
+      if(screen.orientation && typeof screen.orientation.lock === 'function'){
+        await screen.orientation.lock('landscape');
+        state.locked = true;
+      }
+    }catch(e){
+      /* iOS/Safari and several WebViews reject orientation.lock by design. */
+    }
+  }
+
+  function unlockOrientation(){
+    try{
+      if(screen.orientation && typeof screen.orientation.unlock === 'function'){
+        screen.orientation.unlock();
+      }
+    }catch(e){}
+    state.locked = false;
+  }
+
+  function markActive(){
+    var ov = overlay();
+    if(!ov) return;
+    ov.classList.add(ACTIVE_CLASS);
+    ov.classList.remove(FALLBACK_CLASS);
+    document.documentElement.classList.add(ROOT_CLASS);
+    document.body.classList.add('rv-open');
+    state.active = true;
+  }
+
+  function markFallback(){
+    var ov = overlay();
+    if(!ov) return;
+    ov.classList.add(FALLBACK_CLASS);
+    ov.classList.remove(ACTIVE_CLASS);
+    document.documentElement.classList.add(ROOT_CLASS);
+    document.body.classList.add('rv-open');
+    state.active = true;
+    state.native = false;
+  }
+
+  function clearState(){
+    var ov = overlay();
+    if(ov){
+      ov.classList.remove(ACTIVE_CLASS, FALLBACK_CLASS);
+    }
+    document.documentElement.classList.remove(ROOT_CLASS);
+    state.active = false;
+    state.native = false;
+    unlockOrientation();
+    updateButton();
+  }
+
+  function updateButton(){
+    var btn = document.getElementById('rv-fs-btn');
+    var active = !!nativeFullscreenElement() || !!(overlay() &&
+      (overlay().classList.contains(ACTIVE_CLASS) ||
+       overlay().classList.contains(FALLBACK_CLASS)));
+    if(btn){
+      btn.textContent = active ? '✕' : '⛶';
+      btn.title = active ? 'خروج من ملء الشاشة' : 'ملء الشاشة';
+      btn.setAttribute('aria-label', btn.title);
+    }
+  }
+
+  async function enterFullscreen(){
+    var ov = overlay(), md = modal();
+    if(!ov || !md || !isVideoViewer()) return false;
+
+    markActive();
+
+    /* The modal is the correct fullscreen host: it contains the custom controls
+       and the external iframe, while CSS makes the actual video area viewport-sized. */
+    var req = ov.requestFullscreen ||
+              ov.webkitRequestFullscreen ||
+              md.requestFullscreen ||
+              md.webkitRequestFullscreen;
+
+    if(req){
+      try{
+        var result = req.call(ov.requestFullscreen || ov.webkitRequestFullscreen ? ov : md);
+        if(result && typeof result.then === 'function'){
+          await result;
+        }
+        state.native = !!nativeFullscreenElement();
+        if(state.native){
+          markActive();
+          await lockLandscape();
+          updateButton();
+          return true;
+        }
+      }catch(e){
+        console.info('[Universal Video FS] native fullscreen unavailable:', e && e.message);
+      }
+    }
+
+    /* WebView fallback: still removes the entire platform UI and makes the
+       player itself viewport-sized when native fullscreen is unavailable. */
+    markFallback();
+    await lockLandscape();
+    updateButton();
+    return true;
+  }
+
+  async function exitFullscreen(){
+    var activeNative = !!nativeFullscreenElement();
+
+    if(activeNative){
+      try{
+        var exit = document.exitFullscreen || document.webkitExitFullscreen;
+        if(exit){
+          var result = exit.call(document);
+          if(result && typeof result.then === 'function') await result;
+        }
+      }catch(e){}
+    }
+
+    clearState();
+    return true;
+  }
+
+  function toggle(){
+    if(state.active || nativeFullscreenElement() ||
+       (overlay() && (overlay().classList.contains(ACTIVE_CLASS) ||
+                      overlay().classList.contains(FALLBACK_CLASS)))){
+      return exitFullscreen();
+    }
+    return enterFullscreen();
+  }
+
+  /* Replace the public method used by the header button and any future code. */
+  function installPublicAPI(){
+    if(!window.ResourceViewer) return false;
+    window.ResourceViewer._toggleFullscreen = toggle;
+    window.ResourceViewer._toggleLandscape = toggle;
+    return true;
+  }
+
+  /* Capture-phase interception prevents old inline handlers/legacy listeners
+     from toggling the viewer twice. */
+  document.addEventListener('click', function(e){
+    var t = e.target && e.target.closest ? e.target.closest(
+      '#rv-fs-btn,#rv-landscape-btn,[data-media-fs]'
+    ) : null;
+    if(!t) return;
+    if(!isVideoViewer()) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+    if(e.stopImmediatePropagation) e.stopImmediatePropagation();
+
+    toggle();
+  }, true);
+
+  document.addEventListener('fullscreenchange', function(){
+    var nativeNow = !!nativeFullscreenElement();
+    if(nativeNow){
+      state.native = true;
+      markActive();
+      lockLandscape();
+    }else if(state.active && !overlay()?.classList.contains(FALLBACK_CLASS)){
+      clearState();
+    }
+    updateButton();
+  });
+
+  document.addEventListener('webkitfullscreenchange', function(){
+    var nativeNow = !!nativeFullscreenElement();
+    if(nativeNow){
+      state.native = true;
+      markActive();
+      lockLandscape();
+    }else if(state.active && !overlay()?.classList.contains(FALLBACK_CLASS)){
+      clearState();
+    }
+    updateButton();
+  });
+
+  window.addEventListener('orientationchange', function(){
+    if(state.active) updateButton();
+  }, {passive:true});
+
+  window.addEventListener('resize', function(){
+    if(state.active) updateButton();
+  }, {passive:true});
+
+  document.addEventListener('keydown', function(e){
+    if(e.key !== 'Escape') return;
+    if(nativeFullscreenElement()) return; /* browser exits native fullscreen */
+    var ov = overlay();
+    if(ov && ov.classList.contains(FALLBACK_CLASS)){
+      e.preventDefault();
+      exitFullscreen();
+    }
+  }, true);
+
+  document.addEventListener('backbutton', function(e){
+    var ov = overlay();
+    if(ov && (ov.classList.contains(ACTIVE_CLASS) ||
+              ov.classList.contains(FALLBACK_CLASS))){
+      if(e && e.preventDefault) e.preventDefault();
+      exitFullscreen();
+    }
+  }, false);
+
+  /* Re-install after ResourceViewer exists because this script is appended at
+     the end of the document and remains safe if the viewer is re-created. */
+  installPublicAPI();
+  setTimeout(installPublicAPI, 0);
+  setTimeout(installPublicAPI, 500);
+  setTimeout(installPublicAPI, 1500);
+
+  window.__UniversalVideoFullscreen = {
+    enter: enterFullscreen,
+    exit: exitFullscreen,
+    toggle: toggle,
+    install: installPublicAPI
+  };
 })();
 </script>
 
