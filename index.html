@@ -1413,6 +1413,50 @@ footer strong { color: var(--accent2); }
   object-fit: contain !important;
   background: #000 !important;
 }
+/* ✅ FIX (طلب: مشغل فيديو احترافي حقيقي): لما الفيديو (مش صورة/PDF/رابط) هو
+   اللي بيدخل Fullscreen، بنخفي هيدر/فوتر الـResourceViewer نفسه (عنوان
+   الدرس/badge/زرار X) بدل ما يفضلوا شريط فوق الفيديو ياخد مساحة، ويبقى
+   الفيديو + شريط التحكم بس هما الظاهرين — بالظبط شكل مشغل فيديو احترافي.
+   مقتصر على الفيديو فقط (كلاس rv-fs-video بيتضاف/بيتشال في JS من
+   _rvEnterFullscreenLayout/_rvLeaveFullscreenLayout حسب وجود #rv-video-el)
+   عشان الصور/PDF/الروابط الخارجية تحتفظ بالهيدر (وزر الإغلاق) لأن مفيش
+   شريط تحكم بديل عندهم يقدر يخرجهم من Fullscreen غيره. الخروج من فيديو
+   الFullscreen لسه ممكن دايمًا عن طريق زرار ⛶ جوه شريط التحكم نفسه، أو ESC،
+   أو زرار الرجوع/الإيماءة في الموبايل — زي أي مشغل فيديو احترافي حقيقي. */
+.rv-overlay.rv-fs-session.rv-fs-video .rv-header,
+.rv-overlay.rv-fs-session.rv-fs-video .rv-footer,
+.rv-overlay.rv-fs-session.rv-fs-video .rv-swipe-hint,
+.rv-overlay.rv-manual-fs.rv-fs-video .rv-header,
+.rv-overlay.rv-manual-fs.rv-fs-video .rv-footer,
+.rv-overlay.rv-manual-fs.rv-fs-video .rv-swipe-hint {
+  display: none !important;
+}
+.rv-overlay.rv-fs-session.rv-fs-video .rv-body,
+.rv-overlay.rv-manual-fs.rv-fs-video .rv-body {
+  display: flex !important;
+  flex-direction: column !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+}
+/* ✅ الفيديو نفسه بياخد كل المساحة المتاحة (بعد خصم شريط التحكم بس، مش
+   خصم هيدر/فوتر وهميين زي كان بيحصل قبل كده) — width:100% + height:100%
+   (flex:1 على .rv-body) مع object-fit:contain، فمفيش قص للفيديو ومفيش
+   مساحة سوداء فاضية كبيرة حواليه زي المطلوب بالظبط. */
+.rv-overlay.rv-fs-session.rv-fs-video .rv-video,
+.rv-overlay.rv-manual-fs.rv-fs-video .rv-video {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  height: 100% !important;
+  max-height: none !important;
+  object-fit: contain !important;
+  background: #000 !important;
+}
+.rv-overlay.rv-fs-session.rv-fs-video .rv-media-tools,
+.rv-overlay.rv-manual-fs.rv-fs-video .rv-media-tools {
+  flex-shrink: 0 !important;
+}
 @media (max-width: 768px) {
   .rv-overlay.rv-fs-session .rv-video-controls {
     padding: max(8px, env(safe-area-inset-bottom, 8px)) 10px 10px !important;
@@ -1489,153 +1533,6 @@ html.rv-manual-fs-active #rv-overlay,
 html.rv-manual-fs-active #rv-overlay * {
   visibility: visible !important;
 }
-/* ✅ FIX (Video-only fullscreen fallback): لو الفيديو نفسه هو اللي بندخّله
-   Fullscreen (مش الـResourceViewer كله) ولم يدعم WebView الـNative Fullscreen،
-   عنصر <video> نفسه (id=rv-video-el) هو اللي بيتحول لـposition:fixed ويملأ
-   الشاشة كاملة — الهيدر/الفوتر بيفضلوا في الـDOM زي ما هما (مفيش حذف/تغيير
-   تصميم)، لكن الفيديو بيتغطى فوقهم بصريًا بفضل z-index قصوى. ده مختلف تمامًا
-   عن rv-manual-fs اللي بيوسّع الـResourceViewer كله (لسه مستخدم مع PDF/الصور/
-   iframe يوتيوب-فيميو، ولم يتغيّر). */
-.rv-overlay.rv-video-manual-fs #rv-video-el {
-  position: fixed !important;
-  inset: 0 !important;
-  width: 100vw !important;
-  height: 100vh !important;
-  height: 100dvh !important;
-  max-width: 100vw !important;
-  max-height: 100vh !important;
-  max-height: 100dvh !important;
-  object-fit: contain !important;
-  background: #000 !important;
-  border-radius: 0 !important;
-  margin: 0 !important;
-  z-index: 2147483647 !important;
-}
-
-/* ✅ REWRITE: rv-fembed-fill (fallback القديم الخاص بـFembed فقط) اتشال —
-   Fembed دلوقتي بيستخدم نفس نظام "⛶ عرضي" الموحّد (rv-landscape-visual)
-   المستخدم لكل أنواع الفيديو، بدل نظام منفصل خاص بيه. راجع _toggleLandscape
-   و_rvEnableLandscapeVisual تحت. */
-
-.rv-overlay.rv-manual-fs .rv-modal .rv-embed-frame,
-.rv-overlay.rv-manual-fs .rv-modal .rv-video {
-  width: 100% !important;
-}
-
-/* ✅ REWRITE (طلب: إصلاح نهائي لزر "⛶ عرضي" — استقلال تام عن تدوير الجهاز)
-   نظام واحد موحّد لكل أنواع الفيديو (MP4 / YouTube / Vimeo / Dailymotion /
-   Fembed): بمجرد الضغط على الزر، الـJS (_rvEnableLandscapeVisual) بيضيف
-   الكلاس ده على .rv-overlay ويحسب أبعاد .rv-modal بنفسه من
-   window.innerWidth/innerHeight مباشرة (مش @media(orientation) ومش
-   screen.orientation) ويطبّقها كـ inline style فورًا Sync — فمفيش أي
-   انتظار لأي Promise أو حدث تدوير. الكلاس ده مش جوه أي @media query خالص،
-   عشان يشتغل بالظبط زي ما هو حتى لو الجهاز نفسه لسه Portrait فعليًا. */
-.rv-overlay.rv-landscape-visual {
-  position: fixed !important;
-  inset: 0 !important;
-  width: 100vw !important;
-  height: 100vh !important;
-  height: 100dvh !important;
-  padding: 0 !important;
-  margin: 0 !important;
-  background: #000 !important;
-  backdrop-filter: none !important;
-  align-items: stretch !important;
-  justify-content: stretch !important;
-  z-index: 2147483647 !important;
-  overflow: hidden !important;
-}
-.rv-overlay.rv-landscape-visual .rv-modal {
-  position: fixed !important;
-  inset: 0 !important;
-  top: 0 !important;
-  left: 0 !important;
-  width: 100% !important;
-  height: 100% !important;
-  margin: 0 !important;
-  border-radius: 0 !important;
-  max-width: none !important;
-  max-height: none !important;
-  background: #000 !important;
-  display: flex !important;
-  flex-direction: column !important;
-  transform: none !important;
-  /* ✅ REWRITE (إصلاح جذري): المودال نفسه (وبالتالي الهيدر/زر X جوّاه) ما
-     بيتلفّش خالص بأي transform. اللي بيتلف بصريًا هو عنصر الفيديو/الـiframe
-     لوحده جوه .rv-body (شوف القاعدة تحت). سبب المشكلة القديمة: كان فيه
-     position:fixed على .rv-header جوه .rv-modal وهو متلفّت بـtransform —
-     ده بيخلي .rv-modal نفسه "containing block" للعناصر التابتة جواه، فكان
-     الهيدر (وزر X اللي جواه) بيتلف بصريًا مع الفيديو ويظهر مقلوب/خارج مكانه،
-     ولما نرجع Portrait كانت الـinline styles القديمة بتسيب الزرار في وضع
-     غلط. دلوقتي الهيدر عنصر عادي (flex-shrink:0) في تخطيط flex-column
-     عادي، فمفيش أي transform يلمسه أبدًا — يفضل ظاهر وثابت ومكانه صح في كل
-     الأحوال. */
-}
-.rv-overlay.rv-landscape-visual .rv-modal .rv-header {
-  flex-shrink: 0 !important;
-  position: relative !important;
-  z-index: 5 !important;
-  background: rgba(0,0,0,.55) !important;
-  transform: none !important;
-  /* padding-top بيتحدد inline بواسطة JS عشان يراعي safe-area العلوي
-     الحقيقي للجهاز (مفيش دوران هنا، فالحافة العلوية هي فعلًا فوق). */
-}
-.rv-overlay.rv-landscape-visual .rv-modal .rv-header .rv-close,
-.rv-overlay.rv-landscape-visual .rv-modal .rv-header * {
-  transform: none !important;
-}
-.rv-overlay.rv-landscape-visual .rv-modal .rv-footer {
-  display: none !important;
-}
-.rv-overlay.rv-landscape-visual .rv-modal .rv-body {
-  flex: 1 1 auto !important;
-  min-height: 0 !important;
-  width: 100% !important;
-  /* ✅ FIX (باگ "الفيديو مرفوع لفوق ومقصوص"): كانت .rv-body هنا display:flex
-     بدون flex-direction، يعني flex-direction الافتراضي row — فالفيديو
-     وشريط الأدوات (.rv-media-tools) كانوا بيتحطوا جنب بعض أفقيًا بدل ما
-     يترصّوا فوق بعض عموديًا، فكان الفيديو بيتزنق في ركن وجزء منه بيخرج
-     برّه الشاشة. الحل: نخلي .rv-body block عادي (زي بالظبط سلوكها في
-     الوضع الطولي العادي — مفيش display:flex أصلاً هناك) فالعناصر جواها
-     (الفيديو ثم شريط الأدوات) تترصّ عموديًا فوق بعض بشكل طبيعي 100%،
-     ومفيش أي احتياج لإعادة هيكلة الـHTML خالص. */
-  display: block !important;
-  padding: 0 !important;
-  overflow: hidden !important;
-  position: relative !important;
-  text-align: center !important;
-}
-.rv-overlay.rv-landscape-visual .rv-modal .rv-video,
-.rv-overlay.rv-landscape-visual .rv-modal #rv-video-el,
-.rv-overlay.rv-landscape-visual .rv-modal iframe[data-fembed-embed="1"],
-.rv-overlay.rv-landscape-visual .rv-modal .rv-embed-frame,
-.rv-overlay.rv-landscape-visual .rv-modal iframe {
-  display: block !important;
-  position: static !important;
-  inset: auto !important;
-  max-width: none !important;
-  max-height: none !important;
-  flex: none !important;
-  margin: 0 auto !important;
-  border: 0 !important;
-  object-fit: contain !important;
-  transform-origin: center center !important;
-  /* width / height / transform (rotate 90deg لو الviewport طولي) بتتحدد
-     inline بواسطة JS (_rvApplyLandscapeMetrics) حسب المساحة المتاحة فعليًا
-     تحت الهيدر وفوق شريط الأدوات (.rv-media-tools) — العنصر ده لوحده هو
-     اللي بيتلف بصريًا، مش الهيدر ولا شريط الأدوات ولا زر X. margin:0 auto
-     بيتوسّط العنصر أفقيًا لو عرضه (بعد الدوران) أقل شويّة من عرض .rv-body
-     الفعلي (فروق تقريب بسيطة). */
-}
-/* ✅ شريط أدوات الفيديو (تقديم/ترجيع 10ث + السرعة) — يفضل عنصر عادي غير
-   ملفوف تحت الفيديو مباشرة (ترتيبه في الـDOM أصلاً بعد الفيديو)، وواضح
-   وقابل للضغط دايمًا فوق خلفية غامقة، بعيد تمامًا عن أي transform. */
-.rv-overlay.rv-landscape-visual .rv-modal .rv-media-tools {
-  position: relative !important;
-  transform: none !important;
-  margin: 8px auto 6px !important;
-}
-
 /* Zoom للصور: pinch على الهاتف */
 .rv-image-wrap {
   touch-action: pinch-zoom;
@@ -7121,9 +7018,7 @@ const ResourceViewer = (function() {
       if (e.key !== 'Escape') return;
       if (document.fullscreenElement || document.webkitFullscreenElement) return;
       var ov = document.getElementById('rv-overlay');
-      if (ov && ov.classList.contains('rv-landscape-visual')) { _rvExitLandscape(); return; }
       if (ov && ov.classList.contains('rv-manual-fs')) { _disableManualFullscreen(); return; }
-      if (ov && ov.classList.contains('rv-video-manual-fs')) { _disableVideoManualFullscreen(); return; }
       close();
     };
     document.addEventListener('keydown', document._rvKeyHandler);
@@ -7154,46 +7049,9 @@ const ResourceViewer = (function() {
       }, { passive: true });
     }
 
-    // ✅ FIX (User Gesture + Landscape من نفس ضغطة "عرض"): لأنواع الفيديو فقط
-    // (video_direct / youtube / vimeo / dailymotion / fembed)، ولموبايل فقط
-    // (Android/iOS، Chrome أو WebView) — نطلب Fullscreen + Landscape فورًا هنا
-    // Sync، من نفس الـcall stack بتاع ضغطة زر "عرض" نفسها (openResource →
-    // ResourceViewer.open → هنا)، بدون await أو setTimeout أو انتظار أي حدث
-    // لاحق زي play/playing. ده أهم شرط: أي تأجيل (حتى microtask بعد عملية I/O
-    // حقيقية، أو حدث media منفصل) ممكن يخلي المتصفح يعتبر إن الـUser Gesture
-    // (Transient Activation) انتهت ويرفض طلب requestFullscreen و/أو
-    // screen.orientation.lock بصمت.
-    //
-    // Desktop مُستبعد عمدًا: مفيش مفهوم "Landscape" أصلاً على شاشة كمبيوتر،
-    // ومستخدم الديسكتوب بيتوقع إنه يشوف الفيديو جوه الـmodal الحالي ويدخل
-    // Fullscreen بنفسه من زر ⛶ لو حب، زي ما كان يحصل بالظبط قبل هذا الإصلاح.
-    // بنعتمد على نفس أسلوب كشف الجهاز المستخدم بالفعل في باقي الملف
-    // (window.isIOSDevice() + فحص Android عبر User-Agent، زي السطر ~3129)
-    // بدل ما نخترع نظام كشف جهاز جديد.
-    var _rvIsMobileDevice = (function() {
-      try {
-        if (typeof window.isIOSDevice === 'function' && window.isIOSDevice()) return true;
-      } catch (e) {}
-      try {
-        return /Android|Mobi|iPhone|iPad|iPod/i.test(navigator.userAgent || '');
-      } catch (e) { return false; }
-    })();
-    // _toggleFullscreen() نفسها فيها fallback كامل بالفعل (نفس زر ⛶ اليدوي):
-    //   - لو الـFullscreen API الحقيقية شغّالة (Android Chrome / معظم WebViews
-    //     الحديثة) → modal.requestFullscreen() ثم screen.orientation.lock().
-    //   - لو مش موجودة/اترفضت (بعض WebViews القديمة، iPhone Safari اللي
-    //     مبيدعمش requestFullscreen على عنصر عادي) → _enableManualFullscreen()
-    //     (CSS ملء شاشة فعلي) + محاولة أفضل جهد لـscreen.orientation.lock (لو
-    //     مرفوضة/غير مدعومة على iOS بيتم تجاهلها بهدوء والفيديو يفضل يملأ
-    //     الشاشة المتاحة زي ما هي، بدون كسر أي تشغيل/توقيت).
-    // نفس المسار ده بيغطي: Android Chrome, Android WebView, iPhone Safari,
-    // iOS WebView — بدون أي نظام فيديو تالت أو Patch إضافي؛ استخدام مباشر
-    // لنفس _toggleFullscreen() اللي زر ⛶ بيستخدمه أصلاً.
-    var _rvAutoFsVideoTypes = { video_direct: 1, youtube: 1, vimeo: 1, dailymotion: 1, fembed: 1 };
-    if (_rvIsMobileDevice && _rvAutoFsVideoTypes[type]) {
-      try { _toggleFullscreen(); }
-      catch (e) { console.warn('[ResourceViewer] تعذر طلب Fullscreen/Landscape من ضغطة عرض:', e && e.message); }
-    }
+    // Fullscreen is intentionally NOT requested while opening the viewer.
+    // The request is made only by the explicit fullscreen/landscape button click,
+    // preserving the browser transient user activation.
 
     // حفظ state للـ PDF fallback
     window._rvCurrentUrl = url;
@@ -7223,6 +7081,15 @@ const ResourceViewer = (function() {
         media.setAttribute('playsinline', '');
         media.setAttribute('webkit-playsinline', '');
         media.playsInline = true;
+        media.preload = media.getAttribute('preload') || 'metadata';
+        // Android WebView is more reliable when the existing video element also
+        // exposes the same URL through video.src. No new <video> is created and
+        // the URL/CDN value itself is not changed.
+        if (!media.getAttribute('src')) {
+          var source = media.querySelector('source');
+          var sourceSrc = source && source.getAttribute('src');
+          if (sourceSrc) media.setAttribute('src', sourceSrc);
+        }
       } catch (e) {}
     }
     if (!tools) return;
@@ -7374,10 +7241,24 @@ const ResourceViewer = (function() {
   }
 
   function close() {
-    // ✅ FIX (Button/Action Audit): كان يُزال الـ overlay من الـ DOM مباشرة بدون
-    // إيقاف الفيديو/الصوت أولاً — على بعض المتصفحات (خصوصاً الموبايل) يظل
-    // الصوت يعمل في الخلفية للحظات بعد الإغلاق. الآن نوقفه وننظّف المصدر
-    // صراحة قبل الإزالة، تماماً كما هو مطلوب لأي Modal يحتوي وسائط.
+    // Close the existing viewer only. If it is currently native-fullscreen,
+    // exit that fullscreen state first; never seek, reload, or recreate media.
+    const modal = document.getElementById('rv-modal');
+    try {
+      const activeFs = document.fullscreenElement || document.webkitFullscreenElement;
+      if (activeFs && modal && (activeFs === modal || modal.contains(activeFs))) {
+        const exit = document.exitFullscreen || document.webkitExitFullscreen;
+        if (exit) {
+          const result = exit.call(document);
+          if (result && typeof result.catch === 'function') result.catch(function(){});
+        }
+      }
+    } catch (e) {
+      console.warn('[ResourceViewer] تعذر الخروج من Fullscreen عند الإغلاق:', e && e.message);
+    }
+
+    // Stop and release media only because the viewer itself is being closed.
+    // Fullscreen toggling never reaches this block.
     try {
       const video = document.getElementById('rv-video-el');
       if (video) {
@@ -7398,17 +7279,16 @@ const ResourceViewer = (function() {
     } catch (e) {
       console.warn('[ResourceViewer] تنظيف الوسائط عند الإغلاق:', e);
     }
+
     const el = document.getElementById('rv-overlay');
     if (el) el.remove();
     document.body.style.overflow = '';
     document.body.classList.remove('rv-open');
-    // ✅ لو المستخدم قفل المشغل وهو لسه في وضع ملء الشاشة اليدوي (rv-manual-fs)،
-    // لازم نشيل class الإخفاء الفعلي لباقي عناصر الصفحة، وإلا الصفحة كلها تفضل
-    // مخفية (visibility:hidden) حتى بعد إغلاق المشغل.
     document.documentElement.classList.remove('rv-manual-fs-active');
-    _rvDisableLandscapeVisual(); // ✅ FIX: تنظيف كامل (كلاس + inline styles + resize listener) لو اتقفل المشغل وهو لسه في وضع "عرضي"
+    _rvLeaveFullscreenLayout();
     if (document._rvKeyHandler) {
       document.removeEventListener('keydown', document._rvKeyHandler);
+      document._rvKeyHandler = null;
     }
   }
 
@@ -7441,8 +7321,7 @@ const ResourceViewer = (function() {
   var _rvFsOrientationState = {
     previousType: null,
     lockAttempted: false,
-    controlsTimer: null,
-    controlsBound: false
+    controlsTimer: null
   };
 
   function _rvRememberOrientation() {
@@ -7458,8 +7337,21 @@ const ResourceViewer = (function() {
   }
 
   function _rvRequestLandscape() {
+    var mobile = false;
+    try { mobile = /Android|Mobi|iPhone|iPad|iPod/i.test(navigator.userAgent || ''); } catch (e) {}
+    if (!mobile) return;
     _rvRememberOrientation();
     _rvFsOrientationState.lockAttempted = true;
+    // Best-effort native-app bridge (Android WebView wrapper), tried first and
+    // in addition to the Web Screen Orientation API below — harmless if both
+    // are unavailable or a no-op, and avoids needing a second wrapper layer.
+    try {
+      if (window.BSMAndroidBridge) {
+        var bridge = window.BSMAndroidBridge;
+        if (typeof bridge.lockLandscape === 'function') { try { bridge.lockLandscape(); } catch (e) {} }
+        else if (typeof bridge.setOrientation === 'function') { try { bridge.setOrientation('landscape'); } catch (e) {} }
+      }
+    } catch (e) {}
     try {
       var so = screen && screen.orientation;
       if (so && typeof so.lock === 'function') {
@@ -7480,6 +7372,15 @@ const ResourceViewer = (function() {
     _rvFsOrientationState.previousType = null;
     _rvFsOrientationState.lockAttempted = false;
     if (!prev) return;
+    try {
+      if (window.BSMAndroidBridge) {
+        var bridge = window.BSMAndroidBridge;
+        if (typeof bridge.unlockOrientation === 'function') { try { bridge.unlockOrientation(); } catch (e) {} }
+        else if (typeof bridge.setOrientation === 'function') {
+          try { bridge.setOrientation(/^landscape/i.test(prev) ? 'landscape' : 'portrait'); } catch (e) {}
+        }
+      }
+    } catch (e) {}
     try {
       var so = screen && screen.orientation;
       if (!so) return;
@@ -7505,7 +7406,7 @@ const ResourceViewer = (function() {
       var ov = document.getElementById('rv-overlay');
       var md = document.getElementById('rv-modal');
       var active = !!(document.fullscreenElement || document.webkitFullscreenElement) ||
-        !!(ov && (ov.classList.contains('rv-manual-fs') || ov.classList.contains('rv-video-manual-fs')));
+        !!(ov && ov.classList.contains('rv-manual-fs'));
       if (active && md) md.classList.add('rv-fs-controls-hidden');
     }, 3500);
   }
@@ -7515,8 +7416,8 @@ const ResourceViewer = (function() {
     var modal = document.getElementById('rv-modal');
     var media = document.getElementById('rv-video-el');
     var tools = modal && modal.querySelector('.rv-video-controls');
-    if (!overlay || !modal || !tools || _rvFsOrientationState.controlsBound) return;
-    _rvFsOrientationState.controlsBound = true;
+    if (!overlay || !modal || !tools || modal.__rvFsControlsBound) return;
+    modal.__rvFsControlsBound = true;
     var wake = function(){
       _rvShowFullscreenControls();
     };
@@ -7534,6 +7435,10 @@ const ResourceViewer = (function() {
   function _rvEnterFullscreenLayout(overlay) {
     if (!overlay) return;
     overlay.classList.add('rv-fs-session');
+    // ✅ يحدد هل المصدر الحالي فيديو مباشر (له شريط تحكم بديل كامل) — لو
+    // كذلك، بنضيف rv-fs-video عشان CSS يخفي هيدر/فوتر الـviewer نفسه (راجع
+    // تعليق CSS ".rv-overlay.rv-fs-session.rv-fs-video" فوق للتفاصيل).
+    overlay.classList.toggle('rv-fs-video', !!document.getElementById('rv-video-el'));
     _rvBindFullscreenControls();
     _rvShowFullscreenControls();
   }
@@ -7546,7 +7451,10 @@ const ResourceViewer = (function() {
     }
     if (modal) modal.classList.remove('rv-fs-controls-hidden');
     var overlay = document.getElementById('rv-overlay');
-    if (overlay) overlay.classList.remove('rv-fs-session');
+    if (overlay) {
+      overlay.classList.remove('rv-fs-session');
+      overlay.classList.remove('rv-fs-video');
+    }
     _rvRestoreOrientation();
   }
 
@@ -7555,289 +7463,102 @@ const ResourceViewer = (function() {
     const modal = document.getElementById('rv-modal');
     if (!modal || !overlay) return;
 
-    var nativeActive = !!(document.fullscreenElement || document.webkitFullscreenElement);
-    var manualActive = overlay.classList.contains('rv-manual-fs');
-    var videoManualActive = overlay.classList.contains('rv-video-manual-fs');
+    const activeFullscreenElement = document.fullscreenElement || document.webkitFullscreenElement;
+    const nativeActive = !!(activeFullscreenElement && (activeFullscreenElement === modal || modal.contains(activeFullscreenElement)));
+    const manualActive = overlay.classList.contains('rv-manual-fs');
 
-    if (manualActive || videoManualActive) {
-      if (manualActive) _disableManualFullscreen();
-      else _disableVideoManualFullscreen();
+    if (manualActive) {
+      _disableManualFullscreen();
       _rvLeaveFullscreenLayout();
-      _onRvFsChange();
       return;
     }
 
     if (nativeActive) {
       try {
-        var exit = document.exitFullscreen || document.webkitExitFullscreen;
+        const exit = document.exitFullscreen || document.webkitExitFullscreen;
         if (exit) {
-          var ep = exit.call(document);
-          if (ep && typeof ep.catch === 'function') ep.catch(function(){});
+          const result = exit.call(document);
+          if (result && typeof result.catch === 'function') result.catch(function(){});
         }
-      } catch(e) { console.warn('[Fullscreen] exit failed:', e && e.message); }
+      } catch (e) {
+        console.warn('[Fullscreen] exit failed:', e && e.message);
+      }
       return;
     }
 
-    // Save the user's real orientation before requesting fullscreen.
+    // IMPORTANT: this function is called directly by the existing fullscreen
+    // button's click handler. Do not await, setTimeout, or wait for a media event
+    // before requestFullscreen(), otherwise browsers reject the user gesture.
     _rvRememberOrientation();
     _rvEnterFullscreenLayout(overlay);
 
-    // Fullscreen the MODAL, not the video element. This is the critical fix:
-    // the custom controls are children of the modal, so they remain available
-    // in fullscreen instead of disappearing when the video alone goes native.
-    var req = modal.requestFullscreen || modal.webkitRequestFullscreen;
-    if (req) {
-      try {
-        var result = req.call(modal);
-        if (result && typeof result.then === 'function') {
-          result.then(function(){
-            _rvRequestLandscape();
-            _rvShowFullscreenControls();
-            _onRvFsChange();
-          }).catch(function(err){
-            console.info('[Fullscreen] native fullscreen rejected; using WebView fallback:', err && err.message);
-            _enableManualFullscreen();
-            _rvRequestLandscape();
-            _rvShowFullscreenControls();
-          });
-        } else {
-          // WebKit/WebView implementations may return void.
-          setTimeout(function(){
-            var confirmed = !!(document.fullscreenElement || document.webkitFullscreenElement);
-            if (confirmed) _rvRequestLandscape();
-            else _enableManualFullscreen();
-            _rvShowFullscreenControls();
-            _onRvFsChange();
-          }, 120);
-        }
-      } catch(e) {
-        console.info('[Fullscreen] native request failed; using WebView fallback:', e && e.message);
-        _enableManualFullscreen();
-        _rvRequestLandscape();
+    const req = modal.requestFullscreen || modal.webkitRequestFullscreen;
+    if (!req) {
+      // Old WebViews without the Fullscreen API: keep the same viewer in the
+      // existing CSS fullscreen fallback. No media element is recreated.
+      _enableManualFullscreen();
+      _rvRequestLandscape();
+      _rvShowFullscreenControls();
+      return;
+    }
+
+    try {
+      // Native fullscreen MUST be invoked synchronously from this user gesture.
+      const result = req.call(modal);
+
+      // Try orientation while the same transient user activation is still alive.
+      // This is best-effort only; a rejected orientation lock must never break
+      // the fullscreen request.
+      _rvRequestLandscape();
+
+      if (result && typeof result.then === 'function') {
+        result.then(function(){
+          _rvRequestLandscape();
+          _rvShowFullscreenControls();
+          _onRvFsChange();
+        }).catch(function(err){
+          console.info('[Fullscreen] native fullscreen rejected; using WebView fallback:', err && err.message);
+          _enableManualFullscreen();
+          _rvRequestLandscape();
+          _rvShowFullscreenControls();
+        });
+      } else {
+        // WebKit/WebView may return void. Do not schedule another fullscreen
+        // request; fullscreenchange, when supported, will synchronize state.
         _rvShowFullscreenControls();
+        _onRvFsChange();
       }
-    } else {
-      // Android WebView / older embedded browsers: keep the whole viewer,
-      // including controls, in the manual fullscreen layout.
+    } catch (e) {
+      console.info('[Fullscreen] native request failed; using WebView fallback:', e && e.message);
       _enableManualFullscreen();
       _rvRequestLandscape();
       _rvShowFullscreenControls();
     }
   }
 
-  // ══════════════════════════════════════════════════════════════════
-  // ✅ REWRITE الكامل لزر "⛶ عرضي" (طلب: إصلاح نهائي ومتكامل)
-  //
-  // السبب الجذري للمشكلة القديمة: الكود القديم كان يعتبر نجاح Promise بتاع
-  // screen.orientation.lock('landscape') دليلًا كافيًا على إن الفيديو بقى
-  // معروض بالعرض فعليًا، فكان بيوقف أي CSS fallback فور نجاح الـPromise ده.
-  // لكن في متصفحات/أجهزة كتيرة (خصوصًا Android لما يكون "التدوير التلقائي"
-  // مقفول من إعدادات النظام) الـPromise بيرجع "نجح" فعلاً من غير ما الشاشة
-  // تتدور بصريًا خالص — فالفيديو كان فاضل Portrait لحد ما المستخدم يلف
-  // الهاتف يدويًا بنفسه (وساعتها الـOrientation الحقيقي يخلي الفيديو يبان
-  // صح). ده بالظبط السلوك اللي المستخدم رفضه.
-  //
-  // الحل الجديد: العرض البصري (CSS transform) بيتطبّق فورًا Sync في نفس
-  // لحظة الضغط على الزر، من غير أي انتظار لأي Promise أو حدث خارجي — لا
-  // screen.orientation.lock، ولا orientationchange، ولا deviceorientation،
-  // ولا انتظار المستخدم يلف الهاتف. الأبعاد بتتحسب من window.innerWidth/
-  // innerHeight مباشرة (مش matchMedia ولا screen.orientation)، فبتشتغل
-  // بالظبط حتى لو الجهاز نفسه لسه Portrait فعليًا. الـFullscreen الحقيقي
-  // (لو متاح) بيتحاول كتحسين اختياري بس (best effort) بدون ما يتحكم في
-  // ظهور الفيديو بالعرض من الأساس. نفس المسار ده موحّد لكل الأنواع
-  // (MP4 / YouTube / Vimeo / Dailymotion / Fembed) — مفيش نظام منفصل لكل
-  // نوع زي الكود القديم.
-  // ══════════════════════════════════════════════════════════════════
+  // Landscape is handled by the native Screen Orientation API in _rvRequestLandscape().
 
-  var _rvLandscapeState = { active: false, rafId: null, resizeBound: false };
-
-  // ✅ يعتمد فقط على window.innerWidth/innerHeight (مش matchMedia ولا
-  // screen.orientation) زي ما مطلوب بالظبط.
-  function _rvIsPortraitViewport() {
-    return window.innerWidth < window.innerHeight;
-  }
-
-  // ✅ عنصر الفيديو/الـiframe الفعلي جوه .rv-body — هو الوحيد اللي بيتلف
-  // بصريًا. الهيدر (وزر X جواه) مش داخل في الحسبة دي خالص.
-  function _rvGetLandscapeMediaEl() {
-    var modal = document.getElementById('rv-modal');
-    if (!modal) return null;
-    return modal.querySelector(
-      '.rv-video, #rv-video-el, iframe[data-fembed-embed="1"], .rv-embed-frame, iframe'
-    );
-  }
-
-  // ✅ REWRITE (إصلاح جذري): بدل ما نلف .rv-modal كله (وجواه الهيدر/X)،
-  // بنلف عنصر الفيديو/الـiframe بس. الهيدر بيفضل flex item عادي فوق
-  // .rv-body (زي أي مودال عادي)، فمساحة .rv-body المتاحة فعليًا (بعد
-  // خصم ارتفاع الهيدر تلقائيًا بفضل flex) هي اللي بنحسب عليها. لو
-  // الـviewport طولي (Portrait)، عنصر الفيديو قبل الدوران بيتعمله أبعاد
-  // معكوسة (عرض = ارتفاع المساحة المتاحة، ارتفاع = عرض المساحة المتاحة)
-  // وبعدين بيتلف 90 درجة حول مركزه، فبعد الدوران بيملأ بالظبط مساحة
-  // .rv-body المتاحة ويتوسط فيها (بفضل align/justify:center على .rv-body).
-  // لو الـviewport أصلاً عريض (Landscape فعلي/تابلت)، مفيش داعي لأي دوران.
-  function _rvApplyLandscapeMetrics() {
-    var modal = document.getElementById('rv-modal');
-    var header = modal ? modal.querySelector('.rv-header') : null;
-    var body = document.getElementById('rv-body');
-    if (!modal || !body) return;
-
-    // ✅ Safe-area (notch/حواف مقصوصة) — الهيدر هنا فعليًا في أعلى الشاشة
-    // الحقيقية (مفيش دوران بصري بيلمسه)، فبنراعي بس الحافة العلوية الحقيقية.
-    if (header) {
-      header.style.paddingTop = 'max(env(safe-area-inset-top,0px), 8px)';
-    }
-
-    var media = _rvGetLandscapeMediaEl();
-    if (!media) return;
-
-    // ✅ شريط أدوات الفيديو (تقديم/ترجيع/سرعة) بيقعد تحت الفيديو مباشرة
-    // (ترتيب طبيعي في .rv-body اللي بقت block دلوقتي) — لازم نخصم ارتفاعه
-    // الفعلي من المساحة المتاحة، وإلا الفيديو هياخد كل ارتفاع .rv-body
-    // ويدفع الشريط برّه المنطقة الظاهرة (overflow:hidden).
-    var tools = body.querySelector('.rv-media-tools');
-    var toolsH = tools ? tools.offsetHeight : 0;
-
-    var availW = body.clientWidth;
-    var availH = Math.max(0, body.clientHeight - toolsH);
-    if (availW <= 0 || availH <= 0) return;
-
-    // No CSS rotation fallback. Real landscape is requested through the
-    // Screen Orientation API by _toggleFullscreen/_toggleLandscape. If the
-    // WebView refuses orientation locking, keep the media unrotated and let
-    // the OS/browser determine the actual viewport orientation.
-    media.style.width = availW + 'px';
-    media.style.height = availH + 'px';
-    media.style.transform = 'none';
-  }
-
-  // ✅ إعادة الحساب فقط عبر requestAnimationFrame بعد resize فعلي (مثلاً
-  // تغيّر حجم شريط عنوان المتصفح، أو دخول/خروج Fullscreen حقيقي غيّر أبعاد
-  // الـviewport) — مفيش أي استماع لـorientationchange ولا deviceorientation
-  // ولا أي setTimeout كحل أساسي.
-  function _rvOnLandscapeResize() {
-    if (!_rvLandscapeState.active) return;
-    if (_rvLandscapeState.rafId) cancelAnimationFrame(_rvLandscapeState.rafId);
-    _rvLandscapeState.rafId = requestAnimationFrame(function() {
-      _rvLandscapeState.rafId = null;
-      _rvApplyLandscapeMetrics();
-    });
-  }
-
-  function _rvUpdateLandscapeBtnLabel() {
-    var btn = document.getElementById('rv-landscape-btn');
-    if (!btn) return;
-    btn.textContent = _rvLandscapeState.active ? '✕ خروج' : '⛶ عرضي';
-  }
-
-  // ✅ الدالة دي هي قلب الإصلاح: بتتنفذ Sync بالكامل، بتضيف الكلاس وتحسب
-  // الأبعاد وتطبّقها فورًا — من غير انتظار أي Promise. أي محاولة Fullscreen
-  // حقيقي منفصلة تمامًا وبتحصل بعدها كـ"تحسين" اختياري بس.
-  function _rvEnableLandscapeVisual() {
-    var overlay = document.getElementById('rv-overlay');
-    if (!overlay || _rvLandscapeState.active) return; // ✅ يمنع double toggle
-    overlay.classList.add('rv-landscape-visual');
-    document.documentElement.classList.add('rv-manual-fs-active');
-    _rvLandscapeState.active = true;
-    _rvApplyLandscapeMetrics();
-    if (!_rvLandscapeState.resizeBound) {
-      window.addEventListener('resize', _rvOnLandscapeResize, { passive: true });
-      _rvLandscapeState.resizeBound = true;
-    }
-    _rvUpdateLandscapeBtnLabel();
-  }
-
-  // ✅ Cleanup كامل: يشيل الكلاس، يمسح كل الـinline styles اللي اتضافت،
-  // يوقف أي resize listener وaنimation frame معلّق، ومايعملش أي حاجة تانية
-  // خالص — لا reload، لا pause، لا تغيير currentTime، لا إجبار الجهاز على
-  // Portrait.
-  function _rvDisableLandscapeVisual() {
-    var overlay = document.getElementById('rv-overlay');
-    var modal = document.getElementById('rv-modal');
-    var header = modal ? modal.querySelector('.rv-header') : null;
-    var media = _rvGetLandscapeMediaEl();
-    document.documentElement.classList.remove('rv-manual-fs-active');
-    if (_rvLandscapeState.resizeBound) {
-      window.removeEventListener('resize', _rvOnLandscapeResize);
-      _rvLandscapeState.resizeBound = false;
-    }
-    if (_rvLandscapeState.rafId) {
-      cancelAnimationFrame(_rvLandscapeState.rafId);
-      _rvLandscapeState.rafId = null;
-    }
-    _rvLandscapeState.active = false;
-    if (overlay) overlay.classList.remove('rv-landscape-visual');
-    // ✅ Cleanup كامل لكل الـinline styles اللي اتضافت — على .rv-modal (من
-    // نسخة قديمة محتملة) وعلى عنصر الفيديو نفسه (اللي بيتلف فعليًا دلوقتي)،
-    // عشان الرجوع لـPortrait يكون نضيف 100% ومفيش أي أثر تدوير/أبعاد قديمة
-    // يفضل شايل الزرار أو الفيديو ناقصين.
-    if (modal) {
-      modal.style.width = '';
-      modal.style.height = '';
-      modal.style.transform = '';
-      modal.style.transformOrigin = '';
-    }
-    if (header) header.style.paddingTop = '';
-    if (media) {
-      media.style.width = '';
-      media.style.height = '';
-      media.style.transform = '';
-      media.style.transformOrigin = '';
-    }
-    _rvUpdateLandscapeBtnLabel();
-  }
-
-  // ✅ Fullscreen حقيقي كـ"تحسين" اختياري بس — best effort، مايتحكمش خالص في
-  // ظهور الفيديو بالعرض (ده بيحصل فورًا في _rvEnableLandscapeVisual فوق بغض
-  // النظر عن نتيجة الدالة دي). مفيش استدعاء تاني لـrequestFullscreen لو
-  // already في fullscreen (يمنع click/touch duplication). ممنوع تمامًا نداء
-  // الدالة دي على iframe الخاص بـFembed (Permissions Policy) — بيتم التأكد
-  // من ده في _toggleLandscape تحت.
-  function _rvTryOpportunisticFullscreen(target) {
-    try {
-      if (!target) return;
-      if (document.fullscreenElement || document.webkitFullscreenElement) return;
-      var req = target.requestFullscreen || target.webkitRequestFullscreen;
-      if (!req) return;
-      var result = req.call(target);
-      if (result && typeof result.catch === 'function') {
-        result.catch(function() { /* تجاهل — العرض البصري شغّال فعلًا بغض النظر */ });
-      }
-    } catch (e) {
-      // تجاهل — العرض البصري شغّال فعلًا بغض النظر عن فشل Fullscreen هنا
-    }
-  }
-
-  // ✅ زر "⛶ عرضي" — مستقل تمامًا عن زر "⛶" العادي (_toggleFullscreen فوق)
-  // وعن حالة Fullscreen الحقيقية، وعن اتجاه الجهاز الفعلي. نفس المسار
-  // لكل الأنواع (فيديو مباشر / يوتيوب / فيميو / دايلي موشن / Fembed).
+  // Landscape is a separate action: when already fullscreen it requests
+  // landscape without exiting fullscreen. If not fullscreen, the same button
+  // enters fullscreen through the direct user gesture.
   function _toggleLandscape() {
-    // The old implementation used a CSS rotate fallback. That is intentionally
-    // retired: the landscape/fullscreen action now uses the same native-first
-    // fullscreen + Screen Orientation flow as the main fullscreen button.
-    return _toggleFullscreen();
-  }
+    const overlay = document.getElementById('rv-overlay');
+    const modal = document.getElementById('rv-modal');
+    if (!overlay || !modal) return;
 
-  // ✅ الخروج: يرجّع كل حاجة للوضع الطبيعي، بدون لمس تشغيل/توقيت الفيديو،
-  // وبدون إجبار الجهاز على أي اتجاه.
-  function _rvExitLandscape() {
-    try {
-      if (document.fullscreenElement || document.webkitFullscreenElement) {
-        var exit = document.exitFullscreen || document.webkitExitFullscreen;
-        if (exit) Promise.resolve(exit.call(document)).catch(function() {});
-      }
-    } catch (e) { /* تجاهل */ }
-    _rvDisableLandscapeVisual();
-  }
+    const activeFullscreenElement = document.fullscreenElement || document.webkitFullscreenElement;
+    const nativeActive = !!(activeFullscreenElement && (activeFullscreenElement === modal || modal.contains(activeFullscreenElement)));
+    const manualActive = overlay.classList.contains('rv-manual-fs');
 
-  function _rvFallbackVideoFullscreen() {
-    var video = document.getElementById('rv-video-el');
-    if (!video) return;
-    try {
-      if (video.requestFullscreen) video.requestFullscreen().catch(function(){});
-      else if (video.webkitRequestFullscreen) video.webkitRequestFullscreen();
-      else if (video.webkitEnterFullscreen) video.webkitEnterFullscreen(); // iOS Safari native player
-    } catch(e) { console.warn('[Fullscreen fallback]', e && e.message); }
+    if (nativeActive || manualActive) {
+      _rvRememberOrientation();
+      _rvRequestLandscape();
+      _rvEnterFullscreenLayout(overlay);
+      _rvShowFullscreenControls();
+      return;
+    }
+
+    _toggleFullscreen();
   }
 
   // ── ملء الشاشة اليدوي (CSS فقط) — الضمانة اللي بتشتغل جوه Mobile App/WebView
@@ -7859,27 +7580,7 @@ const ResourceViewer = (function() {
     _onRvFsChange();
   }
 
-  // ── ملء الشاشة اليدوي الخاص بالفيديو فقط (CSS) — لما WebView ما يدعمش
-  // video.requestFullscreen()/webkitEnterFullscreen()، عنصر <video> نفسه
-  // (rv-video-el) هو اللي بيتحول لـfixed ويملأ الشاشة، مش الـResourceViewer
-  // كله. راجع كلاس CSS ".rv-overlay.rv-video-manual-fs #rv-video-el" فوق. ─
-  function _enableVideoManualFullscreen() {
-    var overlay = document.getElementById('rv-overlay');
-    var video = document.getElementById('rv-video-el');
-    if (!overlay || !video || overlay.classList.contains('rv-video-manual-fs')) return;
-    overlay.classList.add('rv-video-manual-fs');
-    // نفس ضمان الإخفاء الفعلي لباقي عناصر الصفحة خلف الفيديو (وليس مجرد
-    // تغطية بصرية) المستخدم أصلاً مع rv-manual-fs.
-    document.documentElement.classList.add('rv-manual-fs-active');
-    _onRvFsChange();
-  }
-  function _disableVideoManualFullscreen() {
-    var overlay = document.getElementById('rv-overlay');
-    document.documentElement.classList.remove('rv-manual-fs-active');
-    if (!overlay) return;
-    overlay.classList.remove('rv-video-manual-fs');
-    _onRvFsChange();
-  }
+  // The existing manual fullscreen fallback is shared by the ResourceViewer modal.
 
   // ✅ FIX (Fullscreen state sync): بيتنفّذ مع أي تغيير فعلي في وضع Fullscreen،
   // سواء حصل عن طريق زرار ⛶ بتاعنا، أو ESC، أو زرار Fullscreen اللي جوه
@@ -7890,8 +7591,16 @@ const ResourceViewer = (function() {
     var btn = document.getElementById('rv-fs-btn');
     var overlay = document.getElementById('rv-overlay');
     var inFs = !!(document.fullscreenElement || document.webkitFullscreenElement) ||
-               !!(overlay && (overlay.classList.contains('rv-manual-fs') || overlay.classList.contains('rv-video-manual-fs')));
+               !!(overlay && overlay.classList.contains('rv-manual-fs'));
     if (btn) btn.textContent = inFs ? '✕ خروج ملء الشاشة' : '⛶';
+    // زرار الفيديو (data-media-fs) هو الوحيد الظاهر فعليًا أثناء ملء شاشة
+    // الفيديو (الهيدر بما فيه #rv-fs-btn مخفي — راجع rv-fs-video)، فلازم
+    // العنوان بتاعه يعكس الحالة الحالية بنفس الطريقة.
+    var mediaFsBtn = document.querySelector('[data-media-fs]');
+    if (mediaFsBtn) {
+      mediaFsBtn.title = inFs ? 'خروج من ملء الشاشة' : 'ملء الشاشة';
+      mediaFsBtn.setAttribute('aria-label', mediaFsBtn.title);
+    }
 
     if (inFs) {
       _rvEnterFullscreenLayout(overlay);
@@ -7915,9 +7624,6 @@ const ResourceViewer = (function() {
     if (overlay && overlay.classList.contains('rv-manual-fs')) {
       if (e && e.preventDefault) e.preventDefault();
       _disableManualFullscreen();
-    } else if (overlay && overlay.classList.contains('rv-video-manual-fs')) {
-      if (e && e.preventDefault) e.preventDefault();
-      _disableVideoManualFullscreen();
     }
   }, false);
 
@@ -16448,27 +16154,6 @@ window._origWindowOpen = window.open;
     if (/\.(zip|rar|7z|tar|gz)($|\?|#)/.test(lower))          return 'download_only';
     return 'link'; // HTML/iframe داخلي
   }
-
-  // ── 4. الموبايل: ملء الشاشة عند فتح أي ملف ─────────────────────
-  // نُضيف class على overlay للموبايل يجعله fullscreen حقيقي
-  var _origRVOpen = null;
-  document.addEventListener('DOMContentLoaded', function() {
-    // نربط بعد تحميل ResourceViewer
-    setTimeout(function() {
-      if (!window.ResourceViewer) return;
-      _origRVOpen = ResourceViewer.open;
-      ResourceViewer.open = function(url, title, resourceType) {
-        // ✅ تحديث (User Gesture fix): الـFullscreen/Landscape التلقائي لأنواع
-        // الفيديو بقى بيتطلب Sync جوه الدالة الأصلية open() نفسها (نفس
-        // الـcall stack بتاع ضغطة "عرض")، مش هنا. الـwrapper ده مجرد تمرير
-        // بدون أي تعديل على التوقيت — سيبناه كده عمدًا عشان لا نضيف أي تأخير
-        // (setTimeout/await) قبل الوصول لـ_toggleFullscreen()، لأن أي تأخير
-        // زي ده هو بالظبط اللي بيفقّد الـUser Gesture. زر ⛶ اليدوي لسه شغال
-        // بعد كده لتبديل الدخول/الخروج من Fullscreen يدويًا.
-        return _origRVOpen.call(ResourceViewer, url, title, resourceType);
-      };
-    }, 0);
-  });
 
   // ── 5. منع الرجوع للمتصفح عند وجود modal مفتوح ──────────────────
   window.addEventListener('popstate', function(e) {
@@ -29203,85 +28888,6 @@ NOTIFY pgrst, 'reload schema';
     }
   };
 
-  /* -------- Fullscreen touch/WebView hardening -------- */
-  function _bsmBindFullscreenButton(){
-    var btn=document.getElementById('rv-fs-btn');
-    if(!btn||btn.__bsmFsBound)return;
-    btn.__bsmFsBound=true;
-    /* Replace only the existing inline handler with one guarded handler.
-       This avoids Android's touchend/pointerup/click sequence toggling twice. */
-    btn.onclick=function(e){
-      if(e){e.preventDefault();e.stopPropagation();}
-      try{ ResourceViewer._toggleFullscreen(); }catch(err){console.warn('[Fullscreen]',err); }
-      return false;
-    };
-  }
-  /* ✅ FIX (زر "⛶ عرضي"): نفس آلية التحصين ضد ازدواج touchend/click على أندرويد،
-     لكن لزر الـLandscape الجديد. لا تغيّر أي من منطق زر الـfullscreen العادي فوق. */
-  function _bsmBindLandscapeButton(){
-    var btn=document.getElementById('rv-landscape-btn');
-    if(!btn||btn.__bsmLsBound)return;
-    btn.__bsmLsBound=true;
-    btn.onclick=function(e){
-      if(e){e.preventDefault();e.stopPropagation();}
-      try{ ResourceViewer._toggleLandscape(); }catch(err){console.warn('[Landscape]',err); }
-      return false;
-    };
-  }
-  function _bsmInstallFsObserver(){
-    var root=document.getElementById('rv-overlay');
-    if(!root||root.__bsmFsObserved)return;
-    root.__bsmFsObserved=true;
-    _bsmBindFullscreenButton();
-    _bsmBindLandscapeButton();
-    var mo=new MutationObserver(function(){_bsmBindFullscreenButton();_bsmBindLandscapeButton();});
-    mo.observe(root,{childList:true,subtree:true});
-  }
-  document.addEventListener('click',function(e){
-    if(e.target&&e.target.id==='rv-fs-btn') setTimeout(_bsmBindFullscreenButton,0);
-    if(e.target&&e.target.id==='rv-landscape-btn') setTimeout(_bsmBindLandscapeButton,0);
-  },true);
-  var _rvOpen=window.ResourceViewer&&window.ResourceViewer.open;
-  if(_rvOpen&&!window.__BSM_RV_OPEN_PATCH){
-    window.__BSM_RV_OPEN_PATCH=true;
-    var _origOpen=_rvOpen;
-    /* Keep the existing viewer; only bind the existing fullscreen button after it is created. */
-    window.ResourceViewer.open=function(){
-      var r=_origOpen.apply(this,arguments);
-      setTimeout(_bsmInstallFsObserver,0);
-      return r;
-    };
-  }
-  /* Make embed iframes fullscreen-capable, including future dynamic viewers. */
-  var _mediaObs=new MutationObserver(function(muts){
-    muts.forEach(function(m){m.addedNodes&&Array.prototype.forEach.call(m.addedNodes,function(n){
-      if(n.nodeType!==1)return;
-      if(n.matches&&n.matches('iframe.rv-embed-frame')){
-        /* ✅ FIX: أزلنا allowfullscreen لأن allow="...fullscreen" (الصيغة
-           الحديثة) بيغطي نفس الصلاحية، ووجودهما مع بعض كان بيطلع تحذير
-           "Allow attribute will take precedence over 'allowfullscreen'"
-           في الكونسول بدون أي تغيير فعلي في سلوك الفيديو. */
-        n.setAttribute('webkitallowfullscreen','true');
-        n.setAttribute('allow','accelerometer;autoplay;clipboard-write;encrypted-media;gyroscope;picture-in-picture;fullscreen');
-      }
-      n.querySelectorAll&&n.querySelectorAll('iframe.rv-embed-frame').forEach(function(f){
-        f.setAttribute('webkitallowfullscreen','true');
-        f.setAttribute('allow','accelerometer;autoplay;clipboard-write;encrypted-media;gyroscope;picture-in-picture;fullscreen');
-      });
-    });});
-  });
-  if(document.documentElement)_mediaObs.observe(document.documentElement,{childList:true,subtree:true});
-
-  /* Remove only our own media error action that opens a new tab; never touch ordinary link resources. */
-  window._bsmStripMediaExternalAction=function(){
-    var body=document.getElementById('rv-body'); if(!body)return;
-    body.querySelectorAll('button').forEach(function(b){
-      var t=(b.textContent||'').trim();
-      if(t.indexOf('فتح الملف')!==-1 || t.indexOf('تبويب جديد')!==-1) b.remove();
-    });
-  };
-  var _rvBodyObs=new MutationObserver(function(){_bsmStripMediaExternalAction();});
-  if(document.body)_rvBodyObs.observe(document.body,{childList:true,subtree:true});
 })();
 </script>
 
@@ -30570,35 +30176,18 @@ ORDER BY tablename, policyname;
   document.addEventListener('DOMContentLoaded',function(){bind();initAA().catch(function(e){console.error('[AA boot]',e);});});
   window.addEventListener('load',function(){bind();setTimeout(function(){initAA().catch(function(e){console.error('[AA delayed boot]',e);});},500);});
 
-  // Mobile fullscreen/orientation: preserve the existing ResourceViewer and its controls.
-  // We only wrap the existing fullscreen action; no second video/player is created.
-  var rvOrientation={previous:null};
-  function rememberOrientation(){try{if(!rvOrientation.previous)rvOrientation.previous=(screen.orientation&&screen.orientation.type)||(innerWidth>innerHeight?'landscape-primary':'portrait-primary');}catch(e){}}
-  function requestLandscape(){rememberOrientation();try{var so=screen.orientation;if(so&&typeof so.lock==='function'){var p=so.lock('landscape');if(p&&p.catch)p.catch(function(){});}}catch(e){}}
-  function restoreOrientation(){var prev=rvOrientation.previous;rvOrientation.previous=null;if(!prev)return;try{var so=screen.orientation;if(so&&typeof so.unlock==='function')so.unlock();if(so&&typeof so.lock==='function'&&/^portrait/i.test(prev)){var p=so.lock(prev);if(p&&p.catch)p.catch(function(){});}}catch(e){}}
-  if(window.ResourceViewer&&typeof window.ResourceViewer._toggleFullscreen==='function'&&!window.__BSM_V9_FS_WRAPPED){
-    var baseFs=window.ResourceViewer._toggleFullscreen;
-    window.ResourceViewer._toggleFullscreen=function(){
-      var overlay=document.getElementById('rv-overlay');var was=!!(document.fullscreenElement||document.webkitFullscreenElement||(overlay&&(overlay.classList.contains('rv-manual-fs')||overlay.classList.contains('rv-video-manual-fs'))));
-      if(!was)rememberOrientation();
-      var result=baseFs.apply(this,arguments);
-      if(!was){requestLandscape();setTimeout(requestLandscape,120);}
-      else {setTimeout(restoreOrientation,80);}
-      return result;
-    };
-    window.__BSM_V9_FS_WRAPPED=true;
-  }
-  document.addEventListener('fullscreenchange',function(){var active=!!document.fullscreenElement;if(active){requestLandscape();}else{restoreOrientation();}},false);
-  document.addEventListener('webkitfullscreenchange',function(){var active=!!document.webkitFullscreenElement;if(active){requestLandscape();}else{restoreOrientation();}},false);
-
-  // Ensure requested speed buttons exist in the CURRENT custom player (no duplicate controls).
-  function ensureVideoSpeeds(){
-    var g=document.querySelector('#rv-modal .rv-video-controls [data-media-speed-group]');if(!g)return;
-    var wanted=['0.5','0.75','1','1.25','1.5','1.75','2'];
-    wanted.forEach(function(v){if(!g.querySelector('[data-media-speed-btn="'+v+'"]')){var b=document.createElement('button');b.type='button';b.setAttribute('data-media-speed-btn',v);b.textContent=v+'x';g.appendChild(b);b.addEventListener('click',function(){var media=document.getElementById('rv-video-el');if(media)media.playbackRate=Number(v);g.querySelectorAll('[data-media-speed-btn]').forEach(function(x){x.classList.toggle('active',x===b);});});}});
-  }
-  document.addEventListener('click',function(e){var t=e.target;if(t&&t.closest&&t.closest('[data-media-fs]'))setTimeout(ensureVideoSpeeds,0);if(t&&t.closest&&t.closest('#rv-video-el')){var m=document.getElementById('rv-modal');if(m&&!m.classList.contains('rv-fs-controls-hidden')&&window.ResourceViewer&&window.ResourceViewer._toggleFullscreen){} }},true);
-  var mo=new MutationObserver(function(ms){for(var i=0;i<ms.length;i++){for(var j=0;j<ms[i].addedNodes.length;j++){var n=ms[i].addedNodes[j];if(n.nodeType===1&&(n.id==='rv-overlay'||(n.querySelector&&n.querySelector('#rv-video-el')))){setTimeout(ensureVideoSpeeds,0);}}}});mo.observe(document.documentElement,{childList:true,subtree:true});
+  // ✅ CONSOLIDATION: this file previously carried THREE independent layers
+  // trying to lock/unlock screen orientation on every fullscreen toggle (the
+  // core ResourceViewer implementation, plus two separate wrapper patches
+  // added later). Each layer kept its own "previous orientation" state and
+  // fired its own screen.orientation.lock()/unlock() calls and its own
+  // fullscreenchange/webkitfullscreenchange listeners — stacking up to 5-6
+  // competing orientation calls per toggle and risking races between them.
+  // That is now a single implementation inside ResourceViewer
+  // (_rvRequestLandscape/_rvRestoreOrientation, merged with the Android
+  // WebView bridge best-effort call), so both duplicate wrapper layers that
+  // used to sit here have been removed. Nothing else in this section relied
+  // on them (checked via grep across the file before removal).
 
   // Course settings: after the existing save path completes, read the same row back
   // from Supabase so the UI cache cannot silently show an old value after Refresh.
@@ -30784,126 +30373,6 @@ ORDER BY tablename, policyname;
       }catch(e){}
       return oldOpenPayment.call(this,anchor,user);
     };
-  }
-
-  /* ------------------------------------------------------------
-     3) Direct video mobile hardening.
-     Use video.src directly in addition to <source>, assign an explicit MIME
-     type when obvious, and surface media errors instead of a dead player.
-  ------------------------------------------------------------ */
-  function videoMime(url){
-    var u=String(url||'').toLowerCase().split('?')[0];
-    if(u.endsWith('.mp4'))return 'video/mp4';
-    if(u.endsWith('.webm'))return 'video/webm';
-    if(u.endsWith('.ogg')||u.endsWith('.ogv'))return 'video/ogg';
-    if(u.endsWith('.mov'))return 'video/quicktime';
-    return '';
-  }
-  function hardenCurrentVideo(){
-    var v=document.getElementById('rv-video-el');
-    if(!v)return;
-    try{
-      v.setAttribute('playsinline','');
-      v.setAttribute('webkit-playsinline','');
-      v.playsInline=true;
-      v.preload='metadata';
-      var s=v.querySelector('source');
-      var src=(v.getAttribute('src')||(s&&s.getAttribute('src'))||'').trim();
-      if(src){
-        if(s){var mt=videoMime(src);if(mt)s.setAttribute('type',mt);}
-        /* Android WebView is more reliable with the URL on video.src itself. */
-        if(!v.getAttribute('src'))v.setAttribute('src',src);
-        if(!v.__bsmMediaRepairBound){
-          v.__bsmMediaRepairBound=true;
-          v.addEventListener('error',function(){
-            var code=v.error&&v.error.code;
-            console.error('[FINAL REPAIR][VIDEO ERROR]',{code:code,networkState:v.networkState,readyState:v.readyState,src:src});
-            var body=document.getElementById('rv-body');
-            if(body&&!body.querySelector('.bsm-video-error')){
-              var box=document.createElement('div');box.className='bsm-video-error';
-              box.style.cssText='margin:10px;padding:12px;border-radius:10px;background:#fff3cd;color:#664d03;text-align:center;font-size:.8rem;';
-              box.innerHTML='⚠️ تعذر تشغيل هذا الفيديو على هذا الجهاز. جرّب إعادة التحميل أو تحديث التطبيق.';
-              body.appendChild(box);
-            }
-          });
-          v.addEventListener('loadedmetadata',function(){
-            var box=document.querySelector('.bsm-video-error');if(box)box.remove();
-          });
-        }
-        /* If the source is already present, load it once after the viewer is visible. */
-        setTimeout(function(){try{if(v.readyState===0)v.load();}catch(e){}},80);
-      }
-    }catch(e){console.warn('[FINAL REPAIR][VIDEO HARDEN]',e);}
-  }
-
-  /* Preserve the existing viewer; just harden the created video. */
-  if(window.ResourceViewer&&typeof window.ResourceViewer.open==='function'&&!window.__BSM_FINAL_VIDEO_OPEN_PATCH){
-    var baseOpen=window.ResourceViewer.open;
-    window.ResourceViewer.open=function(){
-      var r=baseOpen.apply(this,arguments);
-      setTimeout(hardenCurrentVideo,0);
-      setTimeout(hardenCurrentVideo,180);
-      return r;
-    };
-    window.__BSM_FINAL_VIDEO_OPEN_PATCH=true;
-  }
-  var videoObserver=new MutationObserver(function(muts){
-    for(var i=0;i<muts.length;i++)for(var j=0;j<muts[i].addedNodes.length;j++){
-      var n=muts[i].addedNodes[j];
-      if(n&&n.nodeType===1&&(n.id==='rv-overlay'||(n.querySelector&&n.querySelector('#rv-video-el'))))setTimeout(hardenCurrentVideo,0);
-    }
-  });
-  videoObserver.observe(document.documentElement,{childList:true,subtree:true});
-
-  /* ------------------------------------------------------------
-     4) Fullscreen/orientation: one final wrapper, no duplicate toggles.
-     If the native API is available, request fullscreen and landscape from the
-     same user gesture. If not, keep the existing manual fullscreen controls.
-  ------------------------------------------------------------ */
-  function requestLandscapeBestEffort(){
-    try{
-      if(window.BSMAndroidBridge){
-        var b=window.BSMAndroidBridge;
-        if(typeof b.lockLandscape==='function'){try{b.lockLandscape();return;}catch(e){}}
-        if(typeof b.setOrientation==='function'){try{b.setOrientation('landscape');return;}catch(e){}}
-      }
-    }catch(e){}
-    try{
-      var so=window.screen&&window.screen.orientation;
-      if(so&&typeof so.lock==='function'){
-        var p=so.lock('landscape');
-        if(p&&typeof p.catch==='function')p.catch(function(){ });
-      }
-    }catch(e){}
-  }
-  function restoreOrientationBestEffort(){
-    try{
-      if(window.BSMAndroidBridge){
-        var b=window.BSMAndroidBridge;
-        if(typeof b.unlockOrientation==='function'){try{b.unlockOrientation();return;}catch(e){}}
-        if(typeof b.setOrientation==='function'){try{b.setOrientation('portrait');return;}catch(e){}}
-      }
-    }catch(e){}
-    try{
-      var so=window.screen&&window.screen.orientation;
-      if(so&&typeof so.unlock==='function')so.unlock();
-    }catch(e){}
-  }
-  if(window.ResourceViewer&&typeof window.ResourceViewer._toggleFullscreen==='function'&&!window.__BSM_FINAL_FS_REPAIR){
-    var baseFs=window.ResourceViewer._toggleFullscreen;
-    window.ResourceViewer._toggleFullscreen=function(){
-      var overlay=document.getElementById('rv-overlay');
-      var was=!!(document.fullscreenElement||document.webkitFullscreenElement||(overlay&&(overlay.classList.contains('rv-manual-fs')||overlay.classList.contains('rv-video-manual-fs'))));
-      var result=baseFs.apply(this,arguments);
-      if(!was){
-        requestLandscapeBestEffort();
-        setTimeout(requestLandscapeBestEffort,120);
-      }else{
-        setTimeout(restoreOrientationBestEffort,80);
-      }
-      return result;
-    };
-    window.__BSM_FINAL_FS_REPAIR=true;
   }
 
   /* ------------------------------------------------------------
@@ -31472,7 +30941,7 @@ async function getRow(id){
   id=ID(id);if(!id)throw new Error('Invalid section id');
   if(rowCache[id])return rowCache[id];
   var d=DB();if(!d)throw new Error('Supabase unavailable');
-  var r=await d.from('site_sections').select('id,title,icon,parent_id,type,display_order,requires_subscription').eq('id',id).maybeSingle();
+  var r=await d.from('site_sections').select('id,title,icon,parent_id,type,display_order,requires_subscription,price,payment_method,payment_number').eq('id',id).maybeSingle();
   if(r.error)throw r.error;rowCache[id]=r.data||null;return rowCache[id];
 }
 async function getChildren(id){
@@ -31628,27 +31097,6 @@ if(typeof window.openDynamicSection==='function'&&!window.__BSM_RELEASE_OPEN_GAT
   };
   window.__BSM_RELEASE_OPEN_GATE=true;
 }
-
-/* Cross-origin iframe players (YouTube/Vimeo/Fembed/...) need explicit
-   fullscreen permission on the <iframe> tag itself, or the browser blocks
-   fullscreen requests coming from inside them. This just guarantees that
-   attribute is present — it does not touch fullscreen state, orientation,
-   or the video's own controls, so it can never race with
-   ResourceViewer._toggleFullscreen() (the single source of truth for
-   entering/exiting fullscreen, bound to the "⛶" button). */
-function iframePerms(){var ov=document.getElementById('rv-overlay');if(!ov)return;ov.querySelectorAll('iframe').forEach(function(f){try{f.setAttribute('allow','autoplay; fullscreen; picture-in-picture; encrypted-media; gyroscope; accelerometer');f.setAttribute('allowfullscreen','');f.setAttribute('webkitallowfullscreen','');}catch(e){}});}
-
-if(window.ResourceViewer&&typeof window.ResourceViewer.open==='function'&&!window.__BSM_RELEASE_RV_OPEN){
-  var rvOpen=window.ResourceViewer.open;
-  window.ResourceViewer.open=function(){
-    var r=rvOpen.apply(this,arguments);
-    iframePerms();
-    return r;
-  };
-  window.__BSM_RELEASE_RV_OPEN=true;
-}
-var observer=new MutationObserver(function(){iframePerms();});
-if(document.documentElement)observer.observe(document.documentElement,{childList:true,subtree:true});
 
 /* Expose diagnostics; no writes. */
 window.printReleaseAccess=async function(id){try{var x=await previewInfo(id),g=await DBAccess(id);console.table((x.path||[]).map(function(r,i){return{order:i+1,id:r.id,title:r.title,type:r.type,display_order:r.display_order,parent_id:r.parent_id};}));console.log({anchor:x.anchor&&x.anchor.id,preview:x.leaf&&x.leaf.id,previewType:x.leaf&&x.leaf.type,onPath:x.onPath,isPreview:x.isPreview,access:g});}catch(e){console.error(e);}};
