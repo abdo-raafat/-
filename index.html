@@ -30967,10 +30967,45 @@ async function paidAnchorFromDB(sectionId){
   var ar=await d.from('subscription_content_access').select('section_id,requires_subscription').in('section_id',ids);
   if(ar.error)throw ar.error;
   var explicit=(ar.data||[]).filter(function(x){return x.requires_subscription===true;}).map(function(x){return Number(x.section_id);});
+  var paid=null;
   for(var j=0;j<chain.length;j++){
-    if(chain[j].requires_subscription===true||explicit.indexOf(Number(chain[j].id))!==-1)return chain[j];
+    if(chain[j].requires_subscription===true||explicit.indexOf(Number(chain[j].id))!==-1){
+      paid=chain[j];
+      break;
+    }
   }
-  return null;
+  if(!paid)return null;
+
+  /*
+     IMPORTANT: payment data is configured on the course row in site_sections.
+     The paid node can be a material/chapter/other descendant, so returning
+     that node directly can leave price/payment fields empty even though the
+     course has a real price. Keep the paid node's id (subscription.section_id
+     must remain tied to the actual protected node), but inherit ONLY missing
+     presentation fields from the real course ancestor.
+  */
+  var course=null;
+  for(var k=0;k<chain.length;k++){
+    if(String(chain[k].type||'').trim().toLowerCase()==='course'){
+      course=chain[k];
+      break;
+    }
+  }
+  if(course){
+    if((paid.price===null||paid.price===undefined||String(paid.price).trim()==='') &&
+       course.price!==null&&course.price!==undefined&&String(course.price).trim()!==''){
+      paid.price=course.price;
+    }
+    if((paid.payment_method===null||paid.payment_method===undefined||String(paid.payment_method).trim()==='') &&
+       course.payment_method!==null&&course.payment_method!==undefined&&String(course.payment_method).trim()!==''){
+      paid.payment_method=course.payment_method;
+    }
+    if((paid.payment_number===null||paid.payment_number===undefined||String(paid.payment_number).trim()==='') &&
+       course.payment_number!==null&&course.payment_number!==undefined&&String(course.payment_number).trim()!==''){
+      paid.payment_number=course.payment_number;
+    }
+  }
+  return paid;
 }
 
 async function hasPayload(id){
