@@ -27377,20 +27377,25 @@ RETURNS BOOLEAN
 LANGUAGE sql STABLE SECURITY DEFINER
 SET search_path = public, pg_temp
 AS $$
-  SELECT EXISTS (
-    SELECT 1
-    FROM public.learning_path_items lpi
-    JOIN public.learning_paths lp ON lp.id = lpi.path_id
-    WHERE lp.is_active = true
-      AND lpi.section_id = p_section_id
-      AND lpi.id = (
-        SELECT x.id
-        FROM public.learning_path_items x
-        WHERE x.path_id = lpi.path_id
-        ORDER BY x.display_order ASC, x.id ASC
-        LIMIT 1
-      )
-  );
+  WITH RECURSIVE ancestors AS (
+    SELECT id, parent_id, requires_subscription, type
+    FROM public.site_sections WHERE id = p_section_id
+    UNION ALL
+    SELECT s.id, s.parent_id, s.requires_subscription, s.type
+    FROM public.site_sections s JOIN ancestors a ON s.id = a.parent_id
+  ), paid_course AS (
+    SELECT a.id FROM ancestors a
+    WHERE a.requires_subscription = true
+    ORDER BY CASE WHEN a.type = 'course' THEN 0 ELSE 1 END LIMIT 1
+  ), first_material AS (
+    SELECT s.id FROM public.site_sections s JOIN paid_course p ON p.id = s.parent_id
+    ORDER BY CASE WHEN s.display_order IS NULL THEN 999999 ELSE s.display_order END, s.id LIMIT 1
+  ), first_chapter AS (
+    SELECT s.id, LOWER(TRIM(COALESCE(s.type, ''))) AS type
+    FROM public.site_sections s JOIN first_material m ON m.id = s.parent_id
+    ORDER BY CASE WHEN s.display_order IS NULL THEN 999999 ELSE s.display_order END, s.id LIMIT 1
+  )
+  SELECT EXISTS (SELECT 1 FROM first_chapter WHERE id = p_section_id AND type IN ('lesson','class'));
 $$;
 
 CREATE OR REPLACE FUNCTION public.can_access_learning_section(p_section BIGINT)
@@ -30969,41 +30974,20 @@ async function paidAnchorFromDB(sectionId){
   var explicit=(ar.data||[]).filter(function(x){return x.requires_subscription===true;}).map(function(x){return Number(x.section_id);});
   var paid=null;
   for(var j=0;j<chain.length;j++){
-    if(chain[j].requires_subscription===true||explicit.indexOf(Number(chain[j].id))!==-1){
-      paid=chain[j];
-      break;
-    }
+    if(chain[j].requires_subscription===true||explicit.indexOf(Number(chain[j].id))!==-1){paid=chain[j];break;}
   }
   if(!paid)return null;
 
-  /*
-     IMPORTANT: payment data is configured on the course row in site_sections.
-     The paid node can be a material/chapter/other descendant, so returning
-     that node directly can leave price/payment fields empty even though the
-     course has a real price. Keep the paid node's id (subscription.section_id
-     must remain tied to the actual protected node), but inherit ONLY missing
-     presentation fields from the real course ancestor.
-  */
+  /* Payment configuration belongs to the course row in site_sections. Keep
+     the protected node id intact, but inherit only missing payment fields. */
   var course=null;
   for(var k=0;k<chain.length;k++){
-    if(String(chain[k].type||'').trim().toLowerCase()==='course'){
-      course=chain[k];
-      break;
-    }
+    if(T(chain[k])==='course'){course=chain[k];break;}
   }
   if(course){
-    if((paid.price===null||paid.price===undefined||String(paid.price).trim()==='') &&
-       course.price!==null&&course.price!==undefined&&String(course.price).trim()!==''){
-      paid.price=course.price;
-    }
-    if((paid.payment_method===null||paid.payment_method===undefined||String(paid.payment_method).trim()==='') &&
-       course.payment_method!==null&&course.payment_method!==undefined&&String(course.payment_method).trim()!==''){
-      paid.payment_method=course.payment_method;
-    }
-    if((paid.payment_number===null||paid.payment_number===undefined||String(paid.payment_number).trim()==='') &&
-       course.payment_number!==null&&course.payment_number!==undefined&&String(course.payment_number).trim()!==''){
-      paid.payment_number=course.payment_number;
-    }
+    if((paid.price===null||paid.price===undefined||String(paid.price).trim()==='') && course.price!==null&&course.price!==undefined&&String(course.price).trim()!=='') paid.price=course.price;
+    if((paid.payment_method===null||paid.payment_method===undefined||String(paid.payment_method).trim()==='') && course.payment_method!==null&&course.payment_method!==undefined&&String(course.payment_method).trim()!=='') paid.payment_method=course.payment_method;
+    if((paid.payment_number===null||paid.payment_number===undefined||String(paid.payment_number).trim()==='') && course.payment_number!==null&&course.payment_number!==undefined&&String(course.payment_number).trim()!=='') paid.payment_number=course.payment_number;
   }
   return paid;
 }
@@ -31019,23 +31003,21 @@ async function hasPayload(id){
   return !!(b.data&&b.data.length);
 }
 
-/* First preview is ONLY the first lesson/class encountered by repeatedly
-   following the first child by display_order. No chapter/custom type fallback. */
+/* Strict preview tree: Course -> FIRST material -> FIRST chapter.
+   Only that first chapter is eligible, and only when its type is lesson/class. */
 async function resolvePreview(anchorId){
   var aid=ID(anchorId);if(!aid)return {path:[],leaf:null};
   if(previewCache[aid])return previewCache[aid];
-  var path=[],cur=await getRow(aid),seen={},leaf=null;
-  for(var depth=0;cur&&depth<30;depth++){
-    var cid=ID(cur.id);if(!cid||seen[cid])break;seen[cid]=true;path.push(cur);
-    var kids=await getChildren(cid);if(!kids.length)break;
-    var first=kids[0];
-    if(isPreviewType(first)){
-      path.push(first);
-      if(await hasPayload(first.id))leaf=first;
-      break;
-    }
-    cur=first;
-  }
+  var path=[],course=await getRow(aid),leaf=null;
+  if(!course){previewCache[aid]={path:[],leaf:null};return previewCache[aid];}
+  path.push(course);
+  var materials=await getChildren(course.id);
+  var firstMaterial=materials[0]||null;
+  if(!firstMaterial){previewCache[aid]={path:path,leaf:null};return previewCache[aid];}
+  path.push(firstMaterial);
+  var chapters=await getChildren(firstMaterial.id);
+  var firstChapter=chapters[0]||null;
+  if(firstChapter){path.push(firstChapter);if(isPreviewType(firstChapter))leaf=firstChapter;}
   previewCache[aid]={path:path,leaf:leaf};return previewCache[aid];
 }
 async function isDescendant(id,leafId){
@@ -31052,7 +31034,8 @@ async function previewInfo(id){
   var a=await paidAnchorFromDB(sid);if(!a)return {anchor:null,path:[],leaf:null,onPath:false,isPreview:false};
   var p=await resolvePreview(a.id),path=p.path||[],leaf=p.leaf||null;
   var onPath=path.some(function(x){return Number(x.id)===sid;});
-  var isPreview=!!(leaf&&await isDescendant(sid,leaf.id));
+  /* The free-preview entitlement is for the first chapter itself only. */
+  var isPreview=!!(leaf&&Number(leaf.id)===sid);
   return {anchor:a,path:path,leaf:leaf,onPath:onPath,isPreview:isPreview};
 }
 
@@ -31065,13 +31048,19 @@ window.__bsmReleaseInvalidate=function(){rowCache={};childrenCache={};previewCac
 function validActive(r){return !!(r&&r.payment_status==='active'&&(!r.end_date||new Date(r.end_date).getTime()>=Date.now()));}
 async function hasActiveSubscription(userId,anchorId){
   var d=DB();if(!d)return false;
-  /* Prefer a subscription on the paid anchor, but also accept an active
-     subscription on an ancestor of that anchor (legacy-compatible). */
-  var chain=[],cur=ID(anchorId),seen={};
+  /* Course Subscription is the only subscription entitlement. A material or
+     chapter can be a paid access node, but an active subscription on that
+     child must never be treated as a separate entitlement. */
+  var course=null,cur=ID(anchorId),seen={};
   for(var i=0;cur&&i<30&&!seen[cur];i++){
-    seen[cur]=true;var rr=await getRow(cur);if(!rr)break;chain.push(Number(rr.id));if(rr.parent_id==null)break;cur=ID(rr.parent_id);
+    seen[cur]=true;
+    var rr=await getRow(cur);if(!rr)break;
+    if(String(rr.type||'').trim().toLowerCase()==='course'){course=rr;break;}
+    if(rr.parent_id==null)break;
+    cur=ID(rr.parent_id);
   }
-  var q=await d.from('subscriptions').select('id,section_id,payment_status,start_date,end_date,requested_at,created_at,updated_at,reject_reason').eq('user_id',userId).in('section_id',chain);
+  if(!course)return false;
+  var q=await d.from('subscriptions').select('id,section_id,payment_status,start_date,end_date,requested_at,created_at,updated_at,reject_reason').eq('user_id',userId).eq('section_id',Number(course.id));
   if(q.error)throw q.error;
   return (q.data||[]).some(validActive);
 }
@@ -31096,11 +31085,16 @@ async function DBAccess(id){
   if(!u)return {state:'guest',access:'guest',anchor:a,user:null,row:null};
   if(await hasActiveSubscription(u.id,a.id))return null;
 
-  var chain=[],cur=ID(a.id),seen={};
+  var course=null,cur=ID(a.id),seen={};
   for(var i=0;cur&&i<30&&!seen[cur];i++){
-    seen[cur]=true;chain.push(cur);var rr=await getRow(cur);if(!rr||rr.parent_id==null)break;cur=ID(rr.parent_id);
+    seen[cur]=true;
+    var rr=await getRow(cur);if(!rr)break;
+    if(String(rr.type||'').trim().toLowerCase()==='course'){course=rr;break;}
+    if(rr.parent_id==null)break;
+    cur=ID(rr.parent_id);
   }
-  var q=await d.from('subscriptions').select('id,section_id,payment_status,start_date,end_date,reject_reason,requested_at,created_at,updated_at').eq('user_id',u.id).in('section_id',chain).order('requested_at',{ascending:false,nullsFirst:false}).order('created_at',{ascending:false}).order('id',{ascending:false});
+  if(!course)return {state:'error',access:'error',anchor:a,user:u,row:null};
+  var q=await d.from('subscriptions').select('id,section_id,payment_status,start_date,end_date,reject_reason,requested_at,created_at,updated_at').eq('user_id',u.id).eq('section_id',Number(course.id)).order('requested_at',{ascending:false,nullsFirst:false}).order('created_at',{ascending:false}).order('id',{ascending:false});
   if(q.error)throw q.error;
   var rows=q.data||[],row=rows[0]||null;
   var state=row&&row.payment_status==='pending'?'pending':(row&&['rejected','cancelled'].indexOf(String(row.payment_status))!==-1?'rejected':(row?'expired':'none'));
@@ -31209,6 +31203,171 @@ window.printReleaseAccess=async function(id){try{var x=await previewInfo(id),g=a
   });
 
   console.log('%c[BSM AA-PERMS FULL-ACCESS PATCH] loaded', 'color:#17a589;font-weight:800');
+})();
+</script>
+<!-- ============================================================
+     BSM COURSE SUBSCRIPTION ANCHOR FIX — 2026-09-02
+     Paid content may be a material/chapter, but the subscription request
+     MUST always target the owning COURSE. No schema/data changes.
+============================================================ -->
+<script id="bsm-course-subscription-anchor-fix">
+(function(){
+  'use strict';
+  if(window.__BSM_COURSE_SUBSCRIPTION_ANCHOR_FIX_20260902)return;
+  window.__BSM_COURSE_SUBSCRIPTION_ANCHOR_FIX_20260902=true;
+
+  var db=function(){return window.supabase||null;};
+  var id=function(v){var n=Number(v);return Number.isFinite(n)&&n>0?n:null;};
+
+  async function resolveCourseSubscriptionAnchor(sectionId){
+    var d=db(), cur=id(sectionId), seen={};
+    if(!d||!cur)return null;
+    for(var i=0;i<30&&cur&&!seen[cur];i++){
+      seen[cur]=true;
+      var r=await d.from('site_sections')
+        .select('id,title,icon,parent_id,type,requires_subscription,price,payment_method,payment_number,subscription_days')
+        .eq('id',cur).maybeSingle();
+      if(r.error)throw r.error;
+      if(!r.data)break;
+      if(String(r.data.type||'').trim().toLowerCase()==='course')return r.data;
+      if(r.data.parent_id==null)break;
+      cur=id(r.data.parent_id);
+    }
+    return null;
+  }
+
+  window._resolveCourseSubscriptionAnchor=resolveCourseSubscriptionAnchor;
+
+  /* A locked material/chapter remains the access node, but the payment modal
+     and request_subscription RPC receive the COURSE row. This prevents the
+     RPC from interpreting a paid child/preview node as a free course. */
+  if(typeof window._openPaymentModal==='function'&&!window.__BSM_COURSE_PAYMENT_MODAL_FIX){
+    var oldOpenPayment=window._openPaymentModal;
+    window._openPaymentModal=async function(anchor,user){
+      try{
+        var course=await resolveCourseSubscriptionAnchor(anchor&&anchor.id);
+        if(course && course.requires_subscription===true)return oldOpenPayment.call(this,course,user);
+      }catch(e){console.error('[COURSE SUBSCRIPTION][RESOLVE]',e);}
+      return oldOpenPayment.call(this,anchor,user);
+    };
+    window.__BSM_COURSE_PAYMENT_MODAL_FIX=true;
+  }
+
+  /* requestOrRenewSubscription is called from every locked child. Resolve the
+     course immediately before opening payment so the private _pmAnchor used by
+     _pmSubmit is the course, not the clicked material/chapter. */
+  if(typeof window.requestOrRenewSubscription==='function'&&!window.__BSM_COURSE_REQUEST_FIX){
+    var oldRequest=window.requestOrRenewSubscription;
+    window.requestOrRenewSubscription=async function(){
+      var anchor=window._currentGateAnchor;
+      if(anchor&&anchor.id){
+        try{
+          var course=await resolveCourseSubscriptionAnchor(anchor.id);
+          if(course && course.requires_subscription===true)window._currentGateAnchor=course;
+        }catch(e){console.error('[COURSE SUBSCRIPTION][REQUEST RESOLVE]',e);}
+      }
+      return oldRequest.apply(this,arguments);
+    };
+    window.__BSM_COURSE_REQUEST_FIX=true;
+  }
+
+  console.log('%c[BSM COURSE SUBSCRIPTION ANCHOR FIX] loaded','color:#17a589;font-weight:800');
+})();
+</script>
+
+<script id="bsm-subscription-single-source-final-20260902">
+(function(){
+  'use strict';
+  if(window.__BSM_SUBSCRIPTION_SINGLE_SOURCE_FINAL_20260902)return;
+  window.__BSM_SUBSCRIPTION_SINGLE_SOURCE_FINAL_20260902=true;
+
+  var db=function(){return window.supabase||null;};
+  var toId=function(v){var n=Number(v);return Number.isFinite(n)&&n>0?n:null;};
+
+  async function courseFor(sectionId){
+    var d=db(),cur=toId(sectionId),seen={};
+    if(!d||!cur)return null;
+    for(var i=0;i<50&&cur&&!seen[cur];i++){
+      seen[cur]=true;
+      var r=await d.from('site_sections')
+        .select('id,title,icon,parent_id,type,display_order,requires_subscription,price,payment_method,payment_number,subscription_days')
+        .eq('id',cur).maybeSingle();
+      if(r.error)throw r.error;
+      if(!r.data)return null;
+      if(String(r.data.type||'').trim().toLowerCase()==='course')return r.data;
+      if(r.data.parent_id==null)break;
+      cur=toId(r.data.parent_id);
+    }
+    return null;
+  }
+
+  async function courseStatus(userId,sectionId){
+    var d=db(),course=await courseFor(sectionId);
+    if(!d||!course||!userId)return {course:course,state:'none',row:null};
+    var q=await d.from('subscriptions')
+      .select('id,user_id,section_id,payment_status,subscription_type,amount,payment_method,payment_number,receipt_image,sender_phone,requested_at,start_date,end_date,approved_at,rejected_at,reject_reason,created_at,updated_at')
+      .eq('user_id',userId).eq('section_id',Number(course.id))
+      .order('requested_at',{ascending:false,nullsFirst:false})
+      .order('created_at',{ascending:false}).order('id',{ascending:false}).limit(1);
+    if(q.error)throw q.error;
+    var row=q.data&&q.data[0]||null, now=Date.now();
+    if(row&&row.payment_status==='active'&&(!row.start_date||new Date(row.start_date).getTime()<=now)&&(!row.end_date||new Date(row.end_date).getTime()>=now))
+      return {course:course,state:'active',row:row};
+    if(row&&row.payment_status==='pending')return {course:course,state:'pending',row:row};
+    if(row&&['rejected','cancelled'].indexOf(String(row.payment_status))!==-1)return {course:course,state:'rejected',row:row};
+    if(row)return {course:course,state:'expired',row:row};
+    return {course:course,state:'none',row:null};
+  }
+
+  window._bsmCourseForSection=courseFor;
+  window._bsmCourseSubscriptionStatus=courseStatus;
+
+  /* Any legacy/public status helper now reads ONLY the owning course row.
+     This removes the last frontend path that could read a chapter subscription. */
+  if(typeof window._getSectionSubStatus==='function'&&!window.__BSM_COURSE_STATUS_WRAPPED){
+    var oldStatus=window._getSectionSubStatus;
+    window._getSectionSubStatus=async function(userId,sectionId,forceRefresh){
+      try{
+        var x=await courseStatus(userId,sectionId);
+        if(!x.course)return {state:'none'};
+        return {_cachedAt:Date.now(),state:x.state,row:x.row};
+      }catch(e){
+        console.warn('[BSM COURSE STATUS]',e);
+        return oldStatus.apply(this,arguments);
+      }
+    };
+    window.__BSM_COURSE_STATUS_WRAPPED=true;
+  }
+
+  /* Re-assert payment target at the final edge before the modal/RPC path. */
+  if(typeof window.requestOrRenewSubscription==='function'&&!window.__BSM_FINAL_COURSE_REQUEST_EDGE){
+    var oldRequest=window.requestOrRenewSubscription;
+    window.requestOrRenewSubscription=async function(){
+      var a=window._currentGateAnchor;
+      if(a&&a.id){
+        try{
+          var c=await courseFor(a.id);
+          if(c&&c.requires_subscription===true)window._currentGateAnchor=c;
+        }catch(e){console.error('[BSM COURSE REQUEST EDGE]',e);}
+      }
+      return oldRequest.apply(this,arguments);
+    };
+    window.__BSM_FINAL_COURSE_REQUEST_EDGE=true;
+  }
+
+  if(typeof window._openPaymentModal==='function'&&!window.__BSM_FINAL_COURSE_MODAL_EDGE){
+    var oldOpen=window._openPaymentModal;
+    window._openPaymentModal=async function(anchor,user){
+      try{
+        var c=await courseFor(anchor&&anchor.id);
+        if(c&&c.requires_subscription===true)anchor=c;
+      }catch(e){console.error('[BSM COURSE MODAL EDGE]',e);}
+      return oldOpen.call(this,anchor,user);
+    };
+    window.__BSM_FINAL_COURSE_MODAL_EDGE=true;
+  }
+
+  console.log('%c[BSM SUBSCRIPTION SINGLE SOURCE] course-only entitlement enforced in frontend','color:#17a589;font-weight:800');
 })();
 </script>
 </body>
