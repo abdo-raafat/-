@@ -30276,26 +30276,25 @@ ORDER BY tablename, policyname;
     var paidNode=chain.find(function(x){return x.requires_subscription===true||paidIds[Number(x.id)];})||null;
     if(!paidNode)return {chain:chain,paidNode:null,anchor:null,rows:[]};
 
-    /* Enrich the paid node with the course's payment data when the actual
-       subscription anchor has empty presentation fields. The DB id remains
-       the real paid node, so request_subscription keeps the correct section_id. */
+    /* Paid Content Node and Subscription Owner are separate concepts.
+       A child may be paid, but Subscription Owner is ALWAYS the Course. */
     var course=chain.find(function(x){return String(x.type||'').toLowerCase()==='course';})||null;
-    var anchor=Object.assign({},paidNode);
-    if((anchor.price==null||String(anchor.price).trim()==='')&&course&&course.price!=null)anchor.price=course.price;
-    if((!anchor.payment_method||String(anchor.payment_method).trim()==='')&&course&&course.payment_method)anchor.payment_method=course.payment_method;
-    if((!anchor.payment_number||String(anchor.payment_number).trim()==='')&&course&&course.payment_number)anchor.payment_number=course.payment_number;
-    if((!anchor.subscription_days||Number(anchor.subscription_days)<=0)&&course&&Number(course.subscription_days)>0)anchor.subscription_days=course.subscription_days;
-    /* Explicit content-access can mark a node paid even if the legacy boolean
-       is false. Keep the real node id and expose the effective flag only to UI. */
-    anchor.requires_subscription=true;
+    if(!course)return {chain:chain,paidNode:paidNode,anchor:null,rows:[]};
 
+    /* The anchor is the actual Course object, never the paid child. This also
+       preserves the Course payment fields used by the existing payment UI. */
+    var anchor=course;
+
+    /* Subscription lookup is intentionally Course-only. Never query the
+       ancestor chain here, because a child subscription must not become an
+       independent entitlement/owner. */
     var rows=[];
     try{
-      var chainIds=Array.from(new Set(chain.map(function(x){return Number(x.id);})));
+      var courseId=Number(course.id);
       var sess=typeof window._getSessionSafe==='function'?await window._getSessionSafe(7000):await d.auth.getSession();
       var u=sess&&sess.data&&sess.data.session&&sess.data.session.user;
-      if(u){
-        var sr=await withTimeout(d.from('subscriptions').select('id,user_id,section_id,payment_status,start_date,end_date,reject_reason,requested_at,created_at,updated_at').eq('user_id',u.id).in('section_id',chainIds),7000);
+      if(u&&Number.isFinite(courseId)){
+        var sr=await withTimeout(d.from('subscriptions').select('id,user_id,section_id,payment_status,start_date,end_date,reject_reason,requested_at,created_at,updated_at').eq('user_id',u.id).eq('section_id',courseId),7000);
         if(!sr.error)rows=sr.data||[];
       }
     }catch(e){ }
@@ -30317,8 +30316,18 @@ ORDER BY tablename, policyname;
 
   window._findSubscriptionAnchor=async function(sectionId){
     try{
-      var c=await subscriptionContext(sectionId);
-      return c.anchor||null;
+      var sid=Number(sectionId);
+      if(!Number.isFinite(sid)||sid<=0)return null;
+      var cur=sid,seen={};
+      for(var i=0;i<30&&cur&&!seen[cur];i++){
+        seen[cur]=true;
+        var r=await getRow(cur);
+        if(!r)break;
+        if(String(r.type||'').trim().toLowerCase()==='course')return r;
+        if(r.parent_id==null)break;
+        cur=Number(r.parent_id)||0;
+      }
+      return null;
     }catch(e){return null;}
   };
 
@@ -30965,31 +30974,27 @@ async function paidAnchorFromDB(sectionId){
     seen[cur]=true;var r=await getRow(cur);if(!r)break;chain.push(r);
     if(r.parent_id==null)break;cur=ID(r.parent_id);
   }
-  var d=DB();if(!d)return null;
-  var ids=chain.map(function(x){return Number(x.id);});
-  /* subscription_content_access is authoritative when a row explicitly marks
-     the node as requiring subscription. */
-  var ar=await d.from('subscription_content_access').select('section_id,requires_subscription').in('section_id',ids);
-  if(ar.error)throw ar.error;
-  var explicit=(ar.data||[]).filter(function(x){return x.requires_subscription===true;}).map(function(x){return Number(x.section_id);});
-  var paid=null;
-  for(var j=0;j<chain.length;j++){
-    if(chain[j].requires_subscription===true||explicit.indexOf(Number(chain[j].id))!==-1){paid=chain[j];break;}
-  }
-  if(!paid)return null;
-
-  /* Payment configuration belongs to the course row in site_sections. Keep
-     the protected node id intact, but inherit only missing payment fields. */
   var course=null;
   for(var k=0;k<chain.length;k++){
     if(T(chain[k])==='course'){course=chain[k];break;}
   }
-  if(course){
-    if((paid.price===null||paid.price===undefined||String(paid.price).trim()==='') && course.price!==null&&course.price!==undefined&&String(course.price).trim()!=='') paid.price=course.price;
-    if((paid.payment_method===null||paid.payment_method===undefined||String(paid.payment_method).trim()==='') && course.payment_method!==null&&course.payment_method!==undefined&&String(course.payment_method).trim()!=='') paid.payment_method=course.payment_method;
-    if((paid.payment_number===null||paid.payment_number===undefined||String(paid.payment_number).trim()==='') && course.payment_number!==null&&course.payment_number!==undefined&&String(course.payment_number).trim()!=='') paid.payment_number=course.payment_number;
+  if(!course)return null;
+
+  /* Paid Content Node and Subscription Owner are separate concepts.
+     A node may be marked paid, but the entitlement owner is ALWAYS its Course. */
+  var d=DB();if(!d)return null;
+  var ids=chain.map(function(x){return Number(x.id);});
+  var ar=await d.from('subscription_content_access').select('section_id,requires_subscription').in('section_id',ids);
+  if(ar.error)throw ar.error;
+  var explicit=(ar.data||[]).filter(function(x){return x.requires_subscription===true;}).map(function(x){return Number(x.section_id);});
+  var paid=false;
+  for(var j=0;j<chain.length;j++){
+    if(chain[j].requires_subscription===true||explicit.indexOf(Number(chain[j].id))!==-1){paid=true;break;}
   }
-  return paid;
+  if(!paid)return null;
+
+  /* Always return the Course as the subscription anchor/owner. */
+  return course;
 }
 
 async function hasPayload(id){
@@ -31333,7 +31338,7 @@ window.printReleaseAccess=async function(id){try{var x=await previewInfo(id),g=a
         return {_cachedAt:Date.now(),state:x.state,row:x.row};
       }catch(e){
         console.warn('[BSM COURSE STATUS]',e);
-        return oldStatus.apply(this,arguments);
+        return {_cachedAt:Date.now(),state:'error',row:null};
       }
     };
     window.__BSM_COURSE_STATUS_WRAPPED=true;
