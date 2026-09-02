@@ -3222,10 +3222,8 @@ document.addEventListener('keydown', function(ev) {
 // "تسجيل جديد" — المنصة تعتمد على Google OAuth فقط، فإنشاء الحساب يتم تلقائيًا
 // بنفس تسجيل الدخول بجوجل (لا يوجد فورم تسجيل منفصل في نظام الـ Auth الحالي).
 window.qnRegister = function() {
-  if (typeof _showToast === 'function') {
-    _showToast('التسجيل يتم تلقائيًا بحساب Google — اختر حسابك للمتابعة', 'info');
-  }
-  if (typeof loginWithGoogle === 'function') loginWithGoogle();
+  if (typeof window.openStudentAuth === 'function') window.openStudentAuth('register');
+  else if (typeof _showToast === 'function') _showToast('جاري تحميل واجهة التسجيل، حاول مجددًا', 'warning');
 };
 // ✅ (تم التوحيد): منطق إخفاء "دخول"/"تسجيل جديد" بعد تسجيل الدخول انتقل إلى
 // التعريف النهائي لـ window._syncMobileSidebarUser (قرب نهاية الملف) — كان هذا
@@ -4333,22 +4331,27 @@ function buildSubSectionCard(sec, locked, cardGate) {
   const tags  = (sec.tags || '').split(',').map(t => t.trim()).filter(Boolean)
                   .map(t => `<span class="tag">${t}</span>`).join('');
   if (locked) {
-    // ✅ FIX (زرار "يتطلب اشتراكاً" ما كانش بيفتح النافذة): كل كارت مقفول كان بيعتمد
-    // على متغير عام واحد (window.__currentChapterGate) بيمثّل حالة *الشعبة الأب* فقط،
-    // مش حالة هذا الفصل/المادة تحديدًا. لو الشعبة الأب نفسها مش محتاجة اشتراك، المتغير
-    // العام ده كان فاضي (null) فالضغط على الزرار مايعملش أي حاجة. الحل: نخزّن حالة
-    // القفل الصحيحة الخاصة بهذا الكارت بالذات تحت مفتاح مستقل بنفس منطق __sectionData_،
-    // ونخلي الزرار يقرأ من مفتاحه هو، مش من المتغير العام المشترك.
+    /* External lock: the student sees the subscription requirement on the card
+       before entering the paid section. The existing gate/payment flow remains
+       the only action behind the button. */
     window[`__sectionGate_${sec.id}`] = cardGate || window.__currentChapterGate || null;
     return `
-    <div class="dept-card dept-card-locked" onclick="window._openLockNoticeModal(window.__sectionGate_${sec.id})" data-section-id="${sec.id}" style="cursor:pointer">
+    <div class="dept-card dept-card-locked" data-section-id="${sec.id}" style="cursor:pointer" onclick="window._openLockNoticeModal(window.__sectionGate_${sec.id})">
       <div class="card-top" style="background:${color};filter:grayscale(.6);opacity:.72">
         <span class="card-icon">🔒</span>
         <div class="card-title">${sec.title}</div>
         <div class="card-sub">${sec.subtitle || ''}</div>
       </div>
-      <div class="card-body"><div class="tag-row">${tags}</div></div>
-      <button class="btn-enter" style="background:#8a97a3">🔒 يتطلب اشتراكاً</button>
+      <div class="card-body">
+        <div class="tag-row">${tags}</div>
+        <div class="external-lock-card" onclick="event.stopPropagation()" style="margin-top:12px;padding:13px 14px;border:1px solid #d9e5ee;border-radius:14px;background:linear-gradient(90deg,#f7fbfe,#ffffff);display:flex;align-items:center;justify-content:space-between;gap:12px;direction:rtl;box-shadow:0 4px 12px rgba(10,61,98,.07);">
+          <div style="min-width:0;text-align:right;flex:1;">
+            <div style="font-size:.82rem;font-weight:900;color:var(--primary);line-height:1.6;">🔒 هذا المحتوى متاح للمشتركين فقط</div>
+            <div style="font-size:.69rem;color:#6f7f8d;line-height:1.7;margin-top:2px;">اشترك الآن للوصول إلى كامل محتوى الكورس</div>
+          </div>
+          <button type="button" class="btn-enter" onclick="event.stopPropagation();window._openLockNoticeModal(window.__sectionGate_${sec.id})" style="margin:0;flex:0 0 auto;background:linear-gradient(135deg,var(--primary),var(--teal));color:#fff;min-width:132px;white-space:nowrap;">🚀 اشترك الآن</button>
+        </div>
+      </div>
     </div>`;
   }
   return `
@@ -4888,8 +4891,13 @@ async function _renderDynamicSectionPage(sec) {
       // القفل الحقيقي المفروض يبقى *جوه* الشعبة على مستوى المحتوى/الفصول، مش على
       // باب الدخول نفسه. فبنسمح دايماً بالدخول للشعبة (anchor)، والقفل يبان صح
       // جوه لما يوصل لحاجة خارج الفصل المجاني.
-      var isAnchorItself = childAccess.anchor && Number(childAccess.anchor.id) === Number(child.id);
-      var lockCard = childAccess.state === 'locked' && !isAnchorItself;
+      var isPreviewContainer = childAccess && childAccess.state === 'preview_container';
+      var isAnchorItself = childAccess && childAccess.anchor && Number(childAccess.anchor.id) === Number(child.id);
+      /* DBAccess uses the real access states (guest/none/pending/expired/rejected),
+         not a generic 'locked' value. Any non-free paid child must therefore be
+         visibly locked here before navigation. The first preview path remains
+         reachable through preview_container. */
+      var lockCard = !!(childAccess && childAccess.anchor && !isPreviewContainer && !isAnchorItself && childAccess.state !== 'free' && childAccess.state !== 'admin');
       // ✅ FIX: نحوّل شكل childAccess (state:'locked', access: 'guest'/'pending'/'expired'/'none'/'error')
       // إلى نفس شكل الـ gate اللي بتفهمه window._openLockNoticeModal (state: 'guest'/'pending'/...)،
       // عشان كل كارت مقفول يفتح نافذة التنبيه بحالته الحقيقية هو، مش بحالة الشعبة الأب.
@@ -7831,8 +7839,10 @@ const APP_AUTH_REDIRECT = 'bsm://auth/callback';
 
 // ==================== AUTH FUNCTIONS ====================
 
-window.loginWithGoogle = async function() {
-  // [AUTH v6] كل ضغطة "دخول/حساب جديد" تبدأ باختيار حساب Google صراحةً.
+window.loginWithGoogle = async function(_directGoogle) {
+  // [AUTH v7] النقرات العامة تفتح واجهة الحساب الموحدة؛ الاستدعاء الداخلي _directGoogle يبدأ OAuth مباشرة.
+  if (!_directGoogle) { if (typeof window.openStudentAuth === 'function') return window.openStudentAuth('login'); }
+  // [AUTH v6] كل ضغطة Google تبدأ باختيار حساب Google صراحةً.
   // لا نحذف حسابات Google من الجهاز؛ فقط نمسح جلسة المنصة القديمة إن كانت موجودة.
   try {
     if (!window._currentAuthUser && localStorage.getItem('benisuef_auth')) {
@@ -8555,6 +8565,20 @@ window._authListenerRegistered = false; // يمنع تسجيل onAuthStateChange
 window._authInitializing       = true;  // true فقط أثناء انتظار أول حدث auth من gotrue-js (يُستخدم لحماية _getSessionSafe من التزاحم على القفل)
 window._authBootstrapped       = false; // true بمجرد وصول أول حدث auth (INITIAL_SESSION) — الإقلاع انتهى
 window._lastProcessedAuthKey   = null;  // يمنع تكرار معالجة/رندر نفس (event + user) مرتين متتاليتين
+// [AUTH v7] اعرض أخطاء OAuth الراجعة في الـURL للمستخدم بدلاً من تركه على الصفحة بصمت.
+(function(){
+  try{
+    var raw=(window.location.hash||'').replace(/^#/,'');
+    if(!raw)return;
+    var p=new URLSearchParams(raw), code=p.get('error_code'), desc=p.get('error_description');
+    if(code||desc){
+      var msg=desc?decodeURIComponent(desc.replace(/\+/g,' ')):'تعذر إكمال تسجيل الدخول باستخدام Google';
+      setTimeout(function(){if(typeof _showToast==='function')_showToast('❌ '+msg,'error');else alert('❌ '+msg);},300);
+      if(window.history&&window.history.replaceState)window.history.replaceState({},document.title,window.location.pathname+window.location.search);
+    }
+  }catch(e){console.warn('[AUTH] OAuth callback error parse failed:',e);}
+})();
+
 
 // ============================================================
 // [AUTH v4] _handleAuthStateChange — المعالج المركزي الوحيد لكل أحداث
@@ -10672,6 +10696,116 @@ window.checkBanStatus = async function(email) {
 </div>
 
 
+<!-- ==================== STUDENT AUTH MODAL (Google + Email/Password) ==================== -->
+<div id="student-auth-overlay" style="display:none;position:fixed;inset:0;z-index:9999997;background:rgba(10,20,40,.72);backdrop-filter:blur(5px);align-items:center;justify-content:center;padding:16px;direction:rtl;">
+  <div id="student-auth-card" style="background:var(--card-bg,#fff);border-radius:18px;max-width:420px;width:100%;padding:24px;box-shadow:0 20px 70px rgba(0,0,0,.35);position:relative;">
+    <button type="button" onclick="closeStudentAuth()" aria-label="إغلاق" style="position:absolute;top:10px;left:10px;border:0;background:transparent;font-size:20px;cursor:pointer;color:#718096;">✕</button>
+    <div style="text-align:center;margin-bottom:18px;">
+      <div style="font-size:1.35rem;font-weight:900;color:#0a3d62;" id="student-auth-title">🔐 تسجيل الدخول</div>
+      <div style="font-size:.78rem;color:#718096;margin-top:5px;" id="student-auth-subtitle">ادخل بحسابك في المنصة</div>
+    </div>
+
+    <div id="student-login-form">
+      <label style="display:block;font-size:.82rem;font-weight:700;margin-bottom:6px;">البريد الإلكتروني</label>
+      <input id="student-login-email" type="email" inputmode="email" autocomplete="email" placeholder="example@email.com" dir="ltr" style="width:100%;box-sizing:border-box;padding:11px 12px;border:1px solid #d5e2ee;border-radius:10px;margin-bottom:10px;font-family:inherit;">
+      <label style="display:block;font-size:.82rem;font-weight:700;margin-bottom:6px;">كلمة المرور</label>
+      <input id="student-login-password" type="password" autocomplete="current-password" placeholder="كلمة المرور" dir="ltr" style="width:100%;box-sizing:border-box;padding:11px 12px;border:1px solid #d5e2ee;border-radius:10px;margin-bottom:10px;font-family:inherit;">
+      <div id="student-login-msg" style="min-height:20px;font-size:.78rem;margin-bottom:8px;"></div>
+      <button type="button" onclick="studentEmailLogin()" class="ap-btn ap-btn-primary" style="width:100%;justify-content:center;padding:11px;">تسجيل الدخول</button>
+      <div style="display:flex;align-items:center;gap:9px;margin:15px 0;color:#9aa7b4;font-size:.72rem;"><span style="height:1px;background:#e2e8f0;flex:1;"></span><span>أو</span><span style="height:1px;background:#e2e8f0;flex:1;"></span></div>
+      <button type="button" onclick="studentGoogleLogin()" style="width:100%;padding:11px;border:1px solid #d5e2ee;border-radius:10px;background:#fff;color:#263238;font-family:inherit;font-weight:800;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:9px;">🌐 تسجيل الدخول باستخدام Google</button>
+      <button type="button" onclick="openStudentAuth('register')" style="display:block;width:100%;margin-top:12px;border:0;background:transparent;color:#0a3d62;font-family:inherit;font-weight:800;cursor:pointer;">إنشاء حساب جديد</button>
+    </div>
+
+    <div id="student-register-form" style="display:none;">
+      <label style="display:block;font-size:.82rem;font-weight:700;margin-bottom:6px;">الاسم بالكامل</label>
+      <input id="student-register-name" type="text" autocomplete="name" placeholder="الاسم بالكامل" style="width:100%;box-sizing:border-box;padding:11px 12px;border:1px solid #d5e2ee;border-radius:10px;margin-bottom:10px;font-family:inherit;">
+      <label style="display:block;font-size:.82rem;font-weight:700;margin-bottom:6px;">البريد الإلكتروني</label>
+      <input id="student-register-email" type="email" inputmode="email" autocomplete="email" placeholder="example@email.com" dir="ltr" style="width:100%;box-sizing:border-box;padding:11px 12px;border:1px solid #d5e2ee;border-radius:10px;margin-bottom:10px;font-family:inherit;">
+      <label style="display:block;font-size:.82rem;font-weight:700;margin-bottom:6px;">كلمة المرور</label>
+      <input id="student-register-password" type="password" autocomplete="new-password" placeholder="8 أحرف على الأقل" dir="ltr" style="width:100%;box-sizing:border-box;padding:11px 12px;border:1px solid #d5e2ee;border-radius:10px;margin-bottom:10px;font-family:inherit;">
+      <div id="student-register-msg" style="min-height:20px;font-size:.78rem;margin-bottom:8px;"></div>
+      <button type="button" onclick="studentEmailRegister()" class="ap-btn ap-btn-primary" style="width:100%;justify-content:center;padding:11px;">إنشاء الحساب</button>
+      <div style="display:flex;align-items:center;gap:9px;margin:15px 0;color:#9aa7b4;font-size:.72rem;"><span style="height:1px;background:#e2e8f0;flex:1;"></span><span>أو</span><span style="height:1px;background:#e2e8f0;flex:1;"></span></div>
+      <button type="button" onclick="studentGoogleLogin()" style="width:100%;padding:11px;border:1px solid #d5e2ee;border-radius:10px;background:#fff;color:#263238;font-family:inherit;font-weight:800;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:9px;">🌐 التسجيل باستخدام Google</button>
+      <button type="button" onclick="openStudentAuth('login')" style="display:block;width:100%;margin-top:12px;border:0;background:transparent;color:#0a3d62;font-family:inherit;font-weight:800;cursor:pointer;">لدي حساب بالفعل — تسجيل الدخول</button>
+    </div>
+  </div>
+</div>
+<script>
+// ==================== STUDENT AUTH — Google + Email/Password ====================
+(function(){
+  function _studentAuthMsg(id,text,color){ var e=document.getElementById(id); if(e){e.textContent=text||'';e.style.color=color||'#e74c3c';} }
+  window.openStudentAuth=function(mode){
+    var ov=document.getElementById('student-auth-overlay'); if(!ov)return;
+    var isReg=mode==='register';
+    ov.style.display='flex';
+    var title=document.getElementById('student-auth-title'), sub=document.getElementById('student-auth-subtitle');
+    if(title) title.textContent=isReg?'👤 إنشاء حساب جديد':'🔐 تسجيل الدخول';
+    if(sub) sub.textContent=isReg?'أنشئ حسابك باستخدام البريد الإلكتروني وكلمة المرور':'ادخل بحسابك في المنصة';
+    var lf=document.getElementById('student-login-form'), rf=document.getElementById('student-register-form');
+    if(lf)lf.style.display=isReg?'none':'block'; if(rf)rf.style.display=isReg?'block':'none';
+    _studentAuthMsg('student-login-msg',''); _studentAuthMsg('student-register-msg','');
+    setTimeout(function(){var el=document.getElementById(isReg?'student-register-name':'student-login-email');if(el)el.focus();},50);
+  };
+  window.closeStudentAuth=function(){var ov=document.getElementById('student-auth-overlay');if(ov)ov.style.display='none';};
+  window.studentGoogleLogin=async function(){
+    try{ window.closeStudentAuth(); if(typeof window._currentAuthUser==='object'&&window._currentAuthUser)return; }
+    catch(e){}
+    if(typeof window.loginWithGoogle==='function') return window.loginWithGoogle(true);
+  };
+  window.studentEmailLogin=async function(){
+    var email=((document.getElementById('student-login-email')||{}).value||'').trim();
+    var pass=(document.getElementById('student-login-password')||{}).value||'';
+    if(!email||!pass){_studentAuthMsg('student-login-msg','من فضلك أدخل البريد الإلكتروني وكلمة المرور');return;}
+    if(!/^\S+@\S+\.\S+$/.test(email)){_studentAuthMsg('student-login-msg','البريد الإلكتروني غير صحيح');return;}
+    _studentAuthMsg('student-login-msg','جاري تسجيل الدخول...','#718096');
+    try{
+      var db=await (window._supabaseClientReady||Promise.resolve(window.supabase));
+      if(!db||!db.auth)throw new Error('Supabase Auth غير جاهز');
+      var r=await db.auth.signInWithPassword({email:email,password:pass});
+      if(r.error)throw r.error;
+      _studentAuthMsg('student-login-msg','✅ تم تسجيل الدخول','#17a589');
+      setTimeout(window.closeStudentAuth,300);
+    }catch(e){
+      _studentAuthMsg('student-login-msg','❌ البريد الإلكتروني أو كلمة المرور غير صحيحة');
+      console.warn('[AUTH] email sign-in failed:',e&&e.message);
+    }
+  };
+  window.studentEmailRegister=async function(){
+    var name=((document.getElementById('student-register-name')||{}).value||'').trim();
+    var email=((document.getElementById('student-register-email')||{}).value||'').trim();
+    var pass=(document.getElementById('student-register-password')||{}).value||'';
+    if(!name||!email||!pass){_studentAuthMsg('student-register-msg','من فضلك أكمل جميع البيانات المطلوبة');return;}
+    if(!/^\S+@\S+\.\S+$/.test(email)){_studentAuthMsg('student-register-msg','البريد الإلكتروني غير صحيح');return;}
+    if(pass.length<8){_studentAuthMsg('student-register-msg','كلمة المرور يجب أن تكون 8 أحرف على الأقل');return;}
+    _studentAuthMsg('student-register-msg','جاري إنشاء الحساب...','#718096');
+    try{
+      var db=await (window._supabaseClientReady||Promise.resolve(window.supabase));
+      if(!db||!db.auth)throw new Error('Supabase Auth غير جاهز');
+      var r=await db.auth.signUp({email:email,password:pass,options:{data:{full_name:name},emailRedirectTo:WEB_AUTH_REDIRECT}});
+      if(r.error)throw r.error;
+      if(r.data&&r.data.session){
+        _studentAuthMsg('student-register-msg','✅ تم إنشاء الحساب وتسجيل الدخول حسب إعدادات Auth','#17a589');
+        setTimeout(window.closeStudentAuth,500);
+      }else{
+        _studentAuthMsg('student-register-msg','✅ تم إنشاء الحساب. تحقق من بريدك الإلكتروني لإكمال التحقق قبل تسجيل الدخول.','#17a589');
+      }
+    }catch(e){
+      var msg=(e&&e.message)||'';
+      if(/already registered|user already registered/i.test(msg))msg='هذا البريد الإلكتروني مسجل بالفعل';
+      else if(/password/i.test(msg)&&/weak|characters|length/i.test(msg))msg='كلمة المرور غير صالحة؛ استخدم كلمة مرور أقوى';
+      else if(!msg)msg='تعذر إنشاء الحساب، حاول مرة أخرى';
+      _studentAuthMsg('student-register-msg','❌ '+msg);
+      console.warn('[AUTH] email sign-up failed:',e&&e.message);
+    }
+  };
+  var ov=document.getElementById('student-auth-overlay');
+  if(ov)ov.addEventListener('click',function(e){if(e.target===ov)window.closeStudentAuth();});
+  ['student-login-password','student-login-email'].forEach(function(id){var e=document.getElementById(id);if(e)e.addEventListener('keydown',function(ev){if(ev.key==='Enter')window.studentEmailLogin();});});
+  ['student-register-name','student-register-email','student-register-password'].forEach(function(id){var e=document.getElementById(id);if(e)e.addEventListener('keydown',function(ev){if(ev.key==='Enter')window.studentEmailRegister();});});
+})();
+</script>
 <!-- ==================== BRANCH ADMIN PASSWORD LOGIN MODAL ==================== -->
 <div id="pw-login-overlay" style="display:none;position:fixed;inset:0;z-index:9999998;background:rgba(10,20,40,.75);backdrop-filter:blur(4px);align-items:center;justify-content:center;padding:16px;">
   <div style="background:var(--card-bg,#fff);border-radius:16px;max-width:360px;width:100%;padding:24px;box-shadow:0 20px 60px rgba(0,0,0,.4);">
@@ -30932,6 +31066,15 @@ ORDER BY ordinal_position;
      - Paid containers outside that path are blocked at their own card.
      - Mobile video viewer: landscape + fullscreen attempt from user gesture.
      ============================================================ -->
+<style id="bsm-external-lock-card-style">
+.external-lock-card{box-sizing:border-box;}
+.external-lock-card .btn-enter{font-family:inherit;border:0;border-radius:10px;padding:10px 13px;font-size:.76rem;font-weight:900;cursor:pointer;box-shadow:0 4px 12px rgba(10,61,98,.18);touch-action:manipulation;}
+@media(max-width:600px){
+  .external-lock-card{align-items:stretch!important;flex-direction:column!important;gap:9px!important;}
+  .external-lock-card>div{width:100%;}
+  .external-lock-card .btn-enter{width:100%;min-width:0!important;}
+}
+</style>
 <style id="bsm-release-video-style">
 @media(max-width:700px){
   #rv-modal .rv-embed-frame,#rv-modal iframe[data-fembed-embed="1"]{max-width:100vw!important}
@@ -31008,22 +31151,43 @@ async function hasPayload(id){
   return !!(b.data&&b.data.length);
 }
 
-/* Strict preview tree: Course -> FIRST material -> FIRST chapter.
-   Only that first chapter is eligible, and only when its type is lesson/class. */
+/* Strict preview tree: Course -> FIRST material -> first eligible lesson/class
+   found by deterministic display_order traversal inside that material.
+   Only ONE leaf is eligible for free preview in the whole course. */
 async function resolvePreview(anchorId){
   var aid=ID(anchorId);if(!aid)return {path:[],leaf:null};
   if(previewCache[aid])return previewCache[aid];
-  var path=[],course=await getRow(aid),leaf=null;
+  var course=await getRow(aid);
   if(!course){previewCache[aid]={path:[],leaf:null};return previewCache[aid];}
-  path.push(course);
+
   var materials=await getChildren(course.id);
   var firstMaterial=materials[0]||null;
-  if(!firstMaterial){previewCache[aid]={path:path,leaf:null};return previewCache[aid];}
-  path.push(firstMaterial);
-  var chapters=await getChildren(firstMaterial.id);
-  var firstChapter=chapters[0]||null;
-  if(firstChapter){path.push(firstChapter);if(isPreviewType(firstChapter))leaf=firstChapter;}
-  previewCache[aid]={path:path,leaf:leaf};return previewCache[aid];
+  if(!firstMaterial){previewCache[aid]={path:[course],leaf:null};return previewCache[aid];}
+
+  /* Search ONLY inside the first Material. At every nested level, children
+     are ordered by the database display_order (then id only as a deterministic
+     tie-breaker). We do not use DOM order, array insertion order, or ID as the
+     primary ordering key. The first lesson/class encountered wins exactly once. */
+  async function findFirstEligible(node,trail,seen){
+    var nid=ID(node&&node.id);
+    if(!nid||seen[nid])return null;
+    seen[nid]=true;
+    var nextTrail=trail.concat([node]);
+
+    if(isPreviewType(node))return {leaf:node,path:nextTrail};
+
+    var kids=await getChildren(nid);
+    for(var i=0;i<kids.length;i++){
+      var found=await findFirstEligible(kids[i],nextTrail,seen);
+      if(found)return found;
+    }
+    return null;
+  }
+
+  var found=await findFirstEligible(firstMaterial,[course],{});
+  var result={path:found?found.path:[course,firstMaterial],leaf:found?found.leaf:null};
+  previewCache[aid]=result;
+  return result;
 }
 async function isDescendant(id,leafId){
   var sid=ID(id),lid=ID(leafId);if(!sid||!lid)return false;
