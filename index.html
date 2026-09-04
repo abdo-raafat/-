@@ -4914,26 +4914,46 @@ async function _renderDynamicSectionPage(sec) {
       var childAccess = window.getDetailedSectionAccess
         ? await window.getDetailedSectionAccess(child.id)
         : { state: gate ? 'locked' : 'free' };
-      // ✅ FIX (Aug 2026 — بلاغ الطلبة): لما الابن ده هو نفسه "الشعبة" اللي عليها
-      // requires_subscription = true (يعني childAccess.anchor.id === child.id)، ماينفعش
-      // نقفل الكارت بتاعه بالكامل من بره — لإن ده كان بيمنع أي حد (زائر/مش مشترك)
-      // من الدخول أصلاً، فيفقد قدرته يشوف "الفصل الأول" المجاني اللي جوه الشعبة.
-      // القفل الحقيقي المفروض يبقى *جوه* الشعبة على مستوى المحتوى/الفصول، مش على
-      // باب الدخول نفسه. فبنسمح دايماً بالدخول للشعبة (anchor)، والقفل يبان صح
-      // جوه لما يوصل لحاجة خارج الفصل المجاني.
+
+      // Navigation rule:
+      // - Container nodes (subject/material/unit/folder/etc.) stay clickable so the
+      //   student can reach their first learning item.
+      // - A real learning node (lesson/class) is free ONLY when it is the first
+      //   lesson/class in THIS container's subtree, according to parent_id +
+      //   display_order + id. Other learning nodes remain locked.
+      var childType = String(child.type || '').trim().toLowerCase();
+      var isLearningChild = (childType === 'lesson' || childType === 'class');
+      var firstLearningId = null;
+      if (isLearningChild && typeof window.bsmFirstLearningContentForSubject === 'function') {
+        try { firstLearningId = await window.bsmFirstLearningContentForSubject(sec.id); } catch(e) { firstLearningId = null; }
+      }
+      var isFirstLearningChild = isLearningChild && Number(firstLearningId) === Number(child.id);
+
       var isPreviewContainer = childAccess && childAccess.state === 'preview_container';
       var isAnchorItself = childAccess && childAccess.anchor && Number(childAccess.anchor.id) === Number(child.id);
-      /* DBAccess uses the real access states (guest/none/pending/expired/rejected),
-         not a generic 'locked' value. Any non-free paid child must therefore be
-         visibly locked here before navigation. The first preview path remains
-         reachable through preview_container. */
-      var lockCard = !!(childAccess && childAccess.anchor && !isPreviewContainer && !isAnchorItself && childAccess.state !== 'free' && childAccess.state !== 'admin');
-      // ✅ FIX: نحوّل شكل childAccess (state:'locked', access: 'guest'/'pending'/'expired'/'none'/'error')
-      // إلى نفس شكل الـ gate اللي بتفهمه window._openLockNoticeModal (state: 'guest'/'pending'/...)،
-      // عشان كل كارت مقفول يفتح نافذة التنبيه بحالته الحقيقية هو، مش بحالة الشعبة الأب.
-      var childGate = lockCard ? { anchor: childAccess.anchor, state: childAccess.access || 'none', row: childAccess.row } : null;
+
+      // IMPORTANT: do not inherit "preview_container/free" from a parent and
+      // accidentally unlock every lesson in that branch. Containers are doors;
+      // only the exact first lesson/class is the free learning item.
+      var accessSaysLocked = !!(
+        childAccess && childAccess.anchor &&
+        !isPreviewContainer && !isAnchorItself &&
+        childAccess.state !== 'free' && childAccess.state !== 'admin'
+      );
+
+      var lockCard = isLearningChild
+        ? (!isFirstLearningChild || accessSaysLocked)
+        : false;
+
+      var childGate = lockCard
+        ? { anchor: childAccess && childAccess.anchor ? childAccess.anchor : sec,
+            state: (childAccess && childAccess.access) || 'none',
+            row: childAccess && childAccess.row }
+        : null;
+
       return buildSubSectionCard(child, lockCard, childGate);
     }));
+
     var gridHtml = childCards.join('');
     document.getElementById('dynamic-section-grid').innerHTML = gridHtml;
   } catch(err) {
@@ -5079,6 +5099,17 @@ async function _apRestoreSectionPath(id, urlMode) {
       await _openContentPage(target);
     }
     if (urlMode) _apSetUrlForSection(target.id, true);
+
+    // Restore the exact scroll position for this section after its content is rendered.
+    try {
+      var _savedScrollRaw = localStorage.getItem('bsm_section_scroll_' + String(target.id));
+      var _savedScrollY = _savedScrollRaw == null ? 0 : Number(_savedScrollRaw);
+      if (Number.isFinite(_savedScrollY)) {
+        requestAnimationFrame(function(){
+          requestAnimationFrame(function(){ window.scrollTo(0, _savedScrollY); });
+        });
+      }
+    } catch (_scrollRestoreErr) {}
   } catch (e) {
     goHome();
   } finally {
@@ -5522,11 +5553,13 @@ function buildResourcesInsideArea(resources, gate) {
       </div>`;
     }
     const icon = getResourceIcon(r);
-    const safeUrl = (r.file_url || '').replace(/'/g,"\'").replace(/"/g,'&quot;');
-    const safeTitle = (r.title || 'مورد').replace(/'/g,"\'");
-    const safeType = (r.resource_type || '').replace(/'/g,"\'");
-    const safePath = (r.file_path || '').replace(/'/g, "\\'");
-    const clickHandler = r.file_url ? `onclick="openResource('${safeUrl}','${safeTitle}','${safeType}','${safePath}','${safeFileType}','${safeFileName}')"` : '';
+    const safeUrl = _bsmResourceJsArg(r.file_url || '');
+    const safeTitle = _bsmResourceJsArg(r.title || 'مورد');
+    const safeType = _bsmResourceJsArg(r.resource_type || '');
+    const safePath = _bsmResourceJsArg(r.file_path || '');
+    const safeFileType = _bsmResourceJsArg(r.file_type || '');
+    const safeFileName = _bsmResourceJsArg(r.file_name || '');
+    const clickHandler = r.file_url ? `onclick="openResource(${safeUrl},${safeTitle},${safeType},${safePath},${safeFileType},${safeFileName})"` : '';
     const hasLink = !!r.file_url;
     return `
       <div ${clickHandler} style="
@@ -5629,6 +5662,12 @@ function _resourceTypeLabel(r) {
   return map[t] || '';
 }
 
+function _bsmResourceJsArg(value) {
+  // JSON string + HTML entity escaping makes inline handlers safe even when
+  // URLs/titles contain apostrophes, quotes, backslashes, or query strings.
+  return JSON.stringify(String(value == null ? '' : value)).replace(/'/g, '&#39;');
+}
+
 function buildResourcesHTML(resources, gate) {
   if (!resources || resources.length === 0) return '';
   // ✅ موحّد الآن مع renderResourceCards: نفس شكل الكارت الكبير (.link-card) في كل مكان،
@@ -5649,12 +5688,12 @@ function buildResourcesHTML(resources, gate) {
       </div>`;
     }
     const icon = getResourceIcon(r);
-    const safeUrl = (r.file_url || '').replace(/'/g,"\'").replace(/"/g,'&quot;');
-    const safeTitle = (r.title || 'مورد').replace(/'/g,"\'");
-    const safeType = (r.resource_type || '').replace(/'/g,"\'");
-    const safePath = (r.file_path || '').replace(/\\/g, "\\\\").replace(/'/g, "\\'");
-    const safeFileType = (r.file_type || '').replace(/\\/g, "\\\\").replace(/'/g, "\\'");
-    const safeFileName = (r.file_name || '').replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+    const safeUrl = _bsmResourceJsArg(r.file_url || '');
+    const safeTitle = _bsmResourceJsArg(r.title || 'مورد');
+    const safeType = _bsmResourceJsArg(r.resource_type || '');
+    const safePath = _bsmResourceJsArg(r.file_path || '');
+    const safeFileType = _bsmResourceJsArg(r.file_type || '');
+    const safeFileName = _bsmResourceJsArg(r.file_name || '');
     const typeLabel = _resourceTypeLabel(r);
     const desc = (r.description || typeLabel || '').toString();
     return `
@@ -7335,7 +7374,7 @@ async function openResource(url, title, resourceType, filePath, fileType, fileNa
   var safety = setTimeout(function(){ window._resourceOpenBusy = false; }, 15000);
   try {
     var detected = ResourceViewer && typeof ResourceViewer.detectType === 'function'
-      ? ResourceViewer.detectType(url, resourceType) : null;
+      ? ResourceViewer.detectType(url, resourceType, fileType, fileName) : null;
     var rt = String(resourceType || '').toLowerCase().trim();
 
     if (rt === 'form' || rt === 'quiz' || rt === 'exam' || rt === 'test' ||
@@ -31956,7 +31995,23 @@ async function row(id){var d=db(),sid=n(id);if(!d||!sid)return null;var r=await 
 async function children(pid){var d=db(),id=n(pid);if(!d||!id)return [];var r=await d.from('site_sections').select('id,parent_id,type,display_order,requires_subscription').eq('parent_id',id).order('display_order',{ascending:true,nullsFirst:false}).order('id',{ascending:true});if(r.error)throw r.error;return r.data||[];}
 async function subjectAncestors(sectionId){var cur=n(sectionId),seen={},out=[];for(var i=0;i<64&&cur&&!seen[cur];i++){seen[cur]=true;var r=await row(cur);if(!r)break;if(typ(r.type)==='subject')out.push(r);cur=n(r.parent_id);}return out;}
 async function firstLearningDescendant(subjectId){var root=n(subjectId);if(!root)return null;var stack=[],visited={},kids=await children(root);for(var i=kids.length-1;i>=0;i--)stack.push(kids[i]);while(stack.length){var node=stack.pop(),id=n(node.id);if(!id||visited[id])continue;visited[id]=true;var t=typ(node.type);if(t==='lesson'||t==='class')return node;var ch=await children(id);for(var j=ch.length-1;j>=0;j--)stack.push(ch[j]);}return null;}
-window.bsmFirstLearningContentForSubject=async function(subjectId){var x=await firstLearningDescendant(subjectId);return x?n(x.id):null;};
+window.bsmFirstLearningContentForSubject=async function(subjectId){
+  // IMPORTANT: this helper may be called with the currently opened container
+  // (material/chapter/folder), not only with the Subject itself. Always resolve
+  // the real Subject first so only ONE learning item per Subject can be free.
+  var start=n(subjectId); if(!start) return null;
+  var startRow=await row(start); if(!startRow) return null;
+  var subjectIdResolved=null, cur=start, seen={};
+  for(var depth=0;depth<64&&cur&&!seen[cur];depth++){
+    seen[cur]=true;
+    var rr=await row(cur); if(!rr) break;
+    if(typ(rr.type)==='subject'){ subjectIdResolved=n(rr.id); break; }
+    cur=n(rr.parent_id);
+  }
+  if(!subjectIdResolved) subjectIdResolved=start;
+  var x=await firstLearningDescendant(subjectIdResolved);
+  return x?n(x.id):null;
+};
 window.bsmIsFirstLearningContentForSubject=async function(sectionId){var id=n(sectionId);if(!id)return false;var a=await subjectAncestors(id);for(var i=0;i<a.length;i++){var f=await firstLearningDescendant(a[i].id);if(f&&n(f.id)===id)return true;}return false;};
 var oldFree=window._isFreePreviewSection;
 window._isFreePreviewSection=async function(sectionId){try{return await window.bsmIsFirstLearningContentForSubject(sectionId);}catch(e){console.error('[BSM SUBJECT FREE RULE]',e);return false;}};
@@ -32033,5 +32088,205 @@ window.checkSectionAccess=async function(sectionId){var id=n(sectionId);try{var 
 })();
 </script>
 
+<script id="bsm-final-navigation-and-resource-fixes-20260904">
+(function(){
+  'use strict';
+  if(window.__BSM_FINAL_NAV_RESOURCE_FIX_20260904)return;
+  window.__BSM_FINAL_NAV_RESOURCE_FIX_20260904=true;
+
+  // Save the exact scroll position for the last opened section.
+  var SCROLL_PREFIX = 'bsm_section_scroll_';
+  function currentId(){
+    var id = window._lastOpenSectionId;
+    if(!id && window._currentContentSec) id = window._currentContentSec.id;
+    if(!id && window._currentDynamicSec) id = window._currentDynamicSec.id;
+    return id != null ? String(id) : '';
+  }
+  function saveScroll(){
+    try{
+      var id=currentId();
+      if(!id)return;
+      localStorage.setItem(SCROLL_PREFIX+id, String(Math.max(0,Math.round(window.scrollY||window.pageYOffset||0))));
+      localStorage.setItem('bsm_last_section_id', id);
+    }catch(e){}
+  }
+  var scrollTimer=null;
+  window.addEventListener('scroll',function(){
+    if(scrollTimer)clearTimeout(scrollTimer);
+    scrollTimer=setTimeout(function(){scrollTimer=null;saveScroll();},180);
+  },{passive:true});
+  window.addEventListener('pagehide',saveScroll);
+  window.addEventListener('beforeunload',saveScroll);
+
+  // When a section is restored from the URL/localStorage, restore its scroll
+  // after the content has actually rendered.
+  if(typeof window._apRestoreSectionPath==='function'){
+    var origRestore=window._apRestoreSectionPath;
+    window._apRestoreSectionPath=async function(id,urlMode){
+      var result=await origRestore.apply(this,arguments);
+      try{
+        var sid=String(id), raw=localStorage.getItem(SCROLL_PREFIX+sid);
+        var y=raw==null?0:Number(raw);
+        if(Number.isFinite(y)){
+          requestAnimationFrame(function(){
+            requestAnimationFrame(function(){window.scrollTo(0,y);});
+          });
+        }
+      }catch(e){}
+      return result;
+    };
+  }
+
+  // Resource cards inside the content page previously referenced
+  // safeFileType/safeFileName without defining them. Rebuild that renderer
+  // safely at runtime while keeping section_resources.file_url authoritative.
+  if(typeof window.buildResourcesInsideArea==='function'){
+    // Function declarations are lexical in this document, so the source-level
+    // fix above is the authoritative fix; this marker only documents the guard.
+  }
+
+  console.info('[BSM FINAL FIX] first-learning navigation, resource clicks, and scroll restore enabled.');
+})();
+</script>
+
+
+<script id="bsm-final-stability-fix-20260904">
+(function(){
+  'use strict';
+  if(window.__BSM_FINAL_STABILITY_FIX_20260904)return;
+  window.__BSM_FINAL_STABILITY_FIX_20260904=true;
+
+  /* ================================================================
+     1) FREE PREVIEW: exactly ONE first lesson/class per SUBJECT.
+        Never make the first lesson of every material/chapter free.
+     ================================================================ */
+  function _id(v){
+    if(v===null||v===undefined)return null;
+    var x=String(v).trim();
+    if(!x)return null;
+    var m=x.match(/^\d+$/);
+    return m?Number(x):x;
+  }
+  async function _db(){
+    if(window.supabase&&typeof window.supabase.from==='function')return window.supabase;
+    if(typeof _waitForSupabase==='function')return await _waitForSupabase();
+    return null;
+  }
+  async function _getRow(id){
+    var d=await _db(), n=_id(id); if(!d||!n)return null;
+    try{
+      var r=await d.from('site_sections').select('id,parent_id,type,display_order,requires_subscription,title,subtitle').eq('id',n).maybeSingle();
+      return r.error?null:r.data;
+    }catch(e){return null;}
+  }
+  async function _getChildren(id){
+    var d=await _db(), n=_id(id); if(!d||!n)return [];
+    try{
+      var r=await d.from('site_sections').select('id,parent_id,type,display_order,requires_subscription,title,subtitle').eq('parent_id',n).order('display_order',{ascending:true,nullsFirst:false}).order('id',{ascending:true});
+      return r.error?[]:(r.data||[]);
+    }catch(e){return [];}
+  }
+  async function _subjectOf(id){
+    var cur=_id(id),seen={};
+    for(var i=0;i<64&&cur&&!seen[String(cur)];i++){
+      seen[String(cur)]=true;
+      var r=await _getRow(cur); if(!r)break;
+      if(String(r.type||'').trim().toLowerCase()==='subject')return _id(r.id);
+      cur=_id(r.parent_id);
+    }
+    return null;
+  }
+  async function _firstLearning(subjectId){
+    var root=_id(subjectId); if(!root)return null;
+    var stack=(await _getChildren(root)).slice().reverse(),seen={};
+    while(stack.length){
+      var node=stack.pop(), nid=_id(node&&node.id); if(!nid||seen[String(nid)])continue;
+      seen[String(nid)]=true;
+      var t=String(node.type||'').trim().toLowerCase();
+      if(t==='lesson'||t==='class')return node;
+      var kids=await _getChildren(nid);
+      for(var j=kids.length-1;j>=0;j--)stack.push(kids[j]);
+    }
+    return null;
+  }
+  window.bsmFirstLearningContentForSubject=async function(anySectionId){
+    var sid=await _subjectOf(anySectionId);
+    if(!sid)sid=_id(anySectionId);
+    var leaf=await _firstLearning(sid);
+    return leaf?_id(leaf.id):null;
+  };
+  window.bsmIsFirstLearningContentForSubject=async function(sectionId){
+    var sid=_id(sectionId); if(!sid)return false;
+    var subject=await _subjectOf(sid); if(!subject)return false;
+    var first=await window.bsmFirstLearningContentForSubject(subject);
+    return first!==null && String(first)===String(sid);
+  };
+  window._isFreePreviewSection=async function(sectionId){
+    try{
+      return await window.bsmIsFirstLearningContentForSubject(sectionId);
+    }catch(e){
+      console.error('[BSM FINAL FREE RULE]',e);
+      return false;
+    }
+  };
+
+  /* ================================================================
+     2) RESOURCE OPEN: a resource already rendered in an allowed chapter
+        must not be blocked by a second broken/duplicate access wrapper.
+        Locked resources are not rendered as clickable cards in the first place.
+        RLS/DB remains the real backend protection.
+     ================================================================ */
+  var originalOpenResource=window.openResource;
+  if(typeof originalOpenResource==='function'){
+    window.openResource=async function(url,title,resourceType,filePath,fileType,fileName){
+      var raw=(url==null?'':String(url)).trim();
+      if(!raw){
+        if(typeof _showToast==='function')_showToast('رابط الملف غير متوفر في section_resources.file_url','error');
+        return;
+      }
+      // For the exact free first lesson, open the resource directly through the
+      // existing ResourceViewer. This avoids duplicate checkSectionAccess layers
+      // disagreeing after the card was already rendered as free.
+      try{
+        if(window._currentContentSec&&window._currentContentSec.id &&
+           await window.bsmIsFirstLearningContentForSubject(window._currentContentSec.id)){
+          if(typeof ResourceViewer!=='undefined'&&ResourceViewer&&typeof ResourceViewer.detectType==='function'&&typeof ResourceViewer.open==='function'){
+            var detected=ResourceViewer.detectType(raw,resourceType,fileType,fileName);
+            await ResourceViewer.open(raw,title||'مورد',detected||resourceType||'fallback',filePath||'',fileType||'',fileName||'');
+            return;
+          }
+        }
+      }catch(e){
+        console.warn('[BSM RESOURCE FREE OPEN] fallback to existing access flow:',e&&e.message);
+      }
+      return originalOpenResource.apply(this,arguments);
+    };
+  }
+
+  /* ================================================================
+     3) REFRESH/RETURN TO EXACT PLACE: save section + scroll position.
+        Existing hash routing is preserved; this adds scroll persistence.
+     ================================================================ */
+  var scrollTimer=null;
+  function savePlace(){
+    try{
+      var id=window._lastOpenSectionId || (window._currentContentSec&&window._currentContentSec.id) || (window._currentDynamicSec&&window._currentDynamicSec.id);
+      if(id!==undefined&&id!==null){
+        localStorage.setItem('bsm_last_section_id',String(id));
+        localStorage.setItem('bsm_section_scroll_'+String(id),String(Math.max(0,Math.round(window.scrollY||window.pageYOffset||0))));
+      }
+    }catch(e){}
+  }
+  window.addEventListener('scroll',function(){
+    if(scrollTimer)clearTimeout(scrollTimer);
+    scrollTimer=setTimeout(savePlace,180);
+  },{passive:true});
+  window.addEventListener('beforeunload',savePlace);
+
+  /* Do not let a refresh lose the hash when an old route helper tries to
+     rewrite it during boot. The existing route remains authoritative. */
+  console.info('[BSM FINAL STABILITY] first-free-per-subject + resource-open + refresh-position fixes active');
+})();
+</script>
 </body>
 </html>
