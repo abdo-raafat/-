@@ -2940,8 +2940,38 @@ img, video {
 
     m.style.display = 'flex';
 
-    // Android WebView: أعد تحميل الفيديو بعد إظهار الـmodal؛ بعض WebViews
-    // لا تبدأ في جلب source بينما العنصر داخل display:none.
+    // إصلاح تشغيل فيديو شرح لوحة تحكم أدمن الكورس فقط:
+    // الرابط الحالي Uploadcare MP4 مباشر وصالح كـHTML5 video. لا نغيّر الرابط
+    // ولا ننشئ Video Element جديد. نبدأ التشغيل من نفس نقرة المستخدم، لأن
+    // Android/iPhone قد يرفض play() إذا تم استدعاؤه لاحقًا خارج user gesture.
+    var courseVideo = (id === 'bsm-course-ad-modal') ? document.getElementById('bsm-course-ad-video') : null;
+    if (courseVideo) {
+      try {
+        courseVideo.setAttribute('playsinline', '');
+        courseVideo.setAttribute('webkit-playsinline', '');
+        courseVideo.playsInline = true;
+        courseVideo.preload = 'auto';
+        var courseSource = courseVideo.querySelector('source');
+        var courseSrc = courseVideo.getAttribute('src') || (courseSource && courseSource.getAttribute('src')) || '';
+        if (courseSrc && !courseVideo.currentSrc) {
+          courseVideo.src = courseSrc;
+        }
+        // play() هنا ما زال داخل نفس click handler الخاص بـ"مشاهدة الشرح".
+        var playPromise = courseVideo.play();
+        if (playPromise && typeof playPromise.catch === 'function') {
+          playPromise.catch(function (err) {
+            console.warn('[BSM Course Guide Video] play() blocked/failed:', err);
+            // لا نعرض رسالة خطأ إلا لو فشل تحميل الميديا فعليًا؛ المتصفح قد
+            // يرفض التشغيل التلقائي، وفي هذه الحالة controls تظل متاحة للمستخدم.
+          });
+        }
+      } catch (e) {
+        console.warn('[BSM Course Guide Video] start failed:', e);
+      }
+      return;
+    }
+
+    // باقي فيديوهات المودال الموجودة بالموقع تظل على سلوكها الحالي بدون أي تعديل.
     var vids = m.querySelectorAll('video');
     for (var i = 0; i < vids.length; i++) {
       var v = vids[i];
@@ -5433,9 +5463,10 @@ function buildContentHTML(contentItems, gate) {
     const displayUrl = item.url || item.file_url || '';
     if (item.content_type === 'video') {
       const safeUrl = displayUrl.replace(/'/g,"\'");
+      const safePath = (item.file_path || '').replace(/'/g, "\\'");
       const safeTitle = (item.title || 'فيديو شرح').replace(/'/g,"\'");
       html += `
-        <div class="video-placeholder" ${displayUrl ? `onclick="openResource('${safeUrl}','${safeTitle}','video')"` : ''} style="margin-bottom:18px">
+        <div class="video-placeholder" ${displayUrl ? `onclick="openResource('${safeUrl}','${safeTitle}','video','${safePath}')"` : ''} style="margin-bottom:18px">
           <div class="play-btn">▶</div>
           <p style="font-size:1rem;font-weight:700">${item.title || 'فيديو شرح'}</p>
           ${item.description ? `<p style="font-size:.82rem;opacity:.7;margin-top:6px">${item.description}</p>` : ''}
@@ -5450,10 +5481,11 @@ function buildContentHTML(contentItems, gate) {
     } else {
       const icon = item.icon || (item.content_type === 'pdf' ? '📄' : item.content_type === 'image' ? '🖼️' : item.content_type === 'link' ? '🔗' : '📌');
       const safeUrl = displayUrl.replace(/'/g,"\'");
+      const safePath = (item.file_path || '').replace(/'/g, "\\'");
       const safeTitle = (item.title || '').replace(/'/g,"\'");
       const safeType = (item.content_type || '').replace(/'/g,"\'");
       html += `
-        <div class="resource-item" ${displayUrl ? `onclick="openResource('${safeUrl}','${safeTitle}','${safeType}')"` : ''} style="${displayUrl ? 'cursor:pointer' : ''};margin-bottom:10px;padding:18px 22px;">
+        <div class="resource-item" ${displayUrl ? `onclick="openResource('${safeUrl}','${safeTitle}','${safeType}','${safePath}','${safeFileType}','${safeFileName}')"` : ''} style="${displayUrl ? 'cursor:pointer' : ''};margin-bottom:10px;padding:18px 22px;">
           <div class="ri-icon" style="font-size:2rem">${icon}</div>
           <div class="ri-info">
             <h5 style="font-size:1rem;font-weight:800;color:var(--primary)">${item.title || ''}</h5>
@@ -5493,7 +5525,8 @@ function buildResourcesInsideArea(resources, gate) {
     const safeUrl = (r.file_url || '').replace(/'/g,"\'").replace(/"/g,'&quot;');
     const safeTitle = (r.title || 'مورد').replace(/'/g,"\'");
     const safeType = (r.resource_type || '').replace(/'/g,"\'");
-    const clickHandler = r.file_url ? `onclick="openResource('${safeUrl}','${safeTitle}','${safeType}')"` : '';
+    const safePath = (r.file_path || '').replace(/'/g, "\\'");
+    const clickHandler = r.file_url ? `onclick="openResource('${safeUrl}','${safeTitle}','${safeType}','${safePath}','${safeFileType}','${safeFileName}')"` : '';
     const hasLink = !!r.file_url;
     return `
       <div ${clickHandler} style="
@@ -5564,7 +5597,7 @@ function renderResourceCards(containerId, items, gate) {
     const safeType = (item.content_type || '').replace(/'/g,"\'");
     return `
     <div class="link-card lc-blue" style="cursor:${item.url ? 'pointer' : 'default'}"
-         ${item.url ? `onclick="openResource('${safeUrl}','${safeTitle}','${safeType}')"` : ''}>
+         ${item.url ? `onclick="openResource('${safeUrl}','${safeTitle}','${safeType}','${safePath}','${safeFileType}','${safeFileName}')"` : ''}>
       <div class="lc-top">
         <div class="lc-icon">${item.icon || '📌'}</div>
         <div class="lc-info">
@@ -5572,7 +5605,7 @@ function renderResourceCards(containerId, items, gate) {
           <p>${item.description || ''}</p>
         </div>
       </div>
-      ${item.url ? `<div class="lc-footer"><span class="lc-url">${item.url}</span><button class="lc-btn" style="background:linear-gradient(135deg,#1a3a5c,#2471a3);color:#fff;border:none;cursor:pointer;font-family:inherit;" onclick="event.stopPropagation();openResource('${safeUrl}','${safeTitle}','${safeType}')">عرض ▶</button></div>` : ''}
+      ${item.url ? `<div class="lc-footer"><span class="lc-url">${item.url}</span><button class="lc-btn" style="background:linear-gradient(135deg,#1a3a5c,#2471a3);color:#fff;border:none;cursor:pointer;font-family:inherit;" onclick="event.stopPropagation();openResource('${safeUrl}','${safeTitle}','${safeType}','${safePath}','${safeFileType}','${safeFileName}')">عرض ▶</button></div>` : ''}
     </div>`}).join('');
   container.innerHTML = html || `<div style="grid-column:1/-1;text-align:center;padding:30px;color:#999">لا يوجد محتوى حالياً</div>`;
 }
@@ -5619,11 +5652,14 @@ function buildResourcesHTML(resources, gate) {
     const safeUrl = (r.file_url || '').replace(/'/g,"\'").replace(/"/g,'&quot;');
     const safeTitle = (r.title || 'مورد').replace(/'/g,"\'");
     const safeType = (r.resource_type || '').replace(/'/g,"\'");
+    const safePath = (r.file_path || '').replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+    const safeFileType = (r.file_type || '').replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+    const safeFileName = (r.file_name || '').replace(/\\/g, "\\\\").replace(/'/g, "\\'");
     const typeLabel = _resourceTypeLabel(r);
     const desc = (r.description || typeLabel || '').toString();
     return `
     <div class="link-card lc-blue" style="cursor:${r.file_url ? 'pointer' : 'default'}"
-         ${r.file_url ? `onclick="openResource('${safeUrl}','${safeTitle}','${safeType}')"` : ''}>
+         ${r.file_url ? `onclick="openResource('${safeUrl}','${safeTitle}','${safeType}','${safePath}','${safeFileType}','${safeFileName}')"` : ''}>
       <div class="lc-top">
         <div class="lc-icon">${icon}</div>
         <div class="lc-info">
@@ -5631,7 +5667,7 @@ function buildResourcesHTML(resources, gate) {
           <p>${desc}</p>
         </div>
       </div>
-      ${r.file_url ? `<div class="lc-footer"><span class="lc-url">${typeLabel || ''}</span><button class="lc-btn" style="background:linear-gradient(135deg,#1a3a5c,#2471a3);color:#fff;border:none;cursor:pointer;font-family:inherit;" onclick="event.stopPropagation();openResource('${safeUrl}','${safeTitle}','${safeType}')">عرض ▶</button></div>` : ''}
+      ${r.file_url ? `<div class="lc-footer"><span class="lc-url">${typeLabel || ''}</span><button class="lc-btn" style="background:linear-gradient(135deg,#1a3a5c,#2471a3);color:#fff;border:none;cursor:pointer;font-family:inherit;" onclick="event.stopPropagation();openResource('${safeUrl}','${safeTitle}','${safeType}','${safePath}','${safeFileType}','${safeFileName}')">عرض ▶</button></div>` : ''}
     </div>`;
   }).join('');
   return `
@@ -5734,7 +5770,7 @@ var BSM_AI = (function() {
       var qs=await Promise.all([
         db.from('site_sections').select('id,title,subtitle,category,parent_id,type,display_order,requires_subscription').or(orTitle(['title','subtitle'])).limit(20),
         db.from('section_content').select('id,title,content_type,section_id,url,display_order').or(orTitle(['title'])).limit(20),
-        db.from('section_resources').select('id,title,resource_type,section_id,file_url,display_order').or(orTitle(['title'])).limit(20)
+        db.from('section_resources').select('id,title,resource_type,section_id,file_url,file_path,file_type,file_name,display_order').or(orTitle(['title'])).limit(20)
       ]);
       if(qs[0].error)throw qs[0].error;
       if(qs[1].error)throw qs[1].error;
@@ -6025,6 +6061,113 @@ INSERT INTO site_sections (title, subtitle, icon, gradient_color, tags, category
 window.runDiagnostics = runSupabaseDiagnostics;
 window.printSeedSQL  = printSeedSQL;
 
+// ==================== RESOURCE URL RESOLUTION ====================
+// يحل روابط ملفات Supabase Storage بشكل آمن قبل إرسالها إلى ResourceViewer.
+// لا يغيّر الروابط الخارجية، ولا يفتح محتوى غير مصرح به؛ RLS/Storage Policies
+// تظل هي طبقة الحماية الفعلية. إذا كان الملف مرفوعاً عبر file_path نستخدمه
+// كمصدر حقيقة ونولد Signed URL مؤقتاً بدلاً من الاعتماد على Public URL.
+async function _resolveResourceUrl(rawUrl, filePath) {
+  /*
+   * BSM RESOURCE URL AUTHORITY — 2026-09-04
+   *
+   * section_resources.file_url is the canonical attachment URL.
+   * IMPORTANT: file_path must NEVER override a valid external file_url.
+   *
+   * This specifically prevents an old/stale Supabase Storage path from
+   * replacing a correct Cloudinary/YouTube URL and also prevents legacy
+   * ucarecd.net paths from being resurrected during opening.
+   *
+   * file_path remains supported only as a fallback when file_url is empty,
+   * or when file_url itself is a Supabase Storage URL that needs signing.
+   */
+  var original = (rawUrl == null ? '' : String(rawUrl)).trim();
+  var path = (filePath == null ? '' : String(filePath)).trim();
+  var db = window.supabase;
+
+  if (!original && !path) return '';
+
+  // A valid external URL from section_resources.file_url wins.
+  // Do not replace Cloudinary, YouTube, Vimeo, Dailymotion, Fembed, etc.
+  // with file_path.
+  if (original && /^https?:\/\//i.test(original)) {
+    var lowerOriginal = original.toLowerCase();
+
+    // Existing signed URL: use it exactly as stored.
+    if (/\/storage\/v1\/object\/sign\//i.test(original)) return original;
+
+    // External providers are always authoritative.
+    var isExternalMedia =
+      /cloudinary\.com/i.test(lowerOriginal) ||
+      /youtube\.com|youtu\.be/i.test(lowerOriginal) ||
+      /vimeo\.com/i.test(lowerOriginal) ||
+      /dailymotion\.com/i.test(lowerOriginal) ||
+      /fembed\.co|fembed-hd\.com|fembed\.net/i.test(lowerOriginal) ||
+      /\.ucarecd\.net/i.test(lowerOriginal);
+
+    if (isExternalMedia) return original;
+
+    // For any non-Supabase HTTP(S) URL, file_url is still authoritative.
+    if (!/\/storage\/v1\/object\//i.test(original)) return original;
+
+    // Supabase Storage URL: sign it only when it is actually a Supabase
+    // storage object URL. Otherwise leave the original URL untouched.
+    if (db) {
+      try {
+        var m = original.match(/\/storage\/v1\/object\/(?:public|sign|authenticated)\/([^/]+)\/(.+)$/i);
+        if (m) {
+          var bucketFromUrl = decodeURIComponent(m[1]);
+          var objectPathFromUrl = decodeURIComponent(m[2].split('?')[0]);
+          if (bucketFromUrl && objectPathFromUrl) {
+            var signedFromUrl = await db.storage.from(bucketFromUrl).createSignedUrl(objectPathFromUrl, 3600);
+            if (!signedFromUrl.error && signedFromUrl.data && signedFromUrl.data.signedUrl) {
+              return signedFromUrl.data.signedUrl;
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('[Resource URL] Supabase file_url signing failed; using original file_url:', e && e.message);
+      }
+    }
+    return original;
+  }
+
+  // No file_url: preserve support for current Supabase Storage attachments
+  // that are represented only by file_path.
+  if (path && db) {
+    try {
+      var bucket = (typeof ATT_BUCKET === 'string' && ATT_BUCKET) ? ATT_BUCKET : 'files';
+      var objectPath = path.replace(/^\/+/, '');
+      if (objectPath) {
+        var signed = await db.storage.from(bucket).createSignedUrl(objectPath, 3600);
+        if (!signed.error && signed.data && signed.data.signedUrl) {
+          console.info('[Resource URL] Signed URL generated from file_path fallback:', {
+            bucket: bucket, path: objectPath
+          });
+          return signed.data.signedUrl;
+        }
+      }
+    } catch (e) {
+      console.warn('[Resource URL] file_path fallback failed:', e && e.message);
+    }
+  }
+
+  return original;
+}
+
+window._resolveResourceUrl = _resolveResourceUrl;
+window._bsmDiagnoseResourceUrl = async function(rawUrl){
+  var u=String(rawUrl||'').trim();
+  var out={url:u,validProtocol:/^https?:\/\//i.test(u),host:null,kind:'unknown'};
+  try{out.host=new URL(u).host;}catch(e){out.kind='invalid_url';return out;}
+  var l=u.toLowerCase().split('?')[0];
+  if(/\.pdf$/.test(l))out.kind='pdf';
+  else if(/\.(mp4|webm|ogg|mov|avi|mkv)$/.test(l))out.kind='video';
+  else if(/\.(mp3|wav|aac|flac|m4a)$/.test(l))out.kind='audio';
+  else if(/\.(jpe?g|png|webp|gif|svg|bmp)$/.test(l))out.kind='image';
+  if(/\.ucarecd\.net$/i.test(out.host))out.warning='ucarecd.net host failed DNS in the deployment environment; re-upload/replace this resource from Admin instead of changing the URL automatically.';
+  return out;
+};
+
 // ==================== RESOURCE VIEWER COMPONENT ====================
 
 /**
@@ -6034,65 +6177,58 @@ window.printSeedSQL  = printSeedSQL;
 const ResourceViewer = (function() {
 
   // ── تحديد نوع الملف ──────────────────────────────────────────────
-  function detectType(url, resourceType) {
+  function detectType(url, resourceType, fileType, fileName) {
     if (!url) return 'fallback';
-    const lower = url.toLowerCase().split('?')[0];
 
-    // 🚨 ROOT CAUSE FIX (طلب "Root-Cause Fix" — الفيديو كان بيتصنّف
-    // "🌐 عرض داخلي" (external_link) بدل فيديو): بعض الموارد كانت مسجّلة في
-    // قاعدة البيانات بـresource_type='link'/'html' حتى لو كان الرابط فعليًا
-    // فيديو Fembed/JWPlayer (لأن لوحة التحكم مفيهاش خيار "فيديو مُضمَّن"
-    // منفصل). لو الـresourceType hint قال 'html'/'link' لكن الرابط نفسه
-    // فيه دومين Fembed معروف، بنتجاهل الـhint الخاطئ ونعامله كفيديو حقيقي —
-    // ده اللي بيضمن ظهور زر "⛶ عرضي" وiframe بـdata-fembed-embed="1" و
-    // allow="fullscreen" الصحيحة، بدل iframe عادي من غير أي صلاحية fullscreen
-    // خالص (وده كان السبب الجذري الحقيقي وراء Permissions Policy error، مش
-    // أي منطق جوه _toggleLandscape()).
-    var isFembedUrl = /fembed\.co|fembed-hd\.com|fembed\.net/.test(url);
+    const raw = String(url).trim();
+    const lower = raw.toLowerCase().split('#')[0];
+    const path = lower.split('?')[0];
 
-    // resource_type hint
-    if (resourceType) {
-      const rt = resourceType.toLowerCase();
-      if (rt === 'pdf')   return 'pdf';
-      if (rt === 'video') return detectVideoType(url);
-      if (rt === 'audio') return 'audio';
-      if (rt === 'image') return 'image';
-      if (rt === 'html' || rt === 'link') {
-        if (isFembedUrl) return 'fembed';
-        // كل الروابط تُعرض داخلياً في iframe بدون استثناء
-        return 'external_link';
+    const rt = String(resourceType || '').toLowerCase().trim();
+    const ft = String(fileType || '').toLowerCase().trim();
+    const fn = String(fileName || '').toLowerCase().trim();
+
+    // Provider URLs first: file_url remains the source of truth.
+    if (/youtube\.com\/watch|youtu\.be\//i.test(raw) || /youtube\.com\/embed\//i.test(raw)) return 'youtube';
+    if (/vimeo\.com\/(?:\d+|video\/)/i.test(raw)) return 'vimeo';
+    if (/dailymotion\.com\/video\//i.test(raw)) return 'dailymotion';
+    if (/fembed\.co|fembed-hd\.com|fembed\.net/i.test(raw)) return 'fembed';
+
+    // MIME metadata is especially important for Cloudinary, where audio can
+    // legitimately be served through a /video/upload/ URL.
+    if (ft === 'application/pdf' || rt === 'pdf') return 'pdf';
+    if (ft.indexOf('audio/') === 0 || rt === 'audio') return 'audio';
+    if (ft.indexOf('image/') === 0 || rt === 'image') return 'image';
+    if (ft.indexOf('video/') === 0 || rt === 'video') return 'video_direct';
+
+    // Extension from the actual file_url, then from the stored file name.
+    if (/\.pdf(?:$|[?#])/i.test(lower) || /\.pdf$/i.test(fn)) return 'pdf';
+    if (/\.(mp4|webm|ogg|mov|avi|mkv|m4v|3gp)(?:$|[?#])/i.test(lower) ||
+        /\.(mp4|webm|ogg|mov|avi|mkv|m4v|3gp)$/i.test(fn)) return 'video_direct';
+    if (/\.(mp3|wav|aac|flac|m4a|oga)(?:$|[?#])/i.test(lower) ||
+        /\.(mp3|wav|aac|flac|m4a|oga)$/i.test(fn)) return 'audio';
+    if (/\.(jpe?g|png|webp|gif|svg|bmp|avif)(?:$|[?#])/i.test(lower) ||
+        /\.(jpe?g|png|webp|gif|svg|bmp|avif)$/i.test(fn)) return 'image';
+
+    // Cloudinary delivery URLs:
+    // /video/upload/ can mean video OR audio; the MIME/resource metadata
+    // above decides audio when applicable.
+    if (/cloudinary\.com/i.test(raw)) {
+      if (/\/image\//i.test(raw)) return 'image';
+      if (/\/raw\//i.test(raw)) {
+        if (/\.pdf(?:$|[?#])/i.test(lower) || rt === 'pdf' || ft === 'application/pdf') return 'pdf';
+        if (/\.(mp3|wav|aac|flac|m4a|oga)(?:$|[?#])/i.test(lower)) return 'audio';
       }
+      if (/\/video\//i.test(raw)) return 'video_direct';
     }
 
-    if (isFembedUrl) return 'fembed';
+    if (/drive\.google\.com/i.test(raw)) return 'gdrive_pdf';
 
-    // extension
-    if (lower.endsWith('.pdf'))                         return 'pdf';
-    if (/\.(mp4|webm|ogg|mov|avi|mkv)$/.test(lower))  return 'video_direct';
-    if (/\.(mp3|wav|ogg|aac|flac|m4a)$/.test(lower))  return 'audio';
-    if (/\.(jpe?g|png|webp|gif|svg|bmp)$/.test(lower)) return 'image';
-    if (/\.html?$/.test(lower))                         return 'html';
+    if (rt === 'fembed') return 'fembed';
+    if (rt === 'html') return 'html';
+    if (rt === 'link' || rt === 'external_link') return 'external_link';
 
-    // YouTube
-    if (/youtube\.com\/watch|youtu\.be\//.test(url))   return 'youtube';
-    if (/youtube\.com\/embed\//.test(url))              return 'youtube';
-
-    // Google Drive — نحوّل الرابط لـ direct PDF embed
-    if (/drive\.google\.com/.test(url))                return 'gdrive_pdf';
-
-    // Cloudinary
-    if (/cloudinary\.com/.test(url)) {
-      // PDF أولاً — حتى لو الرابط فيه /image/upload/ لأن Cloudinary بيخزن PDF جوه image
-      if (lower.endsWith('.pdf') || /\.pdf[?#]/.test(lower)) return 'pdf';
-      if (/\/video\//.test(url))                              return 'video_direct';
-      if (/\/image\//.test(url))                              return 'image';
-      if (/\/raw\//.test(url))                                return 'pdf';
-    }
-
-    // YouTube shorts / Vimeo / Dailymotion
-    if (/vimeo\.com\/\d+/.test(url))                   return 'vimeo';
-    if (/dailymotion\.com\/video/.test(url))            return 'dailymotion';
-
+    if (/\.html?(?:$|[?#])/i.test(path)) return 'html';
     return 'fallback';
   }
 
@@ -6384,9 +6520,33 @@ const ResourceViewer = (function() {
   function escUrl(u) { return (u || '').replace(/"/g, '%22').replace(/'/g, '%27'); }
   function escHtml(s) { return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
+  // Direct PDF fallback: PDF.js needs CORS permission, while a native browser
+  // PDF frame can often render the same public URL without CORS. This fallback
+  // never changes the URL and never bypasses the existing access gate.
+  function openDirectPdfFallback(url, title, reason) {
+    close();
+    var overlay = document.createElement('div');
+    overlay.className = 'rv-overlay';
+    overlay.id = 'rv-overlay';
+    overlay.innerHTML = '<div class="rv-modal" id="rv-modal" role="dialog" aria-modal="true">' +
+      '<div class="rv-header"><span style="font-size:1.4rem">📄</span><span class="rv-title">'+escHtml(title||'ملف PDF')+'</span><button class="rv-close" type="button" id="rv-pdf-fallback-close">✕</button></div>' +
+      '<div class="rv-body" style="padding:0;background:#fff;"><iframe id="rv-pdf-fallback-frame" class="rv-embed-frame" src="'+escUrl(url)+'" style="display:block;width:100%;height:100%;min-height:70vh;border:0;background:#fff;" title="'+escHtml(title||'PDF')+'"></iframe></div>' +
+      '<div class="rv-footer"><span style="font-size:.75rem;color:#888">عرض PDF مباشر داخل المتصفح</span></div></div>';
+    overlay.addEventListener('click',function(e){if(e.target===overlay)close();});
+    document.body.appendChild(overlay);
+    document.getElementById('rv-pdf-fallback-close').onclick=close;
+    document.body.style.overflow='hidden';
+    console.warn('[ResourceViewer][PDF FALLBACK] using direct PDF frame:', reason && (reason.message||reason));
+  }
+
   // ── الدالة الرئيسية: open ────────────────────────────────────────
-  function open(url, title, resourceType) {
+  async function open(url, title, resourceType, filePath, fileType, fileName) {
     if (!url) return;
+
+    // حل ملفات Supabase Storage قبل إنشاء الـViewer. لا نغيّر الروابط الخارجية.
+    var resolvedUrl = await _resolveResourceUrl(url, filePath);
+    if (!resolvedUrl) throw new Error('رابط المورد غير صالح');
+    url = resolvedUrl;
 
     // إزالة أي modal موجود
     close();
@@ -6394,7 +6554,10 @@ const ResourceViewer = (function() {
     // ✅ حماية من رابط غير صالح (فارغ/بدون بروتوكول صحيح) — قبل محاولة أي عرض
     //    (PDF عنده نفس الحماية داخل NativePDFViewer، وهنا نغطي باقي الأنواع)
     var isValidUrl = /^https?:\/\//i.test(url) || url.indexOf('/') === 0 || url.indexOf('supabase') !== -1;
-    const type = isValidUrl ? detectType(url, resourceType) : 'invalid';
+    const type = isValidUrl ? detectType(url, resourceType, fileType, fileName) : 'invalid';
+    if (isValidUrl && /^https?:\/\/[^/]+\.ucarecd\.net\//i.test(url)) {
+      console.error('[ResourceViewer][INVALID UPLOADCARE HOST] رابط ucarecd.net غير قابل للحل DNS:', url);
+    }
 
     // ✅ FIX (بلاغ "بيعوق اووي... لما بدوس X بيظهرلي الملف عادي"): كان بيتفتح
     // rv-overlay خارجي مالوش شغلانة إلا إنه يعرض سبنر "جاري فتح الملف..."،
@@ -6409,10 +6572,12 @@ const ResourceViewer = (function() {
     // ما يخلص التحميل يظهر مباشرة بدون أي تدخل يدوي.
     if (type === 'pdf' || type === 'gdrive_pdf') {
       var pdfUrl = (type === 'gdrive_pdf') ? toEmbedUrl(url, 'gdrive_pdf') : url;
-      Promise.resolve(NativePDFViewer.open(pdfUrl, title)).catch(function(err) {
-        console.error('[ResourceViewer pdf] تعذر فتح الملف:', err);
-        if (typeof _showToast === 'function') _showToast('❌ تعذر فتح ملف PDF، حاول مرة أخرى', 'error');
-      });
+      try {
+        await NativePDFViewer.open(pdfUrl, title);
+      } catch (err) {
+        console.error('[ResourceViewer pdf] PDF.js failed; trying direct browser PDF renderer:', err);
+        openDirectPdfFallback(pdfUrl, title, err);
+      }
       return;
     }
 
@@ -7127,141 +7292,68 @@ window.ResourceViewer = ResourceViewer;
 // تضمن الآن: منع الفتح المزدوج (double-click)، try/catch/finally حول أي عملية
 // غير متزامنة (مثل انتظار رابط PDF الموقّع)، ورسالة خطأ واضحة بدل ترك الزر معلّقاً.
 window._resourceOpenBusy = false;
-async function openResource(url, title, resourceType) {
+async function openResource(url, title, resourceType, filePath, fileType, fileName) {
+  // Canonical attachment source: section_resources.file_url. Never invent or
+  // rewrite an external Cloudinary/YouTube/media URL here.
+  url = (url == null ? '' : String(url)).trim();
+  title = title == null ? 'مورد' : String(title);
+  resourceType = resourceType == null ? '' : String(resourceType);
+  filePath = filePath == null ? '' : String(filePath);
+  fileType = fileType == null ? '' : String(fileType);
+  fileName = fileName == null ? '' : String(fileName);
   if (!url) {
-    if (typeof _showToast === 'function') _showToast('رابط الملف غير متوفر', 'error');
+    if (typeof _showToast === 'function') _showToast('رابط الملف غير متوفر في section_resources.file_url', 'error');
     return;
   }
 
-  // Access gate at the single resource entry point. It uses the same current
-  // section gate; it does not replace server-side RLS/signed-URL enforcement.
   if (window._currentContentSec && window._currentContentSec.id && typeof window.checkSectionAccess === 'function') {
     try {
-      var _resourceGate = await window.checkSectionAccess(Number(window._currentContentSec.id));
-      if (_resourceGate) {
-        if (typeof window._openLockNoticeModal === 'function') window._openLockNoticeModal(_resourceGate);
+      var gate = await window.checkSectionAccess(Number(window._currentContentSec.id));
+      if (gate) {
+        if (typeof window._openLockNoticeModal === 'function') window._openLockNoticeModal(gate);
         else if (typeof _showToast === 'function') _showToast('🔒 هذا المحتوى يحتاج الصلاحية المناسبة', 'warning');
         return;
       }
-    } catch (_resourceGateErr) {
-      console.error('[openResource][ACCESS]', _resourceGateErr);
-      if (typeof _showToast === 'function') _showToast('❌ تعذر التحقق من صلاحية المحتوى', 'error');
+    } catch (accessErr) {
+      // Do not turn an optional override/RPC failure into an unconditional
+      // success. The authoritative DB access check/RLS remains in force.
+      console.error('[openResource][ACCESS CHECK FAILED]', accessErr);
+      if (typeof _showToast === 'function') _showToast('❌ تعذر التحقق من صلاحية هذا المورد. أعد المحاولة.', 'error');
       return;
     }
   }
 
-  // ── منع الفتح المزدوج: لو في عملية فتح شغّالة بالفعل، تجاهل الضغطة الجديدة ──
+  try {
+    var resolved = await _resolveResourceUrl(url, filePath);
+    if (resolved) url = String(resolved).trim();
+  } catch (resolveErr) {
+    console.warn('[openResource][URL_RESOLVE] using original file_url:', resolveErr && resolveErr.message);
+  }
+
   if (window._resourceOpenBusy) return;
   window._resourceOpenBusy = true;
-  // شبكة أمان: حتى لو حدث خطأ غير متوقع (استثناء لم يُلتقط لأي سبب)، لا يبقى
-  // القفل مُفعّلاً للأبد ويمنع كل الأزرار بعدها — يُفك تلقائياً كحد أقصى.
-  var _unlockSafety = setTimeout(function() { window._resourceOpenBusy = false; }, 15000);
-
+  var safety = setTimeout(function(){ window._resourceOpenBusy = false; }, 15000);
   try {
-    var rt = (resourceType || '').toLowerCase();
+    var detected = ResourceViewer && typeof ResourceViewer.detectType === 'function'
+      ? ResourceViewer.detectType(url, resourceType) : null;
+    var rt = String(resourceType || '').toLowerCase().trim();
 
-    // ── الروابط الخارجية (link): افتح في تبويب جديد مباشرةً ──
-    if (rt === 'link' || rt === 'external_link') {
-      // استخدم المرجع الأصلي لـ window.open حتى لا يدخل الرابط في اعتراض
-      // Internal Viewer مرة ثانية ويعمل recursion/lock على زر العرض.
-      var nativeOpen = window._origWindowOpen || window.open;
-      nativeOpen.call(window, url, '_blank', 'noopener,noreferrer');
+    if (rt === 'form' || rt === 'quiz' || rt === 'exam' || rt === 'test' ||
+        /(^|\.)forms\.gle\//i.test(url) || /docs\.google\.com\/forms\//i.test(url) ||
+        /forms\.office\.com/i.test(url) || /quizizz\.com|kahoot\.it|classroom\.google\.com/i.test(url) ||
+        /كويز|quiz|أسئلة|اسئلة|امتحان|اختبار/.test(title)) {
+      var formOpen = window._origWindowOpen || window.open;
+      formOpen.call(window, url, '_blank', 'noopener,noreferrer');
       return;
     }
 
-    // ── Google Forms / الاختبارات ──
-    // مهم: Google Forms يحتاج سياق صفحة عادي حتى تعمل أزرار
-    // "إرسال" و"عرض النتيجة" والتنقل إلى صفحة score بشكل موثوق.
-    // وضع النموذج داخل iframe sandbox كان يمنع بعض عمليات التنقل/عرض النتيجة
-    // خصوصًا على الموبايل. لذلك نفتح الامتحان في تبويب مستقل مع نفس الرابط
-    // الأصلي، بدون تغيير رابط الامتحان أو بياناته.
-    // ✅ FIX (Aug 2026 — بلاغ "الكويز بدوس عليه ومفيش حاجة بتظهر"): الأدمن panel
-    // مفيهوش خيار "كويز/اختبار" ضمن أنواع المحتوى (فيديو/نص/رابط/PDF فقط)، فأي
-    // كويز بيتضاف بيتسجل بنوع 'link' مش 'form'. النوع 'link' كان بيروح لمسار تاني
-    // (فتح داخل iframe عبر ResourceViewer) وده بالظبط اللي بيفشل بصمت لو منصة
-    // الكويز بترفض الـ embedding (X-Frame-Options) — الـ iframe بيحمّل "onload"
-    // عادي (فمفيش رسالة خطأ) لكن يفضل فاضي تمامًا فيبان للطالب إنه "مفيش حاجة
-    // بتظهر". الحل: نوسّع شرط الفتح في تبويب مستقل (نفس مسار الفورمز الموثوق)
-    // ليشمل أي رابط شكله كويز/اختبار برضو، مش بس Google Forms، مهما كان الـ
-    // resource_type المسجّل. أي رابط زي كده لازم "يخرج" من الموقع في تبويب
-    // مستقل بدل ما يتحط جوه iframe ممكن يترفض بصمت.
-    if (
-      rt === 'form' || rt === 'quiz' || rt === 'exam' || rt === 'test' ||
-      /(^|\.)forms\.gle\//i.test(url) ||
-      /docs\.google\.com\/forms\//i.test(url) ||
-      /forms\.office\.com/i.test(url) ||
-      /quizizz\.com|kahoot\.it|classroom\.google\.com/i.test(url) ||
-      /كويز|quiz|أسئلة|اسئلة|امتحان|اختبار/.test(title || '')
-    ) {
-      // ✅ FIX (Aug 2026): نفس مشكلة فرع الـPDF بالظبط — إنشاء <a> وعمل click()
-      // عليه كان بيتصاد بنفس اعتراض document على مستوى الموقع كله (target=_blank
-      // + رابط خارجي = يتحوّل لعارض داخلي تلقائياً) فمكانش بيفتح تبويب خارجي
-      // حقيقي أبداً، ده اللي كان سبب "بدوس ومفيش حاجة بتظهر" في الكويزات. نفس
-      // الحل: نداء مباشر لـ window.open الأصلي بدل أي عنصر <a> قابل للـ click.
-      var nativeFormOpen = window._origWindowOpen || window.open;
-      nativeFormOpen.call(window, url, '_blank', 'noopener,noreferrer');
-      return;
-    }
-
-    // ── HTML embed: عرض داخل iframe ──
-    if (rt === 'html') {
-      ResourceViewer.open(url, title, 'html');
-      return;
-    }
-
-    // ── PDF: افتحه في عارض PDF الداخلي (NativePDFViewer / PDF.js) ──
-    // ✅ FIX (Aug 2026 v4 — التحديدات/التظليل بتظهر عادي على الكمبيوتر ومش
-    // بتظهر على الموبايل): الفرع القديم كان بيفتح رابط الملف في تبويب خارجي
-    // (window.open) عشان "يسيب" عرض التظليلات لعارض PDF الجاهز في المتصفح/
-    // النظام. المشكلة إن عارض PDF ده مختلف من جهاز لجهاز ومن متصفح لمتصفح —
-    // فبعض عارضات PDF على الموبايل (خصوصاً العارض المدمج جوه بعض المتصفحات
-    // أو تطبيقات فتح الروابط) مبيرسمش الـannotations (highlight/underline)
-    // زي ما بيعمل Chrome/Firefox على الكمبيوتر، فالنتيجة اختلاف فعلي في الشكل
-    // بين الجهازين رغم إن الرابط نفس الرابط بالظبط. الحل الثابت: منعتمدش على
-    // عارض خارجي متغيّر أصلاً — نستخدم عارض PDF.js المدمج جوه المنصة نفسها
-    // (NativePDFViewer عن طريق ResourceViewer.open) على كل الأجهزة بالتساوي،
-    // وده بقى دلوقتي بيرسم التحديدات صراحةً (annotationMode: ENABLE أعلاه)
-    // فيبقى نفس الشكل بالظبط على الموبايل والكمبيوتر لأنه حرفيًا نفس الكود.
-    if (rt === 'pdf' || /\.pdf($|\?)/i.test(url)) {
-      ResourceViewer.open(url, title, 'pdf');
-      return;
-    }
-
-    // ── روابط اجتماعية / خارجية (فيسبوك، واتساب، تيليجرام، ...) ──
-    // لو مش PDF أو فيديو أو صورة — افتحها مباشرة
-    var lower = url.toLowerCase().split('?')[0];
-    // 🚨 ROOT CAUSE (طلب "Root-Cause Fix" — الفيديو بيتفتح كـ"🌐 عرض داخلي"
-    // مش كفيديو أصلًا): الـregex ده كان ناقص دومينات Fembed. أي رابط Fembed
-    // (fembed.co / fembed-hd.com / fembed.net) كان بيرجّع isMedia=false، وده
-    // كان بيخلي السطر تحت يستدعي ResourceViewer.open(url, title, 'html')
-    // ويرمي resourceType الحقيقي ('video') تمامًا — يعني الفيديو كان بيتفتح
-    // كـ iframe عادي (badge "🌐 عرض داخلي")، مش كـ'fembed'. ده اللي كان
-    // بيمنع ظهور زر "⛶ عرضي" أصلًا، وكان بيخلي iframe ده من غير
-    // data-fembed-embed="1" ومن غير "fullscreen" في الـallow attribute —
-    // فأي محاولة Fullscreen من JWPlayer الداخلي (زرار Fullscreen بتاعه هو)
-    // كانت مرفوضة دايمًا من الـPermissions Policy، بغض النظر عن أي إصلاح في
-    // _toggleLandscape()، لأن المسار ده كله ما كانش بيتنفذ خالص لهذا المورد.
-    var isMedia = (
-      /\.(mp4|webm|ogg|mov|avi|mkv|mp3|wav|aac|flac|m4a|jpe?g|png|webp|gif|svg|bmp)$/.test(lower) ||
-      /youtube\.com|youtu\.be|vimeo\.com|dailymotion\.com/.test(url) ||
-      /drive\.google\.com|cloudinary\.com/.test(url) ||
-      /fembed\.co|fembed-hd\.com|fembed\.net/.test(url)
-    );
-
-    if (!isMedia) {
-      ResourceViewer.open(url, title, 'html');
-      return;
-    }
-
-    // ── ميديا: استخدام ResourceViewer ──
-    ResourceViewer.open(url, title, resourceType);
-
+    // URL detection wins over stale DB type hints (link/html/etc.).
+    await ResourceViewer.open(url, title, detected || rt || 'fallback', filePath, fileType, fileName);
   } catch (error) {
-    console.error('[openResource] تعذر فتح المورد:', error);
-    if (typeof _showToast === 'function') _showToast('❌ تعذر فتح المورد، حاول مرة أخرى', 'error');
+    console.error('[openResource] تعذر فتح المورد:', { error: error && error.message, url: url, resourceType: resourceType, title: title });
+    if (typeof _showToast === 'function') _showToast('❌ تعذر فتح المورد — تحقق من رابط file_url وصلاحية الوصول', 'error');
   } finally {
-    // ✅ يُفك القفل دائماً — نجاح أو فشل — فلا يبقى أي زر "عرض" في حالة تعليق.
-    clearTimeout(_unlockSafety);
+    clearTimeout(safety);
     window._resourceOpenBusy = false;
   }
 }
@@ -15780,12 +15872,14 @@ window._origWindowOpen = window.open;
   // ── 3. تخمين نوع الرابط ─────────────────────────────────────────
   function _guessLinkType(url) {
     var lower = (url || '').toLowerCase();
-    if (/\.pdf($|\?|#)/.test(lower) || lower.endsWith('.pdf')) return 'pdf';
-    if (/\.(mp4|webm|ogg|mov|avi|mkv)($|\?|#)/.test(lower))   return 'video';
-    if (/\.(mp3|wav|aac|flac|m4a)($|\?|#)/.test(lower))       return 'audio';
-    if (/\.(jpe?g|png|webp|gif|svg|bmp)($|\?|#)/.test(lower)) return 'image';
-    if (/youtube\.com|youtu\.be/.test(url))                    return 'video';
-    if (/drive\.google\.com/.test(url))                        return 'pdf';
+    if (/\.pdf($|\?|#)/.test(lower)) return 'pdf';
+    if (/\.(mp4|webm|ogg|mov|avi|mkv|m4v|3gp)($|\?|#)/.test(lower)) return 'video';
+    if (/\.(mp3|wav|aac|flac|m4a|oga)($|\?|#)/.test(lower)) return 'audio';
+    if (/\.(jpe?g|png|webp|gif|svg|bmp|avif)($|\?|#)/.test(lower)) return 'image';
+    if (/youtube\.com|youtu\.be|vimeo\.com|dailymotion\.com|fembed\.co|fembed-hd\.com|fembed\.net/.test(url)) return 'video';
+    if (/cloudinary\.com/.test(url) && /\/video\//.test(lower)) return 'video';
+    if (/cloudinary\.com/.test(url) && /\/image\//.test(lower)) return 'image';
+    if (/drive\.google\.com/.test(url)) return 'pdf';
     if (/\.(zip|rar|7z|tar|gz)($|\?|#)/.test(lower))          return 'download_only';
     return 'link'; // HTML/iframe داخلي
   }
@@ -31795,12 +31889,29 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
   async function explicitMode(sectionId){
     var d=db(),id=Number(sectionId); if(!d||!Number.isFinite(id)) return null;
     try{
-      var r=await d.rpc('bsm_nearest_content_override',{p_section_id:id});
-      if(r.error) { console.warn('[BSM EXPLICIT ACCESS] override RPC failed:',r.error); return null; }
-      if(r.data===null||r.data===undefined)return null;
-      return r.data===true?'locked':'open';
+      // Do not depend on an optional RPC for the client-side mirror. Resolve
+      // the real parent_id chain and read the existing access table directly.
+      // This removes the PGRST202/404 failure path while keeping DB/RLS as the
+      // authoritative security boundary.
+      var chain=[],cur=id,seen={};
+      for(var i=0;i<32 && Number.isFinite(cur) && cur>0;i++){
+        if(seen[cur]) break; seen[cur]=true;
+        var sr=await d.from('site_sections').select('id,parent_id').eq('id',cur).maybeSingle();
+        if(sr.error) { console.warn('[BSM EXPLICIT ACCESS] section lookup failed:',sr.error); return null; }
+        if(!sr.data) break;
+        chain.push(Number(sr.data.id));
+        cur=Number(sr.data.parent_id);
+        if(!Number.isFinite(cur)||cur<=0) break;
+      }
+      if(!chain.length)return null;
+      var ar=await d.from('subscription_content_access').select('section_id,requires_subscription').in('section_id',chain);
+      if(ar.error){ console.warn('[BSM EXPLICIT ACCESS] access table lookup failed:',ar.error); return null; }
+      var byId={};(ar.data||[]).forEach(function(x){byId[Number(x.section_id)]=x.requires_subscription===true?'locked':'open';});
+      for(var j=0;j<chain.length;j++){if(Object.prototype.hasOwnProperty.call(byId,chain[j])) return byId[chain[j]];}
+      return null;
     }catch(e){ console.warn('[BSM EXPLICIT ACCESS] override lookup failed:',e); return null; }
   }
+
   window.checkSectionAccess=async function(sectionId){
     try{
       if(window._isSuperAdmin===true||window._currentUserRole==='admin')return null;
@@ -31828,6 +31939,97 @@ if(oldJoin&&!window.__BSM_LIVE_JOIN_CONTRACT_PATCH){
   window.__BSM_LIVE_JOIN_CONTRACT_PATCH=true;
   console.log('[BSM LIVE] token contract hardened: live_class_id + role only; server resolves course_id/room_name');
 }
+})();
+</script>
+
+
+<script>
+/* BSM SUBJECT -> FIRST LEARNING CONTENT RULE: parent_id + display_order only. */
+(function(){
+'use strict';
+if(window.__BSM_SUBJECT_FIRST_LEARNING_FINAL)return;
+window.__BSM_SUBJECT_FIRST_LEARNING_FINAL=true;
+function db(){return window.supabase||null;}
+function n(v){var x=Number(v);return Number.isFinite(x)&&x>0?x:0;}
+function typ(v){return String(v==null?'':v).trim().toLowerCase();}
+async function row(id){var d=db(),sid=n(id);if(!d||!sid)return null;var r=await d.from('site_sections').select('id,parent_id,type,display_order,requires_subscription').eq('id',sid).maybeSingle();if(r.error)throw r.error;return r.data||null;}
+async function children(pid){var d=db(),id=n(pid);if(!d||!id)return [];var r=await d.from('site_sections').select('id,parent_id,type,display_order,requires_subscription').eq('parent_id',id).order('display_order',{ascending:true,nullsFirst:false}).order('id',{ascending:true});if(r.error)throw r.error;return r.data||[];}
+async function subjectAncestors(sectionId){var cur=n(sectionId),seen={},out=[];for(var i=0;i<64&&cur&&!seen[cur];i++){seen[cur]=true;var r=await row(cur);if(!r)break;if(typ(r.type)==='subject')out.push(r);cur=n(r.parent_id);}return out;}
+async function firstLearningDescendant(subjectId){var root=n(subjectId);if(!root)return null;var stack=[],visited={},kids=await children(root);for(var i=kids.length-1;i>=0;i--)stack.push(kids[i]);while(stack.length){var node=stack.pop(),id=n(node.id);if(!id||visited[id])continue;visited[id]=true;var t=typ(node.type);if(t==='lesson'||t==='class')return node;var ch=await children(id);for(var j=ch.length-1;j>=0;j--)stack.push(ch[j]);}return null;}
+window.bsmFirstLearningContentForSubject=async function(subjectId){var x=await firstLearningDescendant(subjectId);return x?n(x.id):null;};
+window.bsmIsFirstLearningContentForSubject=async function(sectionId){var id=n(sectionId);if(!id)return false;var a=await subjectAncestors(id);for(var i=0;i<a.length;i++){var f=await firstLearningDescendant(a[i].id);if(f&&n(f.id)===id)return true;}return false;};
+var oldFree=window._isFreePreviewSection;
+window._isFreePreviewSection=async function(sectionId){try{return await window.bsmIsFirstLearningContentForSubject(sectionId);}catch(e){console.error('[BSM SUBJECT FREE RULE]',e);return false;}};
+var oldCheck=window.checkSectionAccess;
+window.checkSectionAccess=async function(sectionId){var id=n(sectionId);try{var d=db();if(!d||!id)return oldCheck?await oldCheck(sectionId):null;var chain=[],cur=id,seen={};for(var i=0;i<64&&cur&&!seen[cur];i++){seen[cur]=true;var sr=await row(cur);if(!sr)break;chain.push(sr);cur=n(sr.parent_id);}var ids=chain.map(function(x){return n(x.id);}).filter(Boolean);if(ids.length){var ar=await d.from('subscription_content_access').select('section_id,requires_subscription').in('section_id',ids);if(!ar.error){var map={};(ar.data||[]).forEach(function(x){map[n(x.section_id)]=x.requires_subscription===true?'locked':'open';});for(var k=0;k<chain.length;k++){var cid=n(chain[k].id);if(Object.prototype.hasOwnProperty.call(map,cid)){if(map[cid]==='open')return null;if(map[cid]==='locked')return {state:'explicit_locked',access:'explicit_locked',anchor:null,reason:'تم قفل هذا الـNode بواسطة أدمن الكورس'};}}}}if(await window.bsmIsFirstLearningContentForSubject(id))return null;return oldCheck?await oldCheck(sectionId):null;}catch(e){console.error('[BSM SUBJECT ACCESS]',e);return oldCheck?await oldCheck(sectionId):{state:'error',access:'error'};}};
+})();
+
+</script>
+
+<script id="bsm-resource-authority-final-fix-20260904">
+(function(){
+  'use strict';
+  if(window.__BSM_RESOURCE_AUTHORITY_FINAL_FIX_20260904)return;
+  window.__BSM_RESOURCE_AUTHORITY_FINAL_FIX_20260904=true;
+
+  /*
+   * Final runtime contract:
+   * section_resources.file_url -> openResource -> ResourceViewer.
+   *
+   * The old optional RPC bsm_nearest_content_override is NOT used here.
+   * Access control remains delegated to the existing checkSectionAccess/RLS
+   * chain; this patch only guarantees that opening a resource never swaps a
+   * valid file_url for a stale file_path.
+   */
+
+  var _origOpenResource = window.openResource;
+  if(typeof _origOpenResource === 'function'){
+    window.openResource = async function(url,title,resourceType,filePath,fileType,fileName){
+      var canonical = (url == null ? '' : String(url)).trim();
+
+      // Never allow file_path to replace an existing section_resources.file_url.
+      // For external URLs (especially Cloudinary/YouTube) the canonical value
+      // is passed through unchanged.
+      if(canonical){
+        return _origOpenResource.call(
+          window,
+          canonical,
+          title,
+          resourceType,
+          '',
+          fileType,
+          fileName
+        );
+      }
+
+      // Keep the existing file_path fallback only when file_url is genuinely
+      // empty, preserving compatibility with current Supabase Storage uploads.
+      return _origOpenResource.call(
+        window,
+        canonical,
+        title,
+        resourceType,
+        filePath || '',
+        fileType,
+        fileName
+      );
+    };
+  }
+
+  // Compatibility helper for any old caller that only knows a resource row.
+  window._bsmOpenSectionResource = async function(row){
+    row = row || {};
+    var url = row.file_url || '';
+    var title = row.title || row.file_name || 'مورد';
+    var type = row.resource_type || row.content_type || '';
+    var path = row.file_path || '';
+    var mime = row.file_type || '';
+    var name = row.file_name || '';
+    if(typeof window.openResource !== 'function') throw new Error('openResource غير متاحة');
+    return window.openResource(url,title,type,path,mime,name);
+  };
+
+  console.info('[BSM RESOURCE AUTHORITY] section_resources.file_url is authoritative; optional nearest-content RPC is not required.');
 })();
 </script>
 
