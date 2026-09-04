@@ -60,13 +60,13 @@ var DEBUG_MODE = false; window.DEBUG_MODE = DEBUG_MODE;
 <script>
 (function () {
   try {
-    window.__APP_BUILD_VERSION = '2026-08-29-final-safe-subscription-chat-assistant-mobile-video-v9';
+    window.__APP_BUILD_VERSION = '2026-09-04-final-opening-no-live-attachments-free-preview-v1';
   } catch (e) {}
 })();
 </script>
 <meta content="my6dMoAsuc_97Jks_OQF75GK_f1PGWqz2Kng2obkIgE" name="google-site-verification"/>
 <meta charset="utf-8"/>
-<meta content="2026-08-29-final-safe-subscription-chat-assistant-mobile-video-v9" name="app-build"/>
+<meta content="2026-09-04-final-opening-no-live-attachments-free-preview-v1" name="app-build"/>
 <meta content="width=device-width, initial-scale=1.0, viewport-fit=cover" name="viewport"/>
 <!-- ==================== PWA: manifest + platform metadata ==================== -->
 <link href="./manifest.json" rel="manifest"/>
@@ -6073,14 +6073,25 @@ async function _resolveResourceUrl(rawUrl, filePath) {
     // Existing signed URL: use it exactly as stored.
     if (/\/storage\/v1\/object\/sign\//i.test(original)) return original;
 
-    // External providers are always authoritative.
+    // External providers are authoritative.
+    // Uploadcare project-subdomain URLs currently stored in the DB are failing
+    // DNS in the production browser. For legacy Uploadcare accounts, the same
+    // UUID can be delivered from the legacy global CDN domain. Use that
+    // compatibility URL directly so the browser does not first request the
+    // broken project subdomain.
+    if (/\.ucarecd\.net/i.test(lowerOriginal)) {
+      try {
+        var uc = new URL(original);
+        return 'https://ucarecdn.com' + uc.pathname + uc.search + uc.hash;
+      } catch (e) {}
+    }
+
     var isExternalMedia =
       /cloudinary\.com/i.test(lowerOriginal) ||
       /youtube\.com|youtu\.be/i.test(lowerOriginal) ||
       /vimeo\.com/i.test(lowerOriginal) ||
       /dailymotion\.com/i.test(lowerOriginal) ||
-      /fembed\.co|fembed-hd\.com|fembed\.net/i.test(lowerOriginal) ||
-      /\.ucarecd\.net/i.test(lowerOriginal);
+      /fembed\.co|fembed-hd\.com|fembed\.net/i.test(lowerOriginal);
 
     if (isExternalMedia) return original;
 
@@ -9061,7 +9072,6 @@ window.checkBanStatus = async function(email) {
 <div class="ap-nav-group-title">الرئيسية</div>
 <button class="ap-nav-btn active" id="ap-tab-dashboard" onclick="apSwitchTab('dashboard')" role="tab">📊 <span>لوحة المعلومات</span></button>
 <button class="ap-nav-btn" id="ap-tab-assistantAdmins" onclick="apSwitchTab('assistantAdmins')" role="tab" style="display:none;">👤 <span>الأدمن المساعد</span></button>
-<button class="ap-nav-btn" id="ap-tab-liveClasses" onclick="apSwitchTab('liveClasses')" role="tab" style="display:none;">🎥 <span>Live Classes</span></button>
 <button class="ap-nav-btn platform-only-nav" id="ap-tab-courseAdminPhone" onclick="apSwitchTab('courseAdminPhone')" role="tab">📱 <span>رقم أدمن / دكتور الكورس</span></button>
 <button class="ap-nav-btn" id="ap-tab-notifications" onclick="apSwitchTab('notifications')" role="tab">🔔 <span>الإشعارات</span></button>
 </div>
@@ -11272,8 +11282,6 @@ function _applyBranchAdminPanelGating() {
   if (baTab) baTab.style.display = (isSuper || (isBranch && !isOwnerActive && perms.can_manage_admins)) ? '' : 'none';
   var assistantTab = document.getElementById('ap-tab-assistantAdmins');
   if (assistantTab) assistantTab.style.display = (isBranch && (isOwnerActive || perms.can_manage_admins === true)) ? '' : 'none';
-  var liveTab = document.getElementById('ap-tab-liveClasses');
-  if (liveTab) liveTab.style.display = (isBranch && (isOwnerActive || perms.can_manage_materials === true || perms.can_manage_chapters === true || perms.can_manage_section_chat === true || perms.can_manage_chats === true)) ? '' : 'none';
 
   if (!isBranch) {
     // مستخدم عادي أو أدمن المنصة: أظهر كل التابات كما هي
@@ -21972,7 +21980,7 @@ window.diagnose = async function() {
       } else if (otherUserId) {
         // ✅ FIX (Aug 2026 audit): تأكيد صريح إننا دايمًا بنستخدم نسخة get_or_create_direct_room
         // ذات الباراميترين (p_other_user_id + p_section_id) ولا نعتمد أبداً على النسخة القديمة
-        // بباراميتر واحد (لسه موجودة في الـLive DB — مطلوب حذفها لاحقاً، راجع التقرير).
+        // بباراميتر واحد (لسه موجودة في قاعدة البيانات الحالية — مطلوب حذفها لاحقاً، راجع التقرير).
         // لو مفيش section_id (محادثة جديدة بدون شعبة معروفة) نوقف برسالة واضحة بدل ما نسيب
         // القاعدة ترفض بـ"DENY ACCESS" غامضة للطالب.
         if (!window._dmSectionId) {
@@ -29471,7 +29479,7 @@ ORDER BY tablename, policyname;
   var toast=function(m,t){if(typeof window._showToast==='function')window._showToast(m,t||'info');};
 
   /* ============================================================
-     DM: the live DB has UNIQUE(section_id) twice. Direct rooms must
+     DM: the current DB has UNIQUE(section_id) twice. Direct rooms must
      therefore remain section_id=NULL. Prefer a pair-specific room and
      only fall back to the legacy RPC for databases where direct inserts
      are not allowed by RLS. No existing room/data is deleted.
@@ -29598,7 +29606,7 @@ ORDER BY tablename, policyname;
 </script>
 <script>
 /* BSM V6 — DM: never bypass the server RPC with a direct client INSERT.
-   The live RLS intentionally rejects direct chat_rooms INSERT from students. */
+   The current RLS intentionally rejects direct chat_rooms INSERT from students. */
 (function(){
   'use strict';
   if(window.__BSM_V6_DM_SAFE)return;
@@ -30988,542 +30996,11 @@ window.printReleaseAccess=async function(id){try{var x=await previewInfo(id),g=a
 })();
 </script>
 
-<!-- ============================================================
-     BSM LIVE CLASSES + RE-SUBMIT FINAL PATCH — 2026-09-02
-     Additive only: no framework, no existing function deletion.
-     LiveKit secrets stay server-side; browser calls the existing
-     Supabase Edge Function: livekit-token.
-============================================================ -->
-<style id="bsm-live-classes-final-style">
-  #bsm-live-admin-panel .bsm-live-toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
-  #bsm-live-admin-panel .bsm-live-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-bottom:14px}
-  #bsm-live-admin-panel .bsm-live-form .full{grid-column:1/-1}
-  #bsm-live-admin-panel .bsm-live-actions{display:flex;gap:6px;flex-wrap:wrap}
-  #bsm-live-admin-panel .bsm-live-badge{display:inline-flex;align-items:center;gap:4px;padding:4px 8px;border-radius:999px;font-size:.72rem;font-weight:800}
-  #bsm-live-admin-panel .bsm-live-scheduled{background:#fff4d6;color:#8a6100}.bsm-live-live{background:#e9f9ef;color:#138a4b}.bsm-live-ended{background:#eef1f5;color:#667085}.bsm-live-cancelled{background:#fdecec;color:#b42318}
-  #bsm-live-student-card{margin:12px 0;padding:13px;border:1px solid rgba(10,61,98,.14);border-radius:14px;background:var(--card-bg,#fff);box-shadow:0 3px 12px rgba(10,61,98,.06)}
-  #bsm-live-student-card .bsm-lc-row{display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap}
-  #bsm-live-room-overlay{position:fixed;inset:0;z-index:1200000;background:rgba(0,0,0,.86);display:none;align-items:center;justify-content:center;padding:12px}
-  #bsm-live-room-overlay.open{display:flex}
-  #bsm-live-room{width:min(1100px,100%);height:min(760px,96vh);background:#101418;border-radius:18px;overflow:hidden;display:flex;flex-direction:column;color:#fff}
-  #bsm-live-room-head{padding:10px 14px;display:flex;align-items:center;justify-content:space-between;gap:8px;background:#151b22}
-  #bsm-live-room-grid{flex:1;display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:8px;padding:8px;overflow:auto}
-  .bsm-live-tile{position:relative;min-height:220px;background:#05070a;border-radius:12px;overflow:hidden;display:flex;align-items:center;justify-content:center}
-  .bsm-live-tile video{width:100%;height:100%;object-fit:cover;display:block}
-  .bsm-live-tile .label{position:absolute;bottom:8px;right:8px;background:rgba(0,0,0,.65);padding:5px 8px;border-radius:8px;font-size:.75rem;z-index:2}
-  #bsm-live-room-controls{padding:10px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap;background:#151b22}
-  @media(max-width:650px){#bsm-live-admin-panel .bsm-live-form{grid-template-columns:1fr}#bsm-live-room{height:98vh;border-radius:12px}.bsm-live-tile{min-height:180px}}
-</style>
-<script id="bsm-live-classes-final-js">
-(function(){
-  'use strict';
-  if(window.__BSM_LIVE_CLASSES_FINAL_20260902)return;
-  window.__BSM_LIVE_CLASSES_FINAL_20260902=true;
-  var db=function(){return window.supabase||null;};
-  var esc=function(v){return typeof window._apEsc==='function'?window._apEsc(v==null?'':String(v)):String(v==null?'':v).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});};
-  var toast=function(m,t){if(typeof window._showToast==='function')window._showToast(m,t||'info');else console.log(m);};
-  var currentUser=async function(){try{var r=typeof window._getSessionSafe==='function'?await window._getSessionSafe(8000):await db().auth.getSession();return r&&r.data&&r.data.session&&r.data.session.user||null;}catch(e){return null;}};
-  var id=function(v){var n=Number(v);return Number.isFinite(n)&&n>0?n:null;};
-  var isSuper=function(){return window._isSuperAdmin===true||window._currentUserRole==='admin';};
-  var isBranch=function(){return window._isBranchAdmin===true&&!isSuper();};
-  var perms=function(){return window._branchAdminPerms||{};};
-  var canManage=function(){return isSuper() || (isBranch() && (window._branchAdminActiveRole==='owner'||perms().can_manage_materials===true||perms().can_manage_chapters===true||perms().can_manage_section_chat===true||perms().can_manage_chats===true));};
-  var currentCourse=function(){return id(window._branchAdminCourseId||window._branchAdminActiveRoot||window._activeSectionId||0);};
-
-  function loadLiveKit(){
-    if(window.LivekitClient)return Promise.resolve(window.LivekitClient);
-    if(window.__bsmLiveKitPromise)return window.__bsmLiveKitPromise;
-    window.__bsmLiveKitPromise=new Promise(function(resolve,reject){
-      var s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/livekit-client/dist/livekit-client.umd.min.js';s.async=true;
-      s.onload=function(){if(window.LivekitClient)resolve(window.LivekitClient);else reject(new Error('تعذر تحميل LiveKit'));};
-      s.onerror=function(){reject(new Error('تعذر تحميل مكتبة LiveKit'));};document.head.appendChild(s);
-    });return window.__bsmLiveKitPromise;
-  }
-
-  function ensureRoomUI(){
-    if(document.getElementById('bsm-live-room-overlay'))return;
-    var o=document.createElement('div');o.id='bsm-live-room-overlay';o.innerHTML='<div id="bsm-live-room" role="dialog" aria-modal="true"><div id="bsm-live-room-head"><b id="bsm-live-room-title">🎥 Live Class</b><button type="button" id="bsm-live-close" class="ap-btn ap-btn-ghost">✕</button></div><div id="bsm-live-prejoin" style="display:none;flex:1;align-items:center;justify-content:center;padding:18px;overflow:auto;"><div style="width:min(760px,100%);background:#151b22;border-radius:16px;padding:18px;"><h3 style="margin:0 0 10px;">🎥 معاينة قبل الدخول</h3><video id="bsm-live-preview-video" autoplay playsinline muted style="width:100%;max-height:420px;object-fit:contain;background:#05070a;border-radius:12px;"></video><div id="bsm-live-preview-status" style="margin-top:8px;color:#b9c5d1;font-size:.8rem;"></div><div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:12px;"><button type="button" id="bsm-live-preview-mic" class="ap-btn ap-btn-ghost">🎙️ المايك</button><button type="button" id="bsm-live-preview-cam" class="ap-btn ap-btn-ghost">📷 الكاميرا</button><button type="button" id="bsm-live-preview-join" class="ap-btn ap-btn-primary">🚀 دخول اللايف</button><button type="button" id="bsm-live-preview-cancel" class="ap-btn ap-btn-danger">✕ إلغاء</button></div></div></div><div id="bsm-live-room-grid"></div><div id="bsm-live-room-controls"><button type="button" id="bsm-live-mic" class="ap-btn ap-btn-ghost">🎙️ المايك</button><button type="button" id="bsm-live-cam" class="ap-btn ap-btn-ghost">📷 الكاميرا</button><button type="button" id="bsm-live-leave" class="ap-btn ap-btn-danger">🚪 خروج</button></div></div>';
-    document.body.appendChild(o);
-    document.getElementById('bsm-live-close').onclick=window.bsmLiveLeave;
-    document.getElementById('bsm-live-leave').onclick=window.bsmLiveLeave;
-    document.getElementById('bsm-live-preview-cancel').onclick=window.bsmLiveLeave;
-  }
-  async function _liveErrorMessage(err){
-    var msg=(err&&err.message)||String(err||'خطأ غير معروف');
-    try{
-      var ctx=err&&err.context;
-      if(ctx&&typeof ctx.text==='function'){var t=await ctx.text();if(t)msg+=' | response: '+t.slice(0,1200);}
-      else if(ctx&&ctx.body){msg+=' | response: '+String(ctx.body).slice(0,1200);}
-    }catch(e){}
-    return msg;
-  }
-  async function _livePreviewPrepare(){
-    ensureRoomUI();var v=document.getElementById('bsm-live-preview-video'),s=document.getElementById('bsm-live-preview-status');
-    if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia)throw new Error('المتصفح لا يدعم Camera/Microphone عبر HTTPS');
-    var stream=await navigator.mediaDevices.getUserMedia({video:true,audio:true});
-    v.srcObject=stream;window._bsmLivePreviewStream=stream;if(s)s.textContent='✅ الكاميرا والمايك جاهزان — يمكنك الدخول الآن.';
-    return stream;
-  }
-  function _livePreviewStop(){var st=window._bsmLivePreviewStream;if(st){st.getTracks().forEach(function(t){try{t.stop();}catch(e){}});}window._bsmLivePreviewStream=null;var v=document.getElementById('bsm-live-preview-video');if(v)v.srcObject=null;}
-
-  var liveState={room:null,classId:null,isHost:false,localTile:null,tracks:{}};
-  function addParticipantTile(participant,track){
-    var grid=document.getElementById('bsm-live-room-grid');if(!grid)return;
-    var pid=String(participant.identity||participant.sid||'p');
-    var tile=document.getElementById('bsm-live-tile-'+CSS.escape(pid));
-    if(!tile){tile=document.createElement('div');tile.className='bsm-live-tile';tile.id='bsm-live-tile-'+pid;tile.innerHTML='<span class="label">'+esc(participant.name||participant.identity||'مشارك')+'</span>';grid.appendChild(tile);}
-    if(track){try{track.attach(tile);}catch(e){}}
-    return tile;
-  }
-  function removeParticipantTile(participant){var pid=String(participant&&participant.identity||participant&&participant.sid||'');var el=document.getElementById('bsm-live-tile-'+CSS.escape(pid));if(el)el.remove();}
-  function bindRoomEvents(room){
-    var LK=window.LivekitClient;
-    room.on(LK.RoomEvent.TrackSubscribed,function(track,publication,participant){addParticipantTile(participant,track);});
-    room.on(LK.RoomEvent.TrackUnsubscribed,function(track,publication,participant){try{track.detach();}catch(e){}if(!participant.videoTracks||participant.videoTracks.size===0)removeParticipantTile(participant);});
-    room.on(LK.RoomEvent.ParticipantDisconnected,function(p){removeParticipantTile(p);});
-    room.on(LK.RoomEvent.ParticipantConnected,function(p){
-      console.log('[LIVEKIT] participant connected:',p&&p.identity);
-    });
-    room.on(LK.RoomEvent.Reconnecting,function(){console.warn('[LIVEKIT] reconnecting...');});
-    room.on(LK.RoomEvent.Reconnected,function(){console.log('[LIVEKIT] reconnected');});
-    room.on(LK.RoomEvent.Disconnected,function(reason){console.warn('[LIVEKIT] disconnected:',reason);});
-    room.on(LK.RoomEvent.ConnectionStateChanged,function(state){console.log('[LIVEKIT] connection state:',state);});
-  }
-  async function joinLiveClass(classId,asHost){
-    var d=db();if(!d)throw new Error('Supabase غير متاح');
-    var u=await currentUser();if(!u)throw new Error('يجب تسجيل الدخول أولاً');
-    var q=await d.from('live_classes').select('id,course_id,title,description,scheduled_at,duration_minutes,status,room_name').eq('id',Number(classId)).maybeSingle();
-    if(q.error)throw q.error;if(!q.data)throw new Error('اللايف غير موجود');
-    var row=q.data;if(row.status!=='live')throw new Error('هذا اللايف ليس في حالة Live حالياً');
-    var allowedHost=isSuper()|| (isBranch() && (window._branchAdminAllSectionIds||[]).map(Number).indexOf(Number(row.course_id))!==-1);
-    if(asHost&&!allowedHost)throw new Error('ليس لديك صلاحية Host لهذا الكورس');
-    if(!asHost){
-      var sr=await d.from('subscriptions').select('id').eq('user_id',u.id).eq('section_id',Number(row.course_id)).eq('payment_status','active').or('end_date.is.null,end_date.gte.'+new Date().toISOString()).limit(1);
-      if(sr.error)throw sr.error;if(!sr.data||!sr.data.length)throw new Error('الدخول للايف متاح للمشتركين النشطين في الكورس فقط');
-    }
-    ensureRoomUI();
-    var overlay=document.getElementById('bsm-live-room-overlay'),pre=document.getElementById('bsm-live-prejoin'),grid=document.getElementById('bsm-live-room-grid'),controls=document.getElementById('bsm-live-room-controls');
-    document.getElementById('bsm-live-room-title').textContent='🎥 '+(row.title||'Live Class');overlay.classList.add('open');
-    if(asHost){
-      pre.style.display='flex';grid.style.display='none';controls.style.display='none';
-      await _livePreviewPrepare();
-      var joinBtn=document.getElementById('bsm-live-preview-join');
-      var micBtn=document.getElementById('bsm-live-preview-mic'),camBtn=document.getElementById('bsm-live-preview-cam');
-      var stream=window._bsmLivePreviewStream;
-      var audioOn=true,videoOn=true;
-      micBtn.onclick=function(){audioOn=!audioOn;(stream&&stream.getAudioTracks()||[]).forEach(function(t){t.enabled=audioOn;});micBtn.textContent=audioOn?'🎙️ المايك':'🔇 المايك مغلق';};
-      camBtn.onclick=function(){videoOn=!videoOn;(stream&&stream.getVideoTracks()||[]).forEach(function(t){t.enabled=videoOn;});camBtn.textContent=videoOn?'📷 الكاميرا':'📷 الكاميرا مغلقة';};
-      await new Promise(function(resolve,reject){
-        joinBtn.onclick=function(){resolve(true);};
-        document.getElementById('bsm-live-preview-cancel').onclick=function(){resolve(false);};
-      }).then(function(ok){
-        if(!ok){_livePreviewStop();throw new Error('تم إلغاء الدخول للايف');}
-      });
-      _livePreviewStop();
-      pre.style.display='none';grid.style.display='grid';controls.style.display='flex';
-    }else{pre.style.display='none';grid.style.display='grid';controls.style.display='flex';}
-    var livePayload={live_class_id:Number(row.id),role:asHost?'host':'viewer'};
-    console.groupCollapsed('%c[LIVEKIT] token request','color:#0a3d62;font-weight:800');
-    console.log('[LIVEKIT] payload:',livePayload);
-    try{
-      var sessionForLive=typeof window._getSessionSafe==='function'?await window._getSessionSafe(8000):await d.auth.getSession();
-      console.log('[LIVEKIT] session:',!!(sessionForLive&&sessionForLive.data&&sessionForLive.data.session),
-                  'user:',sessionForLive&&sessionForLive.data&&sessionForLive.data.session&&sessionForLive.data.session.user&&sessionForLive.data.session.user.id);
-    }catch(e){console.warn('[LIVEKIT] session diagnostic failed:',e);}
-    console.groupEnd();
-
-    var fn;
-    try{
-      fn=await d.functions.invoke('livekit-token',{body:livePayload});
-    }catch(invokeErr){
-      console.error('[LIVEKIT] invoke exception:',invokeErr);
-      throw new Error('فشل استدعاء livekit-token: '+(invokeErr&&invokeErr.message||invokeErr));
-    }
-    console.groupCollapsed('%c[LIVEKIT] token response','color:#0a3d62;font-weight:800');
-    console.log('[LIVEKIT] status:',fn&&fn.error&&fn.error.context&&fn.error.context.status);
-    console.log('[LIVEKIT] error:',fn&&fn.error);
-    console.log('[LIVEKIT] data:',fn&&fn.data);
-    console.groupEnd();
-    if(fn.error){var em=await _liveErrorMessage(fn.error);throw new Error(em);}
-    var payload=fn.data||{};var token=payload.token||payload.accessToken||payload.access_token;var url=payload.url||payload.serverUrl||payload.wsUrl||payload.livekit_url;
-    if(!token||!url)throw new Error('livekit-token لم يُرجع Token/URL صالحين. Response: '+JSON.stringify(payload).slice(0,1200));
-    var LK=await loadLiveKit();var room=new LK.Room({adaptiveStream:true,dynacast:true});liveState.room=room;liveState.classId=row.id;liveState.isHost=!!asHost;bindRoomEvents(room);
-    try{await room.connect(url,token);}catch(connectErr){throw new Error('فشل الاتصال بـLiveKit: '+(connectErr&&connectErr.message||connectErr));}
-    if(asHost){
-      await room.localParticipant.enableCameraAndMicrophone();
-      room.localParticipant.videoTrackPublications.forEach(function(p){if(p.track)addParticipantTile(room.localParticipant,p.track);});
-      room.localParticipant.audioTrackPublications.forEach(function(p){if(p.track)addParticipantTile(room.localParticipant,p.track);});
-      document.getElementById('bsm-live-mic').style.display='inline-flex';document.getElementById('bsm-live-cam').style.display='inline-flex';
-    }else{
-      document.getElementById('bsm-live-mic').style.display='none';document.getElementById('bsm-live-cam').style.display='none';
-      if(grid&&!grid.children.length)grid.innerHTML='<div style="grid-column:1/-1;display:flex;align-items:center;justify-content:center;color:#b9c5d1;min-height:180px;">⏳ في انتظار بث الـHost...</div>';
-    }
-    var mic=document.getElementById('bsm-live-mic'),cam=document.getElementById('bsm-live-cam');
-    mic.onclick=async function(){if(!liveState.room||!liveState.isHost)return;var enabled=liveState.room.localParticipant.isMicrophoneEnabled;await liveState.room.localParticipant.setMicrophoneEnabled(!enabled);mic.textContent=enabled?'🔇 المايك مغلق':'🎙️ المايك';};
-    cam.onclick=async function(){if(!liveState.room||!liveState.isHost)return;var enabled=liveState.room.localParticipant.isCameraEnabled;await liveState.room.localParticipant.setCameraEnabled(!enabled);cam.textContent=enabled?'📷 الكاميرا مغلقة':'📷 الكاميرا';};
-  }
-  window.bsmLiveJoin=function(id,host){joinLiveClass(id,!!host).catch(function(e){console.error('[Live Classes]',e);try{_livePreviewStop();}catch(x){}try{if(window.bsmLiveLeave)window.bsmLiveLeave();}catch(x){}toast('❌ '+(e.message||e),'error');});};
-  window.bsmLiveLeave=async function(){try{_livePreviewStop();}catch(e){}try{if(liveState.room){await liveState.room.disconnect();}}catch(e){}liveState={room:null,classId:null,isHost:false,localTile:null,tracks:{}};var o=document.getElementById('bsm-live-room-overlay');if(o)o.classList.remove('open');var g=document.getElementById('bsm-live-room-grid');if(g)g.innerHTML='';};
-  // Android/WebView Back: close Live first; normal navigation only when no Live is open.
-  if(!window.__BSM_LIVE_BACK_HANDLER){
-    window.__BSM_LIVE_BACK_HANDLER=true;
-    document.addEventListener('keydown',function(e){
-      if((e.key==='Escape'||e.key==='Esc')&&document.getElementById('bsm-live-room-overlay')?.classList.contains('open')){
-        e.preventDefault();window.bsmLiveLeave();
-      }
-    });
-    window.addEventListener('popstate',function(){
-      var o=document.getElementById('bsm-live-room-overlay');
-      if(o&&o.classList.contains('open')){
-        window.bsmLiveLeave();
-        history.pushState(null,'',window.location.href);
-      }
-    });
-  }
 
 
-  async function loadCourses(selectId){
-    var d=db(),sel=document.getElementById(selectId);if(!d||!sel)return;
-    var q=d.from('site_sections').select('id,title,type,parent_id,display_order').eq('type','course').order('display_order',{ascending:true}).order('id',{ascending:true});
-    if(isBranch())q=q.in('id',(window._branchAdminOwnSectionIds||[]).map(Number).filter(Boolean));
-    var r=await q;if(r.error)throw r.error;var rows=r.data||[];
-    sel.innerHTML='<option value="">اختر الكورس</option>'+rows.map(function(x){return '<option value="'+x.id+'">'+esc(x.title||('#'+x.id))+'</option>';}).join('');
-    var c=currentCourse();if(c&&rows.some(function(x){return Number(x.id)===Number(c);}))sel.value=String(c);
-  }
-  function statusBadge(s){var map={scheduled:['⏳ Scheduled','bsm-live-scheduled'],live:['🔴 Live','bsm-live-live'],ended:['✅ Ended','bsm-live-ended'],cancelled:['🚫 Cancelled','bsm-live-cancelled']};var x=map[s]||[esc(s),'bsm-live-ended'];return '<span class="bsm-live-badge '+x[1]+'">'+x[0]+'</span>';}
-  async function loadAdminLives(){
-    var box=document.getElementById('bsm-live-list');if(!box)return;box.innerHTML='<div class="ap-empty">⏳ جاري التحميل...</div>';
-    var d=db();if(!d){box.innerHTML='<div class="ap-empty">❌ Supabase غير متاح</div>';return;}
-    var selected=id(document.getElementById('bsm-live-course')&&document.getElementById('bsm-live-course').value);
-    if(!selected){box.innerHTML='<div class="ap-empty">اختر الكورس أولاً لعرض الـLive Classes الخاصة به.</div>';return;}
-    var q=d.from('live_classes').select('id,course_id,title,description,scheduled_at,duration_minutes,status,room_name,created_at,site_sections:course_id(title)').eq('course_id',selected).order('scheduled_at',{ascending:false});
-    if(isBranch())q=q.in('course_id',(window._branchAdminAllSectionIds||window._branchAdminOwnSectionIds||[]).map(Number).filter(Boolean));
-    var r=await q;if(r.error){box.innerHTML='<div class="ap-empty" style="color:#e74c3c">❌ '+esc(r.error.message)+'</div>';return;}
-    var rows=r.data||[];if(!rows.length){box.innerHTML='<div class="ap-empty">لا توجد Live Classes حتى الآن.</div>';return;}
-    box.innerHTML='<div class="ap-table-wrap"><table class="ap-table"><thead><tr><th>الكورس</th><th>العنوان</th><th>الموعد</th><th>المدة</th><th>الحالة</th><th>إجراء</th></tr></thead><tbody>'+rows.map(function(x){var course=x.site_sections&&x.site_sections.title||('#'+x.course_id);var can= isSuper() || (isBranch() && (window._branchAdminAllSectionIds||[]).map(Number).indexOf(Number(x.course_id))!==-1);var actions='';if(can){if(x.status==='scheduled')actions+='<button class="ap-btn ap-btn-success" onclick="bsmLiveStart('+x.id+')">▶️ Start Live</button> <button class="ap-btn ap-btn-warning" onclick="bsmLiveCancel('+x.id+')">🚫 إلغاء</button> ';if(x.status==='live')actions+='<button class="ap-btn ap-btn-primary" onclick="bsmLiveJoin('+x.id+',true)">🎥 دخول Host</button> <button class="ap-btn ap-btn-warning" onclick="bsmLiveEnd('+x.id+')">⏹ End Live</button> ';if(x.status==='cancelled')actions+='<button class="ap-btn ap-btn-ghost" onclick="bsmLiveResetStatus('+x.id+')">↩️ إعادة جدولة</button> ';if(x.status!=='ended'&&x.status!=='cancelled')actions+='<button class="ap-btn ap-btn-ghost" onclick="bsmLiveEdit('+x.id+')">✏️ تعديل</button> ';actions+='<button class="ap-btn ap-btn-danger" onclick="bsmLiveDelete('+x.id+')">🗑️ حذف</button>';}return '<tr><td>'+esc(course)+'</td><td>'+esc(x.title)+'</td><td>'+esc(new Date(x.scheduled_at).toLocaleString('ar-EG'))+'</td><td>'+esc(x.duration_minutes)+' دقيقة</td><td>'+statusBadge(x.status)+'</td><td><div class="bsm-live-actions">'+actions+'</div></td></tr>';}).join('')+'</tbody></table></div>';
-  }
-  function readForm(){return {course_id:id(document.getElementById('bsm-live-course').value),title:document.getElementById('bsm-live-title').value.trim(),description:document.getElementById('bsm-live-description').value.trim(),scheduled_at:new Date(document.getElementById('bsm-live-date').value).toISOString(),duration_minutes:Math.max(1,Number(document.getElementById('bsm-live-duration').value)||60)};}
-  function resetForm(){['bsm-live-title','bsm-live-description','bsm-live-date','bsm-live-duration','bsm-live-edit-id'].forEach(function(x){var e=document.getElementById(x);if(e)e.value='';});document.getElementById('bsm-live-duration').value='60';var st=document.getElementById('bsm-live-status');if(st)st.value='scheduled';document.getElementById('bsm-live-form-title').textContent='➕ إنشاء Live جديد';}
-  async function saveLive(){if(!canManage())return toast('❌ ليست لديك صلاحية إدارة Live Classes','error');var f=readForm();if(!f.course_id||!f.title||!document.getElementById('bsm-live-date').value)return toast('⚠️ أكمل الكورس والعنوان والتاريخ والوقت','warning');var d=db(),edit=id(document.getElementById('bsm-live-edit-id').value);var payload=Object.assign({},f,{room_name:'bsm-live-'+f.course_id+'-'+(edit||Date.now()),updated_at:new Date().toISOString()});if(edit){var ex=await d.from('live_classes').select('status,course_id').eq('id',edit).maybeSingle();if(ex.error)throw ex.error;if(!ex.data)throw new Error('اللايف غير موجود');if(['ended','cancelled'].indexOf(ex.data.status)!==-1)throw new Error('لا يمكن تعديل Live منتهي أو ملغى');}var cu=await currentUser();var r=edit?await d.from('live_classes').update(payload).eq('id',edit):await d.from('live_classes').insert([Object.assign(payload,{status:'scheduled',created_by:cu&&cu.id||null})]);if(r.error)throw r.error;toast(edit?'✅ تم تعديل اللايف':'✅ تم إنشاء اللايف','success');resetForm();loadAdminLives();}
-  window.bsmLiveStart=async function(cid){
-    try{
-      if(!canManage())throw new Error('لا تملك صلاحية إدارة Live Classes');
-      var d=db(),r=await d.from('live_classes').update({status:'live',started_at:new Date().toISOString(),updated_at:new Date().toISOString()})
-        .eq('id',Number(cid)).eq('status','scheduled').select('id,course_id,status').maybeSingle();
-      if(r.error)throw r.error;
-      if(!r.data)throw new Error('تعذر بدء اللايف: لم يتم تحديث سجل Live Class.');
-      toast('🔴 تم بدء اللايف','success');loadAdminLives();
-    }catch(e){console.error('[LIVE START]',e);toast('❌ '+e.message,'error');}
-  };
-  window.bsmLiveEnd=async function(cid){
-    try{
-      if(!canManage())throw new Error('لا تملك الصلاحية');
-      var d=db(),r=await d.from('live_classes').update({status:'ended',ended_at:new Date().toISOString(),updated_at:new Date().toISOString()})
-        .eq('id',Number(cid)).eq('status','live').select('id,status').maybeSingle();
-      if(r.error)throw r.error;
-      if(!r.data)throw new Error('تعذر إنهاء اللايف: لم يتم تحديث سجل Live Class.');
-      toast('⏹ تم إنهاء اللايف','success');
-      if(liveState.room&&liveState.classId===Number(cid))await window.bsmLiveLeave();
-      loadAdminLives();
-    }catch(e){console.error('[LIVE END]',e);toast('❌ '+e.message,'error');}
-  };
-  window.bsmLiveCancel=async function(cid){try{if(!canManage())throw new Error('لا تملك الصلاحية');var d=db(),r=await d.from('live_classes').update({status:'cancelled',started_at:null,ended_at:null,updated_at:new Date().toISOString()}).eq('id',Number(cid)).eq('status','scheduled');if(r.error)throw r.error;toast('🚫 تم إلغاء اللايف','success');loadAdminLives();}catch(e){toast('❌ '+e.message,'error');}};
-  window.bsmLiveResetStatus=async function(cid){try{if(!canManage())throw new Error('لا تملك الصلاحية');var d=db(),r=await d.from('live_classes').update({status:'scheduled',started_at:null,ended_at:null,updated_at:new Date().toISOString()}).eq('id',Number(cid)).eq('status','cancelled');if(r.error)throw r.error;toast('↩️ تم إعادة اللايف إلى Scheduled','success');loadAdminLives();}catch(e){toast('❌ '+e.message,'error');}};
-  window.bsmLiveDelete=async function(cid){try{if(!canManage())throw new Error('لا تملك الصلاحية');if(!confirm('حذف Live Class نهائياً؟'))return;var r=await db().from('live_classes').delete().eq('id',Number(cid));if(r.error)throw r.error;toast('🗑️ تم الحذف','success');loadAdminLives();}catch(e){toast('❌ '+e.message,'error');}};
-  window.bsmLiveEdit=async function(cid){try{var r=await db().from('live_classes').select('id,course_id,title,description,scheduled_at,duration_minutes,status').eq('id',Number(cid)).maybeSingle();if(r.error)throw r.error;if(!r.data)throw new Error('اللايف غير موجود');var x=r.data;document.getElementById('bsm-live-edit-id').value=x.id;document.getElementById('bsm-live-course').value=x.course_id;document.getElementById('bsm-live-title').value=x.title||'';document.getElementById('bsm-live-description').value=x.description||'';document.getElementById('bsm-live-date').value=new Date(x.scheduled_at).toISOString().slice(0,16);document.getElementById('bsm-live-duration').value=x.duration_minutes||60;var st=document.getElementById('bsm-live-status');if(st)st.value=x.status||'scheduled';document.getElementById('bsm-live-form-title').textContent='✏️ تعديل Live';}catch(e){toast('❌ '+e.message,'error');}};
 
-  function injectAdminUI(){
-    var sidebar=document.querySelector('#admin-panel .ap-sidebar');var body=document.querySelector('#admin-panel .ap-body');if(!sidebar||!body)return;
-    var panel=document.createElement('div');panel.className='ap-tab-panel';panel.id='ap-panel-liveClasses';panel.setAttribute('role','tabpanel');panel.innerHTML='<div class="ap-section-heading">🎥 Live Classes</div><div class="ap-empty" style="margin-bottom:12px">إنشاء وإدارة اللايفات مرتبطة بالكورس نفسه، وبنفس نطاق صلاحيات أدمن الكورس الحالي.</div><div id="bsm-live-admin-panel"><div class="bsm-live-form"><input type="hidden" id="bsm-live-edit-id"><select id="bsm-live-course" class="ap-input"><option value="">اختر الكورس</option></select><input id="bsm-live-title" class="ap-input" placeholder="عنوان اللايف"><textarea id="bsm-live-description" class="ap-input full" rows="3" placeholder="وصف اللايف"></textarea><input id="bsm-live-date" class="ap-input" type="datetime-local"><input id="bsm-live-duration" class="ap-input" type="number" min="1" value="60" placeholder="المدة بالدقائق"><select id="bsm-live-status" class="ap-input" disabled><option value="scheduled">Scheduled</option><option value="live">Live</option><option value="ended">Ended</option><option value="cancelled">Cancelled</option></select></div><div class="bsm-live-toolbar"><b id="bsm-live-form-title">➕ إنشاء Live جديد</b><button class="ap-btn ap-btn-success" onclick="bsmLiveSave()">💾 حفظ</button><button class="ap-btn ap-btn-ghost" onclick="bsmLiveReset()">↺ جديد</button><button class="ap-btn ap-btn-ghost" onclick="bsmLiveRefresh()">🔄 تحديث</button></div><div id="bsm-live-list"></div></div>';
-    body.appendChild(panel);
-    window.bsmLiveSave=saveLive;window.bsmLiveReset=resetForm;window.bsmLiveRefresh=function(){loadCourses('bsm-live-course').then(loadAdminLives).catch(function(e){toast('❌ '+e.message,'error');});};
-  }
-  function gateAdminUI(){var b=document.getElementById('ap-tab-liveClasses');if(!b)return;b.style.display=canManage()?'':'none';}
-  function initAdmin(){injectAdminUI();gateAdminUI();}
-  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',initAdmin,{once:true});else initAdmin();
-
-  async function renderStudentLiveCard(sec){
-    try{
-      if(!sec||!sec.id||!db()||window._isAdminUser)return;
-      var course=typeof window._resolveCourseSubscriptionAnchor==='function'?await window._resolveCourseSubscriptionAnchor(Number(sec.id)):null;
-      if(!course||!course.id)return;
-      var u=await currentUser();if(!u)return;
-      var s=await db().from('subscriptions').select('id,payment_status,start_date,end_date,reject_reason').eq('user_id',u.id).eq('section_id',Number(course.id)).order('created_at',{ascending:false}).order('id',{ascending:false}).limit(1);if(s.error)throw s.error;var row=s.data&&s.data[0];
-      var lives=await db().from('live_classes').select('id,title,description,scheduled_at,duration_minutes,status').eq('course_id',Number(course.id)).in('status',['scheduled','live']).order('scheduled_at',{ascending:true}).limit(5);if(lives.error)throw lives.error;
-      var host=isSuper()||isBranch();var card=document.getElementById('bsm-live-student-card');if(card)card.remove();if(!lives.data||!lives.data.length)return;
-      var eligible=row&&row.payment_status==='active'&&(!row.end_date||new Date(row.end_date)>=new Date());
-      var html='<div id="bsm-live-student-card"><div class="bsm-lc-row"><div><b>🎥 Live Classes</b><div style="font-size:.76rem;color:#667085;margin-top:3px;">لايفات الكورس الحالية والقادمة</div></div></div>';
-      lives.data.forEach(function(x){var live=x.status==='live';html+='<div style="margin-top:9px;padding-top:9px;border-top:1px solid rgba(10,61,98,.1)"><div class="bsm-lc-row"><div><b>'+esc(x.title)+'</b><div style="font-size:.74rem;color:#667085;">'+esc(new Date(x.scheduled_at).toLocaleString('ar-EG'))+' — '+esc(x.duration_minutes)+' دقيقة</div></div><div>'+statusBadge(x.status)+'</div></div>'+(x.description?'<div style="font-size:.74rem;margin-top:5px;color:#667085">'+esc(x.description)+'</div>':'')+(live?(eligible?'<button class="ap-btn ap-btn-primary" style="margin-top:7px" onclick="bsmLiveJoin('+x.id+',false)">🎥 دخول كمشاهد</button>':'<span style="display:inline-block;margin-top:7px;font-size:.74rem;color:#e74c3c">🔒 الدخول يحتاج اشتراكًا نشطًا في الكورس</span>'):'')+'</div>';});
-      html+='</div>';
-      var grid=document.getElementById('dynamic-section-grid');if(grid)grid.insertAdjacentHTML('afterbegin',html);
-    }catch(e){console.warn('[Live Classes student card]',e&&e.message);}
-  }
-  function hookDynamic(){if(typeof window._renderDynamicSectionPage!=='function'||window.__BSM_LIVE_DYNAMIC_HOOK)return;var old=window._renderDynamicSectionPage;window._renderDynamicSectionPage=async function(sec){var r=await old.apply(this,arguments);setTimeout(function(){renderStudentLiveCard(sec);},0);return r;};window.__BSM_LIVE_DYNAMIC_HOOK=true;}
-  var t=setInterval(function(){if(typeof window._renderDynamicSectionPage==='function'){clearInterval(t);hookDynamic();}},200);
-
-  /* ================= RE-SUBSCRIBE: NEW INSERT, OLD ROW PRESERVED ================= */
-  async function freshCourse(anchor){if(anchor&&anchor.id&&typeof window._resolveCourseSubscriptionAnchor==='function'){var c=await window._resolveCourseSubscriptionAnchor(Number(anchor.id));if(c)return c;}return anchor;}
-  async function pendingFor(uid,cid){var r=await db().from('subscriptions').select('id').eq('user_id',uid).eq('section_id',Number(cid)).eq('payment_status','pending').limit(1);if(r.error)throw r.error;return !!(r.data&&r.data.length);}
-  if(typeof window._pmSubmit==='function'&&!window.__BSM_RESUBMIT_INSERT_FINAL){
-    window._pmSubmit=async function(){
-      var msg=document.getElementById('pm-msg'),btn=document.getElementById('pm-submit-btn');var anchor=await freshCourse(window._pmAnchor||window._currentGateAnchor);var u=window._pmUser||await currentUser();var file=window.__BSM_GET_PM_FILE?window.__BSM_GET_PM_FILE():null;
-      if(!anchor||!anchor.id||String(anchor.type||'').toLowerCase()!=='course')throw new Error('تعذر تحديد الكورس للاشتراك');if(!u)throw new Error('يجب تسجيل الدخول');
-      try{
-        if(await pendingFor(u.id,anchor.id)){if(msg){msg.style.color='#f39c12';msg.textContent='⏳ لديك بالفعل طلب قيد المراجعة لهذا الكورس.';}if(btn){btn.disabled=false;btn.textContent='🚀 إرسال الطلب';}return;}
-        file=file||window.__bsmPmFile||null;
-        if(!file){/* retrieve through the existing closure by temporarily asking the old handler is impossible; expose below */}
-        var input=document.getElementById('pm-receipt-input');file=file||input&&input.files&&input.files[0];if(!file)throw new Error('الرجاء رفع صورة إيصال التحويل أولاً');
-        var phoneEl=document.getElementById('pm-sender-phone-input'),senderPhone=phoneEl?phoneEl.value.trim():'';if(!senderPhone)throw new Error('من فضلك اكتب الرقم الذي تم التحويل منه.');
-        if(btn){btn.disabled=true;btn.textContent='⏳ جاري الإرسال...';}if(msg){msg.style.color='#0a3d62';msg.textContent='جاري رفع الإيصال وإرسال الطلب الجديد...';}
-        var ext=(file.name.split('.').pop()||'jpg').toLowerCase().replace(/[^a-z0-9]/g,'')||'jpg';var path=u.id+'/'+anchor.id+'-'+(crypto.randomUUID?crypto.randomUUID():(Date.now()+'-'+Math.random()))+'.'+ext;var up=await db().storage.from('receipts').upload(path,file,{upsert:false,contentType:file.type});if(up.error)throw up.error;
-        var payload={user_id:u.id,section_id:Number(anchor.id),subscription_type:'monthly',amount:Number(anchor.price),payment_method:anchor.payment_method||'Vodafone Cash',payment_number:anchor.payment_number||null,receipt_image:'receipts/'+path,sender_phone:senderPhone,payment_status:'pending',requested_at:new Date().toISOString()};
-        var ins=await db().from('subscriptions').insert([payload]).select('id').single();if(ins.error){try{await db().storage.from('receipts').remove([path]);}catch(e){}throw ins.error;}
-        window._subStatusCache={};if(msg){msg.style.color='#17a589';msg.textContent='✅ تم إرسال طلب إعادة الاشتراك بنجاح — الطلب الجديد قيد المراجعة.';}if(btn){btn.textContent='✅ تم الإرسال';}toast('✅ تم إرسال طلب الاشتراك الجديد، بانتظار المراجعة','success');if(typeof window._afterPaymentRequestSubmitted==='function')window._afterPaymentRequestSubmitted(u.id,anchor.id);setTimeout(window.closePaymentModal,1200);
-      }catch(e){console.error('[RESUBMIT INSERT]',e);if(msg){msg.style.color='#e74c3c';msg.textContent='❌ '+(e.message||e);}if(btn){btn.disabled=false;btn.textContent='🚀 إرسال الطلب';}}
-    };
-    window.__BSM_RESUBMIT_INSERT_FINAL=true;
-  }
-
-  window._bsmLiveOpenTab=async function(){
-    gateAdminUI();
-    try{
-      await loadCourses('bsm-live-course');
-      await loadAdminLives();
-    }catch(e){
-      var b=document.getElementById('bsm-live-list');
-      if(b)b.innerHTML='<div class="ap-empty" style="color:#e74c3c">❌ '+esc(e&&e.message||'تعذر تحميل Live Classes')+'</div>';
-    }
-  };
-
-  /* SQL helper: deliberately prints only; it never mutates Supabase automatically. */
-  window.printLiveKitDiagnosticSQL=function(){
-  var sql=`-- READ-ONLY DIAGNOSTIC — لا يغيّر أي بيانات
-SELECT
-  c.column_name,
-  c.data_type
-FROM information_schema.columns c
-WHERE c.table_schema='public'
-  AND c.table_name='live_classes'
-ORDER BY c.ordinal_position;
-
-SELECT
-  routine_schema,
-  routine_name,
-  routine_type
-FROM information_schema.routines
-WHERE routine_schema='public'
-  AND routine_name ILIKE '%livekit%';
-
-SELECT
-  table_schema, table_name, policyname, cmd
-FROM pg_policies
-WHERE schemaname='public'
-  AND tablename='live_classes'
-ORDER BY table_name, policyname;`;
-  console.group('%c[LIVEKIT] READ-ONLY DIAGNOSTIC','color:#0a3d62;font-weight:800');
-  console.log(sql);
-  console.groupEnd();
-  if(navigator.clipboard)navigator.clipboard.writeText(sql).catch(function(){});
-  return sql;
-};
-
-window.printLiveClassesSQL=function(){var sql=`-- ================================================================
--- BSM SAFE FINAL MIGRATION — COURSE SUBSCRIPTIONS + LIVE CLASSES
--- آمن/تدريجي: لا يحذف بيانات، ولا يلمس أي UNIQUE إلا القيد القديم
--- المطابق تمامًا لـ(user_id, section_id) إذا كان موجودًا؛ وهذا التغيير
--- ضروري فقط للسماح بتاريخ rejected + طلب pending جديد لنفس الكورس.
--- قبل أي تغيير: يتم إيقاف التنفيذ برسالة واضحة إذا وُجد أكثر من pending
--- لنفس الطالب والكورس.
--- ================================================================
-
-BEGIN;
-
--- subscription_days مستخدم بالفعل في إعدادات الاشتراك الحالية في الملف.
--- نضيفه فقط إذا كان غير موجود؛ لا يغيّر أي قيمة موجودة.
-ALTER TABLE public.site_sections ADD COLUMN IF NOT EXISTS subscription_days INTEGER;
-
--- ---------------------------------------------------------------
--- 1) LIVE CLASSES TABLE
--- ---------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS public.live_classes (
-  id BIGSERIAL PRIMARY KEY,
-  course_id BIGINT NOT NULL REFERENCES public.site_sections(id) ON DELETE CASCADE,
-  title TEXT NOT NULL,
-  description TEXT,
-  scheduled_at TIMESTAMPTZ NOT NULL,
-  duration_minutes INTEGER NOT NULL DEFAULT 60
-    CHECK (duration_minutes BETWEEN 1 AND 1440),
-  status TEXT NOT NULL DEFAULT 'scheduled'
-    CHECK (status IN ('scheduled','live','ended','cancelled')),
-  room_name TEXT NOT NULL UNIQUE,
-  created_by UUID REFERENCES auth.users(id) ON DELETE SET NULL,
-  started_at TIMESTAMPTZ,
-  ended_at TIMESTAMPTZ,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
-CREATE INDEX IF NOT EXISTS idx_live_classes_course_time
-  ON public.live_classes(course_id, scheduled_at DESC);
-CREATE INDEX IF NOT EXISTS idx_live_classes_status
-  ON public.live_classes(status);
-ALTER TABLE public.live_classes ENABLE ROW LEVEL SECURITY;
-
--- ---------------------------------------------------------------
--- 2) LIVE CLASSES RLS
--- Platform admin: full access.
--- Course admin: only their exact assigned course + existing permissions.
--- No new role and no new permission key is created.
--- ---------------------------------------------------------------
-DROP POLICY IF EXISTS live_classes_admin_all ON public.live_classes;
-DROP POLICY IF EXISTS live_classes_branch_admin_all ON public.live_classes;
-DROP POLICY IF EXISTS live_classes_student_read ON public.live_classes;
-
-CREATE POLICY live_classes_admin_all
-ON public.live_classes
-FOR ALL TO authenticated
-USING (public.is_admin())
-WITH CHECK (public.is_admin());
-
-CREATE POLICY live_classes_branch_admin_all
-ON public.live_classes
-FOR ALL TO authenticated
-USING (
-  public.is_branch_admin_of(course_id)
-  AND EXISTS (
-    SELECT 1
-    FROM public.section_admins sa
-    WHERE sa.section_id = live_classes.course_id
-      AND sa.user_id = auth.uid()
-      AND sa.is_active = true
-      AND sa.role = 'admin'
-      AND (
-        (sa.permissions->>'can_manage_chapters') = 'true'
-        OR (sa.permissions->>'can_manage_materials') = 'true'
-        OR (sa.permissions->>'can_manage_section_chat') = 'true'
-        OR (sa.permissions->>'can_manage_chats') = 'true'
-        OR (sa.permissions->>'can_manage_subscriptions') = 'true'
-      )
-  )
-)
-WITH CHECK (
-  public.is_branch_admin_of(course_id)
-  AND EXISTS (
-    SELECT 1
-    FROM public.section_admins sa
-    WHERE sa.section_id = live_classes.course_id
-      AND sa.user_id = auth.uid()
-      AND sa.is_active = true
-      AND sa.role = 'admin'
-      AND (
-        (sa.permissions->>'can_manage_chapters') = 'true'
-        OR (sa.permissions->>'can_manage_materials') = 'true'
-        OR (sa.permissions->>'can_manage_section_chat') = 'true'
-        OR (sa.permissions->>'can_manage_chats') = 'true'
-        OR (sa.permissions->>'can_manage_subscriptions') = 'true'
-      )
-  )
-);
-
-CREATE POLICY live_classes_student_read
-ON public.live_classes
-FOR SELECT TO authenticated
-USING (
-  status IN ('scheduled','live')
-  AND public.has_active_course_subscription(course_id)
-);
-
-GRANT SELECT, INSERT, UPDATE, DELETE ON public.live_classes TO authenticated;
-GRANT USAGE, SELECT ON SEQUENCE public.live_classes_id_seq TO authenticated;
-
--- ---------------------------------------------------------------
--- 3) PRE-FLIGHT: do not modify subscriptions if duplicate pending
--- rows already exist.
--- ---------------------------------------------------------------
-DO $$
-BEGIN
-  IF EXISTS (
-    SELECT 1
-    FROM public.subscriptions
-    WHERE payment_status = 'pending'
-    GROUP BY user_id, section_id
-    HAVING COUNT(*) > 1
-  ) THEN
-    RAISE EXCEPTION
-      'ABORTED SAFELY: duplicate pending subscriptions exist for the same user/course. Resolve them first; no schema change was applied.';
-  END IF;
-END $$;
-
--- ---------------------------------------------------------------
--- 4) Replace ONLY the exact legacy UNIQUE(user_id,section_id)
--- constraint/index if it exists.
--- This is required for rejected-history + new pending INSERT.
--- No other UNIQUE is touched.
--- ---------------------------------------------------------------
-DO $$
-DECLARE
-  r RECORD;
-BEGIN
-  FOR r IN
-    SELECT c.conname
-    FROM pg_constraint c
-    WHERE c.conrelid = 'public.subscriptions'::regclass
-      AND c.contype = 'u'
-      AND (
-        SELECT array_agg(a.attname ORDER BY x.n)
-        FROM unnest(c.conkey) WITH ORDINALITY AS x(attnum,n)
-        JOIN pg_attribute a
-          ON a.attrelid = c.conrelid AND a.attnum = x.attnum
-      ) = ARRAY['user_id','section_id']::name[]
-  LOOP
-    EXECUTE format('ALTER TABLE public.subscriptions DROP CONSTRAINT %I', r.conname);
-  END LOOP;
-
-  FOR r IN
-    SELECT i.indexrelid::regclass::text AS index_name
-    FROM pg_index i
-    WHERE i.indrelid = 'public.subscriptions'::regclass
-      AND i.indisunique = true
-      AND i.indpred IS NULL
-      AND i.indexrelid::regclass::text NOT IN (
-        SELECT conindid::regclass::text
-        FROM pg_constraint
-        WHERE conrelid = 'public.subscriptions'::regclass
-          AND conindid IS NOT NULL
-      )
-      AND (
-        SELECT array_agg(a.attname ORDER BY k.n)
-        FROM unnest(i.indkey) WITH ORDINALITY AS k(attnum,n)
-        JOIN pg_attribute a
-          ON a.attrelid = i.indrelid AND a.attnum = k.attnum
-      ) = ARRAY['user_id','section_id']::name[]
-  LOOP
-    EXECUTE format('DROP INDEX %s', r.index_name);
-  END LOOP;
-END $$;
-
--- Exactly one pending request per user/course; rejected/active history is preserved.
-CREATE UNIQUE INDEX IF NOT EXISTS subscriptions_one_pending_per_course
-  ON public.subscriptions(user_id, section_id)
-  WHERE payment_status = 'pending';
-
-NOTIFY pgrst, 'reload schema';
-
-COMMIT;
-
--- ================================================================
--- IMPORTANT: livekit-token must enforce server-side:
--- status='live', authoritative course_id/room_name from live_classes,
--- host authorization on the exact course, and active course subscription
--- for viewers. Viewer grant: canSubscribe=true, canPublish=false,
--- canPublishData=false.
--- LiveKit secrets MUST be Edge Function Secrets only.
--- ================================================================
-`;console.log(sql);if(navigator.clipboard)navigator.clipboard.writeText(sql).catch(function(){});return sql;};
-})();
-</script>
 <style id="bsm-course-subscriptions-admin-final-style">#bsm-course-subscriptions-panel .bsm-cs-grid{display:grid;grid-template-columns:minmax(220px,360px) 1fr;gap:14px}#bsm-course-subscriptions-panel .bsm-cs-card{border:1px solid rgba(10,61,98,.12);border-radius:14px;padding:14px;background:var(--card-bg,#fff)}#bsm-course-subscriptions-panel .bsm-cs-note{font-size:.78rem;color:#667085;line-height:1.8}@media(max-width:700px){#bsm-course-subscriptions-panel .bsm-cs-grid{grid-template-columns:1fr}}</style>
-<script id="bsm-course-subscriptions-admin-final-js">(function(){'use strict';if(window.__BSM_COURSE_SUBSCRIPTIONS_ADMIN_FINAL_20260902)return;window.__BSM_COURSE_SUBSCRIPTIONS_ADMIN_FINAL_20260902=true;var db=function(){return window.supabase||null;},esc=function(v){return typeof window._apEsc==='function'?window._apEsc(v==null?'':String(v)):String(v==null?'':String(v)).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});},isPlatform=function(){return window._isSuperAdmin===true||window._currentUserRole==='admin';},toast=function(m,t){if(typeof window._showToast==='function')window._showToast(m,t||'info');else console.log(m);};function ensureUI(){var side=document.querySelector('#admin-panel .ap-sidebar'),body=document.querySelector('#admin-panel .ap-body');if(!side||!body)return false;var btn=document.getElementById('ap-tab-courseSubscriptions');if(!btn){var g=side.querySelector('.ap-nav-group');btn=document.createElement('button');btn.className='ap-nav-btn platform-only-nav';btn.id='ap-tab-courseSubscriptions';btn.setAttribute('role','tab');btn.innerHTML='💳 <span>اشتراك الكورسات</span>';btn.onclick=function(){apSwitchTab('courseSubscriptions');};(g||side).appendChild(btn);}if(!document.getElementById('ap-panel-courseSubscriptions')){var p=document.createElement('div');p.className='ap-tab-panel';p.id='ap-panel-courseSubscriptions';p.setAttribute('role','tabpanel');p.innerHTML='<div class="ap-section-heading">💳 اشتراك الكورسات</div><div class="bsm-cs-note" style="margin-bottom:12px">إعدادات الاشتراك مرتبطة بسجل الكورس نفسه في <code>site_sections</code>. الاشتراك على مستوى Course فقط، وليس Material أو Chapter أو Lesson أو Live Class.</div><div id="bsm-course-subscriptions-panel"><div class="bsm-cs-grid"><div class="bsm-cs-card"><label class="ap-label">📚 اختر الكورس</label><select id="bsm-cs-course" class="ap-select"><option value="">— جاري تحميل الكورسات —</option></select><div id="bsm-cs-course-info" class="bsm-cs-note" style="margin-top:10px"></div></div><div class="bsm-cs-card"><div id="bsm-cs-settings-empty" class="ap-empty">اختر الكورس أولاً.</div><div id="bsm-cs-settings" style="display:none"><label class="ap-label">هل الكورس يحتاج اشتراك؟</label><select id="bsm-cs-requires" class="ap-select"><option value="true">نعم — يحتاج اشتراك</option><option value="false">لا — مجاني حسب إعدادات المحتوى</option></select><div style="height:10px"></div><label class="ap-label">💰 سعر الاشتراك</label><input id="bsm-cs-price" class="ap-input" type="number" min="0" step="0.01"><div style="height:10px"></div><label class="ap-label">💳 طريقة الدفع</label><input id="bsm-cs-method" class="ap-input" type="text"><div style="height:10px"></div><label class="ap-label">📱 رقم الدفع / التحويل</label><input id="bsm-cs-number" class="ap-input" type="text"><div style="height:10px"></div><label class="ap-label">📅 مدة الاشتراك بالأيام</label><input id="bsm-cs-days" class="ap-input" type="number" min="1" step="1"><div style="height:12px"></div><div id="bsm-cs-msg" class="bsm-cs-note"></div><div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px"><button type="button" id="bsm-cs-save" class="ap-btn ap-btn-success">💾 حفظ إعدادات الكورس</button><button type="button" id="bsm-cs-refresh" class="ap-btn ap-btn-ghost">🔄 تحديث</button></div></div></div></div></div>';body.appendChild(p);}return true;}function gate(){var b=document.getElementById('ap-tab-courseSubscriptions');if(b)b.style.display=isPlatform()?'':'none';if(!isPlatform()){var p=document.getElementById('ap-panel-courseSubscriptions');if(p)p.classList.remove('active');}}async function loadCourses(){var sel=document.getElementById('bsm-cs-course');if(!sel||!db()||!isPlatform())return;sel.innerHTML='<option value="">⏳ جاري التحميل...</option>';var r=await db().from('site_sections').select('id,title,type,parent_id,requires_subscription,price,payment_method,payment_number,subscription_days').eq('type','course').order('display_order',{ascending:true}).order('id',{ascending:true});if(r.error)throw r.error;sel.innerHTML='<option value="">اختر الكورس</option>'+(r.data||[]).map(function(x){return '<option value="'+x.id+'">'+esc(x.title||('#'+x.id))+'</option>';}).join('');if(sel.value)await loadSelected();}async function loadSelected(){var sel=document.getElementById('bsm-cs-course'),cid=Number(sel&&sel.value||0),settings=document.getElementById('bsm-cs-settings'),empty=document.getElementById('bsm-cs-settings-empty');if(!cid){if(settings)settings.style.display='none';if(empty)empty.style.display='block';return;}var r=await db().from('site_sections').select('id,title,type,parent_id,requires_subscription,price,payment_method,payment_number,subscription_days').eq('id',cid).eq('type','course').maybeSingle();if(r.error)throw r.error;if(!r.data)throw new Error('الكورس غير موجود في site_sections');var x=r.data;document.getElementById('bsm-cs-requires').value=x.requires_subscription===true?'true':'false';document.getElementById('bsm-cs-price').value=x.price==null?'':x.price;document.getElementById('bsm-cs-method').value=x.payment_method||'';document.getElementById('bsm-cs-number').value=x.payment_number||'';document.getElementById('bsm-cs-days').value=x.subscription_days==null?'':x.subscription_days;document.getElementById('bsm-cs-course-info').innerHTML='<b>الكورس:</b> '+esc(x.title)+'<br><b>Course ID:</b> '+esc(x.id)+'<br><b>الحالة:</b> '+(x.requires_subscription===true?'🔒 يحتاج اشتراك':'🟢 لا يحتاج اشتراك');if(empty)empty.style.display='none';if(settings)settings.style.display='block';document.getElementById('bsm-cs-msg').textContent='';}async function save(){if(!isPlatform())throw new Error('هذه الإعدادات لأدمن المنصة فقط');var cid=Number(document.getElementById('bsm-cs-course').value||0);if(!cid)throw new Error('اختر الكورس أولاً');var req=document.getElementById('bsm-cs-requires').value==='true',pv=document.getElementById('bsm-cs-price').value.trim(),dv=document.getElementById('bsm-cs-days').value.trim();if(req&&pv!==''&&(!Number.isFinite(Number(pv))||Number(pv)<0))throw new Error('السعر غير صحيح');if(req&&dv!==''&&(!Number.isInteger(Number(dv))||Number(dv)<1))throw new Error('مدة الاشتراك غير صحيحة');var payload={requires_subscription:req,price:pv===''?null:Number(pv),payment_method:document.getElementById('bsm-cs-method').value.trim()||null,payment_number:document.getElementById('bsm-cs-number').value.trim()||null,subscription_days:dv===''?null:Number(dv)};var msg=document.getElementById('bsm-cs-msg');msg.style.color='';msg.textContent='⏳ جاري الحفظ...';var r=await db().from('site_sections').update(payload).eq('id',cid).eq('type','course');if(r.error)throw r.error;msg.style.color='#17a589';msg.textContent='✅ تم تحديث نفس سجل الكورس في site_sections.';toast('✅ تم حفظ إعدادات اشتراك الكورس','success');window._sectionRowCache=window._sectionRowCache||{};window._sectionRowCache[cid]=Object.assign({},window._sectionRowCache[cid]||{},payload,{_cachedAt:Date.now()});window._bsmFreePolicyCache={};window._bsmFreeChildrenCache={};if(typeof window.__bsmInvalidateSubscriptionCaches==='function')window.__bsmInvalidateSubscriptionCaches();try{localStorage.setItem('bsm_course_settings_changed',String(cid)+'|'+Date.now());}catch(e){};}function init(){if(ensureUI())gate();}window._bsmCourseSubsOpenTab=async function(){
+<script id="bsm-course-subscriptions-admin-final-js">(function(){'use strict';if(window.__BSM_COURSE_SUBSCRIPTIONS_ADMIN_FINAL_20260902)return;window.__BSM_COURSE_SUBSCRIPTIONS_ADMIN_FINAL_20260902=true;var db=function(){return window.supabase||null;},esc=function(v){return typeof window._apEsc==='function'?window._apEsc(v==null?'':String(v)):String(v==null?'':String(v)).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});},isPlatform=function(){return window._isSuperAdmin===true||window._currentUserRole==='admin';},toast=function(m,t){if(typeof window._showToast==='function')window._showToast(m,t||'info');else console.log(m);};function ensureUI(){var side=document.querySelector('#admin-panel .ap-sidebar'),body=document.querySelector('#admin-panel .ap-body');if(!side||!body)return false;var btn=document.getElementById('ap-tab-courseSubscriptions');if(!btn){var g=side.querySelector('.ap-nav-group');btn=document.createElement('button');btn.className='ap-nav-btn platform-only-nav';btn.id='ap-tab-courseSubscriptions';btn.setAttribute('role','tab');btn.innerHTML='💳 <span>اشتراك الكورسات</span>';btn.onclick=function(){apSwitchTab('courseSubscriptions');};(g||side).appendChild(btn);}if(!document.getElementById('ap-panel-courseSubscriptions')){var p=document.createElement('div');p.className='ap-tab-panel';p.id='ap-panel-courseSubscriptions';p.setAttribute('role','tabpanel');p.innerHTML='<div class="ap-section-heading">💳 اشتراك الكورسات</div><div class="bsm-cs-note" style="margin-bottom:12px">إعدادات الاشتراك مرتبطة بسجل الكورس نفسه في <code>site_sections</code>. الاشتراك على مستوى Course فقط، وليس Material أو Chapter أو Lesson.</div><div id="bsm-course-subscriptions-panel"><div class="bsm-cs-grid"><div class="bsm-cs-card"><label class="ap-label">📚 اختر الكورس</label><select id="bsm-cs-course" class="ap-select"><option value="">— جاري تحميل الكورسات —</option></select><div id="bsm-cs-course-info" class="bsm-cs-note" style="margin-top:10px"></div></div><div class="bsm-cs-card"><div id="bsm-cs-settings-empty" class="ap-empty">اختر الكورس أولاً.</div><div id="bsm-cs-settings" style="display:none"><label class="ap-label">هل الكورس يحتاج اشتراك؟</label><select id="bsm-cs-requires" class="ap-select"><option value="true">نعم — يحتاج اشتراك</option><option value="false">لا — مجاني حسب إعدادات المحتوى</option></select><div style="height:10px"></div><label class="ap-label">💰 سعر الاشتراك</label><input id="bsm-cs-price" class="ap-input" type="number" min="0" step="0.01"><div style="height:10px"></div><label class="ap-label">💳 طريقة الدفع</label><input id="bsm-cs-method" class="ap-input" type="text"><div style="height:10px"></div><label class="ap-label">📱 رقم الدفع / التحويل</label><input id="bsm-cs-number" class="ap-input" type="text"><div style="height:10px"></div><label class="ap-label">📅 مدة الاشتراك بالأيام</label><input id="bsm-cs-days" class="ap-input" type="number" min="1" step="1"><div style="height:12px"></div><div id="bsm-cs-msg" class="bsm-cs-note"></div><div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px"><button type="button" id="bsm-cs-save" class="ap-btn ap-btn-success">💾 حفظ إعدادات الكورس</button><button type="button" id="bsm-cs-refresh" class="ap-btn ap-btn-ghost">🔄 تحديث</button></div></div></div></div></div>';body.appendChild(p);}return true;}function gate(){var b=document.getElementById('ap-tab-courseSubscriptions');if(b)b.style.display=isPlatform()?'':'none';if(!isPlatform()){var p=document.getElementById('ap-panel-courseSubscriptions');if(p)p.classList.remove('active');}}async function loadCourses(){var sel=document.getElementById('bsm-cs-course');if(!sel||!db()||!isPlatform())return;sel.innerHTML='<option value="">⏳ جاري التحميل...</option>';var r=await db().from('site_sections').select('id,title,type,parent_id,requires_subscription,price,payment_method,payment_number,subscription_days').eq('type','course').order('display_order',{ascending:true}).order('id',{ascending:true});if(r.error)throw r.error;sel.innerHTML='<option value="">اختر الكورس</option>'+(r.data||[]).map(function(x){return '<option value="'+x.id+'">'+esc(x.title||('#'+x.id))+'</option>';}).join('');if(sel.value)await loadSelected();}async function loadSelected(){var sel=document.getElementById('bsm-cs-course'),cid=Number(sel&&sel.value||0),settings=document.getElementById('bsm-cs-settings'),empty=document.getElementById('bsm-cs-settings-empty');if(!cid){if(settings)settings.style.display='none';if(empty)empty.style.display='block';return;}var r=await db().from('site_sections').select('id,title,type,parent_id,requires_subscription,price,payment_method,payment_number,subscription_days').eq('id',cid).eq('type','course').maybeSingle();if(r.error)throw r.error;if(!r.data)throw new Error('الكورس غير موجود في site_sections');var x=r.data;document.getElementById('bsm-cs-requires').value=x.requires_subscription===true?'true':'false';document.getElementById('bsm-cs-price').value=x.price==null?'':x.price;document.getElementById('bsm-cs-method').value=x.payment_method||'';document.getElementById('bsm-cs-number').value=x.payment_number||'';document.getElementById('bsm-cs-days').value=x.subscription_days==null?'':x.subscription_days;document.getElementById('bsm-cs-course-info').innerHTML='<b>الكورس:</b> '+esc(x.title)+'<br><b>Course ID:</b> '+esc(x.id)+'<br><b>الحالة:</b> '+(x.requires_subscription===true?'🔒 يحتاج اشتراك':'🟢 لا يحتاج اشتراك');if(empty)empty.style.display='none';if(settings)settings.style.display='block';document.getElementById('bsm-cs-msg').textContent='';}async function save(){if(!isPlatform())throw new Error('هذه الإعدادات لأدمن المنصة فقط');var cid=Number(document.getElementById('bsm-cs-course').value||0);if(!cid)throw new Error('اختر الكورس أولاً');var req=document.getElementById('bsm-cs-requires').value==='true',pv=document.getElementById('bsm-cs-price').value.trim(),dv=document.getElementById('bsm-cs-days').value.trim();if(req&&pv!==''&&(!Number.isFinite(Number(pv))||Number(pv)<0))throw new Error('السعر غير صحيح');if(req&&dv!==''&&(!Number.isInteger(Number(dv))||Number(dv)<1))throw new Error('مدة الاشتراك غير صحيحة');var payload={requires_subscription:req,price:pv===''?null:Number(pv),payment_method:document.getElementById('bsm-cs-method').value.trim()||null,payment_number:document.getElementById('bsm-cs-number').value.trim()||null,subscription_days:dv===''?null:Number(dv)};var msg=document.getElementById('bsm-cs-msg');msg.style.color='';msg.textContent='⏳ جاري الحفظ...';var r=await db().from('site_sections').update(payload).eq('id',cid).eq('type','course');if(r.error)throw r.error;msg.style.color='#17a589';msg.textContent='✅ تم تحديث نفس سجل الكورس في site_sections.';toast('✅ تم حفظ إعدادات اشتراك الكورس','success');window._sectionRowCache=window._sectionRowCache||{};window._sectionRowCache[cid]=Object.assign({},window._sectionRowCache[cid]||{},payload,{_cachedAt:Date.now()});window._bsmFreePolicyCache={};window._bsmFreeChildrenCache={};if(typeof window.__bsmInvalidateSubscriptionCaches==='function')window.__bsmInvalidateSubscriptionCaches();try{localStorage.setItem('bsm_course_settings_changed',String(cid)+'|'+Date.now());}catch(e){};}function init(){if(ensureUI())gate();}window._bsmCourseSubsOpenTab=async function(){
   if(!isPlatform())return;
   ensureUI();gate();
   await loadCourses();
@@ -31535,7 +31012,6 @@ if(!window.__BSM_CANONICAL_ADMIN_NAV){
   window.apSwitchTab=async function(tab){
     try{
       if(tab==='assistantAdmins')return typeof window._bsmAAOpenTab==='function'?window._bsmAAOpenTab():undefined;
-      if(tab==='liveClasses')return typeof window._bsmLiveOpenTab==='function'?window._bsmLiveOpenTab():undefined;
       if(tab==='courseSubscriptions')return typeof window._bsmCourseSubsOpenTab==='function'?window._bsmCourseSubsOpenTab():undefined;
       if(typeof _bsmCanonicalBaseSwitch==='function')return await _bsmCanonicalBaseSwitch.apply(this,arguments);
     }catch(e){
@@ -31666,13 +31142,7 @@ document.addEventListener('click',function(e){if(e.target&&e.target.id==='bsm-cs
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',function(){window._bsmFreeContentAdminInit();},{once:true});else window._bsmFreeContentAdminInit();
 })();
 </script>
-<!-- ============================================================
- BSM FINAL EXPLICIT NODE ACCESS + LIVEKIT CLIENT HARDENING — 2026-09-04
- - Uses existing subscription_content_access for per-node explicit open/lock.
- - No new content hierarchy and no aliases.
- - Exact type values remain lesson/class/material/chapter.
- - Server-side DB RPCs are the authority for admin changes and RLS access.
-============================================================ -->
+
 <style id="bsm-final-explicit-node-access-style">
   .bsm-explicit-access-card{margin-top:12px;border:1px solid rgba(10,61,98,.12);border-radius:14px;padding:12px;background:var(--card-bg,#fff)}
   .bsm-explicit-access-head{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:8px}
@@ -31900,7 +31370,7 @@ var oldCheck=window.checkSectionAccess;
     var root=(await resolveCourseRoot(anchor))||anchor;
     var tree=await getTree(root),byId={};
     tree.forEach(function(n){byId[n.id]=n;});
-    var materials=tree.filter(function(n){return n.type==='material';}).sort(cmp);
+    var materials=tree.filter(function(n){return String(n.type||'').toLowerCase()==='material';}).sort(cmp);
     var targets={};
 
     function under(nodeId,ancestorId){
@@ -32062,7 +31532,7 @@ var oldCheck=window.checkSectionAccess;
 <!--
 BSM DB/RLS REPAIR NOTES (does not execute automatically)
 The current Supabase error `column p.is_branch_admin does not exist` comes from an
-existing SELECT RLS policy on section_resources/live_classes that references a
+existing SELECT RLS policy on section_resources that references a
 non-existent profiles column. Run the SQL below once in Supabase SQL Editor.
 It preserves data and write policies, and replaces only SELECT policies for these
 two tables with the platform's existing can_access_learning_section() gate.
@@ -32070,12 +31540,10 @@ two tables with the platform's existing can_access_learning_section() gate.
 <script>
 window.printRLSRepairSQL = function(){
   var sql = `-- ================================================================
--- BSM RLS REPAIR: section_resources + live_classes
+-- BSM RLS REPAIR: section_resources
 -- FIX: column p.is_branch_admin does not exist
 -- لا يحذف أي بيانات ولا يغيّر بيانات المستخدمين.
 -- ================================================================
-
--- 1) Resources: replace ONLY SELECT policies (leave INSERT/UPDATE/DELETE intact)
 DO $$
 DECLARE r RECORD;
 BEGIN
@@ -32090,38 +31558,18 @@ END $$;
 
 CREATE POLICY bsm_section_resources_select
 ON public.section_resources
-FOR SELECT
+FOR SELECT TO public
 USING (public.can_access_learning_section(section_id));
-
--- 2) Live Classes: replace ONLY SELECT policies (leave write policies intact)
-DO $$
-DECLARE r RECORD;
-BEGIN
-  FOR r IN
-    SELECT policyname
-    FROM pg_policies
-    WHERE schemaname='public' AND tablename='live_classes' AND cmd='SELECT'
-  LOOP
-    EXECUTE format('DROP POLICY IF EXISTS %I ON public.live_classes', r.policyname);
-  END LOOP;
-END $$;
-
-CREATE POLICY bsm_live_classes_select
-ON public.live_classes
-FOR SELECT
-USING (public.can_access_learning_section(course_id));
 
 NOTIFY pgrst, 'reload schema';
 
--- Verify the policies after running:
 SELECT tablename, policyname, cmd, qual
 FROM pg_policies
-WHERE schemaname='public'
-  AND tablename IN ('section_resources','live_classes')
-ORDER BY tablename, policyname;`;
+WHERE schemaname='public' AND tablename='section_resources'
+ORDER BY policyname;`;
   console.log(sql);
   try{ navigator.clipboard.writeText(sql); }catch(e){}
-  alert('تم طباعة SQL إصلاح RLS في Console، وحاولت نسخه للحافظة. شغّله مرة واحدة في Supabase SQL Editor.');
+  alert('تم طباعة SQL إصلاح RLS للمرفقات في Console، وحاولت نسخه للحافظة.');
 };
 </script>
 <!-- ============================================================
@@ -32296,13 +31744,10 @@ SELECT EXISTS(
 $$;
 GRANT EXECUTE ON FUNCTION public.is_branch_admin_of(BIGINT) TO anon,authenticated;
 
--- 2) RLS resources/live: سياسات SELECT فقط
+-- 2) RLS resources: سياسة SELECT فقط
 DROP POLICY IF EXISTS bsm_section_resources_select ON public.section_resources;
 CREATE POLICY bsm_section_resources_select ON public.section_resources
 FOR SELECT TO public USING (public.can_access_learning_section(section_id));
-DROP POLICY IF EXISTS bsm_live_classes_select ON public.live_classes;
-CREATE POLICY bsm_live_classes_select ON public.live_classes
-FOR SELECT TO public USING (public.can_access_learning_section(course_id));
 
 -- 3) بعد تثبيت is_branch_admin_of وتشغيل دالة can_access_learning_section
 -- الموجودة في الملف، اعمل Reload للـPostgREST.
@@ -32396,7 +31841,7 @@ async function targets(courseId,p){
   var byParent={};t.forEach(function(n){(byParent[n.parent_id]||(byParent[n.parent_id]=[])).push(n);});
   Object.keys(byParent).forEach(function(k){byParent[k].sort(comparePath);});
   function branch(root){var stack=[map[N(root)]],seen={};while(stack.length){var n=stack.pop();if(!n||seen[n.id])continue;seen[n.id]=true;out[n.id]=true;(byParent[n.id]||[]).forEach(function(c){stack.push(c);});}}
-  var mats=t.filter(function(n){return n.type==='material';}).sort(comparePath),chs=t.filter(function(n){return n.type==='chapter';});
+  var mats=t.filter(function(n){return String(n.type||'').toLowerCase()==='material';}).sort(comparePath),chs=t.filter(function(n){return n.type==='chapter';});
   function chaptersUnder(mat){return chs.filter(function(ch){return isUnder(map,ch.id,mat.id);}).sort(comparePath);}
   if(mode==='all_free')t.forEach(function(n){out[n.id]=true;});
   else if(mode==='first_chapter_first_material'){var m=mats[0];if(m){var c=chaptersUnder(m)[0];if(c)branch(c.id);}}
@@ -32488,6 +31933,146 @@ window.__bsmCourseIsFree=async function(id){try{var c=await courseOf(id);if(!c)r
 // used immediately without a reload.
 window.addEventListener('bsm:free-content-policy-saved',clearPolicyCaches);
 console.info('[BSM ABSOLUTE FINAL] unified course policy + descendant access + canonical file_url + finite iframe loading active');
+})();
+</script>
+
+<!-- BSM EMERGENCY OPENING FIX 2026-09-04: canonical guest/free access + first lesson/class per Material + fast auth -->
+<script id="bsm-emergency-final-fix-20260904">
+(function(){
+'use strict';
+if(window.__BSM_EMERGENCY_FINAL_FIX_20260904)return;
+window.__BSM_EMERGENCY_FINAL_FIX_20260904=true;
+var DB=function(){return window.supabase||null;};
+var N=function(v){var n=Number(v);return Number.isFinite(n)&&n>0?n:null;};
+var T=function(v){return String(v==null?'':(v.type||v)).trim().toLowerCase();};
+var cache={courses:{},trees:{},policy:{},targets:{},subs:{},explicit:{}};
+function clear(){cache={courses:{},trees:{},policy:{},targets:{},subs:{},explicit:{}};}
+async function getCourse(id){
+ id=N(id);if(!id)return null;if(cache.courses[id])return cache.courses[id];
+ var d=DB(),cur=id,seen={};if(!d)return null;
+ for(var i=0;i<40&&cur&&!seen[cur];i++){
+  seen[cur]=1;
+  var r=await d.from('site_sections').select('id,title,parent_id,type,display_order,requires_subscription,free_content_mode').eq('id',cur).maybeSingle();
+  if(r.error||!r.data)break;
+  if(T(r.data.type)==='course'){cache.courses[id]=r.data;return r.data;}
+  cur=N(r.data.parent_id);
+ }
+ return null;
+}
+async function getTree(courseId){
+ courseId=N(courseId);if(!courseId)return [];if(cache.trees[courseId])return cache.trees[courseId];
+ var d=DB();if(!d)return [];
+ var r=await d.from('site_sections').select('id,title,parent_id,type,display_order,requires_subscription,free_content_mode').order('display_order',{ascending:true}).order('id',{ascending:true});
+ if(r.error)throw r.error;
+ var all=r.data||[],byParent={};all.forEach(function(x){var p=N(x.parent_id);(byParent[p||0]||(byParent[p||0]=[])).push(x);});
+ Object.keys(byParent).forEach(function(k){byParent[k].sort(function(a,b){return (Number(a.display_order)||999999)-(Number(b.display_order)||999999)||Number(a.id)-Number(b.id);});});
+ var out=[],seen={};
+ function walk(id,path){(byParent[N(id)||0]||[]).forEach(function(x){var xid=N(x.id);if(!xid||seen[xid])return;seen[xid]=1;var q=path.concat([xid]);out.push({id:xid,title:x.title,parent_id:N(x.parent_id),type:T(x.type),display_order:x.display_order,path:q,requires_subscription:x.requires_subscription,free_content_mode:x.free_content_mode});walk(xid,q);});}
+ walk(courseId,[courseId]);
+ cache.trees[courseId]=out;return out;
+}
+function legacyToDesired(mode){
+ mode=String(mode||'').trim();
+ if(!mode)return 'first_learning_content_each_material';
+ if(/^first_(?:chapter|2_chapters|3_chapters|n_chapters)_each_material(?::\d+)?$/.test(mode))return 'first_learning_content_each_material';
+ if(mode==='first_chapter_first_material')return 'first_learning_content_each_material';
+ return mode;
+}
+async function freeTargets(courseId){
+ courseId=N(courseId);if(!courseId)return {};
+ var c=await getCourse(courseId);if(!c)return {};
+ var mode=legacyToDesired(c.free_content_mode);
+ var key=courseId+':'+mode;if(cache.targets[key])return cache.targets[key];
+ var tree=await getTree(courseId),out={};
+ function branch(id){var root=N(id);tree.forEach(function(n){if(n.id===root||n.path.indexOf(root)>=0)out[n.id]=true;});}
+ if(mode==='all_free'){tree.forEach(function(n){out[n.id]=true;});}
+ else if(mode==='first_learning_content'){
+  var l=tree.filter(function(n){return n.type==='lesson'||n.type==='class';})[0];if(l)branch(l.id);
+ }else if(/^first_n_learning_contents:\d+$/.test(mode)){
+  var count=Math.max(1,Math.min(100,Number(mode.split(':')[1])));
+  tree.filter(function(n){return n.type==='lesson'||n.type==='class';}).slice(0,count).forEach(function(l){branch(l.id);});
+ }else if(mode==='first_learning_content_each_material'){
+  var mats=tree.filter(function(n){return String(n.type||'').toLowerCase()==='material';});
+  mats.forEach(function(m){
+   var ml=tree.filter(function(n){return (n.type==='lesson'||n.type==='class')&&n.path.indexOf(m.id)>=0;}).sort(function(a,b){return a.path.length-b.path.length||a.path.map(Number).join('.').localeCompare(b.path.map(Number).join('.'),undefined,{numeric:true});});
+   if(ml[0])branch(ml[0].id);
+  });
+ }else if(mode==='first_material_each_learning_content'){
+  tree.filter(function(n){return n.type==='lesson'||n.type==='class';}).forEach(function(l){var mats=tree.filter(function(m){return String(m.type||'').toLowerCase()==='material'&&l.path.indexOf(m.id)>=0;});if(mats[0])branch(mats[0].id);});
+ }
+ cache.targets[key]=out;return out;
+}
+async function isFree(id,courseId){var t=await freeTargets(courseId);return !!t[N(id)];}
+async function nearestExplicit(id){
+ id=N(id);if(!id)return null;if(Object.prototype.hasOwnProperty.call(cache.explicit,id))return cache.explicit[id];
+ var d=DB(),cur=id,seen={};if(!d)return null;
+ for(var i=0;i<50&&cur&&!seen[cur];i++){
+  seen[cur]=1;
+  var r=await d.from('subscription_content_access').select('requires_subscription').eq('section_id',cur).maybeSingle();
+  if(!r.error&&r.data){cache.explicit[id]=r.data.requires_subscription===true?'locked':'open';return cache.explicit[id];}
+  var s=await d.from('site_sections').select('parent_id').eq('id',cur).maybeSingle();if(s.error||!s.data)break;cur=N(s.data.parent_id);
+ }
+ cache.explicit[id]=null;return null;
+}
+async function sub(userId,courseId){
+ var key=String(userId)+':'+String(courseId);if(cache.subs[key])return cache.subs[key];
+ var d=DB();if(!d)return {state:'none',row:null};
+ var q=await d.from('subscriptions').select('id,section_id,payment_status,start_date,end_date,reject_reason,requested_at,created_at,updated_at').eq('user_id',userId).eq('section_id',N(courseId)).order('requested_at',{ascending:false,nullsFirst:false}).order('created_at',{ascending:false}).order('id',{ascending:false}).limit(1);
+ if(q.error)throw q.error;var r=q.data&&q.data[0],st=T(r&&r.payment_status);var ans;
+ if(!r)ans={state:'none',row:null};
+ else if(st==='active'&&(!r.end_date||new Date(r.end_date).getTime()>=Date.now()))ans={state:'active',row:r};
+ else if(st==='pending')ans={state:'pending',row:r};
+ else if(st==='rejected'||st==='cancelled')ans={state:'rejected',row:r};
+ else ans={state:'expired',row:r};
+ cache.subs[key]=ans;return ans;
+}
+async function canonicalAccess(sectionId){
+ var sid=N(sectionId);if(!sid)return {state:'error',access:'error'};
+ if(window._isSuperAdmin===true||window._currentUserRole==='admin')return null;
+ var course=await getCourse(sid);if(!course)return null;
+ if(course.requires_subscription!==true)return null;
+ if(window._isBranchAdmin===true){var ids=window._branchAdminAllSectionIds||window._branchAdminSectionIds||[];if(Array.isArray(ids)&&ids.map(Number).indexOf(Number(course.id))>=0)return null;}
+ // IMPORTANT: free policy is evaluated BEFORE authentication so guests can see it.
+ if(await isFree(sid,course.id))return {state:'free',access:'free',anchor:course,user:null};
+ var sess=typeof window._getSessionSafe==='function'?await window._getSessionSafe(4500):await DB().auth.getSession();
+ var user=sess&&sess.data&&sess.data.session&&sess.data.session.user;
+ if(!user)return {state:'guest',access:'guest',anchor:course,user:null};
+ var ex=await nearestExplicit(sid);if(ex==='locked')return {state:'explicit_locked',access:'explicit_locked',anchor:course,user:user,reason:'تم قفل هذا المحتوى بواسطة مسؤول الكورس'};
+ if(ex==='open')return {state:'active',access:'active',anchor:course,user:user};
+ var st=await sub(user.id,course.id);if(st.state==='active')return {state:'active',access:'active',anchor:course,row:st.row,user:user};
+ // Free policy is still available to a logged-in user without an active subscription.
+ return {state:st.state,access:st.state,anchor:course,row:st.row,user:user,reject_reason:st.row&&st.row.reject_reason||''};
+}
+window.checkSectionAccess=canonicalAccess;
+window.getDetailedSectionAccess=canonicalAccess;
+window._isFreePreviewSection=async function(id){var c=await getCourse(id);return !!(c&&(c.requires_subscription===false||await isFree(id,c.id)));};
+window.__bsmCourseIsFree=async function(id){var c=await getCourse(id);return !!(c&&c.requires_subscription===false);};
+window.__bsmInvalidateAccessCaches=clear;
+window.addEventListener('bsm:free-content-policy-saved',clear);
+// Fast, non-hanging student login. Existing UI/messages are preserved.
+window.studentEmailLogin=async function(){
+ var email=((document.getElementById('student-login-email')||{}).value||'').trim();
+ var pass=(document.getElementById('student-login-password')||{}).value||'';
+ var msg=function(x,c){if(typeof _studentAuthMsg==='function')_studentAuthMsg('student-login-msg',x,c);};
+ if(!email||!pass){msg('من فضلك أدخل البريد الإلكتروني وكلمة المرور');return;}
+ if(!/^\S+@\S+\.\S+$/.test(email)){msg('البريد الإلكتروني غير صحيح');return;}
+ msg('جاري تسجيل الدخول...','#718096');
+ try{
+  var db=await Promise.race([(window._supabaseClientReady||Promise.resolve(window.supabase)),new Promise(function(_,rej){setTimeout(function(){rej(new Error('Supabase Auth غير جاهز'));},6000);})]);
+  if(!db||!db.auth)throw new Error('Supabase Auth غير جاهز');
+  var r=await Promise.race([db.auth.signInWithPassword({email:email,password:pass}),new Promise(function(_,rej){setTimeout(function(){rej(new Error('انتهت مهلة تسجيل الدخول، حاول مرة أخرى'));},10000);})]);
+  if(r.error)throw r.error;
+  msg('✅ تم تسجيل الدخول','#17a589');clear();
+  setTimeout(function(){if(typeof window.closeStudentAuth==='function')window.closeStudentAuth();},300);
+ }catch(e){
+  var code=String(e&&e.code||'').toLowerCase(),m=String(e&&e.message||'');
+  if(code==='email_not_confirmed'||/email not confirmed|email.*confirm/i.test(m))m='📧 يجب تأكيد بريدك الإلكتروني أولًا.';
+  else if(code==='invalid_credentials'||/invalid login credentials/i.test(m))m='❌ البريد الإلكتروني أو كلمة المرور غير صحيحة';
+  else if(!m)m='تعذر تسجيل الدخول، حاول مرة أخرى';
+  msg('❌ '+m);console.warn('[AUTH FINAL]',e);
+ }
+};
+console.info('[BSM EMERGENCY FINAL] guest free-content + first lesson/class per material + resource access + bounded login active');
 })();
 </script>
 </body>
