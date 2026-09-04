@@ -4960,9 +4960,27 @@ async function _renderDynamicSectionPage(sec) {
         childAccess.state !== 'free' && childAccess.state !== 'admin'
       );
 
-      var lockCard = isLearningChild
-        ? (!isFirstLearningChild || accessSaysLocked)
-        : false;
+      // COURSE-LEVEL RULE (final):
+      // - Free course => every descendant is visible/clickable. NEVER apply the
+      //   first-learning-only preview rule to a free course.
+      // - Paid course => for a non-subscriber, only the first Lesson/Class under
+      //   the first Material is free; the subscriber/admin gate controls the rest.
+      var courseIsFree = false;
+      try {
+        var currentCourseForCard = childAccess && childAccess.anchor ? childAccess.anchor : sec;
+        if (typeof window._isFreePreviewSection === 'function') {
+          // _isFreePreviewSection is true for every descendant of a free course.
+          courseIsFree = !!(currentCourseForCard && currentCourseForCard.requires_subscription === false);
+          if (!courseIsFree && typeof window.__bsmCourseIsFree === 'function') {
+            courseIsFree = !!(await window.__bsmCourseIsFree(sec.id));
+          }
+        }
+      } catch(_freeCourseCardErr) {
+        courseIsFree = false;
+      }
+      var lockCard = courseIsFree
+        ? false
+        : (isLearningChild ? (!isFirstLearningChild || accessSaysLocked) : false);
 
       var childGate = lockCard
         ? { anchor: childAccess && childAccess.anchor ? childAccess.anchor : sec,
@@ -7461,8 +7479,10 @@ async function openResource(url, title, resourceType, filePath, fileType, fileNa
   filePath = filePath == null ? '' : String(filePath);
   fileType = fileType == null ? '' : String(fileType);
   fileName = fileName == null ? '' : String(fileName);
-  if (!url) {
-    if (typeof _showToast === 'function') _showToast('رابط الملف غير متوفر في section_resources.file_url', 'error');
+  // file_url is canonical when present; file_path remains a supported fallback.
+  // Do NOT reject a resource only because legacy/current rows have file_url empty.
+  if (!url && !filePath) {
+    if (typeof _showToast === 'function') _showToast('رابط الملف غير متوفر في section_resources.file_url / file_path', 'error');
     return;
   }
 
@@ -7487,7 +7507,11 @@ async function openResource(url, title, resourceType, filePath, fileType, fileNa
     var resolved = await _resolveResourceUrl(url, filePath);
     if (resolved) url = String(resolved).trim();
   } catch (resolveErr) {
-    console.warn('[openResource][URL_RESOLVE] using original file_url:', resolveErr && resolveErr.message);
+    console.warn('[openResource][URL_RESOLVE] using original file_url/file_path:', resolveErr && resolveErr.message);
+  }
+  if (!url) {
+    if (typeof _showToast === 'function') _showToast('❌ تعذر إنشاء رابط آمن للمرفق من file_path', 'error');
+    return;
   }
 
   if (window._resourceOpenBusy) return;
@@ -32594,8 +32618,9 @@ window.checkSectionAccess=async function(sectionId){var id=n(sectionId);try{var 
   if(typeof originalOpenResource==='function'){
     window.openResource=async function(url,title,resourceType,filePath,fileType,fileName){
       var raw=(url==null?'':String(url)).trim();
-      if(!raw){
-        if(typeof _showToast==='function')_showToast('رابط الملف غير متوفر في section_resources.file_url','error');
+      var path=(filePath==null?'':String(filePath)).trim();
+      if(!raw && !path){
+        if(typeof _showToast==='function')_showToast('رابط الملف غير متوفر في section_resources.file_url / file_path','error');
         return;
       }
       try{
@@ -32614,7 +32639,7 @@ window.checkSectionAccess=async function(sectionId){var id=n(sectionId);try{var 
         if(typeof _showToast==='function')_showToast('❌ تعذر التحقق من صلاحية عرض المورد','error');
         return;
       }
-      return originalOpenResource.call(window,raw,title,resourceType,'',fileType,fileName);
+      return originalOpenResource.call(window,raw,title,resourceType,path,fileType,fileName);
     };
   }
 
@@ -32920,6 +32945,7 @@ console.log(sql);try{navigator.clipboard.writeText(sql);}catch(e){}return sql;};
   async function children(pid){var db=d(),n=N(pid);if(!db||!n)return [];var r=await db.from('site_sections').select('id,parent_id,type,display_order,title,requires_subscription').eq('parent_id',n).order('display_order',{ascending:true,nullsFirst:false}).order('id',{ascending:true});if(r.error)throw r.error;return r.data||[];}
   async function courseOf(id){var cur=N(id),seen={};for(var i=0;i<80&&cur&&!seen[cur];i++){seen[cur]=true;if(courseCache[cur]){var cc=courseCache[cur];if(T(cc.type)==='course')return cc;cur=N(cc.parent_id);continue;}var r=await row(cur);if(!r)break;courseCache[cur]=r;if(T(r.type)==='course')return r;cur=N(r.parent_id);}return null;}
   async function isFreeCourse(id){var c=await courseOf(id);return !!(c&&c.requires_subscription===false);}
+  window.__bsmCourseIsFree=isFreeCourse;
   async function firstMaterialFirstChapter(courseId){var key='p:'+N(courseId);if(previewCache[key]!==undefined)return previewCache[key];var mats=(await children(courseId)).filter(function(x){return T(x.type)==='material';});var mat=mats[0]||null;if(!mat){previewCache[key]=null;return null;}var direct=await children(mat.id);var chapter=direct.filter(function(x){return T(x.type)==='chapter';})[0]||null;if(!chapter){var q=direct.slice(),seen={};while(q.length&&!chapter){var n=q.shift(),nid=N(n.id);if(!nid||seen[nid])continue;seen[nid]=true;if(T(n.type)==='chapter'){chapter=n;break;}var kids=await children(nid);for(var i=0;i<kids.length;i++)q.push(kids[i]);}}previewCache[key]=chapter||null;return chapter||null;}
   async function descendantOrSelf(id,ancestorId){var cur=N(id),target=N(ancestorId),seen={};if(!cur||!target)return false;for(var i=0;i<80&&cur&&!seen[cur];i++){if(cur===target)return true;seen[cur]=true;var r=await row(cur);if(!r)break;cur=N(r.parent_id);}return false;}
   async function explicitModePaid(id){var db=d(),cur=N(id),chain=[],seen={};if(!db||!cur)return null;try{for(var i=0;i<80&&cur&&!seen[cur];i++){seen[cur]=true;chain.push(cur);var r=await row(cur);if(!r)break;cur=N(r.parent_id);}if(!chain.length)return null;var q=await db.from('subscription_content_access').select('section_id,requires_subscription').in('section_id',chain);if(q.error)return null;var map={};(q.data||[]).forEach(function(x){map[N(x.section_id)]=x.requires_subscription===true?'locked':'open';});for(var j=0;j<chain.length;j++)if(Object.prototype.hasOwnProperty.call(map,chain[j]))return map[chain[j]];}catch(e){console.warn('[BSM ABSOLUTE FINAL] explicit access lookup failed',e);}return null;}
@@ -32939,8 +32965,21 @@ console.log(sql);try{navigator.clipboard.writeText(sql);}catch(e){}return sql;};
   function unlockFreeCourseCards(){var sec=window._currentDynamicSec;if(!sec)return;isFreeCourse(sec.id).then(function(free){if(!free)return;var grid=document.getElementById('dynamic-section-grid');if(!grid)return;grid.querySelectorAll('.dept-card-locked[data-section-id]').forEach(function(card){var id=Number(card.getAttribute('data-section-id'));if(!id)return;var data=window['__sectionData_'+id];card.classList.remove('dept-card-locked');card.style.cursor='pointer';var top=card.querySelector('.card-top');if(top){top.style.filter='';top.style.opacity='';}var icon=card.querySelector('.card-icon');if(icon&&data)icon.textContent=(data.icon||'📁');var lock=card.querySelector('.external-lock-card');if(lock)lock.remove();var btn=card.querySelector('.btn-enter');if(btn)btn.textContent='ادخل ←';else{btn=document.createElement('button');btn.className='btn-enter';btn.textContent='ادخل ←';card.appendChild(btn);}card.onclick=function(){var fn=window['__sectionAction_'+id];if(typeof fn==='function')fn(data);};});}).catch(function(e){console.warn('[BSM ABSOLUTE FINAL] card unlock failed',e);});}
   function observeGrid(g){if(!g||g.__bsmAbsoluteObserved)return;g.__bsmAbsoluteObserved=true;var o=new MutationObserver(function(){unlockFreeCourseCards();});o.observe(g,{childList:true,subtree:true});unlockFreeCourseCards();}
   if(document.body){var bodyObserver=new MutationObserver(function(){observeGrid(document.getElementById('dynamic-section-grid'));});bodyObserver.observe(document.body,{childList:true,subtree:true});observeGrid(document.getElementById('dynamic-section-grid'));}
-  var prevOpen=window.openResource;if(typeof prevOpen==='function'){window.openResource=async function(url,title,type,filePath,fileType,fileName){var raw=String(url==null?'':url).trim();if(!raw){if(typeof _showToast==='function')_showToast('رابط الملف غير متوفر في section_resources.file_url','error');return;}return prevOpen.call(this,raw,title,type,filePath,fileType,fileName);};}
-  console.info('[BSM ABSOLUTE FINAL] course-level free access + first-Chapter/first-Material paid preview + provider-agnostic resources + Uploadcare fallback active');
+  var prevOpen=window.openResource;if(typeof prevOpen==='function'){window.openResource=async function(url,title,type,filePath,fileType,fileName){var raw=String(url==null?'':url).trim();var path=String(filePath==null?'':filePath).trim();if(!raw&&!path){if(typeof _showToast==='function')_showToast('رابط الملف غير متوفر في section_resources.file_url / file_path','error');return;}return prevOpen.call(this,raw,title,type,path,fileType,fileName);};}
+  // Attachment compatibility: if an embedded legacy Uploadcare URL fails,
+  // retry the derived CDN URL once. The stored file_url is never modified.
+  document.addEventListener('error',function(e){
+    var el=e&&e.target;if(!el||!el.tagName)return;
+    var tag=String(el.tagName).toLowerCase();
+    if(tag!=='iframe'&&tag!=='img'&&tag!=='video'&&tag!=='audio')return;
+    if(el.dataset&&el.dataset.bsmUcFinalTried==='1')return;
+    var src=el.currentSrc||el.src||'';
+    var fb=typeof window._bsmGetResourceFallback==='function'?window._bsmGetResourceFallback(src):'';
+    if(!fb)return;
+    try{el.dataset.bsmUcFinalTried='1';if(tag==='video'||tag==='audio'){var so=el.querySelector&&el.querySelector('source');if(so)so.src=fb;el.src=fb;el.load();}else{el.src=fb;}}catch(err){console.warn('[BSM ATTACHMENTS] fallback failed',err);}
+  },true);
+
+  console.info('[BSM ABSOLUTE FINAL] course-level access + canonical file_url + file_path fallback + provider-aware attachment recovery active');
 })();
 </script>
 </body>
