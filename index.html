@@ -2848,7 +2848,15 @@ img, video {
     </div>
 
     <div id="bsm-gate-sub" style="font-size:.95rem; opacity:.9; margin-bottom:18px;">يرجى فتح منصة المعاهد الفنية الصحية من تطبيق الهاتف.</div>
-    <a id="bsm-gate-android-btn" href="https://github.com/fanysehy/-/raw/refs/heads/main/app-debug.apk" download="app-debug.apk" target="_self" rel="noopener" style="display:none; background:#fff; color:#0a3d62; font-weight:700; padding:12px 22px; border-radius:10px; text-decoration:none; font-size:.95rem;">⬇️ تحميل تطبيق Android</a>
+    <a id="bsm-gate-android-btn"
+ href="https://github.com/fanysehy/-/raw/refs/heads/main/app-debug.apk"
+ download="app-debug.apk"
+ target="_blank"
+ rel="noopener noreferrer"
+ onclick="try{window.location.href='https://github.com/fanysehy/-/raw/refs/heads/main/app-debug.apk';}catch(e){} return false;"
+ style="display:none; ...">
+ ⬇️ تحميل تطبيق Android
+</a>
 
     <!-- ==================== iOS: واجهة تثبيت PWA (بديل شاشة الحجب الافتراضية على Safari/iPhone/iPad) ==================== -->
     <div id="bsm-gate-ios" style="display:none;">
@@ -5669,19 +5677,9 @@ function _resourceTypeLabel(r) {
 }
 
 function _bsmResourceJsArg(value) {
-  /*
-    Inline onclick handlers below use single-quoted JS arguments.
-    JSON.stringify() is NOT safe there when the JSON result contains a
-    double-quoted JS string and HTML entities are mixed into it. In particular
-    URLs/titles containing apostrophes, backslashes or line breaks could make
-    the browser compile the handler as broken JavaScript (Unexpected end of
-    input), which made attachment cards appear but not open.
-  */
-  return String(value == null ? '' : value)
-    .replace(/\\/g, '\\\\')
-    .replace(/'/g, "\\'")
-    .replace(/\r/g, '\\r')
-    .replace(/\n/g, '\\n');
+  // JSON string + HTML entity escaping makes inline handlers safe even when
+  // URLs/titles contain apostrophes, quotes, backslashes, or query strings.
+  return JSON.stringify(String(value == null ? '' : value)).replace(/'/g, '&#39;');
 }
 
 function buildResourcesHTML(resources, gate) {
@@ -27493,37 +27491,23 @@ DECLARE
 BEGIN
   IF p_section IS NULL THEN RETURN false; END IF;
 
-  -- ✅ PUBLIC WHOLE COURSE: لو لا يوجد أي ancestor عليه requires_subscription=true
-  -- في site_sections، فالكورس/الفرع عام بالكامل: لا اشتراك ولا تسجيل دخول مطلوب.
-  -- هذا يطابق _findSubscriptionAnchor() في الواجهة: عدم وجود Subscription Anchor = مفتوح.
-  IF NOT EXISTS (
-    WITH RECURSIVE ancestors AS (
-      SELECT id, parent_id, requires_subscription
-      FROM public.site_sections
-      WHERE id = p_section
-      UNION ALL
-      SELECT s.id, s.parent_id, s.requires_subscription
-      FROM public.site_sections s
-      JOIN ancestors a ON s.id = a.parent_id
-    )
-    SELECT 1 FROM ancestors WHERE requires_subscription = true
-  ) THEN
-    RETURN true;
-  END IF;
-
-  -- الفصل المجاني المحدد داخل الكورس المدفوع متاح للزائر أيضاً.
+  -- ✅ إصلاح (مراجعة نهائية): كان الفحص القديم يرجع false فوراً لو u IS NULL
+  -- (زائر غير مسجّل دخول) *قبل* حتى فحص الفصل المجاني الأول — فكان الزائر
+  -- يُمنع من رؤية الفصل المجاني الأول بالكامل رغم أن الواجهة الأمامية تسمح
+  -- له بالدخول. الفصل المجاني الأول الآن يُفحص أولاً، بدون أي شرط على تسجيل
+  -- الدخول، لأنه مجاني للجميع بالتعريف (زائر أو مستخدم مسجّل، بلا فرق).
   IF public.is_first_free_learning_path_item(p_section) THEN
     RETURN true;
   END IF;
 
-  -- كل ما بعد المحتوى المجاني يتطلب مستخدماً مسجلاً على الأقل.
+  -- كل ما بعد الفصل المجاني يتطلب مستخدماً مسجّل دخول على الأقل.
   IF u IS NULL THEN RETURN false; END IF;
 
   IF public.is_admin() OR public.is_branch_admin_of(p_section) THEN
     RETURN true;
   END IF;
 
-  -- الكورس المدفوع: ما بعد المحتوى المجاني يحتاج اشتراكاً فعالاً.
+  -- كل ما بعد الفصل المجاني يحتاج اشتراكاً فعالاً.
   IF NOT public.has_active_course_subscription(p_section) THEN
     RETURN false;
   END IF;
@@ -32263,98 +32247,18 @@ window.checkSectionAccess=async function(sectionId){var id=n(sectionId);try{var 
     var root=(await resolveCourseRoot(anchor))||anchor;
     var tree=await getTree(root),byId={};
     tree.forEach(function(n){byId[n.id]=n;});
-
-    /*
-      FINAL FREE-PREVIEW RULE
-      -----------------------
-      The real hierarchy is:
-        course -> level -> Material -> (folders/containers) -> lesson/class
-
-      The free target is determined PER MATERIAL, not per course and not by
-      looking for type="chapter". For every Material we recursively inspect
-      every descendant and choose the first real learning node:
-        type = lesson OR class
-      ordered by display_order then id.
-
-      The target itself, all descendants of that target, and all ancestors
-      between the target and the Material are included. This makes a valid
-      free path such as Material -> شرح -> first class navigable, while a
-      sibling branch such as مراجعة remains locked when it does not contain
-      the free target.
-    */
-    var materials=tree.filter(function(n){
-      return _bsmFreeNormType(n.type)==='material';
-    }).sort(cmp);
-
+    var materials=tree.filter(function(n){return n.type==='material';}).sort(cmp);
+    var chapters=tree.filter(function(n){return n.type==='chapter';}).sort(cmp);
     var targets={};
 
-    function addAncestorsToMaterial(id,materialId){
-      var cur=Number(id),guard=0;
-      while(cur&&guard++<100){
-        targets[cur]=true;
-        if(cur===Number(materialId))break;
-        var row=byId[cur];
-        if(!row)break;
-        cur=Number(row.parent_id)||0;
-      }
-    }
-
     materials.forEach(function(mat){
-      var under=tree.filter(function(n){
-        return Number(n.id)!==Number(mat.id) &&
-          isDescendant(n.id,mat.id,byId) &&
-          _bsmFreeIsLearningContent(n);
-      }).sort(cmp);
-
-      var first=under[0];
-      if(!first)return;
-
-      // Target + its full branch + the navigable ancestor path to Material.
-      addAncestorsToMaterial(first.id,mat.id);
-
+      var under=chapters.filter(function(ch){return isDescendant(ch.id,mat.id,byId);}).sort(cmp);
+      var first=under[0];if(!first)return;
+      targets[first.id]=true;
       tree.forEach(function(n){
-        if(Number(n.id)!==Number(first.id) && isDescendant(n.id,first.id,byId)){
-          targets[n.id]=true;
-        }
+        if(n.id!==first.id&&isDescendant(n.id,first.id,byId))targets[n.id]=true;
       });
     });
-
-    /*
-      Respect the selected course policy. The platform's intended mode for
-      this structure is first_learning_content_each_material. Legacy modes
-      are handled conservatively here without changing any DB data.
-    */
-    try{
-      var policy=await _bsmFreeGetCoursePolicy(root);
-      var mode=String(policy&&policy.mode||'paid_all').trim();
-      if(mode==='all_free'){
-        targets={};
-        tree.forEach(function(n){targets[n.id]=true;});
-      }else if(mode==='paid_all'){
-        targets={};
-      }else if(mode==='first_learning_content'){
-        var allLearning=tree.filter(function(n){return _bsmFreeIsLearningContent(n);}).sort(cmp);
-        var one=allLearning[0];
-        targets={};
-        if(one){
-          targets[one.id]=true;
-          var c=Number(one.id),g=0;
-          while(c&&g++<100){
-            var r=byId[c];if(!r)break;
-            if(r.id!==one.id)targets[r.id]=true;
-            if(Number(r.id)===Number(root))break;
-            c=Number(r.parent_id)||0;
-          }
-          tree.forEach(function(n){
-            if(Number(n.id)!==Number(one.id)&&isDescendant(n.id,one.id,byId))targets[n.id]=true;
-          });
-        }
-      }
-      // first_learning_content_each_material remains the default per-material rule.
-    }catch(e){
-      console.warn('[BSM FINAL ACCESS] free policy evaluation failed:',e&&e.message);
-    }
-
     exactFreeCache[anchor]=targets;
     return targets;
   }
@@ -32425,7 +32329,7 @@ window.checkSectionAccess=async function(sectionId){var id=n(sectionId);try{var 
     if(explicit==='locked')return {state:'explicit_locked',access:'explicit_locked',anchor:anchor,reason:'تم قفل هذا الـNode بواسطة أدمن الكورس'};
     if(explicit==='open')return null;
 
-    // FINAL RULE: the first real lesson/class of each Material is free according to the selected course policy.
+    // EXACT RULE: only the first real Chapter of each real Material is free.
     if(await isExactFree(sid,anchor.id))return {state:'free',access:'free',anchor:anchor};
 
     var sessionRes;
@@ -32517,46 +32421,5 @@ window.checkSectionAccess=async function(sectionId){var id=n(sectionId);try{var 
   console.info('[BSM FINAL] first-Chapter-per-Material access + canonical section_resources.file_url + refresh restore active');
 })();
 </script>
-
-
-<!-- BSM SQL PATCH — PUBLIC WHOLE COURSE ACCESS (2026-08)
-     Run the SQL below in Supabase SQL Editor. This does not drop tables, policies, or data.
-     The HTML function above is also updated to keep the client/server access rules aligned.
-
-CREATE OR REPLACE FUNCTION public.can_access_learning_section(p_section BIGINT)
-RETURNS BOOLEAN
-LANGUAGE plpgsql STABLE SECURITY DEFINER
-SET search_path = public, pg_temp
-AS $$
-DECLARE
-  u UUID := auth.uid();
-  p RECORD;
-  previous_section BIGINT;
-BEGIN
-  IF p_section IS NULL THEN RETURN false; END IF;
-  IF NOT EXISTS (
-    WITH RECURSIVE ancestors AS (
-      SELECT id, parent_id, requires_subscription FROM public.site_sections WHERE id=p_section
-      UNION ALL
-      SELECT s.id, s.parent_id, s.requires_subscription FROM public.site_sections s JOIN ancestors a ON s.id=a.parent_id
-    ) SELECT 1 FROM ancestors WHERE requires_subscription=true
-  ) THEN RETURN true; END IF;
-  IF public.is_first_free_learning_path_item(p_section) THEN RETURN true; END IF;
-  IF u IS NULL THEN RETURN false; END IF;
-  IF public.is_admin() OR public.is_branch_admin_of(p_section) THEN RETURN true; END IF;
-  IF NOT public.has_active_course_subscription(p_section) THEN RETURN false; END IF;
-  IF NOT EXISTS (SELECT 1 FROM public.learning_path_items lpi JOIN public.learning_paths lp ON lp.id=lpi.path_id WHERE lp.is_active=true AND lpi.section_id=p_section) THEN RETURN true; END IF;
-  FOR p IN SELECT lpi.path_id,lpi.display_order,lpi.id FROM public.learning_path_items lpi JOIN public.learning_paths lp ON lp.id=lpi.path_id WHERE lp.is_active=true AND lpi.section_id=p_section LOOP
-    SELECT x.section_id INTO previous_section FROM public.learning_path_items x WHERE x.path_id=p.path_id AND (x.display_order<p.display_order OR (x.display_order=p.display_order AND x.id<p.id)) ORDER BY x.display_order DESC,x.id DESC LIMIT 1;
-    IF previous_section IS NULL OR public.learning_item_is_completed(u,previous_section) THEN RETURN true; END IF;
-  END LOOP;
-  RETURN false;
-END;
-$$;
-
-GRANT EXECUTE ON FUNCTION public.can_access_learning_section(BIGINT) TO anon, authenticated;
-NOTIFY pgrst, 'reload schema';
--->
-
 </body>
 </html>
