@@ -4895,7 +4895,7 @@ async function _renderDynamicSectionPage(sec) {
         gridEl.innerHTML = `
           <div style="text-align:center;padding:40px;color:#999;grid-column:1/-1">
             <div style="font-size:2.5rem;margin-bottom:12px">🚧</div>
-            <p style="margin-bottom:8px;font-size:1rem">هذا القسم قيد الإعداد — سيتم إضافة المحتوى قريباً</p>
+            <p style="margin-bottom:8px;font-size:1rem">لم يتم تحميل محتوى هذا القسم من قاعدة البيانات حالياً</p>
             <p style="font-size:.78rem;color:#bbb;margin-bottom:16px">إذا كنت تتوقع ظهور محتوى، تحقق من Console للتشخيص</p>
             <button onclick="sessionStorage.removeItem('_sbDataCache_v4');window._dataCache.sections={};window._dataCache.content={};window._dataCache.resources={};window._dataCache._pending={};_renderDynamicSectionPage(window.__sectionData_${sec.id});"
               style="background:linear-gradient(135deg,var(--primary),var(--teal));color:#fff;border:none;border-radius:10px;padding:10px 20px;font-family:var(--font);font-size:.85rem;font-weight:700;cursor:pointer;box-shadow:0 3px 10px rgba(10,61,98,0.25)">
@@ -5428,9 +5428,9 @@ async function _openContentPage(sec, _preloadedContent, _preloadedResources) {
   }
 
   if (html === '') {
-    html = `<div style="text-align:center;padding:60px 20px;color:#bbb">
-      <div style="font-size:3rem;margin-bottom:14px">🚧</div>
-      <p style="font-size:1rem;font-weight:600">المحتوى قيد الإعداد — سيتم إضافته قريباً</p>
+    html = `<div style="text-align:center;padding:60px 20px;color:#7a8a99">
+      <div style="font-size:3rem;margin-bottom:14px">📂</div>
+      <p style="font-size:1rem;font-weight:700">تم فتح هذا الفصل، ولا توجد عناصر محتوى أو مرفقات متاحة حاليًا.</p>
     </div>`;
   }
 
@@ -5515,6 +5515,8 @@ function buildContentHTML(contentItems, gate) {
       const safePath = (item.file_path || '').replace(/'/g, "\\'");
       const safeTitle = (item.title || '').replace(/'/g,"\'");
       const safeType = (item.content_type || '').replace(/'/g,"\'");
+      const safeFileType = (item.file_type || '').replace(/'/g,"\'");
+      const safeFileName = (item.file_name || item.title || '').replace(/'/g,"\'");
       html += `
         <div class="resource-item" ${displayUrl ? `onclick="openResource('${safeUrl}','${safeTitle}','${safeType}','${safePath}','${safeFileType}','${safeFileName}')"` : ''} style="${displayUrl ? 'cursor:pointer' : ''};margin-bottom:10px;padding:18px 22px;">
           <div class="ri-icon" style="font-size:2rem">${icon}</div>
@@ -5625,12 +5627,16 @@ function renderResourceCards(containerId, items, gate) {
         </div>
       </div>`;
     }
-    const safeUrl = (item.url || '').replace(/'/g,"\'");
+    const canonicalUrl = item.file_url || item.url || '';
+    const safeUrl = canonicalUrl.replace(/'/g,"\'");
     const safeTitle = (item.title || '').replace(/'/g,"\'");
-    const safeType = (item.content_type || '').replace(/'/g,"\'");
+    const safeType = (item.resource_type || item.content_type || '').replace(/'/g,"\'");
+    const safePath = (item.file_path || '').replace(/'/g,"\'");
+    const safeFileType = (item.file_type || '').replace(/'/g,"\'");
+    const safeFileName = (item.file_name || item.title || '').replace(/'/g,"\'");
     return `
-    <div class="link-card lc-blue" style="cursor:${item.url ? 'pointer' : 'default'}"
-         ${item.url ? `onclick="openResource('${safeUrl}','${safeTitle}','${safeType}','${safePath}','${safeFileType}','${safeFileName}')"` : ''}>
+    <div class="link-card lc-blue" style="cursor:${canonicalUrl ? 'pointer' : 'default'}"
+         ${canonicalUrl ? `onclick="openResource('${safeUrl}','${safeTitle}','${safeType}','${safePath}','${safeFileType}','${safeFileName}')"` : ''}>
       <div class="lc-top">
         <div class="lc-icon">${item.icon || '📌'}</div>
         <div class="lc-info">
@@ -5638,7 +5644,7 @@ function renderResourceCards(containerId, items, gate) {
           <p>${item.description || ''}</p>
         </div>
       </div>
-      ${item.url ? `<div class="lc-footer"><span class="lc-url">${item.url}</span><button class="lc-btn" style="background:linear-gradient(135deg,#1a3a5c,#2471a3);color:#fff;border:none;cursor:pointer;font-family:inherit;" onclick="event.stopPropagation();openResource('${safeUrl}','${safeTitle}','${safeType}','${safePath}','${safeFileType}','${safeFileName}')">عرض ▶</button></div>` : ''}
+      ${canonicalUrl ? `<div class="lc-footer"><span class="lc-url">${canonicalUrl}</span><button class="lc-btn" style="background:linear-gradient(135deg,#1a3a5c,#2471a3);color:#fff;border:none;cursor:pointer;font-family:inherit;" onclick="event.stopPropagation();openResource('${safeUrl}','${safeTitle}','${safeType}','${safePath}','${safeFileType}','${safeFileName}')">عرض ▶</button></div>` : ''}
     </div>`}).join('');
   container.innerHTML = html || `<div style="grid-column:1/-1;text-align:center;padding:30px;color:#999">لا يوجد محتوى حالياً</div>`;
 }
@@ -29369,7 +29375,6 @@ ORDER BY tablename, policyname;
 </script>
 
 
-
 <!-- ============================================================
      BSM FINAL DB-AWARE FRONTEND HARDENING — 2026-08-29
      Uses confirmed existing columns: subscriptions.reject_reason
@@ -31843,8 +31848,6 @@ document.addEventListener('click',function(e){if(e.target&&e.target.id==='bsm-cs
 </script>
 
 
-
-
 <!-- ============================================================
  BSM FINAL EXPLICIT NODE ACCESS + LIVEKIT CLIENT HARDENING — 2026-09-04
  - Uses existing subscription_content_access for per-node explicit open/lock.
@@ -32031,7 +32034,7 @@ window.checkSectionAccess=async function(sectionId){var id=n(sectionId);try{var 
    * Final runtime contract:
    * section_resources.file_url -> openResource -> ResourceViewer.
    *
-   * The old optional RPC bsm_nearest_content_override is NOT used here.
+   * The old optional RPC nearest-content-override-disabled is NOT used here.
    * Access control remains delegated to the existing checkSectionAccess/RLS
    * chain; this patch only guarantees that opening a resource never swaps a
    * valid file_url for a stale file_path.
@@ -32150,92 +32153,225 @@ window.checkSectionAccess=async function(sectionId){var id=n(sectionId);try{var 
 </script>
 
 
+<script id="bsm-safe-filetype-defensive-20260904">
+(function(){
+  'use strict';
+  /* safeFileType defensive compatibility: the renderer itself defines this locally.
+     This global helper is only a compatibility guard for any legacy inline path. */
+  if(typeof window._bsmSafeFileType !== 'function'){
+    window._bsmSafeFileType=function(v){
+      try{
+        return String(v==null?'':v).replace(/'/g,"\\'");
+      }catch(e){return '';}
+    };
+  }
+})();
+</script>
+
 <script id="bsm-final-stability-fix-20260904">
 (function(){
   'use strict';
   if(window.__BSM_FINAL_STABILITY_FIX_20260904)return;
   window.__BSM_FINAL_STABILITY_FIX_20260904=true;
 
-  /* ================================================================
-     1) FREE PREVIEW: exactly ONE first lesson/class per SUBJECT.
-        Never make the first lesson of every material/chapter free.
-     ================================================================ */
-  function _id(v){
-    if(v===null||v===undefined)return null;
-    var x=String(v).trim();
-    if(!x)return null;
-    var m=x.match(/^\d+$/);
-    return m?Number(x):x;
-  }
-  async function _db(){
-    if(window.supabase&&typeof window.supabase.from==='function')return window.supabase;
-    if(typeof _waitForSupabase==='function')return await _waitForSupabase();
-    return null;
-  }
-  async function _getRow(id){
-    var d=await _db(), n=_id(id); if(!d||!n)return null;
+  function num(v){var n=Number(v);return Number.isFinite(n)&&n>0?n:null;}
+  function typ(v){return String(v==null?'':v).trim().toLowerCase();}
+  function db(){return window.supabase||null;}
+
+  async function getRow(id){
+    var d=db(),n=num(id);if(!d||!n)return null;
     try{
-      var r=await d.from('site_sections').select('id,parent_id,type,display_order,requires_subscription,title,subtitle').eq('id',n).maybeSingle();
-      return r.error?null:r.data;
-    }catch(e){return null;}
+      var r=await d.from('site_sections')
+        .select('id,parent_id,type,display_order,requires_subscription,title')
+        .eq('id',n).maybeSingle();
+      if(r.error)throw r.error;
+      return r.data||null;
+    }catch(e){console.warn('[BSM FINAL ACCESS] getRow failed:',e&&e.message);return null;}
   }
-  async function _getChildren(id){
-    var d=await _db(), n=_id(id); if(!d||!n)return [];
-    try{
-      var r=await d.from('site_sections').select('id,parent_id,type,display_order,requires_subscription,title,subtitle').eq('parent_id',n).order('display_order',{ascending:true,nullsFirst:false}).order('id',{ascending:true});
-      return r.error?[]:(r.data||[]);
-    }catch(e){return [];}
-  }
-  async function _subjectOf(id){
-    var cur=_id(id),seen={};
-    for(var i=0;i<64&&cur&&!seen[String(cur)];i++){
-      seen[String(cur)]=true;
-      var r=await _getRow(cur); if(!r)break;
-      if(String(r.type||'').trim().toLowerCase()==='subject')return _id(r.id);
-      cur=_id(r.parent_id);
+
+  async function resolveCourseRoot(id){
+    var cur=num(id),seen={};
+    for(var i=0;i<80&&cur&&!seen[cur];i++){
+      seen[cur]=true;var r=await getRow(cur);if(!r)break;
+      if(typ(r.type)==='course')return num(r.id);
+      cur=num(r.parent_id);
     }
     return null;
   }
-  async function _firstLearning(subjectId){
-    var root=_id(subjectId); if(!root)return null;
-    var stack=(await _getChildren(root)).slice().reverse(),seen={};
-    while(stack.length){
-      var node=stack.pop(), nid=_id(node&&node.id); if(!nid||seen[String(nid)])continue;
-      seen[String(nid)]=true;
-      var t=String(node.type||'').trim().toLowerCase();
-      if(t==='lesson'||t==='class')return node;
-      var kids=await _getChildren(nid);
-      for(var j=kids.length-1;j>=0;j--)stack.push(kids[j]);
+
+  async function getTree(rootId){
+    var d=db(),root=num(rootId);if(!d||!root)return [];
+    var out=[],queue=[{id:root,path:[],depth:0}],seen={};
+    while(queue.length&&out.length<2000){
+      var batch=queue.splice(0,25);
+      for(var b=0;b<batch.length;b++){
+        var parent=batch[b];if(seen[parent.id])continue;seen[parent.id]=true;
+        var r=await d.from('site_sections')
+          .select('id,parent_id,type,display_order,title,requires_subscription')
+          .eq('parent_id',parent.id)
+          .order('display_order',{ascending:true,nullsFirst:false})
+          .order('id',{ascending:true});
+        if(r.error)throw r.error;
+        var kids=r.data||[];
+        for(var j=0;j<kids.length;j++){
+          var k=kids[j],kid=num(k.id);if(!kid||seen[kid])continue;
+          var ord=Number(k.display_order);if(!Number.isFinite(ord))ord=2147483647;
+          var node={id:kid,parent_id:num(k.parent_id),type:typ(k.type),
+            display_order:k.display_order,title:k.title,
+            path:parent.path.concat([ord,kid]),depth:parent.depth+1};
+          out.push(node);
+          if(node.depth<64)queue.push({id:kid,path:node.path,depth:node.depth});
+        }
+      }
     }
+    return out;
+  }
+
+  function cmp(a,b){
+    var ap=a.path||[],bp=b.path||[],i=0;
+    for(;i<Math.min(ap.length,bp.length);i++){
+      var x=Number(ap[i]),y=Number(bp[i]);if(x!==y)return x-y;
+    }
+    return ap.length-bp.length||Number(a.id)-Number(b.id);
+  }
+
+  function isDescendant(nodeId,ancestorId,byId){
+    var cur=byId[num(nodeId)],seen={};
+    while(cur&&cur.parent_id!=null&&!seen[cur.id]){
+      if(num(cur.parent_id)===num(ancestorId))return true;
+      seen[cur.id]=true;cur=byId[num(cur.parent_id)];
+    }
+    return false;
+  }
+
+  var exactFreeCache={};
+  async function exactFreeTargets(anchorId){
+    var anchor=num(anchorId);if(!anchor)return {};
+    if(exactFreeCache[anchor])return exactFreeCache[anchor];
+    var root=(await resolveCourseRoot(anchor))||anchor;
+    var tree=await getTree(root),byId={};
+    tree.forEach(function(n){byId[n.id]=n;});
+    var materials=tree.filter(function(n){return n.type==='material';}).sort(cmp);
+    var chapters=tree.filter(function(n){return n.type==='chapter';}).sort(cmp);
+    var targets={};
+
+    materials.forEach(function(mat){
+      var under=chapters.filter(function(ch){return isDescendant(ch.id,mat.id,byId);}).sort(cmp);
+      var first=under[0];if(!first)return;
+      targets[first.id]=true;
+      tree.forEach(function(n){
+        if(n.id!==first.id&&isDescendant(n.id,first.id,byId))targets[n.id]=true;
+      });
+    });
+    exactFreeCache[anchor]=targets;
+    return targets;
+  }
+
+  async function isExactFree(sectionId,anchorId){
+    var sid=num(sectionId),aid=num(anchorId);if(!sid||!aid)return false;
+    return !!(await exactFreeTargets(aid))[sid];
+  }
+
+  async function subscriptionStatus(userId,anchorId){
+    var d=db(),aid=num(anchorId);if(!d||!userId||!aid)return {state:'none'};
+    try{
+      var r=await d.from('subscriptions').select('*')
+        .eq('user_id',userId).eq('section_id',aid).maybeSingle();
+      if(r.error)throw r.error;
+      var row=r.data;if(!row)return {state:'none'};
+      var ps=typ(row.payment_status);
+      if(ps==='active'){
+        if(row.end_date){
+          var end=new Date(row.end_date).getTime();
+          if(Number.isFinite(end)&&end<Date.now())return {state:'expired',row:row};
+        }
+        return {state:'active',row:row};
+      }
+      if(ps==='pending')return {state:'pending',row:row};
+      if(ps==='rejected')return {state:'rejected',row:row};
+      return {state:'expired',row:row};
+    }catch(e){console.error('[BSM FINAL ACCESS] subscription lookup failed:',e&&e.message);return {state:'error'};}
+  }
+
+  async function nearestExplicitMode(sectionId){
+    // Existing explicit Access feature; no optional RPC is called.
+    var d=db(),cur=num(sectionId),chain=[],seen={};if(!d||!cur)return null;
+    try{
+      for(var i=0;i<80&&cur&&!seen[cur];i++){
+        seen[cur]=true;
+        var r=await d.from('site_sections').select('id,parent_id').eq('id',cur).maybeSingle();
+        if(r.error||!r.data)break;
+        chain.push(num(r.data.id));cur=num(r.data.parent_id);
+      }
+      if(!chain.length)return null;
+      var q=await d.from('subscription_content_access')
+        .select('section_id,requires_subscription').in('section_id',chain);
+      if(q.error)return null;
+      var map={};
+      (q.data||[]).forEach(function(x){map[num(x.section_id)]=x.requires_subscription===true?'locked':'open';});
+      for(var j=0;j<chain.length;j++){
+        if(Object.prototype.hasOwnProperty.call(map,chain[j]))return map[chain[j]];
+      }
+    }catch(e){console.warn('[BSM FINAL ACCESS] explicit access lookup failed:',e&&e.message);}
     return null;
   }
-  window.bsmFirstLearningContentForSubject=async function(anySectionId){
-    var sid=await _subjectOf(anySectionId);
-    if(!sid)sid=_id(anySectionId);
-    var leaf=await _firstLearning(sid);
-    return leaf?_id(leaf.id):null;
+
+  async function finalAccess(sectionId){
+    var sid=num(sectionId);if(!sid)return {state:'error',access:'error'};
+    if(window._isSuperAdmin===true||window._currentUserRole==='admin')return null;
+
+    var anchor=(typeof _findSubscriptionAnchor==='function')?await _findSubscriptionAnchor(sid):null;
+    if(!anchor)return null;
+
+    var assigned=Array.isArray(window._branchAdminSectionIds)&&
+      window._branchAdminSectionIds.map(Number).indexOf(Number(anchor.id))!==-1;
+    var assignedAll=Array.isArray(window._branchAdminAllSectionIds)&&
+      window._branchAdminAllSectionIds.map(Number).indexOf(Number(anchor.id))!==-1;
+    if(window._isBranchAdmin===true&&(assigned||assignedAll))return null;
+
+    var explicit=await nearestExplicitMode(sid);
+    if(explicit==='locked')return {state:'explicit_locked',access:'explicit_locked',anchor:anchor,reason:'تم قفل هذا الـNode بواسطة أدمن الكورس'};
+    if(explicit==='open')return null;
+
+    // EXACT RULE: only the first real Chapter of each real Material is free.
+    if(await isExactFree(sid,anchor.id))return {state:'free',access:'free',anchor:anchor};
+
+    var sessionRes;
+    try{
+      sessionRes=typeof _getSessionSafe==='function'?await _getSessionSafe(6000):await db().auth.getSession();
+    }catch(e){return {state:'error',access:'error',anchor:anchor};}
+    var user=sessionRes&&sessionRes.data&&sessionRes.data.session&&sessionRes.data.session.user;
+    if(!user)return {state:'guest',access:'guest',anchor:anchor};
+
+    var status=await subscriptionStatus(user.id,anchor.id);
+    if(status.state==='active')return {state:'active',access:'active',anchor:anchor,row:status.row,user:user};
+    return {state:status.state,access:status.state,anchor:anchor,row:status.row,user:user,
+      reject_reason:status.row&&status.row.reject_reason||''};
+  }
+
+  // FINAL runtime implementation: no later wrapper replaces this.
+  window.checkSectionAccess=async function(sectionId){
+    try{return await finalAccess(sectionId);}
+    catch(e){console.error('[BSM FINAL ACCESS]',e);return {state:'error',access:'error'};}
   };
-  window.bsmIsFirstLearningContentForSubject=async function(sectionId){
-    var sid=_id(sectionId); if(!sid)return false;
-    var subject=await _subjectOf(sid); if(!subject)return false;
-    var first=await window.bsmFirstLearningContentForSubject(subject);
-    return first!==null && String(first)===String(sid);
+  window.getDetailedSectionAccess=async function(sectionId){
+    try{var g=await finalAccess(sectionId);return g||{state:'free',access:'free',anchor:null};}
+    catch(e){return {state:'error',access:'error'};}
   };
   window._isFreePreviewSection=async function(sectionId){
     try{
-      return await window.bsmIsFirstLearningContentForSubject(sectionId);
+      var sid=num(sectionId);
+      if(!sid)return false;
+      var anchor=(typeof _findSubscriptionAnchor==='function')?await _findSubscriptionAnchor(sid):null;
+      if(!anchor)return false;
+      return !!(await isExactFree(sid,anchor.id));
     }catch(e){
-      console.error('[BSM FINAL FREE RULE]',e);
+      console.warn('[BSM FINAL ACCESS] free-chapter check failed:',e&&e.message);
       return false;
     }
   };
 
-  /* ================================================================
-     2) RESOURCE OPEN: a resource already rendered in an allowed chapter
-        must not be blocked by a second broken/duplicate access wrapper.
-        Locked resources are not rendered as clickable cards in the first place.
-        RLS/DB remains the real backend protection.
-     ================================================================ */
+  // Resource Viewer gate: file_url remains canonical and the existing viewer/player is reused.
   var originalOpenResource=window.openResource;
   if(typeof originalOpenResource==='function'){
     window.openResource=async function(url,title,resourceType,filePath,fileType,fileName){
@@ -32244,49 +32380,156 @@ window.checkSectionAccess=async function(sectionId){var id=n(sectionId);try{var 
         if(typeof _showToast==='function')_showToast('رابط الملف غير متوفر في section_resources.file_url','error');
         return;
       }
-      // For the exact free first lesson, open the resource directly through the
-      // existing ResourceViewer. This avoids duplicate checkSectionAccess layers
-      // disagreeing after the card was already rendered as free.
       try{
-        if(window._currentContentSec&&window._currentContentSec.id &&
-           await window.bsmIsFirstLearningContentForSubject(window._currentContentSec.id)){
-          if(typeof ResourceViewer!=='undefined'&&ResourceViewer&&typeof ResourceViewer.detectType==='function'&&typeof ResourceViewer.open==='function'){
-            var detected=ResourceViewer.detectType(raw,resourceType,fileType,fileName);
-            await ResourceViewer.open(raw,title||'مورد',detected||resourceType||'fallback',filePath||'',fileType||'',fileName||'');
+        var sec=window._currentContentSec;
+        if(sec&&sec.id){
+          var gate=await window.checkSectionAccess(sec.id);
+          if(gate){
+            window.__currentChapterGate=gate;
+            if(typeof window._openLockNoticeModal==='function')window._openLockNoticeModal(gate);
+            else if(typeof _showToast==='function')_showToast('🔒 هذا المحتوى يحتاج اشتراكاً نشطاً','warning');
             return;
           }
         }
       }catch(e){
-        console.warn('[BSM RESOURCE FREE OPEN] fallback to existing access flow:',e&&e.message);
+        console.error('[BSM FINAL RESOURCE ACCESS]',e);
+        if(typeof _showToast==='function')_showToast('❌ تعذر التحقق من صلاحية عرض المورد','error');
+        return;
       }
-      return originalOpenResource.apply(this,arguments);
+      return originalOpenResource.call(window,raw,title,resourceType,'',fileType,fileName);
     };
   }
 
-  /* ================================================================
-     3) REFRESH/RETURN TO EXACT PLACE: save section + scroll position.
-        Existing hash routing is preserved; this adds scroll persistence.
-     ================================================================ */
-  var scrollTimer=null;
+  // Refresh: keep the exact section and approximate scroll position.
+  var SCROLL_PREFIX='bsm_section_scroll_';
+  function currentId(){return window._lastOpenSectionId||(window._currentContentSec&&window._currentContentSec.id)||(window._currentDynamicSec&&window._currentDynamicSec.id)||'';}
   function savePlace(){
     try{
-      var id=window._lastOpenSectionId || (window._currentContentSec&&window._currentContentSec.id) || (window._currentDynamicSec&&window._currentDynamicSec.id);
-      if(id!==undefined&&id!==null){
-        localStorage.setItem('bsm_last_section_id',String(id));
-        localStorage.setItem('bsm_section_scroll_'+String(id),String(Math.max(0,Math.round(window.scrollY||window.pageYOffset||0))));
-      }
+      var id=currentId();if(!id)return;
+      localStorage.setItem('bsm_last_section_id',String(id));
+      localStorage.setItem(SCROLL_PREFIX+String(id),String(Math.max(0,Math.round(window.scrollY||window.pageYOffset||0))));
     }catch(e){}
   }
-  window.addEventListener('scroll',function(){
-    if(scrollTimer)clearTimeout(scrollTimer);
-    scrollTimer=setTimeout(savePlace,180);
-  },{passive:true});
+  var scrollTimer=null;
+  window.addEventListener('scroll',function(){if(scrollTimer)clearTimeout(scrollTimer);scrollTimer=setTimeout(function(){scrollTimer=null;savePlace();},180);},{passive:true});
+  window.addEventListener('pagehide',savePlace);
   window.addEventListener('beforeunload',savePlace);
 
-  /* Do not let a refresh lose the hash when an old route helper tries to
-     rewrite it during boot. The existing route remains authoritative. */
-  console.info('[BSM FINAL STABILITY] first-free-per-subject + resource-open + refresh-position fixes active');
+  if(typeof window._apRestoreSectionPath==='function'){
+    var oldRestore=window._apRestoreSectionPath;
+    window._apRestoreSectionPath=async function(id,urlMode){
+      var result=await oldRestore.apply(this,arguments);
+      try{
+        var raw=localStorage.getItem(SCROLL_PREFIX+String(id)),y=raw==null?0:Number(raw);
+        if(Number.isFinite(y))requestAnimationFrame(function(){requestAnimationFrame(function(){window.scrollTo(0,y);});});
+      }catch(e){}
+      return result;
+    };
+  }
+
+  console.info('[BSM FINAL] first-Chapter-per-Material access + canonical section_resources.file_url + refresh restore active');
 })();
 </script>
+
+<script id="bsm-final-first-chapter-authority-20260904">
+(function(){
+  'use strict';
+  if(window.__BSM_FIRST_CHAPTER_AUTHORITY_20260904)return;
+  window.__BSM_FIRST_CHAPTER_AUTHORITY_20260904=true;
+
+  function N(v){var n=Number(v);return Number.isFinite(n)&&n>0?n:0;}
+  function T(v){return String(v==null?'':v).trim().toLowerCase();}
+  function D(){return window.supabase||null;}
+
+  async function R(id){
+    var d=D(), n=N(id);
+    if(!d||!n)return null;
+    var q=await d.from('site_sections')
+      .select('id,parent_id,type,display_order')
+      .eq('id',n).maybeSingle();
+    if(q.error)throw q.error;
+    return q.data||null;
+  }
+
+  async function firstChapterOfMaterial(materialId){
+    var d=D(), m=N(materialId);
+    if(!d||!m)return null;
+    var q=await d.from('site_sections')
+      .select('id,parent_id,type,display_order')
+      .eq('parent_id',m)
+      .order('display_order',{ascending:true,nullsFirst:false})
+      .order('id',{ascending:true});
+    if(q.error)throw q.error;
+
+    var roots=q.data||[], queue=[];
+    roots.forEach(function(x){queue.push({node:x,path:[Number(x.display_order)||2147483647,N(x.id)]});});
+    var seen={};
+    while(queue.length){
+      var item=queue.shift(), node=item.node, id=N(node.id);
+      if(!id||seen[id])continue;
+      seen[id]=true;
+      if(T(node.type)==='chapter')return node;
+      var c=await d.from('site_sections')
+        .select('id,parent_id,type,display_order')
+        .eq('parent_id',id)
+        .order('display_order',{ascending:true,nullsFirst:false})
+        .order('id',{ascending:true});
+      if(c.error)throw c.error;
+      (c.data||[]).forEach(function(x){
+        queue.push({node:x,path:item.path.concat([Number(x.display_order)||2147483647,N(x.id)])});
+      });
+    }
+    return null;
+  }
+
+  async function isFirstChapterEachMaterial(sectionId, courseId){
+    var sid=N(sectionId), cid=N(courseId);
+    if(!sid||!cid)return false;
+
+    var d=D(), q=await d.from('site_sections')
+      .select('id,parent_id,type')
+      .eq('id',sid).maybeSingle();
+    if(q.error)throw q.error;
+    if(!q.data)return false;
+
+    /* Walk upward to find the nearest Material ancestor. */
+    var cur=q.data, seen={}, material=null;
+    for(var i=0;i<80&&cur&&!seen[N(cur.id)];i++){
+      seen[N(cur.id)]=true;
+      if(T(cur.type)==='material'){material=cur;break;}
+      if(cur.parent_id==null)break;
+      cur=await R(cur.parent_id);
+    }
+    if(!material)return false;
+
+    var first=await firstChapterOfMaterial(material.id);
+    return !!(first&&N(first.id)===sid);
+  }
+
+  /* Public diagnostic helper; the final access implementation remains unchanged
+     except that this helper guarantees the intended semantic when queried. */
+  window.bsmIsFirstChapterOfEachMaterial=async function(sectionId,courseId){
+    try{
+      var cid=N(courseId);
+      if(!cid){
+        var cur=N(sectionId), seen={};
+        while(cur&&!seen[cur]){
+          seen[cur]=true;
+          var rr=await R(cur); if(!rr)break;
+          if(T(rr.type)==='course'){cid=N(rr.id);break;}
+          cur=N(rr.parent_id);
+        }
+      }
+      return await isFirstChapterEachMaterial(sectionId,cid);
+    }catch(e){
+      console.warn('[BSM FIRST CHAPTER] check failed:',e&&e.message);
+      return false;
+    }
+  };
+
+  console.info('[BSM FINAL] first Chapter per Material authority loaded.');
+})();
+</script>
+
 </body>
 </html>
