@@ -6074,17 +6074,11 @@ async function _resolveResourceUrl(rawUrl, filePath) {
     if (/\/storage\/v1\/object\/sign\//i.test(original)) return original;
 
     // External providers are authoritative.
-    // Uploadcare project-subdomain URLs currently stored in the DB are failing
-    // DNS in the production browser. For legacy Uploadcare accounts, the same
-    // UUID can be delivered from the legacy global CDN domain. Use that
-    // compatibility URL directly so the browser does not first request the
-    // broken project subdomain.
-    if (/\.ucarecd\.net/i.test(lowerOriginal)) {
-      try {
-        var uc = new URL(original);
-        return 'https://ucarecdn.com' + uc.pathname + uc.search + uc.hash;
-      } catch (e) {}
-    }
+    // IMPORTANT: keep Uploadcare's project CDN URL exactly as stored.
+    // New Uploadcare projects use *.ucarecd.net; converting it to the legacy
+    // ucarecdn.com host can turn a valid newly-uploaded file into a 404.
+    // If an old file is genuinely missing, the viewer will show a finite error
+    // instead of inventing another URL.
 
     var isExternalMedia =
       /cloudinary\.com/i.test(lowerOriginal) ||
@@ -6145,20 +6139,9 @@ async function _resolveResourceUrl(rawUrl, filePath) {
 
 window._resolveResourceUrl = _resolveResourceUrl;
 function _legacyUploadcareUrl(rawUrl) {
-  // Uploadcare compatibility fallback: NEVER change the stored file_url.
-  // The original URL is always tried first. This helper only derives a
-  // provider-specific fallback after the original URL actually fails.
-  var original = String(rawUrl || '').trim();
-  if (!/^https?:\/\//i.test(original)) return '';
-  try {
-    var u = new URL(original);
-    if (!/\.ucarecd\.net$/i.test(u.hostname)) return '';
-    // Preserve the complete Uploadcare path/query/hash exactly.
-    var alt = 'https://ucarecdn.com' + u.pathname + u.search + u.hash;
-    return alt !== original ? alt : '';
-  } catch (e) {
-    return '';
-  }
+  // Do not manufacture a legacy Uploadcare host. Current projects use
+  // *.ucarecd.net and that exact project URL is the source of truth.
+  return '';
 }
 
 // Generic external-resource helper. It never edits the database or the
@@ -6176,7 +6159,7 @@ window._bsmDiagnoseResourceUrl = async function(rawUrl){
   else if(/\.(mp4|webm|ogg|mov|avi|mkv)$/.test(l))out.kind='video';
   else if(/\.(mp3|wav|aac|flac|m4a)$/.test(l))out.kind='audio';
   else if(/\.(jpe?g|png|webp|gif|svg|bmp)$/.test(l))out.kind='image';
-  if(/\.ucarecd\.net$/i.test(out.host))out.warning='Uploadcare legacy URL: the original URL is tried first; if it fails, the player may try the compatible Uploadcare CDN URL once. The database URL is never changed.';
+  if(/\.ucarecd\.net$/i.test(out.host))out.warning='Uploadcare project CDN URL: the stored URL is tried as-is; if unavailable, a valid Supabase file_path copy is tried when present.';
   return out;
 };
 
@@ -6330,7 +6313,7 @@ const ResourceViewer = (function() {
             disablePictureInPicture
             disableRemotePlayback
             oncontextmenu="return false"
-            onerror="if(!ResourceViewer._retryLegacyUploadcareMedia(this)) ResourceViewer._showMediaError('video')"
+            onerror="if(!ResourceViewer._retryLegacyUploadcareMedia(this, window._rvResourceStorageFallback)) ResourceViewer._showMediaError('video')"
           >
             <source src="${escUrl(url)}">
             <p style="color:#fff;padding:20px">متصفحك لا يدعم تشغيل الفيديو.</p>
@@ -6426,7 +6409,7 @@ const ResourceViewer = (function() {
               controlsList="nodownload noremoteplayback"
               disableRemotePlayback
               oncontextmenu="return false"
-              onerror="if(!ResourceViewer._retryLegacyUploadcareMedia(this)) ResourceViewer._showMediaError('audio')">
+              onerror="if(!ResourceViewer._retryLegacyUploadcareMedia(this, window._rvResourceStorageFallback)) ResourceViewer._showMediaError('audio')">
               <source src="${escUrl(url)}">
               متصفحك لا يدعم تشغيل الصوت.
             </audio>
@@ -6555,29 +6538,51 @@ const ResourceViewer = (function() {
   // 1) the original file_url is always attempted first;
   // 2) only after a real media error do we try the derived Uploadcare CDN URL;
   // 3) if both fail, show a finite error instead of an endless spinner.
-  function retryLegacyUploadcareMedia(el) {
+  function retryLegacyUploadcareMedia(el, storageFallback) {
     if (!el) return false;
+
     var src = el.currentSrc || el.src || '';
-    if (!src && el.querySelector) { var source = el.querySelector('source'); src = source && (source.src || source.getAttribute('src')) || ''; }
-    var fallback = (typeof window._bsmGetResourceFallback === 'function') ? window._bsmGetResourceFallback(src) : _legacyUploadcareUrl(src);
-    if (!fallback) return false;
-    if (el.dataset.ucLegacyTried === '1') return false;
-    el.dataset.ucLegacyTried = '1';
-    el.dataset.ucLegacyFallback = fallback;
-    try {
-      if (el.tagName === 'VIDEO' || el.tagName === 'AUDIO') {
-        var sourceEl = el.querySelector('source');
-        if (sourceEl) sourceEl.src = fallback;
+    if (!src && el.querySelector) {
+      var source = el.querySelector('source');
+      src = source && (source.src || source.getAttribute('src')) || '';
+    }
+
+    // Prefer a real Supabase Storage copy from file_path.
+    var fallback = (storageFallback || '').trim();
+    if (fallback && fallback !== src && el.dataset.storageFallbackTried !== '1') {
+      el.dataset.storageFallbackTried = '1';
+      el.dataset.storageFallback = fallback;
+      try {
+        var sourceEl1 = el.querySelector && el.querySelector('source');
+        if (sourceEl1) sourceEl1.src = fallback;
         el.src = fallback;
-        el.load();
-      } else {
-        el.src = fallback;
+        if (el.load) el.load();
+        return true;
+      } catch (e) {
+        console.warn('[ResourceViewer] file_path media fallback failed:', e);
       }
+    }
+
+    // Keep any provider compatibility fallback as a last resort.
+    var legacyFallback = (typeof window._bsmGetResourceFallback === 'function')
+      ? window._bsmGetResourceFallback(src)
+      : _legacyUploadcareUrl(src);
+
+    if (!legacyFallback || el.dataset.ucLegacyTried === '1') return false;
+
+    el.dataset.ucLegacyTried = '1';
+    el.dataset.ucLegacyFallback = legacyFallback;
+    try {
+      var sourceEl2 = el.querySelector && el.querySelector('source');
+      if (sourceEl2) sourceEl2.src = legacyFallback;
+      el.src = legacyFallback;
+      if (el.load) el.load();
       return true;
     } catch (e) {
       return false;
     }
   }
+
 
   // ── الدالة الرئيسية: open ────────────────────────────────────────
   async function open(url, title, resourceType, filePath, fileType, fileName) {
@@ -6587,8 +6592,21 @@ const ResourceViewer = (function() {
     var resolvedUrl = await _resolveResourceUrl(url, filePath);
     if (!resolvedUrl) throw new Error('رابط المورد غير صالح');
     url = resolvedUrl;
+
+    // Keep a recovery candidate without replacing the canonical file_url.
+    // This recovers old Uploadcare rows when a valid Supabase file_path copy
+    // still exists.
+    var resourceStorageFallback = '';
+    if (filePath) {
+      try {
+        resourceStorageFallback = String(await _resolveResourceUrl('', filePath) || '').trim();
+      } catch (e) {
+        console.warn('[ResourceViewer] could not resolve file_path recovery candidate:', e && e.message);
+      }
+    }
     window._rvCurrentUrl = url;
     window._rvCurrentTitle = title;
+    window._rvResourceStorageFallback = resourceStorageFallback;
 
     // إزالة أي modal موجود
     close();
@@ -6611,7 +6629,11 @@ const ResourceViewer = (function() {
     if (type === 'pdf' || type === 'gdrive_pdf') {
       var pdfUrl = (type === 'gdrive_pdf') ? toEmbedUrl(url, 'gdrive_pdf') : url;
       try {
-        await NativePDFViewer.open(pdfUrl, title);
+        var pdfStorageFallback = (type === 'gdrive_pdf') ? '' : (window._rvResourceStorageFallback || '');
+        var pdfOpened = await NativePDFViewer.open(pdfUrl, title, pdfStorageFallback);
+        if (pdfOpened === false) {
+          console.warn('[ResourceViewer pdf] NativePDFViewer reported failure');
+        }
       } catch (err) {
         // For Uploadcare, retry once with the compatibility CDN URL only after
         // the original URL has failed. The DB value remains untouched.
@@ -16022,9 +16044,10 @@ var NativePDFViewer = (function() {
 
   // ==================== فتح الملف ====================
   // PDF.js داخلي بالكامل — بدون عارض خارجي.
-  async function open(url, title) {
+  async function open(url, title, fallbackUrl) {
     if (!url) throw new Error('رابط PDF غير موجود');
     close();
+    fallbackUrl = (fallbackUrl == null ? '' : String(fallbackUrl)).trim();
 
     var finalUrl = url;
     try { finalUrl = await _getSignedPdfUrl(url); }
@@ -16150,7 +16173,23 @@ var NativePDFViewer = (function() {
       try{if(localStorage.getItem('pdfv_page_theme')==='dark')_togglePageTheme();}catch(e){}
     }catch(e){
       console.error('[PDFjs] تعذر فتح الملف:',e);
+
+      // ATTACHMENT RECOVERY: if the old external file_url (e.g. Uploadcare)
+      // is unavailable but file_path points to a live Supabase copy, recover
+      // transparently without changing the database value.
+      if (fallbackUrl && fallbackUrl !== finalUrl) {
+        console.warn('[PDFjs] primary attachment failed; trying stored file_path fallback');
+        try {
+          return await open(fallbackUrl, title, '');
+        } catch (fallbackErr) {
+          console.warn('[PDFjs] file_path fallback also failed:', fallbackErr);
+          _showOpenError(fallbackErr, fallbackUrl);
+          return false;
+        }
+      }
+
       _showOpenError(e,finalUrl);
+      return false;
     }
   }
 
@@ -31956,7 +31995,7 @@ console.info('[BSM ABSOLUTE FINAL] unified course policy + descendant access + c
 </script>
 
 <!-- BSM EMERGENCY OPENING FIX 2026-09-04: canonical guest/free access + first lesson/class per Material + fast auth -->
-<script id="bsm-emergency-final-fix-20260904">
+<script id="bsm-emergency-final-fix-20260904-v3">
 (function(){
 'use strict';
 if(window.__BSM_EMERGENCY_FINAL_FIX_20260904)return;
@@ -32065,6 +32104,39 @@ async function canonicalAccess(sectionId){
  if(window._isSuperAdmin===true||window._currentUserRole==='admin')return null;
  var course=await getCourse(sid);if(!course)return null;
  if(course.requires_subscription!==true)return null;
+
+ // MATERIAL CONTAINER IS ALWAYS OPEN.
+ // القفل يبدأ على المحتوى داخل المادة، وليس على بطاقة المادة نفسها.
+ var _matRow=null;
+ try{
+   var _md=DB();
+   if(_md){
+     var _mr=await _md.from('site_sections').select('type').eq('id',sid).maybeSingle();
+     if(!_mr.error&&_mr.data)_matRow=_mr.data;
+   }
+ }catch(_e){}
+ if(T(_matRow&&_matRow.type)==='material'){
+   return {state:'free',access:'free',anchor:course,user:null,material_container:true};
+ }
+
+ // COURSE ROOT + NAVIGATION CONTAINERS ABOVE MATERIALS ARE ALWAYS OPEN.
+ // مثال: الكورس 631 و"سجلات" 552 يجب أن يفتحا للدخول إلى المواد.
+ if(Number(sid)===Number(course.id)){
+   return {state:'free',access:'free',anchor:course,user:null,course_container:true};
+ }
+ try{
+   var _tree=await getTree(course.id);
+   var _node=_tree.find(function(x){return Number(x.id)===Number(sid);});
+   if(_node){
+     var _hasMaterialBelow=_tree.some(function(m){
+       return String(m.type||'').toLowerCase()==='material' && m.path.indexOf(Number(sid))>=0;
+     });
+     if(_hasMaterialBelow){
+       return {state:'free',access:'free',anchor:course,user:null,navigation_container:true};
+     }
+   }
+ }catch(_navErr){ console.warn('[BSM NAV OPEN]',_navErr); }
+
  if(window._isBranchAdmin===true){var ids=window._branchAdminAllSectionIds||window._branchAdminSectionIds||[];if(Array.isArray(ids)&&ids.map(Number).indexOf(Number(course.id))>=0)return null;}
  // IMPORTANT: free policy is evaluated BEFORE authentication so guests can see it.
  if(await isFree(sid,course.id))return {state:'free',access:'free',anchor:course,user:null};
