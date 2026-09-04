@@ -2905,13 +2905,25 @@ img, video {
   // لا نترك المستخدم أمام فيديو أسود و0:00 بدون تفسير إذا فشل تحميل الـCDN.
   window._bsmVideoError = function (video) {
     try {
-      var box = video.parentElement;
-      if (!box || box.querySelector('.bsm-video-error')) return;
       var src = video.currentSrc || '';
       if (!src) {
         var source = video.querySelector('source');
         src = source ? (source.src || source.getAttribute('src') || '') : '';
       }
+      // The original URL is always first. On its actual error, try the
+      // provider-specific Uploadcare compatibility URL once.
+      var tried = video.getAttribute('data-bsm-url-fallback-tried') === '1';
+      var fallback = (typeof window._bsmGetResourceFallback === 'function') ? window._bsmGetResourceFallback(src) : '';
+      if (!tried && fallback) {
+        video.setAttribute('data-bsm-url-fallback-tried', '1');
+        var sourceEl = video.querySelector('source');
+        if (sourceEl) sourceEl.src = fallback;
+        video.src = fallback;
+        video.load();
+        return;
+      }
+      var box = video.parentElement;
+      if (!box || box.querySelector('.bsm-video-error')) return;
       var msg = document.createElement('div');
       msg.className = 'bsm-video-error';
       msg.style.cssText = 'padding:12px 14px;background:#111;color:#fff;text-align:center;font-size:.82rem;line-height:1.6;';
@@ -6213,15 +6225,27 @@ async function _resolveResourceUrl(rawUrl, filePath) {
 
 window._resolveResourceUrl = _resolveResourceUrl;
 function _legacyUploadcareUrl(rawUrl) {
-  var u = String(rawUrl || '').trim();
+  // Uploadcare compatibility fallback: NEVER change the stored file_url.
+  // The original URL is always tried first. This helper only derives a
+  // provider-specific fallback after the original URL actually fails.
+  var original = String(rawUrl || '').trim();
+  if (!/^https?:\/\//i.test(original)) return '';
   try {
-    var x = new URL(u);
-    if (!/\.ucarecd\.net$/i.test(x.hostname)) return '';
-    var m = x.pathname.match(/^\/([0-9a-f]{8}-[0-9a-f-]{27,})\/?(.*)$/i);
-    if (!m) return '';
-    return 'https://ucarecdn.com/' + m[1] + '/' + (m[2] || '');
-  } catch(e) { return ''; }
+    var u = new URL(original);
+    if (!/\.ucarecd\.net$/i.test(u.hostname)) return '';
+    // Preserve the complete Uploadcare path/query/hash exactly.
+    var alt = 'https://ucarecdn.com' + u.pathname + u.search + u.hash;
+    return alt !== original ? alt : '';
+  } catch (e) {
+    return '';
+  }
 }
+
+// Generic external-resource helper. It never edits the database or the
+// original URL; it only returns a one-time compatibility candidate.
+window._bsmGetResourceFallback = function(rawUrl) {
+  return _legacyUploadcareUrl(rawUrl);
+};
 
 window._bsmDiagnoseResourceUrl = async function(rawUrl){
   var u=String(rawUrl||'').trim();
@@ -6232,7 +6256,7 @@ window._bsmDiagnoseResourceUrl = async function(rawUrl){
   else if(/\.(mp4|webm|ogg|mov|avi|mkv)$/.test(l))out.kind='video';
   else if(/\.(mp3|wav|aac|flac|m4a)$/.test(l))out.kind='audio';
   else if(/\.(jpe?g|png|webp|gif|svg|bmp)$/.test(l))out.kind='image';
-  if(/\.ucarecd\.net$/i.test(out.host))out.warning='ucarecd.net host failed DNS in the deployment environment; re-upload/replace this resource from Admin instead of changing the URL automatically.';
+  if(/\.ucarecd\.net$/i.test(out.host))out.warning='Uploadcare legacy URL: the original URL is tried first; if it fails, the player may try the compatible Uploadcare CDN URL once. The database URL is never changed.';
   return out;
 };
 
@@ -6607,27 +6631,32 @@ const ResourceViewer = (function() {
     console.warn('[ResourceViewer][PDF FALLBACK] using direct PDF frame:', reason && (reason.message||reason));
   }
 
-  // محاولة تلقائية للروابط القديمة من Uploadcare عند فشل ucarecd.net.
-  // لا نغير أي رابط صالح، ولا نعتمد عليها كحل وحيد: الملفات الجديدة تظل على Supabase Storage.
+  // Uploadcare handling is provider-aware but non-destructive:
+  // 1) the original file_url is always attempted first;
+  // 2) only after a real media error do we try the derived Uploadcare CDN URL;
+  // 3) if both fail, show a finite error instead of an endless spinner.
   function retryLegacyUploadcareMedia(el) {
-    if (!el || el.dataset.ucLegacyTried === '1') return false;
+    if (!el) return false;
     var src = el.currentSrc || el.src || '';
-    if (!src && el.querySelector) {
-      var source = el.querySelector('source');
-      src = source && source.src || '';
-    }
-    var fallback = _legacyUploadcareUrl(src);
+    if (!src && el.querySelector) { var source = el.querySelector('source'); src = source && (source.src || source.getAttribute('src')) || ''; }
+    var fallback = (typeof window._bsmGetResourceFallback === 'function') ? window._bsmGetResourceFallback(src) : _legacyUploadcareUrl(src);
     if (!fallback) return false;
+    if (el.dataset.ucLegacyTried === '1') return false;
     el.dataset.ucLegacyTried = '1';
-    if (el.tagName === 'VIDEO' || el.tagName === 'AUDIO') {
-      var s = el.querySelector && el.querySelector('source');
-      if (s) s.src = fallback;
-      el.src = fallback;
-      try { el.load(); } catch(e) {}
-    } else {
-      el.src = fallback;
+    el.dataset.ucLegacyFallback = fallback;
+    try {
+      if (el.tagName === 'VIDEO' || el.tagName === 'AUDIO') {
+        var sourceEl = el.querySelector('source');
+        if (sourceEl) sourceEl.src = fallback;
+        el.src = fallback;
+        el.load();
+      } else {
+        el.src = fallback;
+      }
+      return true;
+    } catch (e) {
+      return false;
     }
-    return true;
   }
 
   // ── الدالة الرئيسية: open ────────────────────────────────────────
@@ -6638,6 +6667,8 @@ const ResourceViewer = (function() {
     var resolvedUrl = await _resolveResourceUrl(url, filePath);
     if (!resolvedUrl) throw new Error('رابط المورد غير صالح');
     url = resolvedUrl;
+    window._rvCurrentUrl = url;
+    window._rvCurrentTitle = title;
 
     // إزالة أي modal موجود
     close();
@@ -6646,10 +6677,6 @@ const ResourceViewer = (function() {
     //    (PDF عنده نفس الحماية داخل NativePDFViewer، وهنا نغطي باقي الأنواع)
     var isValidUrl = /^https?:\/\//i.test(url) || url.indexOf('/') === 0 || url.indexOf('supabase') !== -1;
     const type = isValidUrl ? detectType(url, resourceType, fileType, fileName) : 'invalid';
-    if (isValidUrl && /^https?:\/\/[^/]+\.ucarecd\.net\//i.test(url)) {
-      console.error('[ResourceViewer][INVALID UPLOADCARE HOST] رابط ucarecd.net غير قابل للحل DNS:', url);
-    }
-
     // ✅ FIX (بلاغ "بيعوق اووي... لما بدوس X بيظهرلي الملف عادي"): كان بيتفتح
     // rv-overlay خارجي مالوش شغلانة إلا إنه يعرض سبنر "جاري فتح الملف..."،
     // وبعده بـ50ms يتنادى NativePDFViewer.open() اللي بيبني overlay تاني
@@ -6666,14 +6693,16 @@ const ResourceViewer = (function() {
       try {
         await NativePDFViewer.open(pdfUrl, title);
       } catch (err) {
-        var legacyPdf = _legacyUploadcareUrl(pdfUrl);
-        if (legacyPdf && legacyPdf !== pdfUrl) {
+        // For Uploadcare, retry once with the compatibility CDN URL only after
+        // the original URL has failed. The DB value remains untouched.
+        var pdfFallback = (typeof window._bsmGetResourceFallback === 'function') ? window._bsmGetResourceFallback(pdfUrl) : _legacyUploadcareUrl(pdfUrl);
+        if (pdfFallback) {
           try {
-            console.warn('[ResourceViewer pdf] ucarecd.net failed; trying legacy ucarecdn.com:', pdfUrl);
-            await NativePDFViewer.open(legacyPdf, title);
+            console.warn('[ResourceViewer pdf] original URL failed; trying Uploadcare compatibility URL');
+            await NativePDFViewer.open(pdfFallback, title);
             return;
-          } catch (legacyErr) {
-            console.error('[ResourceViewer pdf] legacy Uploadcare fallback failed:', legacyErr);
+          } catch (fallbackErr) {
+            console.warn('[ResourceViewer pdf] Uploadcare compatibility URL also failed:', fallbackErr);
           }
         }
         console.error('[ResourceViewer pdf] PDF.js failed; trying direct browser PDF renderer:', err);
@@ -7336,16 +7365,46 @@ const ResourceViewer = (function() {
     }
   }, false);
 
+  // Legacy Uploadcare: finite replacement message; never leave a spinner and never rewrite the host.
+  function _showUnavailableLegacyResource(title, url, kind) {
+    var body = document.getElementById('rv-body');
+    var icon = kind === 'audio' ? '🎵' : (kind === 'video' ? '🎬' : '📄');
+    var message = '<div class="rv-fallback-wrap">' +
+      '<div class="rv-f-icon">' + icon + '</div>' +
+      '<p style="font-weight:800;line-height:1.8">هذا الملف القديم غير متاح حاليًا.</p>' +
+      '<p style="font-size:.82rem;color:#667;line-height:1.8">الرابط القديم من Uploadcare لم يعد قابلاً للوصول. يرجى استبدال الملف أو إعادة رفعه من لوحة التحكم.</p>' +
+      '<p style="font-size:.7rem;color:#9aa;direction:ltr;word-break:break-all;margin-top:8px">' + escHtml(url || '') + '</p>' +
+      '</div>';
+    if (body) { body.innerHTML = message; return; }
+    // Called before the normal viewer shell exists (for a known-bad legacy URL).
+    // Create the same in-page modal shell, then show the finite error state.
+    close();
+    var overlay=document.createElement('div');
+    overlay.className='rv-overlay'; overlay.id='rv-overlay';
+    overlay.innerHTML='<div class="rv-modal" id="rv-modal" role="dialog" aria-modal="true">' +
+      '<div class="rv-header"><span style="font-size:1.4rem">' + icon + '</span><span class="rv-title">' + escHtml(title || 'المرفق') + '</span><button class="rv-close" type="button" id="rv-legacy-close">✕</button></div>' +
+      '<div class="rv-body" id="rv-body">' + message + '</div>' +
+      '<div class="rv-footer"><span style="font-size:.75rem;color:#888">يمكن استبدال الملف من لوحة التحكم</span></div></div>';
+    overlay.addEventListener('click',function(e){if(e.target===overlay)close();});
+    document.body.appendChild(overlay);
+    var cb=document.getElementById('rv-legacy-close'); if(cb)cb.onclick=close;
+    document.body.style.overflow='hidden'; document.body.classList.add('rv-open');
+  }
+
   // ✅ حماية موحّدة لفشل تشغيل الفيديو/الصوت (رابط منتهي/معطوب/ملف مفقود)
   function _showMediaError(kind) {
     const body = document.getElementById('rv-body');
     if (!body) return;
     const icon = kind === 'audio' ? '🎵' : '🎬';
+    const current = String(window._rvCurrentUrl || '');
+    if (/\.ucarecd\.net(?:[/:?#]|$)/i.test(current)) {
+      _showUnavailableLegacyResource('', current, kind);
+      return;
+    }
     body.innerHTML = `
       <div class="rv-fallback-wrap">
         <div class="rv-f-icon">${icon}</div>
         <p>لا يمكن عرض الملف داخل المتصفح — رُبما الرابط منتهي الصلاحية أو الملف غير موجود.</p>
-        
       </div>`;
   }
 
@@ -32846,6 +32905,42 @@ SELECT n.nspname AS schema_name,p.proname AS function_name,p.oid::regprocedure A
 FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
 WHERE n.nspname='public' AND pg_get_functiondef(p.oid) ILIKE '%p.is_branch_admin%';`;
 console.log(sql);try{navigator.clipboard.writeText(sql);}catch(e){}return sql;};
+})();
+</script>
+<script id="bsm-absolute-final-course-access-and-resource-fix-20260904">
+(function(){
+  'use strict';
+  if(window.__BSM_ABSOLUTE_FINAL_COURSE_ACCESS_20260904)return;
+  window.__BSM_ABSOLUTE_FINAL_COURSE_ACCESS_20260904=true;
+  var d=function(){return window.supabase||null;};
+  var N=function(v){var n=Number(v);return Number.isFinite(n)&&n>0?n:null;};
+  var T=function(v){return String(v==null?'':v).trim().toLowerCase();};
+  var courseCache={},previewCache={};
+  async function row(id){var db=d(),n=N(id);if(!db||!n)return null;var r=await db.from('site_sections').select('id,parent_id,type,display_order,title,requires_subscription').eq('id',n).maybeSingle();if(r.error)throw r.error;return r.data||null;}
+  async function children(pid){var db=d(),n=N(pid);if(!db||!n)return [];var r=await db.from('site_sections').select('id,parent_id,type,display_order,title,requires_subscription').eq('parent_id',n).order('display_order',{ascending:true,nullsFirst:false}).order('id',{ascending:true});if(r.error)throw r.error;return r.data||[];}
+  async function courseOf(id){var cur=N(id),seen={};for(var i=0;i<80&&cur&&!seen[cur];i++){seen[cur]=true;if(courseCache[cur]){var cc=courseCache[cur];if(T(cc.type)==='course')return cc;cur=N(cc.parent_id);continue;}var r=await row(cur);if(!r)break;courseCache[cur]=r;if(T(r.type)==='course')return r;cur=N(r.parent_id);}return null;}
+  async function isFreeCourse(id){var c=await courseOf(id);return !!(c&&c.requires_subscription===false);}
+  async function firstMaterialFirstChapter(courseId){var key='p:'+N(courseId);if(previewCache[key]!==undefined)return previewCache[key];var mats=(await children(courseId)).filter(function(x){return T(x.type)==='material';});var mat=mats[0]||null;if(!mat){previewCache[key]=null;return null;}var direct=await children(mat.id);var chapter=direct.filter(function(x){return T(x.type)==='chapter';})[0]||null;if(!chapter){var q=direct.slice(),seen={};while(q.length&&!chapter){var n=q.shift(),nid=N(n.id);if(!nid||seen[nid])continue;seen[nid]=true;if(T(n.type)==='chapter'){chapter=n;break;}var kids=await children(nid);for(var i=0;i<kids.length;i++)q.push(kids[i]);}}previewCache[key]=chapter||null;return chapter||null;}
+  async function descendantOrSelf(id,ancestorId){var cur=N(id),target=N(ancestorId),seen={};if(!cur||!target)return false;for(var i=0;i<80&&cur&&!seen[cur];i++){if(cur===target)return true;seen[cur]=true;var r=await row(cur);if(!r)break;cur=N(r.parent_id);}return false;}
+  async function explicitModePaid(id){var db=d(),cur=N(id),chain=[],seen={};if(!db||!cur)return null;try{for(var i=0;i<80&&cur&&!seen[cur];i++){seen[cur]=true;chain.push(cur);var r=await row(cur);if(!r)break;cur=N(r.parent_id);}if(!chain.length)return null;var q=await db.from('subscription_content_access').select('section_id,requires_subscription').in('section_id',chain);if(q.error)return null;var map={};(q.data||[]).forEach(function(x){map[N(x.section_id)]=x.requires_subscription===true?'locked':'open';});for(var j=0;j<chain.length;j++)if(Object.prototype.hasOwnProperty.call(map,chain[j]))return map[chain[j]];}catch(e){console.warn('[BSM ABSOLUTE FINAL] explicit access lookup failed',e);}return null;}
+  async function activeSubscription(userId,courseId){var db=d();if(!db||!userId||!courseId)return null;var q=await db.from('subscriptions').select('id,section_id,payment_status,start_date,end_date,reject_reason,requested_at,created_at,updated_at').eq('user_id',userId).eq('section_id',N(courseId)).order('requested_at',{ascending:false,nullsFirst:false}).order('created_at',{ascending:false}).order('id',{ascending:false}).limit(1);if(q.error)throw q.error;var r=q.data&&q.data[0];if(!r)return {state:'none',row:null};var st=T(r.payment_status);if(st==='active'&&(!r.end_date||new Date(r.end_date).getTime()>=Date.now()))return {state:'active',row:r};if(st==='pending')return {state:'pending',row:r};if(st==='rejected'||st==='cancelled')return {state:'rejected',row:r};return {state:'expired',row:r};}
+  async function absoluteAccess(id){var sid=N(id);if(!sid)return {state:'error',access:'error'};if(window._isSuperAdmin===true||window._currentUserRole==='admin')return null;var course=await courseOf(sid);if(!course)return null;
+    // COURSE is the final source of truth: free course means every descendant is free.
+    if(course.requires_subscription===false)return null;
+    if(window._isBranchAdmin===true){var ids=window._branchAdminAllSectionIds||window._branchAdminSectionIds||window._branchAdminOwnSectionIds||[];if(Array.isArray(ids)&&ids.map(Number).indexOf(Number(course.id))!==-1)return null;}
+    var explicit=await explicitModePaid(sid);if(explicit==='open')return null;if(explicit==='locked')return {state:'explicit_locked',access:'explicit_locked',anchor:course,reason:'تم قفل هذا الـNode بواسطة أدمن الكورس'};
+    // Paid course only: first Chapter of first Material, including all descendants/resources.
+    var chapter=await firstMaterialFirstChapter(course.id);if(chapter&&await descendantOrSelf(sid,chapter.id))return {state:'free',access:'free',anchor:course,preview:true};
+    var sess=typeof window._getSessionSafe==='function'?await window._getSessionSafe(6000):await d().auth.getSession();var user=sess&&sess.data&&sess.data.session&&sess.data.session.user;if(!user)return {state:'guest',access:'guest',anchor:course,user:null};var st=await activeSubscription(user.id,course.id);if(st&&st.state==='active')return {state:'active',access:'active',anchor:course,row:st.row,user:user};return {state:st.state,access:st.state,anchor:course,row:st.row,user:user,reject_reason:st.row&&st.row.reject_reason||''};
+  }
+  window.checkSectionAccess=async function(id){try{return await absoluteAccess(id);}catch(e){console.error('[BSM ABSOLUTE FINAL ACCESS]',e);return {state:'error',access:'error'};}};
+  window.getDetailedSectionAccess=async function(id){try{var g=await absoluteAccess(id);return g||{state:'free',access:'free',anchor:null};}catch(e){return {state:'error',access:'error'};}};
+  window._isFreePreviewSection=async function(id){try{var c=await courseOf(id);if(!c)return false;if(c.requires_subscription===false)return true;var ch=await firstMaterialFirstChapter(c.id);return !!(ch&&await descendantOrSelf(id,ch.id));}catch(e){return false;}};
+  function unlockFreeCourseCards(){var sec=window._currentDynamicSec;if(!sec)return;isFreeCourse(sec.id).then(function(free){if(!free)return;var grid=document.getElementById('dynamic-section-grid');if(!grid)return;grid.querySelectorAll('.dept-card-locked[data-section-id]').forEach(function(card){var id=Number(card.getAttribute('data-section-id'));if(!id)return;var data=window['__sectionData_'+id];card.classList.remove('dept-card-locked');card.style.cursor='pointer';var top=card.querySelector('.card-top');if(top){top.style.filter='';top.style.opacity='';}var icon=card.querySelector('.card-icon');if(icon&&data)icon.textContent=(data.icon||'📁');var lock=card.querySelector('.external-lock-card');if(lock)lock.remove();var btn=card.querySelector('.btn-enter');if(btn)btn.textContent='ادخل ←';else{btn=document.createElement('button');btn.className='btn-enter';btn.textContent='ادخل ←';card.appendChild(btn);}card.onclick=function(){var fn=window['__sectionAction_'+id];if(typeof fn==='function')fn(data);};});}).catch(function(e){console.warn('[BSM ABSOLUTE FINAL] card unlock failed',e);});}
+  function observeGrid(g){if(!g||g.__bsmAbsoluteObserved)return;g.__bsmAbsoluteObserved=true;var o=new MutationObserver(function(){unlockFreeCourseCards();});o.observe(g,{childList:true,subtree:true});unlockFreeCourseCards();}
+  if(document.body){var bodyObserver=new MutationObserver(function(){observeGrid(document.getElementById('dynamic-section-grid'));});bodyObserver.observe(document.body,{childList:true,subtree:true});observeGrid(document.getElementById('dynamic-section-grid'));}
+  var prevOpen=window.openResource;if(typeof prevOpen==='function'){window.openResource=async function(url,title,type,filePath,fileType,fileName){var raw=String(url==null?'':url).trim();if(!raw){if(typeof _showToast==='function')_showToast('رابط الملف غير متوفر في section_resources.file_url','error');return;}return prevOpen.call(this,raw,title,type,filePath,fileType,fileName);};}
+  console.info('[BSM ABSOLUTE FINAL] course-level free access + first-Chapter/first-Material paid preview + provider-agnostic resources + Uploadcare fallback active');
 })();
 </script>
 </body>
