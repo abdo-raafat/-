@@ -60,13 +60,13 @@ var DEBUG_MODE = false; window.DEBUG_MODE = DEBUG_MODE;
 <script>
 (function () {
   try {
-    window.__APP_BUILD_VERSION = '2026-09-04-final-opening-no-live-attachments-free-preview-v1';
+    window.__APP_BUILD_VERSION = '2026-09-04-URGENT-FIX-FREE-FIRST-LESSON-RESOURCES-v2';
   } catch (e) {}
 })();
 </script>
 <meta content="my6dMoAsuc_97Jks_OQF75GK_f1PGWqz2Kng2obkIgE" name="google-site-verification"/>
 <meta charset="utf-8"/>
-<meta content="2026-09-04-final-opening-no-live-attachments-free-preview-v1" name="app-build"/>
+<meta content="2026-09-04-URGENT-FIX-FREE-FIRST-LESSON-RESOURCES-v2" name="app-build"/>
 <meta content="width=device-width, initial-scale=1.0, viewport-fit=cover" name="viewport"/>
 <!-- ==================== PWA: manifest + platform metadata ==================== -->
 <link href="./manifest.json" rel="manifest"/>
@@ -31841,6 +31841,22 @@ async function targets(courseId,p){
   var byParent={};t.forEach(function(n){(byParent[n.parent_id]||(byParent[n.parent_id]=[])).push(n);});
   Object.keys(byParent).forEach(function(k){byParent[k].sort(comparePath);});
   function branch(root){var stack=[map[N(root)]],seen={};while(stack.length){var n=stack.pop();if(!n||seen[n.id])continue;seen[n.id]=true;out[n.id]=true;(byParent[n.id]||[]).forEach(function(c){stack.push(c);});}}
+  // Free-preview path: make the Material + its navigation folders + the FIRST
+  // lesson/class free, but NEVER make later lessons/classes free.
+  function freePathToMaterial(targetId,materialId){
+    var cur=map[N(targetId)],stop=N(materialId),seen={};
+    while(cur&&!seen[cur.id]){
+      seen[cur.id]=true;out[cur.id]=true;
+      if(N(cur.id)===stop){
+        // Allow the immediate navigation container (e.g. "سجلات") too,
+        // but never the subscription-owned course root itself.
+        var parent=map[N(cur.parent_id)];
+        if(parent && N(parent.id)!==N(courseId)) out[parent.id]=true;
+        break;
+      }
+      cur=map[N(cur.parent_id)];
+    }
+  }
   var mats=t.filter(function(n){return String(n.type||'').toLowerCase()==='material';}).sort(comparePath),chs=t.filter(function(n){return n.type==='chapter';});
   function chaptersUnder(mat){return chs.filter(function(ch){return isUnder(map,ch.id,mat.id);}).sort(comparePath);}
   if(mode==='all_free')t.forEach(function(n){out[n.id]=true;});
@@ -31854,7 +31870,10 @@ async function targets(courseId,p){
   }else if(mode==='first_n_learning_contents'){
     t.filter(function(n){return n.type==='lesson'||n.type==='class';}).sort(comparePath).slice(0,Math.max(1,count||1)).forEach(function(l){branch(l.id);});
   }else if(mode==='first_learning_content_each_material'){
-    mats.forEach(function(m){var l=t.filter(function(n){return (n.type==='lesson'||n.type==='class')&&isUnder(map,n.id,m.id);}).sort(comparePath)[0];if(l)branch(l.id);});
+    mats.forEach(function(m){
+      var l=t.filter(function(n){return (n.type==='lesson'||n.type==='class')&&isUnder(map,n.id,m.id);}).sort(comparePath)[0];
+      if(l)freePathToMaterial(l.id,m.id);
+    });
   }else if(mode==='first_material_each_learning_content'){
     t.filter(function(n){return n.type==='lesson'||n.type==='class';}).forEach(function(l){var m=mats.filter(function(x){return isUnder(map,x.id,l.id);}).sort(comparePath)[0];if(m)branch(m.id);});
   }else if(mode==='first_material_each_chapter'){
@@ -31985,6 +32004,21 @@ async function freeTargets(courseId){
  var key=courseId+':'+mode;if(cache.targets[key])return cache.targets[key];
  var tree=await getTree(courseId),out={};
  function branch(id){var root=N(id);tree.forEach(function(n){if(n.id===root||n.path.indexOf(root)>=0)out[n.id]=true;});}
+ function freePath(id,materialId){
+  var target=N(id),stop=N(materialId);
+  tree.filter(function(n){return n.id===target;}).forEach(function(n){
+    var cur=n,seen={};
+    while(cur&&!seen[cur.id]){
+      seen[cur.id]=true;out[cur.id]=true;
+      if(N(cur.id)===stop){
+        var parent=tree.find(function(x){return x.id===N(cur.parent_id);});
+        if(parent && N(parent.id)!==N(courseId)) out[parent.id]=true;
+        break;
+      }
+      cur=tree.find(function(x){return x.id===N(cur.parent_id);});
+    }
+  });
+ }
  if(mode==='all_free'){tree.forEach(function(n){out[n.id]=true;});}
  else if(mode==='first_learning_content'){
   var l=tree.filter(function(n){return n.type==='lesson'||n.type==='class';})[0];if(l)branch(l.id);
@@ -31995,7 +32029,7 @@ async function freeTargets(courseId){
   var mats=tree.filter(function(n){return String(n.type||'').toLowerCase()==='material';});
   mats.forEach(function(m){
    var ml=tree.filter(function(n){return (n.type==='lesson'||n.type==='class')&&n.path.indexOf(m.id)>=0;}).sort(function(a,b){return a.path.length-b.path.length||a.path.map(Number).join('.').localeCompare(b.path.map(Number).join('.'),undefined,{numeric:true});});
-   if(ml[0])branch(ml[0].id);
+   if(ml[0])freePath(ml[0].id,m.id);
   });
  }else if(mode==='first_material_each_learning_content'){
   tree.filter(function(n){return n.type==='lesson'||n.type==='class';}).forEach(function(l){var mats=tree.filter(function(m){return String(m.type||'').toLowerCase()==='material'&&l.path.indexOf(m.id)>=0;});if(mats[0])branch(mats[0].id);});
