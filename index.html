@@ -6212,6 +6212,17 @@ async function _resolveResourceUrl(rawUrl, filePath) {
 }
 
 window._resolveResourceUrl = _resolveResourceUrl;
+function _legacyUploadcareUrl(rawUrl) {
+  var u = String(rawUrl || '').trim();
+  try {
+    var x = new URL(u);
+    if (!/\.ucarecd\.net$/i.test(x.hostname)) return '';
+    var m = x.pathname.match(/^\/([0-9a-f]{8}-[0-9a-f-]{27,})\/?(.*)$/i);
+    if (!m) return '';
+    return 'https://ucarecdn.com/' + m[1] + '/' + (m[2] || '');
+  } catch(e) { return ''; }
+}
+
 window._bsmDiagnoseResourceUrl = async function(rawUrl){
   var u=String(rawUrl||'').trim();
   var out={url:u,validProtocol:/^https?:\/\//i.test(u),host:null,kind:'unknown'};
@@ -6375,7 +6386,7 @@ const ResourceViewer = (function() {
             disablePictureInPicture
             disableRemotePlayback
             oncontextmenu="return false"
-            onerror="ResourceViewer._showMediaError('video')"
+            onerror="if(!ResourceViewer._retryLegacyUploadcareMedia(this)) ResourceViewer._showMediaError('video')"
           >
             <source src="${escUrl(url)}">
             <p style="color:#fff;padding:20px">متصفحك لا يدعم تشغيل الفيديو.</p>
@@ -6455,7 +6466,7 @@ const ResourceViewer = (function() {
                 else if(el.classList.contains('zoomed')){el.classList.add('zoomed-max');}
                 else{el.classList.add('zoomed');}
               "
-              onerror="document.getElementById('rv-img-wrap').innerHTML='<div class=\'rv-error\'><span class=\'rv-err-icon\'>🖼️</span><p>تعذّر تحميل الصورة</p></div>'"
+              onerror="if(!ResourceViewer._retryLegacyUploadcareMedia(this)) document.getElementById('rv-img-wrap').innerHTML='<div class=\'rv-error\'><span class=\'rv-err-icon\'>🖼️</span><p>تعذّر تحميل الصورة</p></div>'"
             >
             <div style="position:absolute;bottom:10px;right:10px;background:rgba(0,0,0,.5);color:#fff;border-radius:8px;padding:4px 10px;font-size:.72rem;">اضغط للتكبير</div>
           </div>`;
@@ -6471,7 +6482,7 @@ const ResourceViewer = (function() {
               controlsList="nodownload noremoteplayback"
               disableRemotePlayback
               oncontextmenu="return false"
-              onerror="ResourceViewer._showMediaError('audio')">
+              onerror="if(!ResourceViewer._retryLegacyUploadcareMedia(this)) ResourceViewer._showMediaError('audio')">
               <source src="${escUrl(url)}">
               متصفحك لا يدعم تشغيل الصوت.
             </audio>
@@ -6596,6 +6607,29 @@ const ResourceViewer = (function() {
     console.warn('[ResourceViewer][PDF FALLBACK] using direct PDF frame:', reason && (reason.message||reason));
   }
 
+  // محاولة تلقائية للروابط القديمة من Uploadcare عند فشل ucarecd.net.
+  // لا نغير أي رابط صالح، ولا نعتمد عليها كحل وحيد: الملفات الجديدة تظل على Supabase Storage.
+  function retryLegacyUploadcareMedia(el) {
+    if (!el || el.dataset.ucLegacyTried === '1') return false;
+    var src = el.currentSrc || el.src || '';
+    if (!src && el.querySelector) {
+      var source = el.querySelector('source');
+      src = source && source.src || '';
+    }
+    var fallback = _legacyUploadcareUrl(src);
+    if (!fallback) return false;
+    el.dataset.ucLegacyTried = '1';
+    if (el.tagName === 'VIDEO' || el.tagName === 'AUDIO') {
+      var s = el.querySelector && el.querySelector('source');
+      if (s) s.src = fallback;
+      el.src = fallback;
+      try { el.load(); } catch(e) {}
+    } else {
+      el.src = fallback;
+    }
+    return true;
+  }
+
   // ── الدالة الرئيسية: open ────────────────────────────────────────
   async function open(url, title, resourceType, filePath, fileType, fileName) {
     if (!url) return;
@@ -6632,6 +6666,16 @@ const ResourceViewer = (function() {
       try {
         await NativePDFViewer.open(pdfUrl, title);
       } catch (err) {
+        var legacyPdf = _legacyUploadcareUrl(pdfUrl);
+        if (legacyPdf && legacyPdf !== pdfUrl) {
+          try {
+            console.warn('[ResourceViewer pdf] ucarecd.net failed; trying legacy ucarecdn.com:', pdfUrl);
+            await NativePDFViewer.open(legacyPdf, title);
+            return;
+          } catch (legacyErr) {
+            console.error('[ResourceViewer pdf] legacy Uploadcare fallback failed:', legacyErr);
+          }
+        }
         console.error('[ResourceViewer pdf] PDF.js failed; trying direct browser PDF renderer:', err);
         openDirectPdfFallback(pdfUrl, title, err);
       }
@@ -7330,7 +7374,7 @@ const ResourceViewer = (function() {
       </div>`;
   }
 
-  return { open, close, detectType, _reload, _showExternalFallback, _showMediaError, _toggleFullscreen, _toggleLandscape };
+  return { open, close, detectType, _reload, _showExternalFallback, _showMediaError, _toggleFullscreen, _toggleLandscape, _retryLegacyUploadcareMedia: retryLegacyUploadcareMedia };
 })();
 // FIX: const لا تُضاف تلقائياً إلى window في classic script؛ أزرار HTML وتهيئة الموبايل
 // تعتمد على ResourceViewer كـ global، لذلك نكشف نفس الكائن بدون إنشاء نسخة ثانية.
@@ -10749,7 +10793,14 @@ async function adminSavePaymentInfo() {
       window._sectionRowCache[sec.id].payment_method = method;
       window._sectionRowCache[sec.id].payment_number = number;
       window._sectionRowCache[sec.id].price = sec.price;
+      window._sectionRowCache[sec.id]._cachedAt = Date.now();
     }
+    try{
+      window._bsmFreePolicyCache={};
+      window._bsmFreeChildrenCache={};
+      if(typeof window.__bsmInvalidateSubscriptionCaches==='function')window.__bsmInvalidateSubscriptionCaches();
+      localStorage.setItem('bsm_course_settings_changed',String(sec.id)+'|'+Date.now());
+    }catch(e){}
     adminLoadSectionPath();
     if (msgEl) { msgEl.style.color = '#17a589'; msgEl.textContent = '✅ تم حفظ بيانات الدفع'; setTimeout(()=>{ msgEl.textContent=''; }, 2500); }
     _showToast ? _showToast('✅ تم حفظ بيانات الدفع لهذه الشعبة', 'success') : null;
@@ -10789,11 +10840,12 @@ async function adminToggleSectionSubscription() {
 // ════════════════════════════════════════════════════════════════
 
 var ATT_BUCKET = 'files';
-var ATT_MAX_SIZE = { image: 10 * 1024 * 1024, pdf: 20 * 1024 * 1024, video: 100 * 1024 * 1024 };
+var ATT_MAX_SIZE = { image: 10 * 1024 * 1024, pdf: 20 * 1024 * 1024, video: 100 * 1024 * 1024, audio: 100 * 1024 * 1024 };
 var ATT_MIME = {
   image: ['image/jpeg', 'image/png', 'image/gif', 'image/webp'],
   pdf: ['application/pdf'],
-  video: ['video/mp4', 'video/quicktime', 'video/webm', 'video/x-msvideo']
+  video: ['video/mp4', 'video/quicktime', 'video/webm', 'video/x-msvideo'],
+  audio: ['audio/mpeg', 'audio/mp4', 'audio/x-m4a', 'audio/aac', 'audio/wav', 'audio/x-wav', 'audio/ogg', 'audio/webm', 'audio/flac']
 };
 var _adminContentPendingFile = null; // ملف مُختار بانتظار الحفظ (إضافة جديدة)
 var _adminContentListCache = {};     // id -> صف كامل (content أو resource)، لعمليات الاستبدال/الحذف
@@ -10862,6 +10914,7 @@ function _attKindForCurrentSelection() {
   if (type === 'image') return 'image';
   if (type === 'pdf') return 'pdf';
   if (type === 'video') return 'video';
+  if (type === 'audio') return 'audio';
   return null; // غير مدعوم للرفع (نص/رابط/كويز/صوت) — رابط فقط
 }
 
@@ -10943,7 +10996,7 @@ function adminToggleFields() {
   else hint.textContent = 'رابط الصفحة أو المصدر';
 
   // رفع الملفات مدعوم فقط لصور/PDF/فيديو (حسب المتطلبات) — الأنواع الأخرى رابط فقط
-  var uploadSupported = (type === 'image' || type === 'pdf' || type === 'video');
+  var uploadSupported = (type === 'image' || type === 'pdf' || type === 'video' || type === 'audio');
   if (uploadSupported) {
     srcToggle.style.display = 'flex';
     adminSetContentSource(window._adminContentSrcMode === 'file' ? 'file' : 'url');
@@ -19534,17 +19587,45 @@ window.diagnose = async function() {
     } catch(e) { console.warn('[_getSectionRow] timeout/error:', e && e.message); return null; }
   }
 
-  // ── يصعد في شجرة الأقسام حتى يجد أقرب "شعبة" تتطلب اشتراكاً ──
+  // ── نقطة الاشتراك الوحيدة هي سجل الكورس نفسه ──
+  // مهم: لا نعتبر requires_subscription=true على Material/Chapter/Lesson
+  // اشتراكاً مستقلاً. إعداد أدمن المنصة للكورس هو مصدر الحقيقة.
+  // لو الكورس مجاني (requires_subscription=false) فكل ما تحته مجاني.
   async function _findSubscriptionAnchor(sectionId) {
     var current = await _getSectionRow(sectionId);
-    var depth = 0;
-    while (current && depth < 15) {
-      if (current.requires_subscription) return current;
-      if (current.parent_id === null || current.parent_id === undefined) return null;
+    var depth = 0, course = null;
+    while (current && depth < 30) {
+      if (String(current.type || '').toLowerCase() === 'course') {
+        course = current;
+        break;
+      }
+      if (current.parent_id === null || current.parent_id === undefined) break;
       current = await _getSectionRow(current.parent_id);
       depth++;
     }
-    return null;
+    if (!course) return null;
+
+    // اقرأ سجل الكورس نفسه مرة جديدة بدون الاعتماد على cache حتى أي تعديل
+    // للسعر/حالة الاشتراك من لوحة التحكم ينعكس فوراً في المنصة.
+    try {
+      var db = window.supabase;
+      if (db) {
+        var fresh = await _fetchWithTimeout(function() {
+          return db.from('site_sections')
+            .select('id,title,icon,parent_id,type,requires_subscription,chat_free_access,payment_method,payment_number,price')
+            .eq('id', Number(course.id)).eq('type','course').maybeSingle();
+        }, 6000);
+        if (!fresh.error && fresh.data) {
+          fresh.data._cachedAt = Date.now();
+          window._sectionRowCache[Number(course.id)] = fresh.data;
+          course = fresh.data;
+        }
+      }
+    } catch(e) {
+      console.warn('[_findSubscriptionAnchor] fresh course read failed:', e && e.message);
+    }
+
+    return course.requires_subscription === true ? course : null;
   }
 
   // ── حالة اشتراك المستخدم في شعبة مُعيّنة (مع كاش) ──
@@ -19612,7 +19693,7 @@ window.diagnose = async function() {
       if (!db) return { mode:'paid_all', count:0 };
       var r = await db.from('site_sections').select('id,free_content_mode').eq('id',courseId).maybeSingle();
       if (r.error) throw r.error;
-      var raw = String(r.data && r.data.free_content_mode || 'paid_all').trim();
+      var raw = String(r.data && r.data.free_content_mode || 'first_chapter_first_material').trim();
       var count = 0, mode = raw;
       var m = /^(first_n_chapters_each_material|first_n_learning_contents)(?::(\d+))?$/.exec(raw);
       if (m) {
@@ -20111,10 +20192,26 @@ window.diagnose = async function() {
 (function() {
   var _lnGate = null;
 
-  window._openLockNoticeModal = function(gate) {
+  window._openLockNoticeModal = async function(gate) {
     if (!gate) return;
     _lnGate = gate;
     var anchor = gate.anchor || {};
+
+    // السعر وبيانات الدفع من نفس سجل الكورس في Supabase، وليس من قيمة قديمة
+    // موجودة في الذاكرة. ده يخلي أي تعديل من لوحة التحكم يظهر فوراً.
+    try {
+      if (anchor.id && window.supabase) {
+        var fresh = await window.supabase.from('site_sections')
+          .select('id,title,icon,parent_id,type,requires_subscription,price,payment_method,payment_number,subscription_days')
+          .eq('id', Number(anchor.id)).eq('type','course').maybeSingle();
+        if (!fresh.error && fresh.data) {
+          anchor = fresh.data;
+          gate.anchor = fresh.data;
+          _lnGate = gate;
+        }
+      }
+    } catch(e) { console.warn('[LOCK NOTICE] fresh course settings failed:', e && e.message); }
+
     var price  = (anchor.price != null && String(anchor.price).trim() !== '') ? anchor.price : null;
 
     var titleEl = document.getElementById('ln-title');
@@ -27380,7 +27477,7 @@ AS $$
     ORDER BY id LIMIT 1
   ),
   policy AS (
-    SELECT LOWER(TRIM(COALESCE(s.free_content_mode::text,'paid_all'))) AS mode
+    SELECT LOWER(TRIM(COALESCE(s.free_content_mode::text,'first_chapter_first_material'))) AS mode
     FROM public.site_sections s JOIN course_root c ON c.id=s.id
   ),
   tree AS (
@@ -27492,8 +27589,28 @@ DECLARE
   u UUID := auth.uid();
   p RECORD;
   previous_section BIGINT;
+  course_requires_subscription BOOLEAN;
 BEGIN
   IF p_section IS NULL THEN RETURN false; END IF;
+
+  -- مصدر الحقيقة للاشتراك هو الكورس الأب نفسه. إذا كان الكورس مجانيًا،
+  -- كل ما تحته مجاني مهما كانت قيمة requires_subscription على Node فرعي.
+  WITH RECURSIVE ancestors AS (
+    SELECT id,parent_id,type,requires_subscription
+    FROM public.site_sections WHERE id=p_section
+    UNION ALL
+    SELECT s.id,s.parent_id,s.type,s.requires_subscription
+    FROM public.site_sections s JOIN ancestors a ON s.id=a.parent_id
+    WHERE a.id IS NOT NULL
+  )
+  SELECT a.requires_subscription INTO course_requires_subscription
+  FROM ancestors a
+  WHERE LOWER(TRIM(COALESCE(a.type,'')))='course'
+  LIMIT 1;
+
+  IF course_requires_subscription IS FALSE THEN
+    RETURN true;
+  END IF;
 
   -- ✅ إصلاح (مراجعة نهائية): كان الفحص القديم يرجع false فوراً لو u IS NULL
   -- (زائر غير مسجّل دخول) *قبل* حتى فحص الفصل المجاني الأول — فكان الزائر
@@ -29952,6 +30069,12 @@ ORDER BY tablename, policyname;
           if(!r.error&&r.data){
             window._bsCourseCache=window._bsCourseCache||{};
             window._bsCourseCache[id]=r.data;
+            window._sectionRowCache=window._sectionRowCache||{};
+            window._sectionRowCache[id]=Object.assign({},r.data,{_cachedAt:Date.now()});
+            window._bsmFreePolicyCache={};
+            window._bsmFreeChildrenCache={};
+            if(typeof window.__bsmInvalidateSubscriptionCaches==='function')window.__bsmInvalidateSubscriptionCaches();
+            try{localStorage.setItem('bsm_course_settings_changed',String(id)+'|'+Date.now());}catch(e){}
             if(typeof window.bsLoadSettings==='function')window.bsLoadSettings();
           }
         }
@@ -30016,15 +30139,21 @@ ORDER BY tablename, policyname;
       if(!ar.error)explicit=ar.data||[];
     }catch(e){ explicit=[]; }
 
+    /* Subscription is controlled by the Course setting only.
+       A free Course means EVERYTHING below it is free, even if an old/stale
+       child row still has requires_subscription=true or an old explicit lock.
+       This prevents the dashboard Course setting from being overridden by a
+       Material/Chapter/old access row. */
+    var course=chain.find(function(x){return String(x.type||'').toLowerCase()==='course';})||null;
+    if(!course)return {chain:chain,paidNode:null,anchor:null,rows:[]};
+
+    if(course.requires_subscription !== true){
+      return {chain:chain,paidNode:null,anchor:null,rows:[]};
+    }
+
     var paidIds={};
     explicit.forEach(function(x){if(x&&x.requires_subscription===true)paidIds[Number(x.section_id)]=true;});
-    var paidNode=chain.find(function(x){return x.requires_subscription===true||paidIds[Number(x.id)];})||null;
-    if(!paidNode)return {chain:chain,paidNode:null,anchor:null,rows:[]};
-
-    /* Paid Content Node and Subscription Owner are separate concepts.
-       A child may be paid, but Subscription Owner is ALWAYS the Course. */
-    var course=chain.find(function(x){return String(x.type||'').toLowerCase()==='course';})||null;
-    if(!course)return {chain:chain,paidNode:paidNode,anchor:null,rows:[]};
+    var paidNode=chain.find(function(x){return x.requires_subscription===true||paidIds[Number(x.id)];})||course;
 
     /* The anchor is the actual Course object, never the paid child. This also
        preserves the Course payment fields used by the existing payment UI. */
@@ -30063,16 +30192,25 @@ ORDER BY tablename, policyname;
     try{
       var sid=Number(sectionId);
       if(!Number.isFinite(sid)||sid<=0)return null;
-      var cur=sid,seen={};
+      var cur=sid,seen={},course=null;
       for(var i=0;i<30&&cur&&!seen[cur];i++){
         seen[cur]=true;
         var r=await getRow(cur);
         if(!r)break;
-        if(String(r.type||'').trim().toLowerCase()==='course')return r;
+        if(String(r.type||'').trim().toLowerCase()==='course'){course=r;break;}
         if(r.parent_id==null)break;
         cur=Number(r.parent_id)||0;
       }
-      return null;
+      if(!course)return null;
+      // Fresh Course row: dashboard changes to price/paid/free are reflected immediately.
+      try{
+        var d=DB();
+        if(d){
+          var fr=await withTimeout(d.from('site_sections').select('id,title,icon,parent_id,type,requires_subscription,price,payment_method,payment_number,subscription_days,chat_free_access').eq('id',Number(course.id)).eq('type','course').maybeSingle(),7000);
+          if(!fr.error&&fr.data)course=fr.data;
+        }
+      }catch(e){}
+      return course.requires_subscription===true?course:null;
     }catch(e){return null;}
   };
 
@@ -30165,6 +30303,12 @@ ORDER BY tablename, policyname;
   };
   document.addEventListener('visibilitychange',function(){
     if(document.visibilityState==='visible')window.__bsmInvalidateSubscriptionCaches();
+  });
+  window.addEventListener('storage',function(e){
+    if(e&&e.key==='bsm_course_settings_changed'){
+      try{window.__bsmInvalidateSubscriptionCaches();}catch(x){}
+      try{window._bsmFreePolicyCache={};window._bsmFreeChildrenCache={};}catch(x){}
+    }
   });
   if(typeof window._afterPaymentRequestSubmitted==='function'&&!window.__BSM_FINAL_AFTER_PAYMENT){
     var oldAfter=window._afterPaymentRequestSubmitted;
@@ -31714,7 +31858,7 @@ COMMIT;
 })();
 </script>
 <style id="bsm-course-subscriptions-admin-final-style">#bsm-course-subscriptions-panel .bsm-cs-grid{display:grid;grid-template-columns:minmax(220px,360px) 1fr;gap:14px}#bsm-course-subscriptions-panel .bsm-cs-card{border:1px solid rgba(10,61,98,.12);border-radius:14px;padding:14px;background:var(--card-bg,#fff)}#bsm-course-subscriptions-panel .bsm-cs-note{font-size:.78rem;color:#667085;line-height:1.8}@media(max-width:700px){#bsm-course-subscriptions-panel .bsm-cs-grid{grid-template-columns:1fr}}</style>
-<script id="bsm-course-subscriptions-admin-final-js">(function(){'use strict';if(window.__BSM_COURSE_SUBSCRIPTIONS_ADMIN_FINAL_20260902)return;window.__BSM_COURSE_SUBSCRIPTIONS_ADMIN_FINAL_20260902=true;var db=function(){return window.supabase||null;},esc=function(v){return typeof window._apEsc==='function'?window._apEsc(v==null?'':String(v)):String(v==null?'':String(v)).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});},isPlatform=function(){return window._isSuperAdmin===true||window._currentUserRole==='admin';},toast=function(m,t){if(typeof window._showToast==='function')window._showToast(m,t||'info');else console.log(m);};function ensureUI(){var side=document.querySelector('#admin-panel .ap-sidebar'),body=document.querySelector('#admin-panel .ap-body');if(!side||!body)return false;var btn=document.getElementById('ap-tab-courseSubscriptions');if(!btn){var g=side.querySelector('.ap-nav-group');btn=document.createElement('button');btn.className='ap-nav-btn platform-only-nav';btn.id='ap-tab-courseSubscriptions';btn.setAttribute('role','tab');btn.innerHTML='💳 <span>اشتراك الكورسات</span>';btn.onclick=function(){apSwitchTab('courseSubscriptions');};(g||side).appendChild(btn);}if(!document.getElementById('ap-panel-courseSubscriptions')){var p=document.createElement('div');p.className='ap-tab-panel';p.id='ap-panel-courseSubscriptions';p.setAttribute('role','tabpanel');p.innerHTML='<div class="ap-section-heading">💳 اشتراك الكورسات</div><div class="bsm-cs-note" style="margin-bottom:12px">إعدادات الاشتراك مرتبطة بسجل الكورس نفسه في <code>site_sections</code>. الاشتراك على مستوى Course فقط، وليس Material أو Chapter أو Lesson أو Live Class.</div><div id="bsm-course-subscriptions-panel"><div class="bsm-cs-grid"><div class="bsm-cs-card"><label class="ap-label">📚 اختر الكورس</label><select id="bsm-cs-course" class="ap-select"><option value="">— جاري تحميل الكورسات —</option></select><div id="bsm-cs-course-info" class="bsm-cs-note" style="margin-top:10px"></div></div><div class="bsm-cs-card"><div id="bsm-cs-settings-empty" class="ap-empty">اختر الكورس أولاً.</div><div id="bsm-cs-settings" style="display:none"><label class="ap-label">هل الكورس يحتاج اشتراك؟</label><select id="bsm-cs-requires" class="ap-select"><option value="true">نعم — يحتاج اشتراك</option><option value="false">لا — مجاني حسب إعدادات المحتوى</option></select><div style="height:10px"></div><label class="ap-label">💰 سعر الاشتراك</label><input id="bsm-cs-price" class="ap-input" type="number" min="0" step="0.01"><div style="height:10px"></div><label class="ap-label">💳 طريقة الدفع</label><input id="bsm-cs-method" class="ap-input" type="text"><div style="height:10px"></div><label class="ap-label">📱 رقم الدفع / التحويل</label><input id="bsm-cs-number" class="ap-input" type="text"><div style="height:10px"></div><label class="ap-label">📅 مدة الاشتراك بالأيام</label><input id="bsm-cs-days" class="ap-input" type="number" min="1" step="1"><div style="height:12px"></div><div id="bsm-cs-msg" class="bsm-cs-note"></div><div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px"><button type="button" id="bsm-cs-save" class="ap-btn ap-btn-success">💾 حفظ إعدادات الكورس</button><button type="button" id="bsm-cs-refresh" class="ap-btn ap-btn-ghost">🔄 تحديث</button></div></div></div></div></div>';body.appendChild(p);}return true;}function gate(){var b=document.getElementById('ap-tab-courseSubscriptions');if(b)b.style.display=isPlatform()?'':'none';if(!isPlatform()){var p=document.getElementById('ap-panel-courseSubscriptions');if(p)p.classList.remove('active');}}async function loadCourses(){var sel=document.getElementById('bsm-cs-course');if(!sel||!db()||!isPlatform())return;sel.innerHTML='<option value="">⏳ جاري التحميل...</option>';var r=await db().from('site_sections').select('id,title,type,parent_id,requires_subscription,price,payment_method,payment_number,subscription_days').eq('type','course').order('display_order',{ascending:true}).order('id',{ascending:true});if(r.error)throw r.error;sel.innerHTML='<option value="">اختر الكورس</option>'+(r.data||[]).map(function(x){return '<option value="'+x.id+'">'+esc(x.title||('#'+x.id))+'</option>';}).join('');if(sel.value)await loadSelected();}async function loadSelected(){var sel=document.getElementById('bsm-cs-course'),cid=Number(sel&&sel.value||0),settings=document.getElementById('bsm-cs-settings'),empty=document.getElementById('bsm-cs-settings-empty');if(!cid){if(settings)settings.style.display='none';if(empty)empty.style.display='block';return;}var r=await db().from('site_sections').select('id,title,type,parent_id,requires_subscription,price,payment_method,payment_number,subscription_days').eq('id',cid).eq('type','course').maybeSingle();if(r.error)throw r.error;if(!r.data)throw new Error('الكورس غير موجود في site_sections');var x=r.data;document.getElementById('bsm-cs-requires').value=x.requires_subscription===true?'true':'false';document.getElementById('bsm-cs-price').value=x.price==null?'':x.price;document.getElementById('bsm-cs-method').value=x.payment_method||'';document.getElementById('bsm-cs-number').value=x.payment_number||'';document.getElementById('bsm-cs-days').value=x.subscription_days==null?'':x.subscription_days;document.getElementById('bsm-cs-course-info').innerHTML='<b>الكورس:</b> '+esc(x.title)+'<br><b>Course ID:</b> '+esc(x.id)+'<br><b>الحالة:</b> '+(x.requires_subscription===true?'🔒 يحتاج اشتراك':'🟢 لا يحتاج اشتراك');if(empty)empty.style.display='none';if(settings)settings.style.display='block';document.getElementById('bsm-cs-msg').textContent='';}async function save(){if(!isPlatform())throw new Error('هذه الإعدادات لأدمن المنصة فقط');var cid=Number(document.getElementById('bsm-cs-course').value||0);if(!cid)throw new Error('اختر الكورس أولاً');var req=document.getElementById('bsm-cs-requires').value==='true',pv=document.getElementById('bsm-cs-price').value.trim(),dv=document.getElementById('bsm-cs-days').value.trim();if(req&&pv!==''&&(!Number.isFinite(Number(pv))||Number(pv)<0))throw new Error('السعر غير صحيح');if(req&&dv!==''&&(!Number.isInteger(Number(dv))||Number(dv)<1))throw new Error('مدة الاشتراك غير صحيحة');var payload={requires_subscription:req,price:pv===''?null:Number(pv),payment_method:document.getElementById('bsm-cs-method').value.trim()||null,payment_number:document.getElementById('bsm-cs-number').value.trim()||null,subscription_days:dv===''?null:Number(dv)};var msg=document.getElementById('bsm-cs-msg');msg.style.color='';msg.textContent='⏳ جاري الحفظ...';var r=await db().from('site_sections').update(payload).eq('id',cid).eq('type','course');if(r.error)throw r.error;msg.style.color='#17a589';msg.textContent='✅ تم تحديث نفس سجل الكورس في site_sections.';toast('✅ تم حفظ إعدادات اشتراك الكورس','success');if(window._sectionRowCache&&window._sectionRowCache[cid])Object.assign(window._sectionRowCache[cid],payload);}function init(){if(ensureUI())gate();}window._bsmCourseSubsOpenTab=async function(){
+<script id="bsm-course-subscriptions-admin-final-js">(function(){'use strict';if(window.__BSM_COURSE_SUBSCRIPTIONS_ADMIN_FINAL_20260902)return;window.__BSM_COURSE_SUBSCRIPTIONS_ADMIN_FINAL_20260902=true;var db=function(){return window.supabase||null;},esc=function(v){return typeof window._apEsc==='function'?window._apEsc(v==null?'':String(v)):String(v==null?'':String(v)).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});},isPlatform=function(){return window._isSuperAdmin===true||window._currentUserRole==='admin';},toast=function(m,t){if(typeof window._showToast==='function')window._showToast(m,t||'info');else console.log(m);};function ensureUI(){var side=document.querySelector('#admin-panel .ap-sidebar'),body=document.querySelector('#admin-panel .ap-body');if(!side||!body)return false;var btn=document.getElementById('ap-tab-courseSubscriptions');if(!btn){var g=side.querySelector('.ap-nav-group');btn=document.createElement('button');btn.className='ap-nav-btn platform-only-nav';btn.id='ap-tab-courseSubscriptions';btn.setAttribute('role','tab');btn.innerHTML='💳 <span>اشتراك الكورسات</span>';btn.onclick=function(){apSwitchTab('courseSubscriptions');};(g||side).appendChild(btn);}if(!document.getElementById('ap-panel-courseSubscriptions')){var p=document.createElement('div');p.className='ap-tab-panel';p.id='ap-panel-courseSubscriptions';p.setAttribute('role','tabpanel');p.innerHTML='<div class="ap-section-heading">💳 اشتراك الكورسات</div><div class="bsm-cs-note" style="margin-bottom:12px">إعدادات الاشتراك مرتبطة بسجل الكورس نفسه في <code>site_sections</code>. الاشتراك على مستوى Course فقط، وليس Material أو Chapter أو Lesson أو Live Class.</div><div id="bsm-course-subscriptions-panel"><div class="bsm-cs-grid"><div class="bsm-cs-card"><label class="ap-label">📚 اختر الكورس</label><select id="bsm-cs-course" class="ap-select"><option value="">— جاري تحميل الكورسات —</option></select><div id="bsm-cs-course-info" class="bsm-cs-note" style="margin-top:10px"></div></div><div class="bsm-cs-card"><div id="bsm-cs-settings-empty" class="ap-empty">اختر الكورس أولاً.</div><div id="bsm-cs-settings" style="display:none"><label class="ap-label">هل الكورس يحتاج اشتراك؟</label><select id="bsm-cs-requires" class="ap-select"><option value="true">نعم — يحتاج اشتراك</option><option value="false">لا — مجاني حسب إعدادات المحتوى</option></select><div style="height:10px"></div><label class="ap-label">💰 سعر الاشتراك</label><input id="bsm-cs-price" class="ap-input" type="number" min="0" step="0.01"><div style="height:10px"></div><label class="ap-label">💳 طريقة الدفع</label><input id="bsm-cs-method" class="ap-input" type="text"><div style="height:10px"></div><label class="ap-label">📱 رقم الدفع / التحويل</label><input id="bsm-cs-number" class="ap-input" type="text"><div style="height:10px"></div><label class="ap-label">📅 مدة الاشتراك بالأيام</label><input id="bsm-cs-days" class="ap-input" type="number" min="1" step="1"><div style="height:12px"></div><div id="bsm-cs-msg" class="bsm-cs-note"></div><div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px"><button type="button" id="bsm-cs-save" class="ap-btn ap-btn-success">💾 حفظ إعدادات الكورس</button><button type="button" id="bsm-cs-refresh" class="ap-btn ap-btn-ghost">🔄 تحديث</button></div></div></div></div></div>';body.appendChild(p);}return true;}function gate(){var b=document.getElementById('ap-tab-courseSubscriptions');if(b)b.style.display=isPlatform()?'':'none';if(!isPlatform()){var p=document.getElementById('ap-panel-courseSubscriptions');if(p)p.classList.remove('active');}}async function loadCourses(){var sel=document.getElementById('bsm-cs-course');if(!sel||!db()||!isPlatform())return;sel.innerHTML='<option value="">⏳ جاري التحميل...</option>';var r=await db().from('site_sections').select('id,title,type,parent_id,requires_subscription,price,payment_method,payment_number,subscription_days').eq('type','course').order('display_order',{ascending:true}).order('id',{ascending:true});if(r.error)throw r.error;sel.innerHTML='<option value="">اختر الكورس</option>'+(r.data||[]).map(function(x){return '<option value="'+x.id+'">'+esc(x.title||('#'+x.id))+'</option>';}).join('');if(sel.value)await loadSelected();}async function loadSelected(){var sel=document.getElementById('bsm-cs-course'),cid=Number(sel&&sel.value||0),settings=document.getElementById('bsm-cs-settings'),empty=document.getElementById('bsm-cs-settings-empty');if(!cid){if(settings)settings.style.display='none';if(empty)empty.style.display='block';return;}var r=await db().from('site_sections').select('id,title,type,parent_id,requires_subscription,price,payment_method,payment_number,subscription_days').eq('id',cid).eq('type','course').maybeSingle();if(r.error)throw r.error;if(!r.data)throw new Error('الكورس غير موجود في site_sections');var x=r.data;document.getElementById('bsm-cs-requires').value=x.requires_subscription===true?'true':'false';document.getElementById('bsm-cs-price').value=x.price==null?'':x.price;document.getElementById('bsm-cs-method').value=x.payment_method||'';document.getElementById('bsm-cs-number').value=x.payment_number||'';document.getElementById('bsm-cs-days').value=x.subscription_days==null?'':x.subscription_days;document.getElementById('bsm-cs-course-info').innerHTML='<b>الكورس:</b> '+esc(x.title)+'<br><b>Course ID:</b> '+esc(x.id)+'<br><b>الحالة:</b> '+(x.requires_subscription===true?'🔒 يحتاج اشتراك':'🟢 لا يحتاج اشتراك');if(empty)empty.style.display='none';if(settings)settings.style.display='block';document.getElementById('bsm-cs-msg').textContent='';}async function save(){if(!isPlatform())throw new Error('هذه الإعدادات لأدمن المنصة فقط');var cid=Number(document.getElementById('bsm-cs-course').value||0);if(!cid)throw new Error('اختر الكورس أولاً');var req=document.getElementById('bsm-cs-requires').value==='true',pv=document.getElementById('bsm-cs-price').value.trim(),dv=document.getElementById('bsm-cs-days').value.trim();if(req&&pv!==''&&(!Number.isFinite(Number(pv))||Number(pv)<0))throw new Error('السعر غير صحيح');if(req&&dv!==''&&(!Number.isInteger(Number(dv))||Number(dv)<1))throw new Error('مدة الاشتراك غير صحيحة');var payload={requires_subscription:req,price:pv===''?null:Number(pv),payment_method:document.getElementById('bsm-cs-method').value.trim()||null,payment_number:document.getElementById('bsm-cs-number').value.trim()||null,subscription_days:dv===''?null:Number(dv)};var msg=document.getElementById('bsm-cs-msg');msg.style.color='';msg.textContent='⏳ جاري الحفظ...';var r=await db().from('site_sections').update(payload).eq('id',cid).eq('type','course');if(r.error)throw r.error;msg.style.color='#17a589';msg.textContent='✅ تم تحديث نفس سجل الكورس في site_sections.';toast('✅ تم حفظ إعدادات اشتراك الكورس','success');window._sectionRowCache=window._sectionRowCache||{};window._sectionRowCache[cid]=Object.assign({},window._sectionRowCache[cid]||{},payload,{_cachedAt:Date.now()});window._bsmFreePolicyCache={};window._bsmFreeChildrenCache={};if(typeof window.__bsmInvalidateSubscriptionCaches==='function')window.__bsmInvalidateSubscriptionCaches();try{localStorage.setItem('bsm_course_settings_changed',String(cid)+'|'+Date.now());}catch(e){};}function init(){if(ensureUI())gate();}window._bsmCourseSubsOpenTab=async function(){
   if(!isPlatform())return;
   ensureUI();gate();
   await loadCourses();
@@ -31821,7 +31965,7 @@ document.addEventListener('click',function(e){if(e.target&&e.target.id==='bsm-cs
     try{
       var r=await db().from('site_sections').select('id,title,free_content_mode').eq('id',courseId).eq('type','course').maybeSingle();
       if(r.error)throw r.error;if(!r.data)throw new Error('الكورس غير موجود');
-      var p=parse(r.data.free_content_mode||'paid_all');
+      var p=parse(r.data.free_content_mode||'first_chapter_first_material');
       var opts=options.map(function(x){return '<option value="'+x[0]+'"'+(p.mode===x[0]?' selected':'')+'>'+x[1]+'</option>';}).join('');
       body.innerHTML='<label class="ap-label">سياسة المحتوى المجاني</label><select id="bsm-fc-mode-'+scope+'" class="ap-select">'+opts+'</select><div id="bsm-fc-mode-note-'+scope+'" class="bsm-fc-note"></div><div id="bsm-fc-count-wrap-'+scope+'" style="display:none;margin-top:8px;"><label class="ap-label">العدد</label><input id="bsm-fc-count-'+scope+'" type="number" min="1" max="100" step="1" class="ap-input" value="'+(p.count||1)+'"></div><div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;"><button type="button" id="bsm-fc-save-'+scope+'" class="ap-btn ap-btn-primary">💾 حفظ إعدادات المحتوى المجاني</button><button type="button" id="bsm-fc-refresh-'+scope+'" class="ap-btn ap-btn-ghost">🔄 تحديث</button></div><div id="bsm-fc-msg-'+scope+'" style="margin-top:8px;font-size:.78rem;"></div>';
       var modeEl=document.getElementById('bsm-fc-mode-'+scope),countEl=document.getElementById('bsm-fc-count-'+scope),wrap=document.getElementById('bsm-fc-count-wrap-'+scope),note=document.getElementById('bsm-fc-mode-note-'+scope);
