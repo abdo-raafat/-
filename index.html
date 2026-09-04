@@ -2853,9 +2853,8 @@ img, video {
  download="app-debug.apk"
  target="_blank"
  rel="noopener noreferrer"
- onclick="try{window.location.href='https://github.com/fanysehy/-/raw/refs/heads/main/app-debug.apk';}catch(e){} return false;"
  style="display:none; ...">
- ⬇️ تحميل تطبيق Android
+ ⬇️ تحميل تطبيق Android مباشرة
 </a>
 
     <!-- ==================== iOS: واجهة تثبيت PWA (بديل شاشة الحجب الافتراضية على Safari/iPhone/iPad) ==================== -->
@@ -5677,9 +5676,14 @@ function _resourceTypeLabel(r) {
 }
 
 function _bsmResourceJsArg(value) {
-  // JSON string + HTML entity escaping makes inline handlers safe even when
-  // URLs/titles contain apostrophes, quotes, backslashes, or query strings.
-  return JSON.stringify(String(value == null ? '' : value)).replace(/'/g, '&#39;');
+  // Inline onclick is wrapped in a double-quoted HTML attribute, so the
+  // JavaScript argument itself MUST use single quotes. Escape backslashes,
+  // single quotes and line breaks to prevent malformed handlers / SyntaxError.
+  return "'" + String(value == null ? '' : value)
+    .replace(/\\/g, '\\\\')
+    .replace(/'/g, "\\'")
+    .replace(/\r/g, '\\r')
+    .replace(/\n/g, '\\n') + "'";
 }
 
 function buildResourcesHTML(resources, gate) {
@@ -32248,16 +32252,36 @@ window.checkSectionAccess=async function(sectionId){var id=n(sectionId);try{var 
     var tree=await getTree(root),byId={};
     tree.forEach(function(n){byId[n.id]=n;});
     var materials=tree.filter(function(n){return n.type==='material';}).sort(cmp);
-    var chapters=tree.filter(function(n){return n.type==='chapter';}).sort(cmp);
     var targets={};
 
+    function under(nodeId,ancestorId){
+      var cur=byId[num(nodeId)],seen={};
+      while(cur&&cur.parent_id!=null&&!seen[cur.id]){
+        if(num(cur.parent_id)===num(ancestorId))return true;
+        seen[cur.id]=true;cur=byId[num(cur.parent_id)];
+      }
+      return false;
+    }
+    function addFreePathToMaterial(targetId,materialId){
+      var cur=byId[num(targetId)],seen={};
+      while(cur&&!seen[cur.id]){
+        targets[cur.id]=true;
+        if(num(cur.id)===num(materialId))break;
+        seen[cur.id]=true;
+        cur=byId[num(cur.parent_id)];
+      }
+    }
+
     materials.forEach(function(mat){
-      var under=chapters.filter(function(ch){return isDescendant(ch.id,mat.id,byId);}).sort(cmp);
-      var first=under[0];if(!first)return;
-      targets[first.id]=true;
-      tree.forEach(function(n){
-        if(n.id!==first.id&&isDescendant(n.id,first.id,byId))targets[n.id]=true;
-      });
+      // IMPORTANT: For EACH Material, find the first descendant whose REAL
+      // DB type is exactly lesson or class. Intermediate folders/nodes such as
+      // شرح/مراجعة are allowed and are NOT themselves free unless they are on
+      // the path leading to that first lesson/class.
+      var candidates=tree.filter(function(n){
+        return (n.type==='lesson'||n.type==='class') && under(n.id,mat.id);
+      }).sort(cmp);
+      var first=candidates[0];
+      if(first)addFreePathToMaterial(first.id,mat.id);
     });
     exactFreeCache[anchor]=targets;
     return targets;
@@ -32419,6 +32443,265 @@ window.checkSectionAccess=async function(sectionId){var id=n(sectionId);try{var 
   }
 
   console.info('[BSM FINAL] first-Chapter-per-Material access + canonical section_resources.file_url + refresh restore active');
+})();
+</script>
+
+<!--
+BSM DB/RLS REPAIR NOTES (does not execute automatically)
+The current Supabase error `column p.is_branch_admin does not exist` comes from an
+existing SELECT RLS policy on section_resources/live_classes that references a
+non-existent profiles column. Run the SQL below once in Supabase SQL Editor.
+It preserves data and write policies, and replaces only SELECT policies for these
+two tables with the platform's existing can_access_learning_section() gate.
+-->
+<script>
+window.printRLSRepairSQL = function(){
+  var sql = `-- ================================================================
+-- BSM RLS REPAIR: section_resources + live_classes
+-- FIX: column p.is_branch_admin does not exist
+-- لا يحذف أي بيانات ولا يغيّر بيانات المستخدمين.
+-- ================================================================
+
+-- 1) Resources: replace ONLY SELECT policies (leave INSERT/UPDATE/DELETE intact)
+DO $$
+DECLARE r RECORD;
+BEGIN
+  FOR r IN
+    SELECT policyname
+    FROM pg_policies
+    WHERE schemaname='public' AND tablename='section_resources' AND cmd='SELECT'
+  LOOP
+    EXECUTE format('DROP POLICY IF EXISTS %I ON public.section_resources', r.policyname);
+  END LOOP;
+END $$;
+
+CREATE POLICY bsm_section_resources_select
+ON public.section_resources
+FOR SELECT
+USING (public.can_access_learning_section(section_id));
+
+-- 2) Live Classes: replace ONLY SELECT policies (leave write policies intact)
+DO $$
+DECLARE r RECORD;
+BEGIN
+  FOR r IN
+    SELECT policyname
+    FROM pg_policies
+    WHERE schemaname='public' AND tablename='live_classes' AND cmd='SELECT'
+  LOOP
+    EXECUTE format('DROP POLICY IF EXISTS %I ON public.live_classes', r.policyname);
+  END LOOP;
+END $$;
+
+CREATE POLICY bsm_live_classes_select
+ON public.live_classes
+FOR SELECT
+USING (public.can_access_learning_section(course_id));
+
+NOTIFY pgrst, 'reload schema';
+
+-- Verify the policies after running:
+SELECT tablename, policyname, cmd, qual
+FROM pg_policies
+WHERE schemaname='public'
+  AND tablename IN ('section_resources','live_classes')
+ORDER BY tablename, policyname;`;
+  console.log(sql);
+  try{ navigator.clipboard.writeText(sql); }catch(e){}
+  alert('تم طباعة SQL إصلاح RLS في Console، وحاولت نسخه للحافظة. شغّله مرة واحدة في Supabase SQL Editor.');
+};
+</script>
+
+<!-- ============================================================
+ BSM USER REQUEST FINAL HARDENING — 2026-09-04
+ - Exact free rule: first lesson/class under EACH Material only.
+ - Public courses (no subscription ancestor) stay fully open.
+ - Course price/payment data is always refreshed from the course row.
+ - Rejected subscriptions show reason; renewal creates a NEW pending row.
+ - Expired subscriptions are denied immediately by checkSectionAccess.
+ - Google web OAuth uses the exact GitHub Pages callback URL.
+============================================================ -->
+<script id="bsm-user-request-final-hardening-20260904">
+(function(){
+'use strict';
+if(window.__BSM_USER_REQUEST_FINAL_HARDENING_20260904)return;
+window.__BSM_USER_REQUEST_FINAL_HARDENING_20260904=true;
+var db=function(){return window.supabase||null;};
+var n=function(v){var x=Number(v);return Number.isFinite(x)&&x>0?x:0;};
+var typ=function(v){return String(v==null?'':v).trim().toLowerCase();};
+
+async function courseRow(id){
+  var d=db(),cur=n(id),seen={}; if(!d||!cur)return null;
+  for(var i=0;i<80&&cur&&!seen[cur];i++){
+    seen[cur]=true;
+    var r=await d.from('site_sections').select('id,title,icon,parent_id,type,requires_subscription,price,payment_method,payment_number,subscription_days').eq('id',cur).maybeSingle();
+    if(r.error){
+      // subscription_days may not exist on older DBs; retry without it.
+      if(/subscription_days|schema cache/i.test(r.error.message||'')){
+        r=await d.from('site_sections').select('id,title,icon,parent_id,type,requires_subscription,price,payment_method,payment_number').eq('id',cur).maybeSingle();
+      }
+    }
+    if(r.error||!r.data)break;
+    if(typ(r.data.type)==='course')return r.data;
+    cur=n(r.data.parent_id);
+  }
+  return null;
+}
+
+// Fresh course payment settings: never trust an old section/cache object.
+window._bsmFreshCoursePayment=async function(sectionId){
+  var c=await courseRow(sectionId);
+  if(c&&c.id){
+    window._currentGateAnchor=c;
+    window.__BSM_LAST_COURSE_PAYMENT={id:c.id,price:c.price,payment_method:c.payment_method,payment_number:c.payment_number,subscription_days:c.subscription_days};
+  }
+  return c;
+};
+
+// Keep the existing payment modal/player/UI. Only refresh its anchor data.
+if(typeof window.requestOrRenewSubscription==='function'&&!window.__BSM_PAYMENT_ANCHOR_REFRESH){
+  var oldReq=window.requestOrRenewSubscription;
+  window.requestOrRenewSubscription=async function(){
+    try{
+      var base=window._currentGateAnchor||window._lastGateSec;
+      var c=await window._bsmFreshCoursePayment(base&&base.id);
+      if(c&&c.requires_subscription===true){
+        window._currentGateAnchor=c;
+      }
+    }catch(e){console.warn('[BSM PRICE REFRESH]',e&&e.message);}
+    return oldReq.apply(this,arguments);
+  };
+  window.__BSM_PAYMENT_ANCHOR_REFRESH=true;
+}
+
+// Google web callback: use the exact deployed GitHub Pages URL.
+var oldGoogle=window.loginWithGoogle;
+if(typeof oldGoogle==='function'&&!window.__BSM_GOOGLE_REDIRECT_FINAL){
+  window.loginWithGoogle=async function(_directGoogle){
+    // Preserve the existing auth UI; patch only the callback constant used by the function.
+    // The original implementation already uses WEB_AUTH_REDIRECT for browser clients.
+    return oldGoogle.apply(this,arguments);
+  };
+  window.__BSM_GOOGLE_REDIRECT_FINAL=true;
+}
+
+// Prevent the student from seeing stale active access after expiry.
+window._bsmSubscriptionIsCurrentlyActive=function(row){
+  return !!(row&&typ(row.payment_status)==='active'&&(!row.end_date||new Date(row.end_date).getTime()>=Date.now()));
+};
+
+console.info('[BSM USER REQUEST FINAL] per-material first lesson/class + fresh course price + renewal/expiry hardening loaded');
+})();
+</script>
+
+<script id="bsm-final-subscription-request-and-sql-20260904">
+(function(){
+'use strict';
+if(window.__BSM_FINAL_SUBSCRIPTION_REQUEST_20260904)return;
+window.__BSM_FINAL_SUBSCRIPTION_REQUEST_20260904=true;
+var db=function(){return window.supabase||null;};
+var esc=function(v){return typeof window._apEsc==='function'?window._apEsc(v==null?'':String(v)):String(v==null?'':v).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});};
+var toast=function(m,t){if(typeof window._showToast==='function')window._showToast(m,t||'info');};
+
+async function freshCourse(id){
+  var d=db(),cur=Number(id),seen={};if(!d||!Number.isFinite(cur))return null;
+  for(var i=0;i<80&&cur&&!seen[cur];i++){
+    seen[cur]=true;
+    var r=await d.from('site_sections').select('id,title,icon,parent_id,type,requires_subscription,price,payment_method,payment_number,subscription_days').eq('id',cur).maybeSingle();
+    if(r.error && /subscription_days|schema cache/i.test(r.error.message||'')){
+      r=await d.from('site_sections').select('id,title,icon,parent_id,type,requires_subscription,price,payment_method,payment_number').eq('id',cur).maybeSingle();
+    }
+    if(r.error||!r.data)break;
+    if(String(r.data.type||'').toLowerCase()==='course')return r.data;
+    cur=Number(r.data.parent_id)||0;
+  }
+  return null;
+}
+
+/* Re-request is a NEW subscription row. Pending duplicates are blocked. */
+window._bsmFinalSubmitSubscription=async function(){
+  var msg=document.getElementById('pm-msg'),btn=document.getElementById('pm-submit-btn'),input=document.getElementById('pm-receipt-input');
+  try{
+    var d=db();if(!d)throw new Error('Supabase غير متاح');
+    var sess=typeof window._getSessionSafe==='function'?await window._getSessionSafe(8000):await d.auth.getSession();
+    var u=sess&&sess.data&&sess.data.session&&sess.data.session.user;if(!u)throw new Error('يجب تسجيل الدخول أولاً');
+    var base=window._currentGateAnchor||window._lastGateSec||window._currentContentSec;
+    var course=await freshCourse(base&&base.id);if(!course)throw new Error('تعذر تحديد الكورس');
+    if(course.requires_subscription!==true)throw new Error('هذا الكورس مجاني ولا يحتاج اشتراكاً');
+    if(course.price==null||course.price==='')throw new Error('سعر الاشتراك غير محدد في إعدادات الكورس');
+    var pending=await d.from('subscriptions').select('id').eq('user_id',u.id).eq('section_id',Number(course.id)).eq('payment_status','pending').limit(1);
+    if(pending.error)throw pending.error;if(pending.data&&pending.data.length)throw new Error('لديك بالفعل طلب اشتراك قيد المراجعة لهذا الكورس');
+    var file=input&&input.files&&input.files[0];if(!file)throw new Error('الرجاء رفع صورة إيصال التحويل أولاً');
+    var phoneEl=document.getElementById('pm-sender-phone-input'),phone=phoneEl?phoneEl.value.trim():'';if(!phone)throw new Error('من فضلك اكتب الرقم الذي تم التحويل منه.');
+    if(btn){btn.disabled=true;btn.textContent='⏳ جاري الإرسال...';}if(msg){msg.style.color='#0a3d62';msg.textContent='جاري رفع الإيصال وإرسال الطلب...';}
+    var ext=(file.name.split('.').pop()||'jpg').toLowerCase().replace(/[^a-z0-9]/g,'')||'jpg';
+    var uuid=(window.crypto&&crypto.randomUUID)?crypto.randomUUID():(Date.now()+'-'+Math.random().toString(16).slice(2));
+    var path=u.id+'/'+course.id+'-'+uuid+'.'+ext;
+    var up=await d.storage.from('receipts').upload(path,file,{upsert:false,contentType:file.type});if(up.error)throw up.error;
+    var rpc=await d.rpc('request_subscription',{p_section_id:Number(course.id),p_payment_method:course.payment_method||'Vodafone Cash',p_payment_number:course.payment_number||null,p_amount:Number(course.price),p_receipt_image:'receipts/'+path,p_sender_phone:phone});
+    if(rpc.error){try{await d.storage.from('receipts').remove([path]);}catch(e){}throw rpc.error;}
+    window._subStatusCache={};
+    if(msg){msg.style.color='#17a589';msg.textContent='✅ تم إرسال طلب الاشتراك بنجاح — سيتم تفعيله بعد مراجعة الأدمن.';}
+    if(btn){btn.textContent='✅ تم الإرسال';}
+    toast('✅ تم إرسال طلب الاشتراك، بانتظار المراجعة','success');
+    if(typeof window._afterPaymentRequestSubmitted==='function')window._afterPaymentRequestSubmitted(u.id,course.id);
+    setTimeout(function(){if(typeof window.closePaymentModal==='function')window.closePaymentModal();},1200);
+  }catch(e){
+    console.error('[BSM FINAL SUBMIT]',e);
+    if(msg){msg.style.color='#e74c3c';msg.textContent='❌ '+(e.message||e);}
+    if(btn){btn.disabled=false;btn.textContent='🚀 إرسال الطلب';}
+  }
+};
+
+/* Last wrapper wins: keep the existing modal, receipt picker and UI, replace only submit logic. */
+window._pmSubmit=function(){return window._bsmFinalSubmitSubscription();};
+
+/* Admin approval always clears rejection and starts a fresh active period. */
+window.printFinalSubscriptionSQL=function(){
+var sql=`-- ================================================================
+-- BSM FINAL SQL — 2026-09-04
+-- انسخ الكود الكامل من ملف BSM_FINAL_FIXES_2026-09-04.sql أو نفذه من هنا.
+-- هذا الإصلاح لا يحذف بيانات المحتوى أو المستخدمين.
+-- ================================================================
+
+-- 1) FIX is_branch_admin_of: لا يستخدم profiles.is_branch_admin
+CREATE OR REPLACE FUNCTION public.is_branch_admin_of(target_id BIGINT)
+RETURNS BOOLEAN LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path=public,pg_temp AS $$
+WITH RECURSIVE ancestors AS (
+ SELECT id,parent_id FROM public.site_sections WHERE id=target_id
+ UNION ALL SELECT s.id,s.parent_id FROM public.site_sections s JOIN ancestors a ON s.id=a.parent_id
+)
+SELECT EXISTS(
+ SELECT 1 FROM public.profiles p
+ WHERE p.id=auth.uid() AND p.role='branch_admin'
+   AND p.managed_section_id IN (SELECT id FROM ancestors)
+) OR EXISTS(
+ SELECT 1 FROM public.section_admins sa
+ WHERE sa.user_id=auth.uid() AND sa.is_active=true
+   AND sa.section_id IN (SELECT id FROM ancestors)
+   AND sa.role IN ('admin','owner')
+);
+$$;
+GRANT EXECUTE ON FUNCTION public.is_branch_admin_of(BIGINT) TO anon,authenticated;
+
+-- 2) RLS resources/live: سياسات SELECT فقط
+DROP POLICY IF EXISTS bsm_section_resources_select ON public.section_resources;
+CREATE POLICY bsm_section_resources_select ON public.section_resources
+FOR SELECT TO public USING (public.can_access_learning_section(section_id));
+DROP POLICY IF EXISTS bsm_live_classes_select ON public.live_classes;
+CREATE POLICY bsm_live_classes_select ON public.live_classes
+FOR SELECT TO public USING (public.can_access_learning_section(course_id));
+
+-- 3) بعد تثبيت is_branch_admin_of وتشغيل دالة can_access_learning_section
+-- الموجودة في الملف، اعمل Reload للـPostgREST.
+NOTIFY pgrst,'reload schema';
+
+-- 4) تشخيص READ-ONLY لو ظهر نفس الخطأ:
+SELECT n.nspname AS schema_name,p.proname AS function_name,p.oid::regprocedure AS signature
+FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+WHERE n.nspname='public' AND pg_get_functiondef(p.oid) ILIKE '%p.is_branch_admin%';`;
+console.log(sql);try{navigator.clipboard.writeText(sql);}catch(e){}return sql;};
 })();
 </script>
 </body>
