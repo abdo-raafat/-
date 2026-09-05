@@ -19969,6 +19969,12 @@ window.diagnose = async function() {
       return targets;
     }
 
+    if(mode==='first_learning_content_first_material'){
+      var firstMaterial=sortTree(materialNodes.filter(function(mat){return isUnder(mat.id,courseId);}))[0];
+      if(firstMaterial){var firstLc=sortTree(tree.filter(function(n){return _bsmFreeIsLearningContent(n)&&isUnder(n.id,firstMaterial.id); }))[0];if(firstLc)addBranch(firstLc.id);}
+      return targets;
+    }
+
     if(mode==='first_material_each_learning_content'){
       tree.filter(_bsmFreeIsLearningContent).forEach(function(lc){
         var mat=sortTree(materialNodes.filter(function(n){return isUnder(n.id,lc.id);}))[0];
@@ -23552,7 +23558,7 @@ window.__FIXED2_AUDIT = { version: 'FIXED-2', date: '2026-08-12' };
       for(var ii=0;ii<items.length;ii++){
         var it=items[ii], sec=it.site_sections||{};
         if(!sec.id) continue;
-        var access=window.getDetailedSectionAccess?await window.getDetailedSectionAccess(sec.id):{state:sec.requires_subscription?'locked':'free'};
+        var access={state:sec.requires_subscription?'locked':'free',access:sec.requires_subscription?'locked':'free'};try{if(typeof window.getDetailedSectionAccess==='function'){var checkedAccess=await window.getDetailedSectionAccess(sec.id);if(checkedAccess&&typeof checkedAccess==='object')access=checkedAccess;}}catch(accessErr){console.warn('[LearningPaths] access check failed:',accessErr);}access=access||{state:sec.requires_subscription?'locked':'free',access:sec.requires_subscription?'locked':'free'};
 
         // ✅ Phase 3: قفل التسلسل — يُفحص فقط لو الاشتراك مسموح به أصلاً (الاشتراك
         // له الأولوية دائماً) ولمستخدم مسجّل دخول (الزائر لا تُفحص له محاضرات سابقة)
@@ -31304,7 +31310,7 @@ document.addEventListener('click',function(e){if(e.target&&e.target.id==='bsm-cs
     ['paid_all','كل المحتوى مدفوع','لا يوجد أي محتوى مجاني.'],
     ['first_learning_content','أول Learning Content مجاني','أول Node فعلي من النوع lesson أو class حسب الـHierarchy الفعلية.'],
     ['first_n_learning_contents','أول عدد مخصص من Learning Contents مجاني','العدد يُرتب حسب display_order ثم id، ويشمل lesson/class فقط.'],
-    ['first_learning_content_each_material','أول Learning Content من كل Material مجاني','لكل Node فعلي type=material: أول lesson/class تحته حسب الـHierarchy.'],
+    ['first_learning_content_each_material','أول Learning Content من كل Material مجاني','لكل Node فعلي type=material: أول lesson/class تحته حسب الـHierarchy.'],['first_learning_content_first_material','أول Learning Content من أول Material فقط مجاني','يفتح أول lesson/class داخل أول Material فقط، والباقي يظل مقفولًا حسب الاشتراك.'],
     ['first_material_each_learning_content','أول Material من كل Learning Content مجاني','لكل lesson/class: أول Node فعلي type=material تحته.'],
     ['first_chapter_first_material','أول Chapter من أول Material فقط مجاني','أول Chapter في أول Material فقط، مع كل ما بداخله.'],
     ['first_material_each_chapter','أول Material من كل Chapter مجاني','في كل Chapter: أول Material فقط يكون مجانيًا.'],
@@ -32697,7 +32703,243 @@ console.info('[BSM EMERGENCY FINAL] guest free-content + first lesson/class per 
   },true);
 })();
 </script>
+
+<!-- BSM OPENING HARDENING PATCH 2026-09-05 v7 -->
+<style id="bsm-opening-hardening-v7">
+/* Admin panel: one real scroll container, desktop + mobile + mouse wheel + touch */
+#admin-panel{overflow:hidden!important;padding:12px!important;align-items:center!important;}
+#admin-panel .ap-modal{height:min(94dvh,1100px);max-height:94dvh;display:flex!important;flex-direction:column;min-height:0;}
+#admin-panel .ap-workspace{flex:1 1 auto!important;min-height:0!important;height:0;overflow:hidden!important;display:flex;}
+#admin-panel .ap-sidebar{flex:0 0 245px;max-height:none!important;height:100%;overflow-y:auto!important;overflow-x:hidden!important;overscroll-behavior:contain;}
+#admin-panel .ap-body{flex:1 1 auto!important;min-height:0!important;height:100%;overflow-y:auto!important;overflow-x:hidden!important;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;scrollbar-gutter:stable;}
+@media(max-width:899px){
+ #admin-panel{padding:6px!important;align-items:stretch!important;}
+ #admin-panel .ap-modal{height:100dvh;max-height:100dvh;border-radius:16px;}
+ #admin-panel .ap-workspace{display:flex!important;flex-direction:column!important;}
+ #admin-panel .ap-sidebar{flex:0 0 auto;width:100%!important;height:auto;max-height:112px!important;overflow-x:auto!important;overflow-y:hidden!important;}
+ #admin-panel .ap-body{flex:1 1 auto!important;height:0;min-height:0!important;overflow-y:auto!important;}
+}
+</style>
+<script id="bsm-opening-hardening-v7-js">
+(function(){
+'use strict';
+if(window.__BSM_OPENING_HARDENING_V7)return;
+window.__BSM_OPENING_HARDENING_V7=true;
+
+/* ───────────── Refresh/restore: retry AFTER auth bootstrap ─────────────
+   The old restore could run before INITIAL_SESSION finished. A protected
+   section would then be rejected as guest and the refresh looked "broken".
+   We keep the existing URL/localStorage mechanism and add a bounded retry.
+*/
+function getRestoreId(){
+  var m=/^#\/section\/([^\/?#]+)/.exec(window.location.hash||'');
+  if(m)return decodeURIComponent(m[1]);
+  try{return localStorage.getItem('bsm_last_section_id')||'';}catch(e){return '';}
+}
+function restoreIfNeeded(){
+  var id=getRestoreId();
+  if(!id||typeof window._apRestoreSectionPath!=='function')return;
+  var cur=String(window._lastOpenSectionId||'');
+  if(cur===String(id))return;
+  window._apRestoreSectionPath(id,true).catch(function(e){console.warn('[BSM REFRESH RESTORE]',e);});
+}
+function scheduleRestore(){
+  var tries=0;
+  var timer=setInterval(function(){
+    tries++;
+    if(window.supabase && window._authBootstrapped){
+      clearInterval(timer);
+      setTimeout(restoreIfNeeded,250);
+    }else if(tries>=40){
+      clearInterval(timer);
+      setTimeout(restoreIfNeeded,250);
+    }
+  },250);
+}
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',scheduleRestore,{once:true});else scheduleRestore();
+
+/* ───────────── Admin tab persistence + safe open ───────────── */
+var ADMIN_TAB_KEY='bsm_admin_last_tab';
+window._bsmAdminRememberTab=function(tab){try{if(tab)localStorage.setItem(ADMIN_TAB_KEY,String(tab));}catch(e){}};
+window._bsmAdminGetLastTab=function(){try{return localStorage.getItem(ADMIN_TAB_KEY)||'dashboard';}catch(e){return 'dashboard';}};
+var oldSwitch=window.apSwitchTab;
+if(typeof oldSwitch==='function'){
+  window.apSwitchTab=function(tab){
+    window._bsmAdminRememberTab(tab);
+    return oldSwitch.apply(this,arguments);
+  };
+}
+var oldToggle=window.toggleAdminPanel;
+if(typeof oldToggle==='function'){
+  window.toggleAdminPanel=function(){
+    var p=document.getElementById('admin-panel');
+    var opening=p&&!p.classList.contains('ap-open');
+    var r=oldToggle.apply(this,arguments);
+    if(opening){
+      setTimeout(function(){
+        try{
+          var tab=window._bsmAdminGetLastTab();
+          if(typeof window.apSwitchTab==='function')window.apSwitchTab(tab);
+          var body=document.querySelector('#admin-panel .ap-body');
+          if(body)body.scrollTop=0;
+        }catch(e){console.warn('[BSM ADMIN OPEN]',e);}
+      },0);
+    }
+    return r;
+  };
+}
+
+/* ───────────── Course contact data: phones + Telegram/WhatsApp groups
+   Uses the EXISTING site_sections.course_admin_phone text column.
+   Legacy string/array values remain readable. No new table required.
+*/
+function parseCourseData(raw){
+  var v=String(raw==null?'':raw).trim();
+  if(!v)return {contacts:[],groups:[]};
+  try{
+    var x=JSON.parse(v);
+    if(Array.isArray(x))return {contacts:x.map(function(c){return {name:String(c&&c.name||'').trim(),phone:String(c&&c.phone||'').trim(),telegram:String(c&&c.telegram||'').trim().replace(/^@/,'')};}).filter(function(c){return c.phone; }),groups:[]};
+    if(x&&typeof x==='object')return {
+      contacts:Array.isArray(x.contacts)?x.contacts.map(function(c){return {name:String(c&&c.name||'').trim(),phone:String(c&&c.phone||'').trim(),telegram:String(c&&c.telegram||'').trim().replace(/^@/,'')};}).filter(function(c){return c.phone;}):[],
+      groups:Array.isArray(x.groups)?x.groups.map(function(g){return {name:String(g&&g.name||'').trim(),url:String(g&&g.url||'').trim(),type:String(g&&g.type||'group').trim()};}).filter(function(g){return g.url;}):[]
+    };
+  }catch(e){}
+  return {contacts:[{name:'',phone:v,telegram:''}],groups:[]};
+}
+window._bsmParseCourseContactData=parseCourseData;
+window._capParseContacts=function(raw){return parseCourseData(raw).contacts;};
+window._capParseGroups=function(raw){return parseCourseData(raw).groups;};
+function esc(v){return typeof window._apEsc==='function'?window._apEsc(v==null?'':String(v)):String(v==null?'':v).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+function cleanContacts(rows){return (rows||[]).map(function(c){return {name:String(c.name||'').trim(),phone:String(c.phone||'').trim(),telegram:String(c.telegram||'').trim().replace(/^@/,'')};}).filter(function(c){return c.phone;});}
+function cleanGroups(rows){return (rows||[]).map(function(g){return {name:String(g.name||'').trim(),url:String(g.url||'').trim(),type:String(g.type||'group').trim()};}).filter(function(g){return /^https?:\/\//i.test(g.url);});}
+window._bsmSerializeCourseContactData=function(contacts,groups){
+  var c=cleanContacts(contacts),g=cleanGroups(groups);
+  if(!c.length&&!g.length)return null;
+  return JSON.stringify({contacts:c,groups:g});
+};
+
+/* Add group-link editor to the existing Course Admin Phone panel. */
+function ensureGroupUI(){
+  var panel=document.getElementById('ap-panel-courseAdminPhone');if(!panel)return false;
+  if(document.getElementById('cap-groups-list'))return true;
+  var host=panel.querySelector('.ap-card');if(!host)return false;
+  var wrap=document.createElement('div');wrap.style.cssText='margin-top:16px;padding-top:14px;border-top:1px solid #e3eaf5;';
+  wrap.innerHTML='<label class="ap-label">🔗 روابط جروبات الكورس</label>'+
+    '<div id="cap-groups-list"></div>'+
+    '<button class="ap-btn ap-btn-ghost" type="button" id="cap-add-group">➕ إضافة رابط جروب</button>'+
+    '<div style="font-size:.72rem;color:#777;margin-top:6px;line-height:1.7;">يمكنك إضافة Telegram أو WhatsApp أو أي رابط جروب. الروابط تظهر للطلاب داخل الكورس.</div>';
+  host.appendChild(wrap);
+  document.getElementById('cap-add-group').onclick=function(){
+    var rows=readGroupsDOM();rows.push({name:'',url:'',type:'group'});renderGroups(rows);
+  };
+  return true;
+}
+function readGroupsDOM(){
+  var out=[];document.querySelectorAll('#cap-groups-list [data-cap-group]').forEach(function(r){
+    out.push({name:(r.querySelector('.cap-g-name')||{}).value||'',url:(r.querySelector('.cap-g-url')||{}).value||'',type:(r.querySelector('.cap-g-type')||{}).value||'group'});
+  });return out;
+}
+function renderGroups(groups){
+  var el=document.getElementById('cap-groups-list');if(!el)return;
+  groups=groups&&groups.length?groups:[{name:'',url:'',type:'group'}];
+  el.innerHTML=groups.map(function(g,i){return '<div data-cap-group="'+i+'" class="ap-card" style="padding:10px;margin-bottom:8px;display:grid;grid-template-columns:150px 1fr auto;gap:8px;align-items:end;">'+
+    '<div><label class="ap-label" style="font-size:.7rem;">النوع</label><select class="ap-select cap-g-type"><option value="group"'+(g.type==='group'?' selected':'')+'>👥 جروب</option><option value="telegram"'+(g.type==='telegram'?' selected':'')+'>🔵 Telegram</option><option value="whatsapp"'+(g.type==='whatsapp'?' selected':'')+'>🟢 WhatsApp</option></select></div>'+
+    '<div><label class="ap-label" style="font-size:.7rem;">اسم الجروب + الرابط</label><input class="ap-input cap-g-name" value="'+esc(g.name||'')+'" placeholder="اسم الجروب" style="margin-bottom:6px;"><input class="ap-input cap-g-url" dir="ltr" value="'+esc(g.url||'')+'" placeholder="https://t.me/... أو https://chat.whatsapp.com/..." ></div>'+
+    '<button type="button" class="ap-btn ap-btn-ghost" onclick="window._bsmRemoveCourseGroup('+i+')">🗑️</button></div>';}).join('');
+}
+window._bsmRemoveCourseGroup=function(i){var r=readGroupsDOM();r.splice(i,1);renderGroups(r);};
+
+/* Override the final phone functions so save/load includes groups and verifies DB. */
+if(typeof window.capLoadCourse==='function'){
+  window.capLoadCourse=async function(){
+    var sel=document.getElementById('cap-course-select'),msg=document.getElementById('cap-save-msg'),id=Number(sel&&sel.value||0);if(!id){if(document.getElementById('cap-contacts-list'))capRenderContacts([]);renderGroups([]);return;}
+    try{
+      var r=await window.supabase.from('site_sections').select('id,title,icon,course_admin_phone,type,parent_id').eq('id',id).maybeSingle();
+      if(r.error)throw r.error;if(!r.data)throw new Error('الكورس غير موجود في site_sections');
+      var data=parseCourseData(r.data.course_admin_phone);window._capContacts=data.contacts;window._capGroups=data.groups;
+      if(!window._capContacts.length)window._capContacts=[{name:'',phone:'',telegram:''}];capRenderContacts(window._capContacts);ensureGroupUI();renderGroups(data.groups);if(msg)msg.textContent='';
+    }catch(e){console.error('[CourseAdminPhone][groups] load',e);if(msg){msg.style.color='#e74c3c';msg.textContent='❌ تعذر تحميل بيانات الكورس: '+esc(e.message||e);}}
+  };
+}
+if(typeof window.capSave==='function'){
+  window.capSave=async function(){
+    var sel=document.getElementById('cap-course-select'),msg=document.getElementById('cap-save-msg');
+    var allowed=window._isSuperAdmin===true||window._currentUserRole==='admin';if(!allowed||!window.supabase)return;
+    var id=Number(sel&&sel.value||0);if(!id){if(msg)msg.textContent='❌ اختر الكورس أولاً';return;}
+    var contacts=typeof capReadContactsFromDOM==='function'?capReadContactsFromDOM():[];var groups=readGroupsDOM();
+    var bad=groups.find(function(g){return g.url&& !/^https?:\/\//i.test(g.url.trim());});if(bad){if(msg)msg.textContent='❌ رابط الجروب لازم يبدأ بـ https://';return;}
+    var value=window._bsmSerializeCourseContactData(contacts,groups);if(msg){msg.style.color='#667';msg.textContent='⏳ جاري الحفظ والتحقق...';}
+    try{
+      var r=await window.supabase.from('site_sections').update({course_admin_phone:value}).eq('id',id).eq('type','course');if(r.error)throw r.error;
+      var verify=await window.supabase.from('site_sections').select('course_admin_phone').eq('id',id).maybeSingle();if(verify.error)throw verify.error;
+      if(String(verify.data&&verify.data.course_admin_phone||'')!==String(value||''))throw new Error('الحفظ لم يتطابق مع القراءة من قاعدة البيانات');
+      window._capContacts=cleanContacts(contacts);window._capGroups=cleanGroups(groups);if(msg){msg.style.color='#17a589';msg.textContent='✅ تم حفظ أرقام التواصل وروابط الجروبات والتحقق منها';}
+      if(typeof _showToast==='function')_showToast('✅ تم حفظ بيانات تواصل الكورس','success');
+      capRenderContacts(window._capContacts.length?window._capContacts:[{name:'',phone:'',telegram:''}]);renderGroups(window._capGroups);
+    }catch(e){console.error('[CourseAdminPhone][groups] save',e);if(msg){msg.style.color='#e74c3c';msg.textContent='❌ فشل الحفظ: '+esc(e.message||e);}}
+  };
+}
+var _oldCapInit=window.capInit;
+if(typeof _oldCapInit==='function'){
+  window.capInit=async function(){var r=await _oldCapInit.apply(this,arguments);ensureGroupUI();var sel=document.getElementById('cap-course-select');if(sel&&sel.value&&typeof window.capLoadCourse==='function')await window.capLoadCourse();return r;};
+}
+
+/* Student: show group links in the existing course contact area. */
+var oldRenderDynamic=window._renderDynamicSectionPage;
+if(typeof oldRenderDynamic==='function'){
+  window._renderDynamicSectionPage=async function(sec){
+    var r=await oldRenderDynamic.apply(this,arguments);
+    try{
+      var host=document.getElementById('dynamic-section-admin-phone');if(!host)return r;
+      var raw=sec&&sec.course_admin_phone?sec.course_admin_phone:'';
+      if(!raw&&sec&&sec.id&&window.supabase){var cur=Number(sec.id),guard=0;while(cur&&guard++<15){var q=await window.supabase.from('site_sections').select('id,parent_id,type,course_admin_phone').eq('id',cur).maybeSingle();if(q.error||!q.data)break;if(q.data.course_admin_phone)raw=q.data.course_admin_phone;if(q.data.type==='course'||q.data.parent_id==null)break;cur=Number(q.data.parent_id);}}
+      var groups=parseCourseData(raw).groups;if(!groups.length)return r;
+      var box=document.createElement('div');box.style.cssText='margin:10px 0;background:linear-gradient(135deg,#eefaf6,#f5fbff);border:1px solid #b8e6d8;border-radius:14px;padding:13px 16px;text-align:center;';
+      box.innerHTML='<div style="font-size:.9rem;font-weight:900;color:#0a3d62;margin-bottom:8px;">🔗 جروبات الكورس</div><div style="display:flex;flex-wrap:wrap;gap:8px;justify-content:center;">'+groups.map(function(g){var icon=g.type==='telegram'?'🔵':g.type==='whatsapp'?'🟢':'👥';return '<a href="'+esc(g.url)+'" target="_blank" rel="noopener noreferrer" style="display:inline-flex;align-items:center;gap:6px;padding:10px 14px;border-radius:12px;background:#0a3d62;color:#fff;text-decoration:none;font-weight:900;">'+icon+' '+esc(g.name||'دخول الجروب')+'</a>';}).join('')+'</div>';
+      host.appendChild(box);return r;
+    }catch(e){console.warn('[COURSE GROUPS] render failed',e);return r;}
+  };
+}
+
+/* ───────────── Console/DB audit helper ─────────────
+   This does not mutate DB. It verifies connectivity, auth, critical tables,
+   and critical columns from the browser using the user's real RLS/session.
+*/
+window.BSM_AUDIT_ALL=function(){
+  return (async function(){
+    var d=window.supabase;if(!d)throw new Error('Supabase client غير جاهز');
+    console.group('%c🧪 BSM FINAL LIVE AUDIT','color:#0a3d62;font-weight:900;font-size:14px');
+    var out={};
+    try{var sess=await _getSessionSafe(7000);out.session=!!(sess&&sess.data&&sess.data.session);console.log('Session:',out.session?'OK':'Guest');}catch(e){out.session=false;console.warn('Session check:',e);}
+    var tables=['site_sections','section_resources','section_content','profiles','subscriptions','section_admins','notifications','chat_rooms','chat_messages'];
+    for(var i=0;i<tables.length;i++){
+      var t=tables[i];try{var q=await d.from(t).select('*',{count:'exact',head:true});out[t]=q.error?{ok:false,error:q.error.message}:{ok:true,count:q.count};console.log(t,out[t]);}catch(e){out[t]={ok:false,error:e.message};console.error(t,e);}
+    }
+    try{var r=await d.from('site_sections').select('id,title,type,parent_id,display_order,requires_subscription,free_content_mode,course_admin_phone').limit(5);out.site_sections_sample=r.error?{ok:false,error:r.error.message}:{ok:true,rows:r.data||[]};console.log('site_sections sample:',out.site_sections_sample);}catch(e){out.site_sections_sample={ok:false,error:e.message};}
+    console.groupEnd();return out;
+  })();
+};
+console.info('%c[BSM V7] Opening hardening loaded — refresh/admin scroll/course groups/live audit ready','color:#17a589;font-weight:900');
+})();
+</script>
 <!-- BSM FINAL AUDIT MARKER 2026-09-05: OTP email verification, internal PDF failure recovery,
      attachment viewer hardening, one-time cache cleanup, and lighter realtime fallback polling. -->
+<style id="bsm-v8-live-audit-style">#bsm-v8-db-audit{position:fixed;left:16px;bottom:16px;z-index:2147483000;width:min(420px,calc(100vw - 32px));max-height:min(72vh,620px);overflow:auto;background:rgba(12,18,28,.97);color:#fff;border:1px solid rgba(255,255,255,.14);border-radius:18px;padding:14px;box-shadow:0 18px 50px rgba(0,0,0,.35);font-family:inherit;display:none}#bsm-v8-db-audit .b8-head{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:10px}#bsm-v8-db-audit .b8-title{font-weight:800;font-size:15px}#bsm-v8-db-audit .b8-status{font-size:13px;font-weight:800}#bsm-v8-db-audit button{border:0;border-radius:10px;padding:8px 11px;cursor:pointer;font:inherit;font-weight:700}#bsm-v8-db-audit .b8-refresh{background:#fff;color:#111}#bsm-v8-db-audit .b8-close{background:transparent;color:#fff;font-size:18px}#bsm-v8-db-audit .b8-grid{display:grid;grid-template-columns:1fr 1fr;gap:7px}#bsm-v8-db-audit .b8-row{padding:8px;border-radius:10px;background:rgba(255,255,255,.07);font-size:12px;line-height:1.35}.ok{border-right:3px solid #27ae60}.err{border-right:3px solid #e74c3c}.warn{border-right:3px solid #f39c12}#bsm-v8-db-audit .b8-time{opacity:.7;font-size:11px;margin-top:9px}</style>
+<script>
+(function(){
+'use strict';if(window.__BSM_V8_LIVE_AUDIT)return;window.__BSM_V8_LIVE_AUDIT=true;
+var tables=['site_sections','section_resources','section_content','profiles','subscriptions','section_admins','notifications','chat_rooms','chat_messages'],lastRun=0,running=false;
+function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+function ensureUI(){if(document.getElementById('bsm-v8-db-audit'))return;var d=document.createElement('div');d.id='bsm-v8-db-audit';d.innerHTML='<div class="b8-head"><div><div class="b8-title">🔎 فحص قاعدة البيانات الحقيقي</div><div id="b8-status" class="b8-status">جاري التجهيز...</div></div><div><button class="b8-refresh" id="b8-refresh">🔄 فحص الآن</button><button class="b8-close" id="b8-close">×</button></div></div><div id="b8-grid" class="b8-grid"></div><div id="b8-time" class="b8-time"></div>';document.body.appendChild(d);d.querySelector('#b8-refresh').onclick=function(){run(true)};d.querySelector('#b8-close').onclick=function(){d.style.display='none'};}
+function show(){ensureUI();document.getElementById('bsm-v8-db-audit').style.display='block'}
+function status(t){var e=document.getElementById('b8-status');if(e)e.textContent=t}
+function row(t,state,text){return '<div class="b8-row '+state+'"><b>'+esc(t)+'</b><br>'+esc(text)+'</div>'}
+async function one(t){var db=window.supabase;if(!db||typeof db.from!=='function')return {t:t,state:'warn',text:'Supabase غير جاهز'};try{var r=await Promise.race([db.from(t).select('*',{count:'exact',head:true}),new Promise(function(_,rej){setTimeout(function(){rej(new Error('Timeout 7000ms'))},7000)})]);if(r&&r.error)return {t:t,state:'err',text:(r.error.code?'['+r.error.code+'] ':'')+r.error.message};return {t:t,state:'ok',text:'متصل — '+(r&&r.count!=null?r.count:'?')+' سجل'}}catch(e){return {t:t,state:'err',text:e&&e.message?e.message:String(e)}}}
+async function run(force){if(running)return;if(!force&&Date.now()-lastRun<30000)return;ensureUI();show();running=true;lastRun=Date.now();status('⏳ جاري الاتصال بـ Supabase وفحص الجداول...');var grid=document.getElementById('b8-grid');if(grid)grid.innerHTML='<div class="b8-row warn">جاري الفحص...</div>';try{var sess=null;try{sess=await Promise.race([window.supabase&&window.supabase.auth.getSession(),new Promise(function(_,rej){setTimeout(function(){rej(new Error('Auth timeout'))},7000)})])}catch(e){}var user=sess&&sess.data&&sess.data.session&&sess.data.session.user;var results=await Promise.all(tables.map(one));if(grid)grid.innerHTML=([{t:'Auth session',state:user?'ok':'warn',text:user?'مسجل دخول: '+(user.email||'حساب مستخدم'):'لا توجد جلسة حالياً'}].concat(results)).map(function(x){return row(x.t,x.state,x.text)}).join('');var bad=results.filter(function(x){return x.state==='err'}).length,ok=results.filter(function(x){return x.state==='ok'}).length;status(bad===0&&ok===results.length?'🟢 الاتصال والصلاحيات الأساسية تعمل':ok>0?'🟠 اتصال جزئي / راجع RLS والصلاحيات':'🔴 تعذر الوصول للجداول');var tm=document.getElementById('b8-time');if(tm)tm.textContent='آخر فحص: '+new Date().toLocaleString('ar-EG');console.group('%c[BSM V8] LIVE DATABASE AUDIT','font-weight:bold');console.table(results.map(function(x){return {table:x.t,status:x.state,message:x.text}}));console.log('Auth session:',!!user,user?user.email:null);console.groupEnd();window.BSM_V8_LAST_AUDIT={at:new Date().toISOString(),auth:!!user,results:results};return window.BSM_V8_LAST_AUDIT}finally{running=false}}
+window.BSM_AUDIT_ALL=run;
+function boot(){ensureUI();var attempts=0;function wait(){attempts++;if(window.supabase&&typeof window.supabase.from==='function'){run(false);return}if(attempts<40)setTimeout(wait,500)}wait();window.addEventListener('online',function(){run(true)});document.addEventListener('visibilitychange',function(){if(!document.hidden)run(false)});setInterval(function(){if(!document.hidden)run(false)},300000)}
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();
+})();
+</script>
 </body>
 </html>
