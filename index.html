@@ -66,7 +66,7 @@ var DEBUG_MODE = false; window.DEBUG_MODE = DEBUG_MODE;
 </script>
 <meta content="my6dMoAsuc_97Jks_OQF75GK_f1PGWqz2Kng2obkIgE" name="google-site-verification"/>
 <meta charset="utf-8"/>
-<meta content="2026-09-05-MINISTRY-OPENING-ATTACHMENTS-PDFJS-FIX-v3" name="app-build"/>
+<meta content="2026-09-05-MINISTRY-OPENING-ATTACHMENTS-VIDEO-INTERNAL-PDF-FIX-v5" name="app-build"/>
 <meta content="width=device-width, initial-scale=1.0, viewport-fit=cover" name="viewport"/>
 <!-- ==================== PWA: manifest + platform metadata ==================== -->
 <link href="./manifest.json" rel="manifest"/>
@@ -1221,6 +1221,25 @@ footer strong { color: var(--accent2); }
   background: #000; outline: none;
 }
 
+/* ===== Ministry video controls: INSIDE the video, not underneath it ===== */
+.rv-video-stage { position:relative; }
+.rv-video-stage .rv-video {
+  width:100% !important;
+  height:100% !important;
+  max-height:none !important;
+  object-fit:contain !important;
+  display:block;
+  background:#000;
+}
+.rv-video-stage .rv-video-controls {
+  position:absolute !important;
+  left:0 !important; right:0 !important; bottom:0 !important;
+  z-index:20 !important;
+  background:linear-gradient(to top,rgba(0,0,0,.94),rgba(0,0,0,.68),rgba(0,0,0,0)) !important;
+  border-top:0 !important;
+  padding:34px 10px 10px !important;
+}
+.rv-video-stage .rv-video-loading { z-index:21; }
 /* ===== Custom video controls (بديل الـnative controls) =====
    شريط تحكم كامل تحت الفيديو مباشرة: Progress bar قابل للسحب، Play/Pause،
    الوقت الحالي/المدة، تقديم/ترجيع 10ث، السرعة، Volume/Mute، Fullscreen.
@@ -1451,6 +1470,34 @@ footer strong { color: var(--accent2); }
 .rv-overlay.rv-manual-fs.rv-fs-video .rv-media-tools {
   flex-shrink: 0 !important;
 }
+/* Fullscreen: the video stage itself fills the screen; controls remain over it. */
+.rv-overlay.rv-fs-session.rv-fs-video .rv-video-stage,
+.rv-overlay.rv-manual-fs.rv-fs-video .rv-video-stage {
+  flex:1 1 auto !important;
+  min-height:0 !important;
+  width:100% !important;
+  height:100% !important;
+  max-height:none !important;
+  position:relative !important;
+  overflow:hidden !important;
+}
+.rv-overlay.rv-fs-session.rv-fs-video .rv-video,
+.rv-overlay.rv-manual-fs.rv-fs-video .rv-video {
+  width:100% !important;
+  max-width:100% !important;
+  height:100% !important;
+  max-height:none !important;
+  object-fit:contain !important;
+  background:#000 !important;
+}
+.rv-overlay.rv-fs-session.rv-fs-video .rv-video-stage .rv-media-tools,
+.rv-overlay.rv-manual-fs.rv-fs-video .rv-video-stage .rv-media-tools {
+  position:absolute !important;
+  left:0 !important; right:0 !important; bottom:0 !important;
+  z-index:30 !important;
+  flex-shrink:0 !important;
+}
+
 @media (max-width: 768px) {
   .rv-overlay.rv-fs-session .rv-video-controls {
     padding: max(8px, env(safe-area-inset-bottom, 8px)) 10px 10px !important;
@@ -2823,7 +2870,7 @@ img, video {
 <button id="bsm-install-app-btn" style="display:inline-flex; align-items:center; gap:6px; background:#fff; color:#0a3d62; padding:8px 18px; border:none; border-radius:10px; font-weight:700; font-size:.82rem; cursor:pointer; font-family:inherit;" type="button">▶️ شاهد طريقة تثبيت التطبيق</button>
 </div>
 <div id="bsm-gate-sub" style="font-size:.95rem; opacity:.9; margin-bottom:18px;">يرجى فتح منصة المعاهد الفنية الصحية من تطبيق الهاتف.</div>
-<a download="app-debug.apk" href="https://github.com/fanysehy/-/raw/refs/heads/main/app-debug.apk" id="bsm-gate-android-btn" rel="noopener noreferrer" style="display:none; ..." target="_self">
+<a download="app-debug.apk" href="https://raw.githubusercontent.com/fanysehy/-/refs/heads/main/app-debug.apk" id="bsm-gate-android-btn" rel="noopener noreferrer" style="display:none; ..." target="_self">
  ⬇️ تحميل تطبيق Android مباشرة
 </a>
 <!-- ==================== iOS: واجهة تثبيت PWA (بديل شاشة الحجب الافتراضية على Safari/iPhone/iPad) ==================== -->
@@ -6315,47 +6362,58 @@ const ResourceViewer = (function() {
         return `<div class="rv-loading" id="rv-loading-indicator"><div class="spinner-lg"></div><p>جاري فتح الملف...</p></div>`;
 
       case 'video_direct':
-        // ✅ لا "controls" هنا عمدًا — الشريط أسفل الفيديو (.rv-video-controls)
-        // هو المتحكم الوحيد؛ ده اللي بيمنع ظهور أي native controls فوقه.
+        // Ministry-safe video player: every control lives INSIDE the video stage.
+        // No external tab, no native browser controls, and fullscreen expands the
+        // same stage so the controls remain over the video.
         return `
-          <video
-            class="rv-video"
-            playsinline
-            webkit-playsinline
-            x5-playsinline
-            x5-video-player-type="h5"
-            x5-video-player-fullscreen="true"
-            preload="metadata"
-            id="rv-video-el"
-            src="${escUrl(url)}"
-            controlsList="nodownload noremoteplayback"
-            disablePictureInPicture
-            disableRemotePlayback
-            oncontextmenu="return false"
-            onerror="if(!ResourceViewer._retryLegacyUploadcareMedia(this, window._rvResourceStorageFallback)) ResourceViewer._showMediaError('video')"
-          >
-            <source src="${escUrl(url)}">
-            <p style="color:#fff;padding:20px">متصفحك لا يدعم تشغيل الفيديو.</p>
-          </video>
-          <div class="rv-media-tools rv-video-controls" data-media-tools="video">
-            <div class="rv-progress-row">
-              <span class="rv-time-cur" data-media-time-current>00:00</span>
-              <input type="range" class="rv-progress-bar" data-media-progress min="0" max="1000" value="0" step="0.1" aria-label="تقدّم الفيديو">
-              <span class="rv-time-dur" data-media-time-duration>--:--</span>
-            </div>
-            <div class="rv-controls-row">
-              <button type="button" class="rv-ctrl-btn" data-media-playpause title="تشغيل" aria-label="تشغيل">▶️</button>
-              <button type="button" class="rv-ctrl-btn" data-media-seek="-10" title="ترجيع 10 ثواني" aria-label="ترجيع 10 ثواني">↶10</button>
-              <button type="button" class="rv-ctrl-btn" data-media-seek="10" title="تقديم 10 ثواني" aria-label="تقديم 10 ثواني">10↷</button>
-              <span class="rv-speed-group" data-media-speed-group role="group" aria-label="سرعة التشغيل"><button type="button" data-media-speed-btn="0.5">0.5x</button><button type="button" data-media-speed-btn="0.75">0.75x</button><button type="button" data-media-speed-btn="1" class="active">1x</button><button type="button" data-media-speed-btn="1.25">1.25x</button><button type="button" data-media-speed-btn="1.5">1.5x</button><button type="button" data-media-speed-btn="1.75">1.75x</button><button type="button" data-media-speed-btn="2">2x</button></span>
-              <span class="rv-volume-group">
-                <button type="button" class="rv-ctrl-btn" data-media-mute title="كتم الصوت" aria-label="كتم الصوت">🔊</button>
-                <input type="range" class="rv-volume-bar" data-media-volume min="0" max="1" step="0.05" value="1" aria-label="مستوى الصوت">
-              </span>
-              <button type="button" class="rv-ctrl-btn" data-media-fs title="ملء الشاشة" aria-label="ملء الشاشة">⛶</button>
+          <div class="rv-video-stage" id="rv-video-stage" style="position:relative;width:100%;height:min(78vh,720px);min-height:260px;background:#000;display:flex;align-items:center;justify-content:center;overflow:hidden;">
+            <video
+              class="rv-video"
+              playsinline
+              webkit-playsinline
+              x5-playsinline
+              x5-video-player-type="h5"
+              x5-video-player-fullscreen="true"
+              preload="metadata"
+              id="rv-video-el"
+              src="${escUrl(url)}"
+              disablePictureInPicture
+              disableRemotePlayback
+              oncontextmenu="return false"
+              onerror="if(!ResourceViewer._retryLegacyUploadcareMedia(this, window._rvResourceStorageFallback)) ResourceViewer._showMediaError('video')"
+            >
+              <source src="${escUrl(url)}">
+              <p style="color:#fff;padding:20px">متصفحك لا يدعم تشغيل الفيديو.</p>
+            </video>
+            <div class="rv-video-loading" id="rv-video-loading" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;color:#fff;font-weight:800;background:rgba(0,0,0,.18);z-index:3;">جاري تحميل الفيديو...</div>
+            <div class="rv-media-tools rv-video-controls" data-media-tools="video" style="position:absolute;left:0;right:0;bottom:0;z-index:4;">
+              <div class="rv-progress-row">
+                <span class="rv-time-cur" data-media-time-current>00:00</span>
+                <input type="range" class="rv-progress-bar" data-media-progress min="0" max="1000" value="0" step="0.1" aria-label="تقدّم الفيديو">
+                <span class="rv-time-dur" data-media-time-duration>--:--</span>
+              </div>
+              <div class="rv-controls-row">
+                <button type="button" class="rv-ctrl-btn" data-media-playpause title="تشغيل" aria-label="تشغيل">▶️</button>
+                <button type="button" class="rv-ctrl-btn" data-media-seek="-10" title="ترجيع 10 ثواني" aria-label="ترجيع 10 ثواني">↶10</button>
+                <button type="button" class="rv-ctrl-btn" data-media-seek="10" title="تقديم 10 ثواني" aria-label="تقديم 10 ثواني">10↷</button>
+                <span class="rv-speed-group" data-media-speed-group role="group" aria-label="سرعة التشغيل">
+                  <button type="button" data-media-speed-btn="0.5">0.5x</button>
+                  <button type="button" data-media-speed-btn="0.75">0.75x</button>
+                  <button type="button" data-media-speed-btn="1" class="active">1x</button>
+                  <button type="button" data-media-speed-btn="1.25">1.25x</button>
+                  <button type="button" data-media-speed-btn="1.5">1.5x</button>
+                  <button type="button" data-media-speed-btn="1.75">1.75x</button>
+                  <button type="button" data-media-speed-btn="2">2x</button>
+                </span>
+                <span class="rv-volume-group">
+                  <button type="button" class="rv-ctrl-btn" data-media-mute title="كتم الصوت" aria-label="كتم الصوت">🔊</button>
+                  <input type="range" class="rv-volume-bar" data-media-volume min="0" max="1" step="0.05" value="1" aria-label="مستوى الصوت">
+                </span>
+                <button type="button" class="rv-ctrl-btn" data-media-fs title="ملء الشاشة" aria-label="ملء الشاشة">⛶</button>
+              </div>
             </div>
           </div>`;
-
+      
       case 'youtube':
       case 'vimeo':
       case 'dailymotion':
@@ -6538,26 +6596,20 @@ const ResourceViewer = (function() {
   // PDF frame can often render the same public URL without CORS. This fallback
   // never changes the URL and never bypasses the existing access gate.
   function openDirectPdfFallback(url, title, reason) {
-    close();
-    var overlay = document.createElement('div');
-    overlay.className = 'rv-overlay';
-    overlay.id = 'rv-overlay';
-    overlay.innerHTML = '<div class="rv-modal" id="rv-modal" role="dialog" aria-modal="true">' +
-      '<div class="rv-header"><span style="font-size:1.4rem">📄</span><span class="rv-title">'+escHtml(title||'ملف PDF')+'</span><button class="rv-close" type="button" id="rv-pdf-fallback-close">✕</button></div>' +
-      '<div class="rv-body" style="padding:0;background:#fff;position:relative;">' +
-        '<object id="rv-pdf-fallback-object" data="'+escUrl(url)+'" type="application/pdf" style="display:block;width:100%;height:100%;min-height:70vh;border:0;background:#fff;">' +
-          '<iframe id="rv-pdf-fallback-frame" class="rv-embed-frame" src="'+escUrl(url)+'" style="display:block;width:100%;height:100%;min-height:70vh;border:0;background:#fff;" title="'+escHtml(title||'PDF')+'"></iframe>' +
-        '</object>' +
-      '</div>' +
-      '<div class="rv-footer"><span style="font-size:.75rem;color:#888">📄 عرض PDF مباشر داخل المتصفح</span>' +
-      '<a href="'+escUrl(url)+'" target="_blank" rel="noopener" style="margin-right:auto;padding:8px 12px;border-radius:8px;background:#0d6efd;color:#fff;text-decoration:none;font-weight:700">فتح في تبويب جديد ↗</a></div></div>';
-    overlay.addEventListener('click',function(e){if(e.target===overlay)close();});
-    document.body.appendChild(overlay);
-    document.getElementById('rv-pdf-fallback-close').onclick=close;
-    document.body.style.overflow='hidden';
-    console.warn('[ResourceViewer][PDF FALLBACK] using direct PDF frame:', reason && (reason.message||reason));
+    // Last-resort PDF fallback stays INSIDE the ResourceViewer modal.
+    // Never use window.open/location/download for a course attachment.
+    var existing=document.getElementById('rv-overlay');
+    var body=existing && document.getElementById('rv-body');
+    if(body){
+      body.innerHTML =
+        '<div style="width:100%;height:100%;min-height:70vh;background:#fff;display:flex;align-items:stretch;justify-content:center;">' +
+        '<iframe id="rv-pdf-fallback-frame" src="https://docs.google.com/gview?embedded=1&url='+encodeURIComponent(url)+'" style="display:block;width:100%;height:100%;min-height:70vh;border:0;background:#fff;" title="'+escHtml(title||'PDF')+'" allow="fullscreen"></iframe>' +
+        '</div>';
+      console.warn('[ResourceViewer][PDF FALLBACK] internal iframe fallback:', reason && (reason.message||reason));
+      return;
+    }
+    console.warn('[ResourceViewer][PDF FALLBACK] viewer body unavailable:', reason && (reason.message||reason));
   }
-
   // Uploadcare handling is provider-aware but non-destructive:
   // 1) the original file_url is always attempted first;
   // 2) only after a real media error do we try the derived Uploadcare CDN URL;
@@ -6571,7 +6623,7 @@ const ResourceViewer = (function() {
       src = source && (source.src || source.getAttribute('src')) || '';
     }
 
-    // Prefer a real Supabase Storage copy from file_path.
+    // 1) Prefer a real Supabase Storage copy from file_path.
     var fallback = (storageFallback || '').trim();
     if (fallback && fallback !== src && el.dataset.storageFallbackTried !== '1') {
       el.dataset.storageFallbackTried = '1';
@@ -6587,13 +6639,41 @@ const ResourceViewer = (function() {
       }
     }
 
-    // Keep any provider compatibility fallback as a last resort.
+    // 2) Uploadcare videos are sometimes stored under a UUID URL with no
+    // extension. If the browser rejects the original codec/container, request
+    // Uploadcare's browser-universal MP4 representation inside the SAME viewer.
+    // Uploadcare documents /UUID/video/-/format/mp4/ as its video format path.
+    if (el.tagName === 'VIDEO' && /\.ucarecd\.net\//i.test(src) && el.dataset.ucMp4Tried !== '1') {
+      var mp4 = '';
+      try {
+        var u = new URL(src);
+        var parts = u.pathname.split('/').filter(Boolean);
+        var uuid = parts[0] || '';
+        if (/^[0-9a-f]{8}-[0-9a-f-]{27,}$/i.test(uuid)) {
+          mp4 = u.origin + '/' + uuid + '/video/-/format/mp4/';
+        }
+      } catch (e0) {}
+      if (mp4 && mp4 !== src) {
+        el.dataset.ucMp4Tried = '1';
+        el.dataset.ucMp4Fallback = mp4;
+        try {
+          var sourceElMp4 = el.querySelector && el.querySelector('source');
+          if (sourceElMp4) sourceElMp4.src = mp4;
+          el.src = mp4;
+          if (el.load) el.load();
+          console.info('[ResourceViewer] Uploadcare MP4 fallback activated:', mp4);
+          return true;
+        } catch (e1) {}
+      }
+    }
+
+    // 3) Keep any provider compatibility fallback as a final non-destructive
+    // candidate. It never opens a new tab.
     var legacyFallback = (typeof window._bsmGetResourceFallback === 'function')
       ? window._bsmGetResourceFallback(src)
       : _legacyUploadcareUrl(src);
 
     if (!legacyFallback || el.dataset.ucLegacyTried === '1') return false;
-
     el.dataset.ucLegacyTried = '1';
     el.dataset.ucLegacyFallback = legacyFallback;
     try {
@@ -6602,7 +6682,7 @@ const ResourceViewer = (function() {
       el.src = legacyFallback;
       if (el.load) el.load();
       return true;
-    } catch (e) {
+    } catch (e2) {
       return false;
     }
   }
@@ -6651,16 +6731,16 @@ const ResourceViewer = (function() {
     // طول من غير أي طبقة وسيطة خالص — فمفيش غير سبنر واحد طول الوقت، وأول
     // ما يخلص التحميل يظهر مباشرة بدون أي تدخل يدوي.
     if (type === 'pdf' || type === 'gdrive_pdf') {
-      // OPENING FIX — PDF is rendered by the browser's native PDF engine.
-      // Do NOT load PDF.js here. This permanently avoids the a.toHex crash
-      // from stale/newer pdfjs-dist builds and is much more reliable for
-      // Cloudinary, Supabase Storage and other public PDF URLs.
+      // MINISTRY OPENING v5: PDF stays 100% INSIDE the site. Never open a new tab
+      // and never fall back to window.open. Use the pinned PDF.js 4.10.38 viewer.
+      // This avoids the stale pdfjs 6.1.200 a.toHex crash while preserving the
+      // in-page pages/zoom/search/fullscreen controls.
       var pdfUrl = (type === 'gdrive_pdf') ? toEmbedUrl(url, 'gdrive_pdf') : url;
       try {
-        openDirectPdfFallback(pdfUrl, title, 'native-browser-pdf');
+        await NativePDFViewer.open(pdfUrl, title, resourceStorageFallback);
       } catch (err) {
-        console.error('[ResourceViewer pdf] native browser PDF renderer failed:', err);
-        if (typeof _showToast === 'function') _showToast('❌ تعذر فتح ملف PDF', 'error');
+        console.error('[ResourceViewer pdf] internal PDF viewer failed:', err);
+        if (typeof _showToast === 'function') _showToast('❌ تعذر عرض ملف PDF داخل المنصة', 'error');
       }
       return;
     }
@@ -6782,6 +6862,14 @@ const ResourceViewer = (function() {
           var sourceSrc = source && source.getAttribute('src');
           if (sourceSrc) media.setAttribute('src', sourceSrc);
         }
+        // Make the first real load explicit. Some CDN/WebView combinations
+        // otherwise wait indefinitely when the URL has no .mp4 extension.
+        try { media.load(); } catch (e0) {}
+        var videoLoading = root.querySelector('#rv-video-loading');
+        var hideVideoLoading = function(){ if(videoLoading) videoLoading.style.display='none'; };
+        media.addEventListener('loadedmetadata', hideVideoLoading, {passive:true});
+        media.addEventListener('canplay', hideVideoLoading, {passive:true});
+        media.addEventListener('playing', hideVideoLoading, {passive:true});
       } catch (e) {}
     }
     if (!tools) return;
@@ -16045,7 +16133,7 @@ var NativePDFViewer = (function() {
   // Opening-critical build: never depend on a cached older PDF.js module.
   // The explicit version + cache-buster prevents an old 5/6.x module from
   // surviving a deployment and producing Uint8Array.toHex errors.
-  var PDFJS_CACHE_BUSTER = '?bsm=20260905-0915-v4';
+  var PDFJS_CACHE_BUSTER = '?bsm=20260905-0930-v5';
   var PDFJS_ROOT     = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@' + PDFJS_VERSION + '/';
   var PDFJS_BASE     = PDFJS_ROOT + 'build/';
   // ✅ FIX (النص متداخل/ملتصق ببعضه — "H storta lPerspective" بدل "Historical
@@ -32396,10 +32484,12 @@ console.info('[BSM EMERGENCY FINAL] guest free-content + first lesson/class per 
   var apk=document.getElementById('bsm-gate-android-btn');
   if(apk){
     apk.setAttribute('target','_self');
-    apk.setAttribute('download','app-debug.apk');
+    apk.setAttribute('rel','noopener');
+    apk.removeAttribute('download');
     apk.onclick=function(ev){
       try{ev.stopImmediatePropagation();}catch(e){}
-      return true;
+      try{window.location.assign('https://raw.githubusercontent.com/fanysehy/-/refs/heads/main/app-debug.apk');}catch(e){}
+      return false;
     };
   }
   console.info('[BSM OPENING FINAL 2026-09-05] first Lesson/Class per Material attachments + direct Android APK link enforced.');
@@ -32507,6 +32597,24 @@ console.info('[BSM EMERGENCY FINAL] guest free-content + first lesson/class per 
   }
 
   console.info('[BSM MINISTRY CRITICAL FIX] attachments + mobile back + admin scroll + click-race protection active');
+})();
+</script>
+<script id="bsm-ministry-opening-final-hardening-20260905">
+(function(){
+  'use strict';
+  if(window.__BSM_MINISTRY_FINAL_HARDENING_20260905)return;
+  window.__BSM_MINISTRY_FINAL_HARDENING_20260905=true;
+  try{ if('serviceWorker' in navigator){ navigator.serviceWorker.getRegistrations().then(function(rs){rs.forEach(function(r){try{r.unregister();}catch(e){}});}).catch(function(){}); } }catch(e){}
+  try{ if(window.caches && caches.keys){ caches.keys().then(function(keys){keys.forEach(function(k){try{caches.delete(k);}catch(e){}});}).catch(function(){}); } }catch(e){}
+  document.addEventListener('click',function(e){
+    var a=e.target && e.target.closest ? e.target.closest('a') : null;
+    if(!a)return;
+    var href=a.getAttribute('href')||'';
+    if(/raw\.githubusercontent\.com\/fanysehy\/-\/refs\/heads\/main\/app-debug\.apk/i.test(href)){
+      e.preventDefault(); e.stopImmediatePropagation();
+      try{window.location.assign('https://raw.githubusercontent.com/fanysehy/-/refs/heads/main/app-debug.apk');}catch(x){}
+    }
+  },true);
 })();
 </script>
 </body>
