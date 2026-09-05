@@ -5499,7 +5499,8 @@ function buildResourcesInsideArea(resources, gate) {
       </div>`;
     }
     const icon = getResourceIcon(r);
-    const safeUrl = _bsmResourceJsArg(r.file_url || '');
+    const resourceUrl = r.file_url || r.url || r.file_path || '';
+    const safeUrl = _bsmResourceJsArg(resourceUrl);
     const safeTitle = _bsmResourceJsArg(r.title || 'مورد');
     const safeType = _bsmResourceJsArg(r.resource_type || '');
     const safePath = _bsmResourceJsArg(r.file_path || '');
@@ -5571,7 +5572,7 @@ function renderResourceCards(containerId, items, gate) {
         </div>
       </div>`;
     }
-    const canonicalUrl = item.file_url || item.url || '';
+    const canonicalUrl = item.file_url || item.url || item.file_path || '';
     const safeUrl = canonicalUrl.replace(/'/g,"\'");
     const safeTitle = (item.title || '').replace(/'/g,"\'");
     const safeType = (item.resource_type || item.content_type || '').replace(/'/g,"\'");
@@ -5643,7 +5644,8 @@ function buildResourcesHTML(resources, gate) {
       </div>`;
     }
     const icon = getResourceIcon(r);
-    const safeUrl = _bsmResourceJsArg(r.file_url || '');
+    const resourceUrl = r.file_url || r.url || r.file_path || '';
+    const safeUrl = _bsmResourceJsArg(resourceUrl);
     const safeTitle = _bsmResourceJsArg(r.title || 'مورد');
     const safeType = _bsmResourceJsArg(r.resource_type || '');
     const safePath = _bsmResourceJsArg(r.file_path || '');
@@ -5652,8 +5654,8 @@ function buildResourcesHTML(resources, gate) {
     const typeLabel = _resourceTypeLabel(r);
     const desc = (r.description || typeLabel || '').toString();
     return `
-    <div class="link-card lc-blue" style="cursor:${r.file_url ? 'pointer' : 'default'}"
-         ${r.file_url ? `onclick="openResource('${safeUrl}','${safeTitle}','${safeType}','${safePath}','${safeFileType}','${safeFileName}')"` : ''}>
+    <div class="link-card lc-blue" style="cursor:${resourceUrl ? 'pointer' : 'default'}"
+         ${resourceUrl ? `onclick="openResource('${safeUrl}','${safeTitle}','${safeType}','${safePath}','${safeFileType}','${safeFileName}')"` : ''}>
       <div class="lc-top">
         <div class="lc-icon">${icon}</div>
         <div class="lc-info">
@@ -5661,7 +5663,7 @@ function buildResourcesHTML(resources, gate) {
           <p>${desc}</p>
         </div>
       </div>
-      ${r.file_url ? `<div class="lc-footer"><span class="lc-url">${typeLabel || ''}</span><button class="lc-btn" style="background:linear-gradient(135deg,#1a3a5c,#2471a3);color:#fff;border:none;cursor:pointer;font-family:inherit;" onclick="event.stopPropagation();openResource('${safeUrl}','${safeTitle}','${safeType}','${safePath}','${safeFileType}','${safeFileName}')">عرض ▶</button></div>` : ''}
+      ${resourceUrl ? `<div class="lc-footer"><span class="lc-url">${typeLabel || ''}</span><button class="lc-btn" style="background:linear-gradient(135deg,#1a3a5c,#2471a3);color:#fff;border:none;cursor:pointer;font-family:inherit;" onclick="event.stopPropagation();openResource('${safeUrl}','${safeTitle}','${safeType}','${safePath}','${safeFileType}','${safeFileName}')">عرض ▶</button></div>` : ''}
     </div>`;
   }).join('');
   return `
@@ -16023,7 +16025,7 @@ async function _getSignedPdfUrl(storagePath) {
 // يدعم Chrome / Firefox / Safari / موبايل وسطح المكتب بنفس المحرك
 // أحدث إصدار مستقر من Mozilla PDF.js عبر jsDelivr (ESM)
 var NativePDFViewer = (function() {
-  var PDFJS_VERSION = '6.1.200';
+  var PDFJS_VERSION = '4.10.38';
   var PDFJS_ROOT     = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@' + PDFJS_VERSION + '/';
   var PDFJS_BASE     = PDFJS_ROOT + 'build/';
   // ✅ FIX (النص متداخل/ملتصق ببعضه — "H storta lPerspective" بدل "Historical
@@ -16051,6 +16053,9 @@ var NativePDFViewer = (function() {
 
   // ---- تحميل PDF.js (ESM) مرة واحدة فقط ----
   function _loadPdfJs() {
+    // PDF.js 4.x is intentionally used here for broad browser/WebView compatibility.
+    // PDF.js 5/6 relies on Uint8Array.prototype.toHex(), which is unavailable in
+    // some WebViews/browsers and causes: "a.toHex is not a function".
     if (_pdfjsLib) return Promise.resolve(_pdfjsLib);
     if (_pdfjsLoading) return _pdfjsLoading;
     _pdfjsLoading = import(/* webpackIgnore: true */ PDFJS_BASE + 'pdf.min.mjs')
@@ -32357,5 +32362,108 @@ console.info('[BSM EMERGENCY FINAL] guest free-content + first lesson/class per 
 })();
 </script>
 
+
+<script id="bsm-ministry-opening-critical-ux-fix-20260905">
+(function(){
+  'use strict';
+  if(window.__BSM_MINISTRY_OPENING_CRITICAL_UX_FIX_20260905)return;
+  window.__BSM_MINISTRY_OPENING_CRITICAL_UX_FIX_20260905=true;
+
+  // ===== ATTACHMENTS: recover old Uploadcare rows through file_path =====
+  // If an old file_url is an Uploadcare CDN URL but the same attachment still
+  // has a Supabase file_path, use the live Storage copy instead of the dead URL.
+  var _oldResolve=window._resolveResourceUrl;
+  if(typeof _oldResolve==='function'){
+    window._resolveResourceUrl=async function(rawUrl,filePath){
+      var u=String(rawUrl||'').trim(), fp=String(filePath||'').trim();
+      if(fp && /ucarecd\.net|ucarecdn\.com|uploadcare/i.test(u)){
+        try{
+          var r=await _oldResolve('',fp);
+          if(r)return r;
+        }catch(e){console.warn('[BSM ATTACHMENT RECOVERY]',e&&e.message);}
+      }
+      return await _oldResolve(u,fp);
+    };
+  }
+
+  // ===== MOBILE BACK: one reliable history layer for section navigation =====
+  var _backBusy=false;
+  function currentSectionId(){
+    return window._lastOpenSectionId ||
+      (window._currentContentSec&&window._currentContentSec.id) ||
+      (window._currentDynamicSec&&window._currentDynamicSec.id) || null;
+  }
+  function closeTransient(){
+    var rv=document.getElementById('rv-overlay');
+    if(rv && typeof ResourceViewer!=='undefined' && ResourceViewer.close){ ResourceViewer.close(); return true; }
+    var pdf=document.getElementById('native-pdf-overlay');
+    if(pdf && window.NativePDFViewer && NativePDFViewer.close){ NativePDFViewer.close(); return true; }
+    var chat=document.getElementById('chat-modal-overlay');
+    if(chat && chat.classList.contains('chat-open') && typeof window.closeSectionChat==='function'){ window.closeSectionChat(false); return true; }
+    var admin=document.getElementById('admin-panel');
+    if(admin && admin.classList.contains('ap-open') && typeof window.toggleAdminPanel==='function'){ window.toggleAdminPanel(); return true; }
+    return false;
+  }
+  window.bsmMobileBack=function(){
+    if(_backBusy)return true;
+    _backBusy=true;
+    try{
+      if(closeTransient()) return true;
+      if(window.state && Array.isArray(state.navigationStack) && state.navigationStack.length){
+        navigateBack();
+        return true;
+      }
+      if(currentSectionId() && location.hash.indexOf('#/section/')===0){
+        if(typeof goHome==='function')goHome();
+        return true;
+      }
+      return false;
+    }finally{setTimeout(function(){_backBusy=false;},250);}
+  };
+  // ===== ADMIN DASHBOARD: allow finger-wheel/touch vertical scrolling =====
+  var style=document.createElement('style');
+  style.id='bsm-ministry-critical-ux-style';
+  style.textContent=''+
+    '#admin-panel{touch-action:pan-y;overscroll-behavior:contain;}'+
+    '#admin-panel .ap-modal{display:flex;flex-direction:column;max-height:calc(100dvh - 16px);min-height:0;}'+
+    '#admin-panel .ap-workspace{flex:1;min-height:0;overflow:hidden;}'+
+    '#admin-panel .ap-body{min-height:0;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;}'+
+    '#admin-panel .ap-sidebar{touch-action:pan-x pan-y;-webkit-overflow-scrolling:touch;}'+
+    '@media(max-width:899px){#admin-panel .ap-workspace{display:flex;flex-direction:column;overflow:hidden;}#admin-panel .ap-sidebar{flex:0 0 auto;max-height:none;}#admin-panel .ap-body{flex:1 1 auto;min-height:0;}}'+
+    '@media(max-width:600px){#admin-panel .ap-modal{max-height:100dvh;height:100dvh;}#admin-panel .ap-body{padding-bottom:80px;}}'+
+    '.bsm-ux-busy{pointer-events:none!important;opacity:.75!important;}';
+  document.head.appendChild(style);
+
+  // ===== DOUBLE-CLICK / RACE PROTECTION =====
+  var lastClickEl=null,lastClickAt=0;
+  document.addEventListener('click',function(e){
+    var el=e.target&&e.target.closest ? e.target.closest('button,[onclick],.resource-item,.dept-card') : null;
+    if(!el)return;
+    var now=Date.now();
+    if(el===lastClickEl && now-lastClickAt<420){
+      e.preventDefault();e.stopImmediatePropagation();return;
+    }
+    lastClickEl=el;lastClickAt=now;
+    if(el.matches('button,[onclick]') && !el.classList.contains('rv-close') && !el.classList.contains('ap-close-btn')){
+      el.classList.add('bsm-ux-busy');
+      setTimeout(function(){el.classList.remove('bsm-ux-busy');},650);
+    }
+  },true);
+
+  // ===== FIX openResource when file_url is empty =====
+  var _oldOpenResource=window.openResource;
+  if(typeof _oldOpenResource==='function'){
+    window.openResource=async function(url,title,type,filePath,fileType,fileName){
+      var finalUrl=String(url||'').trim();
+      if(!finalUrl && filePath && typeof window._resolveResourceUrl==='function'){
+        try{finalUrl=await window._resolveResourceUrl('',filePath);}catch(e){}
+      }
+      return _oldOpenResource(finalUrl,title,type,filePath,fileType,fileName);
+    };
+  }
+
+  console.info('[BSM MINISTRY CRITICAL FIX] attachments + mobile back + admin scroll + click-race protection active');
+})();
+</script>
 </body>
 </html>
