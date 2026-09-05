@@ -2939,18 +2939,7 @@ img, video {
       var msg = document.createElement('div');
       msg.className = 'bsm-video-error';
       msg.style.cssText = 'padding:12px 14px;background:#111;color:#fff;text-align:center;font-size:.82rem;line-height:1.6;';
-      msg.innerHTML = '⚠️ الفيديو لم يتم تحميله داخل التطبيق.<br><button type="button" style="margin-top:8px;padding:8px 14px;border:0;border-radius:8px;cursor:pointer;font-weight:700;">فتح الفيديو مباشرة</button>';
-      var btn = msg.querySelector('button');
-      btn.onclick = function () {
-        if (src) {
-          try {
-            var opener = window._origWindowOpen || window.open;
-            opener.call(window, src, '_blank', 'noopener,noreferrer');
-          } catch (e) {
-            window.location.href = src;
-          }
-        }
-      };
+      msg.innerHTML = '⚠️ الفيديو غير متاح حاليًا داخل المنصة.<br><span style="opacity:.85">تمت تجربة المصادر البديلة تلقائيًا.</span>';
       box.appendChild(msg);
     } catch (e) {}
   };
@@ -6204,9 +6193,19 @@ async function _resolveResourceUrl(rawUrl, filePath) {
 
 window._resolveResourceUrl = _resolveResourceUrl;
 function _legacyUploadcareUrl(rawUrl) {
-  // Do not manufacture a legacy Uploadcare host. Current projects use
-  // *.ucarecd.net and that exact project URL is the source of truth.
-  return '';
+  // Compatibility recovery for old Uploadcare rows saved with the legacy
+  // global host (ucarecdn.com). The current project CDN used by this platform
+  // is 5hh9k0g78x.ucarecd.net. Keep this as an IN-APP media candidate only;
+  // never open a new tab. If the UUID was actually deleted from Uploadcare,
+  // the candidate will fail and the player will show an in-app error.
+  try {
+    var u = new URL(String(rawUrl || '').trim());
+    if (!/^(?:www\.)?ucarecdn\.com$/i.test(u.hostname)) return '';
+    var parts = u.pathname.split('/').filter(Boolean);
+    var uuid = parts[0] || '';
+    if (!/^[0-9a-f]{8}-[0-9a-f-]{27,}$/i.test(uuid)) return '';
+    return 'https://5hh9k0g78x.ucarecd.net/' + uuid + '/';
+  } catch (e) { return ''; }
 }
 
 // Generic external-resource helper. It never edits the database or the
@@ -6643,14 +6642,15 @@ const ResourceViewer = (function() {
     // extension. If the browser rejects the original codec/container, request
     // Uploadcare's browser-universal MP4 representation inside the SAME viewer.
     // Uploadcare documents /UUID/video/-/format/mp4/ as its video format path.
-    if (el.tagName === 'VIDEO' && /\.ucarecd\.net\//i.test(src) && el.dataset.ucMp4Tried !== '1') {
+    if (el.tagName === 'VIDEO' && /(?:\.ucarecd\.net|(?:www\.)?ucarecdn\.com)\//i.test(src) && el.dataset.ucMp4Tried !== '1') {
       var mp4 = '';
       try {
         var u = new URL(src);
         var parts = u.pathname.split('/').filter(Boolean);
         var uuid = parts[0] || '';
         if (/^[0-9a-f]{8}-[0-9a-f-]{27,}$/i.test(uuid)) {
-          mp4 = u.origin + '/' + uuid + '/video/-/format/mp4/';
+          var host = /(?:www\.)?ucarecdn\.com$/i.test(u.hostname) ? '5hh9k0g78x.ucarecd.net' : u.hostname;
+          mp4 = 'https://' + host + '/' + uuid + '/video/-/format/mp4/';
         }
       } catch (e0) {}
       if (mp4 && mp4 !== src) {
@@ -6667,7 +6667,28 @@ const ResourceViewer = (function() {
       }
     }
 
-    // 3) Keep any provider compatibility fallback as a final non-destructive
+    // 3) Second Uploadcare recovery path: use the documented video processing
+    // URL inside the same <video> element. This fixes bare UUID delivery URLs
+    // while keeping all controls and fullscreen inside the platform.
+    if (el.tagName === 'VIDEO' && /(?:\.ucarecd\.net|(?:www\.)?ucarecdn\.com)\//i.test(src) && el.dataset.ucMp4AltTried !== '1') {
+      try {
+        var u2=new URL(src), pp=u2.pathname.split('/').filter(Boolean), uid=pp[0]||'';
+        if(/^[0-9a-f]{8}-[0-9a-f-]{27,}$/i.test(uid)){
+          var alt='https://' + (/(?:www\.)?ucarecdn\.com$/i.test(u2.hostname) ? '5hh9k0g78x.ucarecd.net' : u2.hostname) + '/' + uid + '/video/-/format/mp4/';
+          if(alt!==src){
+            el.dataset.ucMp4AltTried='1';
+            var se2=el.querySelector && el.querySelector('source');
+            if(se2) se2.src=alt;
+            el.src=alt;
+            if(el.load) el.load();
+            console.info('[ResourceViewer] Uploadcare universal MP4 retry:',alt);
+            return true;
+          }
+        }
+      }catch(e3){ console.warn('[ResourceViewer] Uploadcare universal MP4 retry failed:',e3); }
+    }
+
+    // 4) Keep any provider compatibility fallback as a final non-destructive
     // candidate. It never opens a new tab.
     var legacyFallback = (typeof window._bsmGetResourceFallback === 'function')
       ? window._bsmGetResourceFallback(src)
@@ -6870,6 +6891,9 @@ const ResourceViewer = (function() {
         media.addEventListener('loadedmetadata', hideVideoLoading, {passive:true});
         media.addEventListener('canplay', hideVideoLoading, {passive:true});
         media.addEventListener('playing', hideVideoLoading, {passive:true});
+        media.addEventListener('error', function(){
+          try{ console.warn('[ResourceViewer video] media error:', media.error && media.error.code, media.error && media.error.message, media.currentSrc || media.src); }catch(e){}
+        }, {passive:true});
       } catch (e) {}
     }
     if (!tools) return;
@@ -10409,6 +10433,11 @@ window.checkBanStatus = async function(email) {
 <label style="display:block;font-size:.82rem;font-weight:700;margin-bottom:6px;">كلمة المرور</label>
 <input autocomplete="new-password" dir="ltr" id="student-register-password" placeholder="8 أحرف على الأقل" style="width:100%;box-sizing:border-box;padding:11px 12px;border:1px solid #d5e2ee;border-radius:10px;margin-bottom:10px;font-family:inherit;" type="password"/>
 <div id="student-register-msg" style="min-height:20px;font-size:.78rem;margin-bottom:8px;"></div>
+<div id="student-email-verify-box" style="display:none;margin-top:10px;padding:12px;border:1px solid #cfe3ee;border-radius:12px;background:#f7fbfe;">
+<label style="display:block;font-size:.82rem;font-weight:800;margin-bottom:6px;">رمز التحقق المرسل إلى Gmail</label>
+<input id="student-register-otp" inputmode="numeric" autocomplete="one-time-code" maxlength="8" placeholder="أدخل رمز التحقق" dir="ltr" style="width:100%;box-sizing:border-box;padding:12px;border:1px solid #c9dce8;border-radius:10px;font-size:1.1rem;letter-spacing:3px;text-align:center;font-family:inherit;">
+<button class="ap-btn ap-btn-primary" onclick="studentVerifyEmailCode()" style="width:100%;justify-content:center;padding:11px;margin-top:9px;" type="button">تأكيد الرمز</button>
+</div>
 <button class="ap-btn ap-btn-primary" onclick="studentEmailRegister()" style="width:100%;justify-content:center;padding:11px;" type="button">إنشاء الحساب</button>
 <button id="student-resend-verification-btn" onclick="studentResendVerification()" style="display:none;width:100%;margin-top:10px;border:1px solid #d5e2ee;background:#f8fbfe;color:#0a3d62;border-radius:10px;padding:10px;font-family:inherit;font-weight:800;cursor:pointer;" type="button">📧 إعادة إرسال رسالة التحقق</button>
 <div style="display:flex;align-items:center;gap:9px;margin:15px 0;color:#9aa7b4;font-size:.72rem;"><span style="height:1px;background:#e2e8f0;flex:1;"></span><span>أو</span><span style="height:1px;background:#e2e8f0;flex:1;"></span></div>
@@ -10441,6 +10470,8 @@ window.checkBanStatus = async function(email) {
     var lf=document.getElementById('student-login-form'), rf=document.getElementById('student-register-form');
     if(lf)lf.style.display=isReg?'none':'block'; if(rf)rf.style.display=isReg?'block':'none';
     _studentAuthMsg('student-login-msg',''); _studentAuthMsg('student-register-msg','');
+    var vb=document.getElementById('student-email-verify-box'); if(vb) vb.style.display='none';
+    var oi=document.getElementById('student-register-otp'); if(oi) oi.value='';
     _studentResendButton(false,false);
     setTimeout(function(){var el=document.getElementById(isReg?'student-register-name':'student-login-email');if(el)el.focus();},50);
   };
@@ -10495,7 +10526,19 @@ window.checkBanStatus = async function(email) {
         _studentAuthMsg('student-register-msg','✅ تم إنشاء الحساب وتسجيل الدخول بنجاح.','#17a589');
         setTimeout(window.closeStudentAuth,500);
       }else{
-        _studentAuthMsg('student-register-msg','✅ تم إنشاء الحساب بنجاح.\n📧 تم إرسال رسالة تحقق إلى بريدك الإلكتروني.\nافتح Gmail واضغط رابط التحقق ثم ارجع وسجّل الدخول.','#17a589');
+        // Keep the user inside the platform: request an email OTP as a second
+        // in-app verification path after the password account is created.
+        var otpSent=false;
+        try{
+          var otpRes=await db.auth.signInWithOtp({email:email,options:{shouldCreateUser:false,emailRedirectTo:WEB_AUTH_REDIRECT}});
+          otpSent=!(otpRes && otpRes.error);
+        }catch(oe){ console.warn('[AUTH] OTP request failed:',oe); }
+        var vb=document.getElementById('student-email-verify-box'); if(vb) vb.style.display='block';
+        if(otpSent){
+          _studentAuthMsg('student-register-msg','✅ تم إنشاء الحساب.\n📧 تم إرسال رمز التحقق إلى Gmail. أدخل الرمز هنا لإكمال التسجيل.','#17a589');
+        }else{
+          _studentAuthMsg('student-register-msg','✅ تم إنشاء الحساب.\n📧 افتح رسالة التحقق في Gmail. إذا كانت رسالة OTP مفعّلة أدخل الرمز هنا، وإلا اضغط رابط التأكيد داخل الرسالة.','#17a589');
+        }
         _studentResendButton(true,false);
       }
     }catch(e){
@@ -10508,6 +10551,25 @@ window.checkBanStatus = async function(email) {
       console.warn('[AUTH] email sign-up failed:',e);
     }
   };
+  window.studentVerifyEmailCode=async function(){
+    var email=((document.getElementById('student-register-email')||{}).value||'').trim();
+    var token=((document.getElementById('student-register-otp')||{}).value||'').trim().replace(/\s+/g,'');
+    if(!email||!token){_studentAuthMsg('student-register-msg','أدخل البريد الإلكتروني ورمز التحقق أولاً');return;}
+    var db=await (window._supabaseClientReady||Promise.resolve(window.supabase));
+    if(!db||!db.auth){_studentAuthMsg('student-register-msg','❌ Supabase Auth غير جاهز');return;}
+    _studentAuthMsg('student-register-msg','جاري تأكيد الرمز...','#718096');
+    try{
+      var r=await db.auth.verifyOtp({email:email,token:token,type:'email'});
+      if(r.error)throw r.error;
+      _studentAuthMsg('student-register-msg','✅ تم تأكيد البريد الإلكتروني وتسجيل الدخول بنجاح.','#17a589');
+      var vb=document.getElementById('student-email-verify-box'); if(vb) vb.style.display='none';
+      setTimeout(window.closeStudentAuth,500);
+    }catch(e){
+      _studentAuthMsg('student-register-msg','❌ '+((e&&e.message)||'رمز التحقق غير صحيح أو منتهي الصلاحية'));
+      console.warn('[AUTH] OTP verification failed:',e);
+    }
+  };
+
   window.studentResendVerification=async function(){
     if(_studentResendBusy)return;
     var email=((document.getElementById('student-register-email')||{}).value||'').trim();
@@ -10519,7 +10581,9 @@ window.checkBanStatus = async function(email) {
     try{
       var r=await db.auth.resend({type:'signup',email:email,options:{emailRedirectTo:WEB_AUTH_REDIRECT}});
       if(r.error)throw r.error;
-      _studentAuthMsg('student-register-msg','✅ تم إرسال رسالة التحقق مرة أخرى إلى بريدك الإلكتروني. افتح Gmail واضغط رابط التحقق ثم ارجع وسجّل الدخول.','#17a589');
+      try{ await db.auth.signInWithOtp({email:email,options:{shouldCreateUser:false,emailRedirectTo:WEB_AUTH_REDIRECT}}); }catch(oe){ console.warn('[AUTH] OTP resend failed:',oe); }
+      var vb=document.getElementById('student-email-verify-box'); if(vb) vb.style.display='block';
+      _studentAuthMsg('student-register-msg','✅ تم إرسال رسالة التحقق مرة أخرى إلى Gmail. أدخل رمز OTP هنا إن ظهر في الرسالة، أو اضغط رابط التأكيد الموجود بها.','#17a589');
     }catch(e){
       var msg=(e&&e.message)||'تعذر إعادة إرسال رسالة التحقق';
       _studentAuthMsg('student-register-msg','❌ '+msg);
@@ -16054,7 +16118,7 @@ window._origWindowOpen = window.open;
 <script>
 (function(){
   try {
-    var BUILD_KEY = 'bsm_opening_build_20260905_v4';
+    var BUILD_KEY = 'bsm_opening_build_20260905_v7';
     if (window.localStorage && localStorage.getItem(BUILD_KEY) !== '1') {
       localStorage.setItem(BUILD_KEY, '1');
       if (navigator.serviceWorker && navigator.serviceWorker.getRegistrations) {
@@ -32614,6 +32678,26 @@ console.info('[BSM EMERGENCY FINAL] guest free-content + first lesson/class per 
       e.preventDefault(); e.stopImmediatePropagation();
       try{window.location.assign('https://raw.githubusercontent.com/fanysehy/-/refs/heads/main/app-debug.apk');}catch(x){}
     }
+  },true);
+})();
+</script>
+<script id="bsm-v7-video-failsafe">
+(function(){
+  'use strict';
+  function candidates(src){
+    var a=[]; try{var u=new URL(src),p=u.pathname.split('/').filter(Boolean),id=p[0]||'';
+      if(/^[0-9a-f]{8}-[0-9a-f-]{27,}$/i.test(id)){
+        a.push(u.origin+'/'+id+'/video/-/format/mp4/');
+        a.push(u.origin+'/'+id+'/-/format/mp4/');
+      }
+    }catch(e){} return a;
+  }
+  document.addEventListener('error',function(e){
+    var v=e.target; if(!v||v.tagName!=='VIDEO')return;
+    var src=v.currentSrc||v.src||''; if(!/\.ucarecd\.net\//i.test(src))return;
+    var a=candidates(src),i=Number(v.dataset.bsmV7Try||0); if(i>=a.length)return;
+    var next=a[i]; v.dataset.bsmV7Try=String(i+1);
+    try{v.src=next;var s=v.querySelector('source');if(s)s.src=next;v.load();console.info('[BSM V7] in-page video retry:',next);}catch(x){}
   },true);
 })();
 </script>
