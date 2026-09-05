@@ -2823,7 +2823,7 @@ img, video {
 <button id="bsm-install-app-btn" style="display:inline-flex; align-items:center; gap:6px; background:#fff; color:#0a3d62; padding:8px 18px; border:none; border-radius:10px; font-weight:700; font-size:.82rem; cursor:pointer; font-family:inherit;" type="button">▶️ شاهد طريقة تثبيت التطبيق</button>
 </div>
 <div id="bsm-gate-sub" style="font-size:.95rem; opacity:.9; margin-bottom:18px;">يرجى فتح منصة المعاهد الفنية الصحية من تطبيق الهاتف.</div>
-<a download="app-debug.apk" href="https://github.com/fanysehy/-/raw/refs/heads/main/app-debug.apk" id="bsm-gate-android-btn" rel="noopener noreferrer" style="display:none; ..." target="_blank">
+<a download="app-debug.apk" href="https://github.com/fanysehy/-/raw/refs/heads/main/app-debug.apk" id="bsm-gate-android-btn" rel="noopener noreferrer" style="display:none; ..." target="_self">
  ⬇️ تحميل تطبيق Android مباشرة
 </a>
 <!-- ==================== iOS: واجهة تثبيت PWA (بديل شاشة الحجب الافتراضية على Safari/iPhone/iPad) ==================== -->
@@ -4761,6 +4761,14 @@ async function _renderDynamicSectionPage(sec) {
   if (window.checkSectionAccess && sec && sec.id) {
     try {
       gate = await window.checkSectionAccess(sec.id);
+      // FREE-FIRST-LESSON FIX: a configured first lesson/class is free, including
+      // every section_resource attached to that lesson. Keep the existing paid
+      // gate for every other node.
+      window.__bsmFreePreviewActive = false;
+      if (typeof window._isFreePreviewSection === 'function' && sec && sec.id) {
+        try { window.__bsmFreePreviewActive = await window._isFreePreviewSection(sec.id) === true; } catch (_freePageErr) {}
+      }
+      if (window.__bsmFreePreviewActive) gate = null;
       if (gate) { window._lastGateSec = sec; window.__currentChapterGate = gate; }
     } catch(gateErr) {
       console.error('[DB LOAD ERROR][_renderDynamicSectionPage:checkSectionAccess]', gateErr && gateErr.message, gateErr);
@@ -4814,7 +4822,7 @@ async function _renderDynamicSectionPage(sec) {
 
     // عرض الموارد (مقفولة إذا كانت الشعبة محجوبة)
     if (resourcesEl) {
-      resourcesEl.innerHTML = buildResourcesHTML(sectionResources, gate);
+      resourcesEl.innerHTML = buildResourcesHTML(sectionResources, (window.__bsmFreePreviewActive ? null : gate));
     }
 
     if (children.length === 0) {
@@ -4828,10 +4836,10 @@ async function _renderDynamicSectionPage(sec) {
       if (content.length > 0 || leafResources.length > 0) {
         // عرض الموارد في الـ grid
         if (leafResources.length > 0 && resourcesEl) {
-          resourcesEl.innerHTML = buildResourcesHTML(leafResources, gate);
+          resourcesEl.innerHTML = buildResourcesHTML(leafResources, (window.__bsmFreePreviewActive ? null : gate));
         }
         if (content.length > 0) {
-          renderResourceCards('dynamic-section-grid', content, gate);
+          renderResourceCards('dynamic-section-grid', content, (window.__bsmFreePreviewActive ? null : gate));
           if (gate) gridEl.insertAdjacentHTML('beforeend', window._renderSubscriptionGateHTML(gate));
         } else {
           gridEl.innerHTML = '';
@@ -5258,6 +5266,14 @@ async function _openContentPage(sec, _preloadedContent, _preloadedResources) {
   if (window.checkSectionAccess && sec && sec.id) {
     try {
       gate = await window.checkSectionAccess(sec.id);
+      // FREE-FIRST-LESSON FIX: a configured first lesson/class is free, including
+      // every section_resource attached to that lesson. Keep the existing paid
+      // gate for every other node.
+      window.__bsmFreePreviewActive = false;
+      if (typeof window._isFreePreviewSection === 'function' && sec && sec.id) {
+        try { window.__bsmFreePreviewActive = await window._isFreePreviewSection(sec.id) === true; } catch (_freePageErr) {}
+      }
+      if (window.__bsmFreePreviewActive) gate = null;
       if (gate) { window._lastGateSec = sec; window.__currentChapterGate = gate; }
     } catch(gateErr) {
       console.error('[DB LOAD ERROR][_openContentPage:checkSectionAccess]', gateErr && gateErr.message, gateErr);
@@ -7412,7 +7428,16 @@ async function openResource(url, title, resourceType, filePath, fileType, fileNa
 
   if (window._currentContentSec && window._currentContentSec.id && typeof window.checkSectionAccess === 'function') {
     try {
-      var gate = await window.checkSectionAccess(Number(window._currentContentSec.id));
+      var _resourceSectionId = Number(window._currentContentSec.id);
+      var gate = await window.checkSectionAccess(_resourceSectionId);
+      // FREE-FIRST-LESSON FIX: attachments/resources belonging to the first
+      // free lesson/class are free too. This check intentionally overrides a
+      // stale visual/explicit gate only for the configured free-preview node.
+      if (gate && typeof window._isFreePreviewSection === 'function') {
+        try {
+          if (await window._isFreePreviewSection(_resourceSectionId)) gate = null;
+        } catch (_freeResErr) {}
+      }
       if (gate) {
         if (typeof window._openLockNoticeModal === 'function') window._openLockNoticeModal(gate);
         else if (typeof _showToast === 'function') _showToast('🔒 هذا المحتوى يحتاج الصلاحية المناسبة', 'warning');
@@ -32181,5 +32206,156 @@ window.studentEmailLogin=async function(){
 console.info('[BSM EMERGENCY FINAL] guest free-content + first lesson/class per material + resource access + bounded login active');
 })();
 </script>
+
+<!-- BSM FINAL OPENING SAFETY PATCH 2026-09-04: admin bypass + first free lesson resources -->
+<script id="bsm-opening-free-lesson-resources-final">
+(function(){
+  'use strict';
+  if(window.__BSM_OPENING_FREE_LESSON_RESOURCES_FINAL)return;
+  window.__BSM_OPENING_FREE_LESSON_RESOURCES_FINAL=true;
+
+  // Admins of the platform/course must never be sent to the subscription gate
+  // while working inside a course they administer.
+  var originalCheck=window.checkSectionAccess;
+  window.checkSectionAccess=async function(id){
+    var isAdmin = window._isSuperAdmin===true || window._isAdminUser===true ||
+      window._isBranchAdmin===true || window._currentUserRole==='admin';
+    if(isAdmin) return null;
+    var g = await originalCheck(id);
+    // The first free lesson/class is always open. This also makes its attached
+    // resources open because openResource uses the same helper.
+    if(g && typeof window._isFreePreviewSection==='function'){
+      try{ if(await window._isFreePreviewSection(Number(id))) return null; }catch(e){}
+    }
+    return g;
+  };
+
+  window.__bsmForceFreeResourceForCurrentSection=async function(){
+    var sec=window._currentContentSec||window._currentDynamicSec||null;
+    if(!sec||!sec.id||typeof window._isFreePreviewSection!=='function')return false;
+    try{return await window._isFreePreviewSection(Number(sec.id))===true;}catch(e){return false;}
+  };
+  console.info('[BSM OPENING FINAL] course admins bypass subscription; first lesson/class resources are free.');
+})();
+</script>
+
+
+<script id="bsm-opening-final-free-resource-and-apk-fix-20260905">
+(function(){
+  'use strict';
+  if(window.__BSM_OPENING_FINAL_FREE_RESOURCE_APK_FIX_20260905)return;
+  window.__BSM_OPENING_FINAL_FREE_RESOURCE_APK_FIX_20260905=true;
+
+  // FINAL RESOURCE ACCESS FIX:
+  // Determine the first Lesson/Class INSIDE THE SAME Material directly from
+  // the live site_sections tree. This does not depend on the dashboard's
+  // free_content_mode value, so stale/legacy policy values cannot relock the
+  // attachments of the first learning item.
+  async function isFirstLessonClassInItsMaterial(sectionId){
+    var db=window.supabase, sid=Number(sectionId);
+    if(!db||!sid||!Number.isFinite(sid))return false;
+    try{
+      var r=await db.from('site_sections')
+        .select('id,parent_id,type,display_order,title')
+        .order('display_order',{ascending:true,nullsFirst:false})
+        .order('id',{ascending:true});
+      if(r.error)throw r.error;
+      var rows=r.data||[], byId={};
+      rows.forEach(function(x){byId[Number(x.id)]=x;});
+      var node=byId[sid];
+      if(!node)return false;
+      var t=String(node.type||'').toLowerCase();
+      if(t!=='lesson'&&t!=='class')return false;
+
+      var cur=node, material=null, seen={};
+      while(cur&&!seen[Number(cur.id)]){
+        seen[Number(cur.id)]=true;
+        if(String(cur.type||'').toLowerCase()==='material'){
+          material=cur;break;
+        }
+        cur=byId[Number(cur.parent_id)];
+      }
+      if(!material)return false;
+      var materialId=Number(material.id);
+
+      // Build a stable tree order so the first learning item is deterministic.
+      var pathCache={};
+      function pathOf(id){
+        id=Number(id);
+        if(pathCache[id])return pathCache[id];
+        var n=byId[id], path=[], guard={};
+        while(n&&!guard[Number(n.id)]){
+          guard[Number(n.id)]=true;
+          path.unshift({o:Number.isFinite(Number(n.display_order))?Number(n.display_order):999999,id:Number(n.id)});
+          n=byId[Number(n.parent_id)];
+        }
+        pathCache[id]=path;return path;
+      }
+      function underMaterial(id){
+        var n=byId[Number(id)], guard={};
+        while(n&&!guard[Number(n.id)]){
+          if(Number(n.id)===materialId)return true;
+          guard[Number(n.id)]=true;n=byId[Number(n.parent_id)];
+        }
+        return false;
+      }
+      var learners=rows.filter(function(x){
+        var xt=String(x.type||'').toLowerCase();
+        return (xt==='lesson'||xt==='class')&&underMaterial(x.id);
+      });
+      learners.sort(function(a,b){
+        var ap=pathOf(a.id),bp=pathOf(b.id),len=Math.min(ap.length,bp.length);
+        for(var i=0;i<len;i++){
+          if(ap[i].o!==bp[i].o)return ap[i].o-bp[i].o;
+          if(ap[i].id!==bp[i].id)return ap[i].id-bp[i].id;
+        }
+        return ap.length-bp.length;
+      });
+      return learners.length>0 && Number(learners[0].id)===sid;
+    }catch(e){
+      console.warn('[BSM FINAL FREE RESOURCE CHECK]',e&&e.message);
+      return false;
+    }
+  }
+
+  var oldFree=window._isFreePreviewSection;
+  window._isFreePreviewSection=async function(id){
+    try{
+      if(await isFirstLessonClassInItsMaterial(id))return true;
+    }catch(e){}
+    try{
+      if(typeof oldFree==='function' && await oldFree(Number(id)))return true;
+    }catch(e){}
+    return false;
+  };
+
+  // Re-wrap the central access check once more so the exact same rule is used
+  // by the page renderer AND by openResource when an attachment is clicked.
+  var oldCheck=window.checkSectionAccess;
+  window.checkSectionAccess=async function(id){
+    var admin=window._isSuperAdmin===true||window._isAdminUser===true||
+      window._isBranchAdmin===true||window._currentUserRole==='admin';
+    if(admin)return null;
+    try{
+      if(await window._isFreePreviewSection(Number(id)))return null;
+    }catch(e){}
+    return typeof oldCheck==='function' ? await oldCheck(Number(id)) : null;
+  };
+
+  // Android APK: force the browser's normal download navigation. The anchor
+  // remains a real download link; target=_self avoids WebView/new-tab blockers.
+  var apk=document.getElementById('bsm-gate-android-btn');
+  if(apk){
+    apk.setAttribute('target','_self');
+    apk.setAttribute('download','app-debug.apk');
+    apk.onclick=function(ev){
+      try{ev.stopImmediatePropagation();}catch(e){}
+      return true;
+    };
+  }
+  console.info('[BSM OPENING FINAL 2026-09-05] first Lesson/Class per Material attachments + direct Android APK link enforced.');
+})();
+</script>
+
 </body>
 </html>
