@@ -60,13 +60,13 @@ var DEBUG_MODE = false; window.DEBUG_MODE = DEBUG_MODE;
 <script>
 (function () {
   try {
-    window.__APP_BUILD_VERSION = '2026-09-05-MINISTRY-OPENING-ATTACHMENTS-MEDIA-FIX-v4';
+    window.__APP_BUILD_VERSION = '2026-09-05-MINISTRY-OPENING-AUDITED-FINAL-v6';
   } catch (e) {}
 })();
 </script>
 <meta content="my6dMoAsuc_97Jks_OQF75GK_f1PGWqz2Kng2obkIgE" name="google-site-verification"/>
 <meta charset="utf-8"/>
-<meta content="2026-09-05-MINISTRY-OPENING-ATTACHMENTS-VIDEO-INTERNAL-PDF-FIX-v5" name="app-build"/>
+<meta content="2026-09-05-MINISTRY-OPENING-AUDITED-FINAL-v6" name="app-build"/>
 <meta content="width=device-width, initial-scale=1.0, viewport-fit=cover" name="viewport"/>
 <!-- ==================== PWA: manifest + platform metadata ==================== -->
 <link href="./manifest.json" rel="manifest"/>
@@ -10435,11 +10435,11 @@ window.checkBanStatus = async function(email) {
 <div id="student-register-msg" style="min-height:20px;font-size:.78rem;margin-bottom:8px;"></div>
 <div id="student-email-verify-box" style="display:none;margin-top:10px;padding:12px;border:1px solid #cfe3ee;border-radius:12px;background:#f7fbfe;">
 <label style="display:block;font-size:.82rem;font-weight:800;margin-bottom:6px;">رمز التحقق المرسل إلى Gmail</label>
-<input id="student-register-otp" inputmode="numeric" autocomplete="one-time-code" maxlength="8" placeholder="أدخل رمز التحقق" dir="ltr" style="width:100%;box-sizing:border-box;padding:12px;border:1px solid #c9dce8;border-radius:10px;font-size:1.1rem;letter-spacing:3px;text-align:center;font-family:inherit;">
+<input id="student-register-otp" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" placeholder="أدخل رمز التحقق (6 أرقام)" dir="ltr" style="width:100%;box-sizing:border-box;padding:12px;border:1px solid #c9dce8;border-radius:10px;font-size:1.1rem;letter-spacing:3px;text-align:center;font-family:inherit;">
 <button class="ap-btn ap-btn-primary" onclick="studentVerifyEmailCode()" style="width:100%;justify-content:center;padding:11px;margin-top:9px;" type="button">تأكيد الرمز</button>
 </div>
 <button class="ap-btn ap-btn-primary" onclick="studentEmailRegister()" style="width:100%;justify-content:center;padding:11px;" type="button">إنشاء الحساب</button>
-<button id="student-resend-verification-btn" onclick="studentResendVerification()" style="display:none;width:100%;margin-top:10px;border:1px solid #d5e2ee;background:#f8fbfe;color:#0a3d62;border-radius:10px;padding:10px;font-family:inherit;font-weight:800;cursor:pointer;" type="button">📧 إعادة إرسال رسالة التحقق</button>
+<button id="student-resend-verification-btn" onclick="studentResendVerification()" style="display:none;width:100%;margin-top:10px;border:1px solid #d5e2ee;background:#f8fbfe;color:#0a3d62;border-radius:10px;padding:10px;font-family:inherit;font-weight:800;cursor:pointer;" type="button">📧 إعادة إرسال رمز التحقق</button>
 <div style="display:flex;align-items:center;gap:9px;margin:15px 0;color:#9aa7b4;font-size:.72rem;"><span style="height:1px;background:#e2e8f0;flex:1;"></span><span>أو</span><span style="height:1px;background:#e2e8f0;flex:1;"></span></div>
 <button onclick="studentGoogleLogin()" style="width:100%;padding:11px;border:1px solid #d5e2ee;border-radius:10px;background:#fff;color:#263238;font-family:inherit;font-weight:800;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:9px;" type="button">🌐 التسجيل باستخدام Google</button>
 <button onclick="openStudentAuth('login')" style="display:block;width:100%;margin-top:12px;border:0;background:transparent;color:#0a3d62;font-family:inherit;font-weight:900;cursor:pointer;" type="button">← رجوع لتسجيل الدخول</button>
@@ -10526,19 +10526,11 @@ window.checkBanStatus = async function(email) {
         _studentAuthMsg('student-register-msg','✅ تم إنشاء الحساب وتسجيل الدخول بنجاح.','#17a589');
         setTimeout(window.closeStudentAuth,500);
       }else{
-        // Keep the user inside the platform: request an email OTP as a second
-        // in-app verification path after the password account is created.
-        var otpSent=false;
-        try{
-          var otpRes=await db.auth.signInWithOtp({email:email,options:{shouldCreateUser:false,emailRedirectTo:WEB_AUTH_REDIRECT}});
-          otpSent=!(otpRes && otpRes.error);
-        }catch(oe){ console.warn('[AUTH] OTP request failed:',oe); }
+        // IMPORTANT: signup confirmation itself sends the OTP using the
+        // Supabase "Confirm signup" template. Do NOT call signInWithOtp here,
+        // because that requests a different email flow and can produce a link.
         var vb=document.getElementById('student-email-verify-box'); if(vb) vb.style.display='block';
-        if(otpSent){
-          _studentAuthMsg('student-register-msg','✅ تم إنشاء الحساب.\n📧 تم إرسال رمز التحقق إلى Gmail. أدخل الرمز هنا لإكمال التسجيل.','#17a589');
-        }else{
-          _studentAuthMsg('student-register-msg','✅ تم إنشاء الحساب.\n📧 افتح رسالة التحقق في Gmail. إذا كانت رسالة OTP مفعّلة أدخل الرمز هنا، وإلا اضغط رابط التأكيد داخل الرسالة.','#17a589');
-        }
+        _studentAuthMsg('student-register-msg','✅ تم إنشاء الحساب.\n📧 تم إرسال رمز التحقق المكوّن من 6 أرقام إلى Gmail. أدخل الرمز هنا لإكمال التسجيل.','#17a589');
         _studentResendButton(true,false);
       }
     }catch(e){
@@ -10581,9 +10573,8 @@ window.checkBanStatus = async function(email) {
     try{
       var r=await db.auth.resend({type:'signup',email:email,options:{emailRedirectTo:WEB_AUTH_REDIRECT}});
       if(r.error)throw r.error;
-      try{ await db.auth.signInWithOtp({email:email,options:{shouldCreateUser:false,emailRedirectTo:WEB_AUTH_REDIRECT}}); }catch(oe){ console.warn('[AUTH] OTP resend failed:',oe); }
       var vb=document.getElementById('student-email-verify-box'); if(vb) vb.style.display='block';
-      _studentAuthMsg('student-register-msg','✅ تم إرسال رسالة التحقق مرة أخرى إلى Gmail. أدخل رمز OTP هنا إن ظهر في الرسالة، أو اضغط رابط التأكيد الموجود بها.','#17a589');
+      _studentAuthMsg('student-register-msg','✅ تم إرسال رمز التحقق المكوّن من 6 أرقام مرة أخرى إلى Gmail.','#17a589');
     }catch(e){
       var msg=(e&&e.message)||'تعذر إعادة إرسال رسالة التحقق';
       _studentAuthMsg('student-register-msg','❌ '+msg);
@@ -16435,19 +16426,12 @@ var NativePDFViewer = (function() {
     else if (name === 'InvalidPDFException') reason = 'هذا الملف تالف أو ليس بصيغة PDF صحيحة.';
     else if (/network|fetch|Failed to fetch/i.test(msg)) reason = 'تعذّر الاتصال لتحميل الملف — تحقّق من اتصالك بالإنترنت.';
 
-    var isAdmin = window._isAdminUser === true;
     url = url || window._rvCurrentUrl || '';
-    var actionsHtml = '';
-    if (isAdmin && url) {
-      var safeUrl = url.replace(/'/g, '%27');
-      actionsHtml =
-        '<div style="display:flex;gap:10px;justify-content:center;margin-top:14px;flex-wrap:wrap">' +
-          '<button class="pdfv-btn" style="width:auto;padding:0 16px;background:rgba(255,255,255,.15)" onclick="(window._origWindowOpen||window.open)(\'' + safeUrl + '\',\'_blank\',\'noopener,noreferrer\')">↗️ فتح الملف</button>' +
-          '<button class="pdfv-btn" style="width:auto;padding:0 16px;background:rgba(255,255,255,.15)" onclick="(function(){var a=document.createElement(\'a\');a.href=\'' + safeUrl + '\';a.setAttribute(\'download\',\'\');document.body.appendChild(a);a.click();document.body.removeChild(a);})()">⬇️ تحميل الملف</button>' +
-        '</div>';
-    } else {
-      actionsHtml = '<p style="font-size:.74rem;color:rgba(255,255,255,.5);margin-top:8px">حاول مرة أخرى لاحقاً، أو تواصل مع إدارة الشعبة إذا استمرت المشكلة.</p>';
-    }
+    var actionsHtml = url
+      ? '<div style="display:flex;gap:10px;justify-content:center;margin-top:14px;flex-wrap:wrap">' +
+          '<button class="pdfv-btn" type="button" style="width:auto;padding:0 16px;background:rgba(255,255,255,.15)" onclick="NativePDFViewer.open(window._rvCurrentUrl||\'\',window._rvCurrentTitle||\'PDF\')">↻️ إعادة المحاولة داخل المنصة</button>' +
+        '</div>'
+      : '<p style="font-size:.74rem;color:rgba(255,255,255,.5);margin-top:8px">حاول مرة أخرى لاحقاً، أو تواصل مع إدارة الشعبة إذا استمرت المشكلة.</p>';
     wrapper.innerHTML =
       '<div class="pdfv-page-loading" style="min-height:60vh;color:#f5b5b5">' +
       '⚠️ ' + reason + '<br>' + actionsHtml + '</div>';
@@ -21608,7 +21592,7 @@ window.diagnose = async function() {
       if (_chatRoom && document.getElementById('chat-modal-overlay').classList.contains('chat-open')) {
         _chatLoadMessages();
       }
-    }, 6000);
+    }, 15000);
   }
 
   function _chatStopRealtime() {
@@ -22801,7 +22785,7 @@ window.diagnose = async function() {
       if (_dmRoom && document.getElementById('dm2-overlay').classList.contains('chat-open')) {
         _dmLoadMessages();
       }
-    }, 6000);
+    }, 15000);
   }
 
   function _dmStopRealtime() {
@@ -32668,8 +32652,20 @@ console.info('[BSM EMERGENCY FINAL] guest free-content + first lesson/class per 
   'use strict';
   if(window.__BSM_MINISTRY_FINAL_HARDENING_20260905)return;
   window.__BSM_MINISTRY_FINAL_HARDENING_20260905=true;
-  try{ if('serviceWorker' in navigator){ navigator.serviceWorker.getRegistrations().then(function(rs){rs.forEach(function(r){try{r.unregister();}catch(e){}});}).catch(function(){}); } }catch(e){}
-  try{ if(window.caches && caches.keys){ caches.keys().then(function(keys){keys.forEach(function(k){try{caches.delete(k);}catch(e){}});}).catch(function(){}); } }catch(e){}
+  // One-time cache cleanup only. Repeating unregister/delete on every page load
+  // can add needless startup work and make weak mobile connections feel hung.
+  try{
+    var cleanupKey='bsm_opening_cache_cleanup_20260905_v1';
+    if(localStorage.getItem(cleanupKey)!=='1'){
+      localStorage.setItem(cleanupKey,'1');
+      if('serviceWorker' in navigator){
+        navigator.serviceWorker.getRegistrations().then(function(rs){rs.forEach(function(r){try{r.unregister();}catch(e){}});}).catch(function(){});
+      }
+      if(window.caches && caches.keys){
+        caches.keys().then(function(keys){keys.forEach(function(k){try{caches.delete(k);}catch(e){}});}).catch(function(){});
+      }
+    }
+  }catch(e){}
   document.addEventListener('click',function(e){
     var a=e.target && e.target.closest ? e.target.closest('a') : null;
     if(!a)return;
@@ -32701,5 +32697,7 @@ console.info('[BSM EMERGENCY FINAL] guest free-content + first lesson/class per 
   },true);
 })();
 </script>
+<!-- BSM FINAL AUDIT MARKER 2026-09-05: OTP email verification, internal PDF failure recovery,
+     attachment viewer hardening, one-time cache cleanup, and lighter realtime fallback polling. -->
 </body>
 </html>
