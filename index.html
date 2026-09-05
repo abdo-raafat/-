@@ -60,13 +60,13 @@ var DEBUG_MODE = false; window.DEBUG_MODE = DEBUG_MODE;
 <script>
 (function () {
   try {
-    window.__APP_BUILD_VERSION = '2026-09-04-URGENT-FIX-FREE-FIRST-LESSON-RESOURCES-v2';
+    window.__APP_BUILD_VERSION = '2026-09-05-MINISTRY-OPENING-ATTACHMENTS-MEDIA-FIX-v4';
   } catch (e) {}
 })();
 </script>
 <meta content="my6dMoAsuc_97Jks_OQF75GK_f1PGWqz2Kng2obkIgE" name="google-site-verification"/>
 <meta charset="utf-8"/>
-<meta content="2026-09-04-URGENT-FIX-FREE-FIRST-LESSON-RESOURCES-v2" name="app-build"/>
+<meta content="2026-09-05-MINISTRY-OPENING-ATTACHMENTS-PDFJS-FIX-v3" name="app-build"/>
 <meta content="width=device-width, initial-scale=1.0, viewport-fit=cover" name="viewport"/>
 <!-- ==================== PWA: manifest + platform metadata ==================== -->
 <link href="./manifest.json" rel="manifest"/>
@@ -5506,8 +5506,8 @@ function buildResourcesInsideArea(resources, gate) {
     const safePath = _bsmResourceJsArg(r.file_path || '');
     const safeFileType = _bsmResourceJsArg(r.file_type || '');
     const safeFileName = _bsmResourceJsArg(r.file_name || '');
-    const clickHandler = r.file_url ? `onclick="openResource(${safeUrl},${safeTitle},${safeType},${safePath},${safeFileType},${safeFileName})"` : '';
-    const hasLink = !!r.file_url;
+    const clickHandler = resourceUrl ? `onclick="openResource(${safeUrl},${safeTitle},${safeType},${safePath},${safeFileType},${safeFileName})"` : '';
+    const hasLink = !!resourceUrl;
     return `
       <div ${clickHandler} style="
         display:flex;align-items:center;gap:18px;
@@ -6327,6 +6327,7 @@ const ResourceViewer = (function() {
             x5-video-player-fullscreen="true"
             preload="metadata"
             id="rv-video-el"
+            src="${escUrl(url)}"
             controlsList="nodownload noremoteplayback"
             disablePictureInPicture
             disableRemotePlayback
@@ -6543,8 +6544,13 @@ const ResourceViewer = (function() {
     overlay.id = 'rv-overlay';
     overlay.innerHTML = '<div class="rv-modal" id="rv-modal" role="dialog" aria-modal="true">' +
       '<div class="rv-header"><span style="font-size:1.4rem">📄</span><span class="rv-title">'+escHtml(title||'ملف PDF')+'</span><button class="rv-close" type="button" id="rv-pdf-fallback-close">✕</button></div>' +
-      '<div class="rv-body" style="padding:0;background:#fff;"><iframe id="rv-pdf-fallback-frame" class="rv-embed-frame" src="'+escUrl(url)+'" style="display:block;width:100%;height:100%;min-height:70vh;border:0;background:#fff;" title="'+escHtml(title||'PDF')+'"></iframe></div>' +
-      '<div class="rv-footer"><span style="font-size:.75rem;color:#888">عرض PDF مباشر داخل المتصفح</span></div></div>';
+      '<div class="rv-body" style="padding:0;background:#fff;position:relative;">' +
+        '<object id="rv-pdf-fallback-object" data="'+escUrl(url)+'" type="application/pdf" style="display:block;width:100%;height:100%;min-height:70vh;border:0;background:#fff;">' +
+          '<iframe id="rv-pdf-fallback-frame" class="rv-embed-frame" src="'+escUrl(url)+'" style="display:block;width:100%;height:100%;min-height:70vh;border:0;background:#fff;" title="'+escHtml(title||'PDF')+'"></iframe>' +
+        '</object>' +
+      '</div>' +
+      '<div class="rv-footer"><span style="font-size:.75rem;color:#888">📄 عرض PDF مباشر داخل المتصفح</span>' +
+      '<a href="'+escUrl(url)+'" target="_blank" rel="noopener" style="margin-right:auto;padding:8px 12px;border-radius:8px;background:#0d6efd;color:#fff;text-decoration:none;font-weight:700">فتح في تبويب جديد ↗</a></div></div>';
     overlay.addEventListener('click',function(e){if(e.target===overlay)close();});
     document.body.appendChild(overlay);
     document.getElementById('rv-pdf-fallback-close').onclick=close;
@@ -6645,28 +6651,16 @@ const ResourceViewer = (function() {
     // طول من غير أي طبقة وسيطة خالص — فمفيش غير سبنر واحد طول الوقت، وأول
     // ما يخلص التحميل يظهر مباشرة بدون أي تدخل يدوي.
     if (type === 'pdf' || type === 'gdrive_pdf') {
+      // OPENING FIX — PDF is rendered by the browser's native PDF engine.
+      // Do NOT load PDF.js here. This permanently avoids the a.toHex crash
+      // from stale/newer pdfjs-dist builds and is much more reliable for
+      // Cloudinary, Supabase Storage and other public PDF URLs.
       var pdfUrl = (type === 'gdrive_pdf') ? toEmbedUrl(url, 'gdrive_pdf') : url;
       try {
-        var pdfStorageFallback = (type === 'gdrive_pdf') ? '' : (window._rvResourceStorageFallback || '');
-        var pdfOpened = await NativePDFViewer.open(pdfUrl, title, pdfStorageFallback);
-        if (pdfOpened === false) {
-          console.warn('[ResourceViewer pdf] NativePDFViewer reported failure');
-        }
+        openDirectPdfFallback(pdfUrl, title, 'native-browser-pdf');
       } catch (err) {
-        // For Uploadcare, retry once with the compatibility CDN URL only after
-        // the original URL has failed. The DB value remains untouched.
-        var pdfFallback = (typeof window._bsmGetResourceFallback === 'function') ? window._bsmGetResourceFallback(pdfUrl) : _legacyUploadcareUrl(pdfUrl);
-        if (pdfFallback) {
-          try {
-            console.warn('[ResourceViewer pdf] original URL failed; trying Uploadcare compatibility URL');
-            await NativePDFViewer.open(pdfFallback, title);
-            return;
-          } catch (fallbackErr) {
-            console.warn('[ResourceViewer pdf] Uploadcare compatibility URL also failed:', fallbackErr);
-          }
-        }
-        console.error('[ResourceViewer pdf] PDF.js failed; trying direct browser PDF renderer:', err);
-        openDirectPdfFallback(pdfUrl, title, err);
+        console.error('[ResourceViewer pdf] native browser PDF renderer failed:', err);
+        if (typeof _showToast === 'function') _showToast('❌ تعذر فتح ملف PDF', 'error');
       }
       return;
     }
@@ -15968,6 +15962,28 @@ window._origWindowOpen = window.open;
 
 })();
 </script>
+<!-- ==================== OPENING CACHE / SERVICE-WORKER CLEANUP v4 ==================== -->
+<script>
+(function(){
+  try {
+    var BUILD_KEY = 'bsm_opening_build_20260905_v4';
+    if (window.localStorage && localStorage.getItem(BUILD_KEY) !== '1') {
+      localStorage.setItem(BUILD_KEY, '1');
+      if (navigator.serviceWorker && navigator.serviceWorker.getRegistrations) {
+        navigator.serviceWorker.getRegistrations().then(function(regs){
+          return Promise.all(regs.map(function(r){ return r.unregister(); }));
+        }).then(function(){
+          if (window.caches && caches.keys) {
+            return caches.keys().then(function(keys){
+              return Promise.all(keys.map(function(k){ return caches.delete(k); }));
+            });
+          }
+        }).catch(function(e){ console.warn('[BSM] cache cleanup skipped:', e && e.message); });
+      }
+    }
+  } catch(e) {}
+})();
+</script>
 <!-- ==================== NATIVE PDF MODAL ==================== -->
 <script>
 
@@ -16026,6 +16042,10 @@ async function _getSignedPdfUrl(storagePath) {
 // أحدث إصدار مستقر من Mozilla PDF.js عبر jsDelivr (ESM)
 var NativePDFViewer = (function() {
   var PDFJS_VERSION = '4.10.38';
+  // Opening-critical build: never depend on a cached older PDF.js module.
+  // The explicit version + cache-buster prevents an old 5/6.x module from
+  // surviving a deployment and producing Uint8Array.toHex errors.
+  var PDFJS_CACHE_BUSTER = '?bsm=20260905-0915-v4';
   var PDFJS_ROOT     = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@' + PDFJS_VERSION + '/';
   var PDFJS_BASE     = PDFJS_ROOT + 'build/';
   // ✅ FIX (النص متداخل/ملتصق ببعضه — "H storta lPerspective" بدل "Historical
@@ -16051,6 +16071,30 @@ var NativePDFViewer = (function() {
     return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   }
 
+  // ---- PDF.js typed-array compatibility guard ----
+  // PDF.js 5/6 may call Uint8Array.prototype.toHex(); some WebViews/browsers
+  // do not provide it. The production viewer is pinned to 4.10.38, but this
+  // guard makes the page resilient if a cached/newer module is ever injected.
+  (function(){
+    try{
+      function installToHex(Ctor){
+        if(!Ctor || !Ctor.prototype || typeof Ctor.prototype.toHex === 'function') return;
+        Object.defineProperty(Ctor.prototype,'toHex',{
+          configurable:true,
+          value:function(){
+            var a=this, out='';
+            for(var i=0;i<a.length;i++) out += a[i].toString(16).padStart(2,'0');
+            return out;
+          }
+        });
+      }
+      installToHex(window.Uint8Array);
+      installToHex(window.Uint8ClampedArray);
+      installToHex(window.Uint16Array);
+      installToHex(window.Uint32Array);
+    }catch(e){ console.warn('[PDFjs] typed-array compatibility guard failed:',e); }
+  })();
+
   // ---- تحميل PDF.js (ESM) مرة واحدة فقط ----
   function _loadPdfJs() {
     // PDF.js 4.x is intentionally used here for broad browser/WebView compatibility.
@@ -16058,9 +16102,9 @@ var NativePDFViewer = (function() {
     // some WebViews/browsers and causes: "a.toHex is not a function".
     if (_pdfjsLib) return Promise.resolve(_pdfjsLib);
     if (_pdfjsLoading) return _pdfjsLoading;
-    _pdfjsLoading = import(/* webpackIgnore: true */ PDFJS_BASE + 'pdf.min.mjs')
+    _pdfjsLoading = import(/* webpackIgnore: true */ PDFJS_BASE + 'pdf.min.mjs' + PDFJS_CACHE_BUSTER)
       .then(function(lib) {
-        lib.GlobalWorkerOptions.workerSrc = PDFJS_BASE + 'pdf.worker.min.mjs';
+        lib.GlobalWorkerOptions.workerSrc = PDFJS_BASE + 'pdf.worker.min.mjs' + PDFJS_CACHE_BUSTER;
         _pdfjsLib = lib;
         return lib;
       })
